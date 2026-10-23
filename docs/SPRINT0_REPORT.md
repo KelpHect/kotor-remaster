@@ -58,12 +58,12 @@ turn limit; their datasets were complete enough for the integrator to finish the
 
 ## Known gaps carried into P1
 
-1. **Animation payloads are decoded** (type 8 additive position, type 20 absolute orientation, no
-   NaN sentinel). Remaining: DLG `CameraAnimation`/`CameraAngle` composition and supermodel
-   nearest-override/name-remap semantics.
+1. **Camera `CameraAnimation` is decoded** (`1200+(N−1)` → `cutNNNw`) and `CameraAngle` branches are
+   verified. Remaining: CameraAngle 0–5 framing constants, supermodel engine override order/name
+   remap, and MDX qbone/tbone/aux4 consumers.
 2. **Door appearance/facing and `WOK.position` are resolved.** WOK `position` is the room walkmesh
    node translation; the ARE minimap affine and DLG camera models are decoded. Remaining:
-   `CameraAnimation`/`CameraAngle` and supermodel remap.
+   CameraAngle framing, supermodel remap, and MDX consumer semantics.
 3. **No real save** exists in the reference install; the save writer is structural, not
    byte-compatible or retail-verified.
 4. **NCS source decompilation**: the bytecode codec is lossless (8,666/8,666), but source

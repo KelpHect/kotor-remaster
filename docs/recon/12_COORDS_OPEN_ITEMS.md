@@ -96,13 +96,24 @@ the affine. 18/106 maps are degenerate (zero extent or `MapResX=0`); `MapResY` i
 
 DLG: root `CameraModel` names one of 22 shipped two-node camera MDLs (`camerahook`); clips store
 `camerahook` position/orientation with the animation rule above. All 3,036 DLG `CameraID`s fall in
-the GIT `CameraID` domain. `CameraAngle` (0–6) and `CameraAnimation` (ms-scale cue) roles remain
-being closed.
+the GIT `CameraID` domain. **`CameraAnimation` is a clip id, not milliseconds:** value =
+`1200 + (N−1)` → engine name `cut{N:03d}w` → camera-model clip `CUT{N:03d}W` (`FUN_006288f0` maps
+1000–1727 to cut/cutW/cutL/cutWL bands). 208/208 distinct (model,value) pairs resolve to a clip;
+the sole outlier is 10098 with no model. All 219 values occur on `CameraAngle=4`.
+
+`CameraAngle` branches: **6** = static GIT camera (3,036/3,036 carry IDs); **4** = camera-model
+shot (219 animations); **1/2/3** use `CamHeightOffset` into `FUN_006306e0`→`FUN_006bd260`; **0** =
+default; **5** rare. `FUN_0059eaa0` forces `CameraID=−1` for angle≠6. The exact 0–5 framing
+constants require a corrected decompile of `FUN_006306e0` (the export mis-assigns stack args).
 
 ## Still open
 
-* DLG `CameraAnimation` clip/time selection and `CameraAngle` composition (targeted continuation).
-* Supermodel nearest-override order and inherited-clip name-vs-index remap (engine/runtime proof).
+* `CameraAngle` 0–5 framing constants (branch structure verified; corrected `FUN_006306e0`
+  decompile required).
+* Supermodel nearest-override **engine order** (86/86 shared definitions differ; nearest-wins is
+  data-supported; raw-index remap is impossible, name remap is required). Candidates are vtable
+  `+0x10c` (`GetNodeByName`) and `+0x1c` (`PlayAnimation` by name); a runtime trace or corrected
+  model-class decompile is needed.
 * `MapResX` role and minimap texture semantics (inferred).
 * Particle/light/animation-node controller types (36/76/80/84/88/100/120/124/132/176/216/224/232/
   236/240/284/380/392) are catalogued but not needed for skeletal pose; type 132 is a FrameEnd cue.
@@ -117,4 +128,7 @@ being closed.
 | `misc2/wok_position_verify.json` | 453/453 node-545 proof, rejected alternatives |
 | `misc2/camera_are_dlg.json` | GIT formula, 106 ARE maps, 22 DLG camera models |
 | `misc2/camera_aim_verify.json` | pitch convention aim test; DLG CameraID domain |
+| `misc3/camanim_rule_test.json` | 1200+(N−1) → cutNNNw rule; 208/208 resolution |
+| `misc3/camera_angle_stats.json`, `engine_evidence.json` | CameraAngle branches; line-cited pseudocode |
+| `misc3/supermodel_remap.json` | 86/86 differing definitions; 6.9% index alignment |
 | `cont/misc/*.json` | earlier Bearing/door/WOK/camera corpus data |

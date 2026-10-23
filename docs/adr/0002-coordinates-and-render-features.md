@@ -153,13 +153,16 @@ change simulation state.
    (453/453 bit-exact), not a placement term; it is a pivot for DWK/PWK. Camera `Position` is a
    ground point with `eye = Position.z + Height` and
    `forward = R_yaw·(0, sin Pitch, −cos Pitch)`. The ARE minimap two-point affine is decoded and
-   DLG camera models resolve; `CameraAnimation`/`CameraAngle` composition remains open.
+   DLG camera models resolve; `CameraAnimation` is a clip id (`1200+(N−1)` → `cutNNNw`) and
+   `CameraAngle` branches (6 GIT, 4 camera clip, 1/2/3 offset, 0 default) are verified. The 0–5
+   framing constants remain open.
 2. Animation payloads are decoded: type 8 position is additive to bind, type 20 orientation is
    absolute, there is no NaN sentinel (0x7fdffbff is identity). Supermodel inheritance is verified
-   for disjoint clips; nearest override order and inherited-clip name-vs-index remap remain open.
-   The MDX layout is decoded across the full shipped corpus (2,832 pairs, 76,703 blocks, every byte
-   assigned; `docs/recon/15`). Open: qbone/tbone/aux4 consumer semantics, multi-group addressing
-   (no shipped data), and the source of 108 bbox expansion vectors.
+   for disjoint clips; raw-index remap is impossible (6.9% same-name alignment), so name remap is
+   required; engine override order remains open. The MDX layout is decoded across the full shipped
+   corpus (2,832 pairs, 76,703 blocks, every byte assigned; `docs/recon/15`). Open:
+   qbone/tbone/aux4 consumer semantics, multi-group addressing (no shipped data), and the source of
+   108 bbox expansion vectors.
 3. Camera FOV/pitch are degrees and the GIT view basis is verified; aspect/near/far are absent
    (engine defaults). Vulkan projection/viewport Y-flip and depth range still need a rendered
    landmark in the new renderer.
