@@ -84,6 +84,14 @@ and served the lookup, which is the first retail-engine acceptance of the lane 0
 acceptance at boot, not byte-compatibility). Fixtures were removed and the original `patch.erf`
 restored (`0eecf9f9…`).
 
+Pass 3 (RIMs, last-added-first) was measured the same way: a synthetic `GLOBAL.rim` (shipped 949
+entries + `mainmenu/2002`) loaded first (table `0x4677778`, seq 114), `MAINMENU.rim` loaded second
+(`0x46777f8`, seq 571), and the natural lookup returned **MAINMENU**. Pass 4 (tagged-2 ERFs) at
+Texture Quality 0: a synthetic one-entry `swpc_tex_tpc` loaded first (`0x468c830`, seq 145),
+`swpc_tex_gui` second (`0x468ccb0`, seq 156), and `border2/3007` present in both returned **gui**.
+Both synthetic archives booted the menu, extending structural acceptance to the lane 05 RIM/ERF
+writers.
+
 ## Texture quality → pack (verified)
 
 | `Texture Quality` (ini) | pack opened | `gui` pack |
@@ -120,11 +128,12 @@ write `swkotor.ini`; the restored file matches the manifest hash.
 ## Unresolved
 
 * Save-vs-module order and real save loading remain untested because this install has no save
-  folder. Lane 05's synthetic save tests pass. The controlled off-screen boot stops at
-  `MAINMENU.rim`; no path under `saves/` or `modules/*` is opened, and the harness does not drive
-  character creation/save UI.
-* The shipped install has no duplicate keys and no module `.mod`; duplicate precedence inside a
-  table and `.mod` vs RIM are covered by synthetic archives only.
+  folder; the controlled boot does not enumerate `saves/` (Load Game is a UI action). Lane 05's
+  synthetic save tests pass.
+* Duplicate keys inside one archive, `.mod` vs RIM, and save-vs-module/shadowing are being measured
+  with synthetic archives and an in-process save/load path.
+* The shipped install has no duplicate keys and no module `.mod`; these cases need synthetic
+  archives in the lane profile.
 * The game rewrites `.\swkotor.ini` in its working directory (not the install in the controlled
   runs); probes must set and restore settings explicitly and run the install guard.
 

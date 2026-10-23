@@ -97,8 +97,10 @@ synthetic.
   beyond the documented layout remain inferred.
 * The writer is not byte-compatible; the retail engine accepted a synthetic `patch.erf` at boot, but
   this is structural acceptance, not a save/round-trip guarantee.
-* Pass-2 order is measured (`patch.erf` before `Override/textures.erf`); RIM and tagged-2 intra-pass
-  order remain inferred. No shipped duplicate resource or module `.mod` exists.
+* Pass-2 order is measured (`patch.erf` before `Override/textures.erf`); pass-3 RIM and pass-4
+  tagged-2 orders are also measured last-added-first (MAINMENU over synthetic GLOBAL; gui over
+  synthetic tpc). Duplicate-in-archive, `.mod` vs RIM, and save-vs-module remain in a closing pass.
 * Save-vs-module order and `.mod` precedence lack a real corpus (no module `.mod`, no save). The
-  off-screen boot stops at `MAINMENU.rim`; no `saves/` or `modules/*` resource is opened.
+  controlled boot does not enumerate `saves/`; Load Game is a UI action. A closing pass is testing
+  an in-process load path.
 * Loose-directory scan order is assumed sorted; engine enumeration could differ.

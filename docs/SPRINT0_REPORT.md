@@ -41,10 +41,10 @@ turn limit; their datasets were complete enough for the integrator to finish the
 * **Scripts**: all ACTION instruction ids are known; 466 of 772 actions are used; five scripts carry
   arity anomalies that must be reproduced, not “fixed”.
 * **VFS**: directories → ERF tag 1 → RIMs → ERF tag 2 → KEY/BIF, first hit wins; Override beats a
-  texture pack; `Texture Quality` 2/1/0 selects tpa/tpb/tpc, with gui always loaded. Within pass 2,
-  `patch.erf` is searched before `Override/textures.erf` (measured with duplicate synthetic
-  archives). The game writes only its working-directory `swkotor.ini`, not the install, and no
-  KotOR registry key changes during controlled runs.
+  texture pack; `Texture Quality` 2/1/0 selects tpa/tpb/tpc, with gui always loaded. Pass 2/3/4
+  intra-pass order is measured last-added-first (patch, MAINMENU, gui respectively). The game writes
+  only its working-directory `swkotor.ini`, not the install, and no KotOR registry key changes
+  during controlled runs.
 * **Coordinates**: 1 unit = 1 m, RH Z-up; IFO entry is a ground point; WOK vertices are world-space;
   LYT origin = MDL model origin; WXYZ quaternions; Bearing is radian yaw with RH `R_z(+B)` proven in
   engine code; doors select models by UTD `GenericType`; `WOK.position` is the room walkmesh node
@@ -65,8 +65,9 @@ turn limit; their datasets were complete enough for the integrator to finish the
    byte-compatible or retail-verified.
 4. **NCS source decompilation**: the bytecode codec is lossless (8,666/8,666), but source
    decompilation is 60.72% with the external oracle; a clean-room decompiler is in progress.
-5. **Real intra-pass order** is measured for pass 2 (`patch.erf` before `Override/textures.erf`);
-   RIM and tagged-2 orders remain inferred. No shipped duplicate resource or module `.mod` exists.
+5. **Intra-pass order** is measured last-added-first for pass 2 (patch over textures), pass 3
+   (MAINMENU over synthetic GLOBAL), and pass 4 (gui over synthetic tpc). Duplicate-in-archive,
+   `.mod` vs RIM, and save-vs-module remain in a closing pass.
 6. **Engine**: clear + ImGui only; no depth/mesh pipeline, no asset rendering, no Vulkan validation
    layer installed; swapchain format changes are fatal.
 7. **Legal**: license TBD; external GPL/LGPL tools are oracles only; public release needs IP review.
