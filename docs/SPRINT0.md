@@ -51,6 +51,12 @@ area and gameplay parity belong to P4/P5, not Sprint 0.
 - **Game data:** never copied into tracked files; lane outputs stay under `artifacts/`.
 - **Evidence:** every claim needs an address/offset/file hash/test, and verified/inferred/open status.
 
+## Completion log
+
+| Lane | Status | Evidence |
+|---|---|---|
+| 07-ghidra-rename | complete | 125/125 renamed, 565/565 targets named, 772/772 actions, baseline retained; `artifacts/lanes/07-ghidra-rename/` |
+
 ## Out of scope for Sprint 0
 
 Full gameplay parity, complete engine renderer/UI/audio, content-wide map compilation, and public

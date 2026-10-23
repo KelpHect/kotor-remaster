@@ -177,8 +177,9 @@ re-derives high-impact claims (action table, VM semantics, save layout) before a
   service. There is no second table or base implementer.
 - Action-handler coverage pass: 440 `LAB_` targets + dispatcher defined and decompiled (441/441,
   0 failures) in an isolated project copy. The copy has 9,057 internal functions + 350 external;
-  no baseline function was lost. Remaining: rename the 125 pre-existing `FUN_` handler targets and
-  exercise runtime dispatch behavior.
+  no baseline function was lost. Lane 07 then renamed all 125 pre-existing `FUN_` targets: 565/565
+  unique targets are named, 772/772 actions map, and the dispatcher is intact. Remaining: exercise
+  runtime dispatch behavior.
 - Implement/mediate all 772 actions; start with logging stubs, then functional groups.
 - Decompile the corpus with DeNCS (MIT) and PyKotor/xoreos as independent oracles, diff outputs,
   recompile where possible, and publish per-file exact/normalized/failed status.
@@ -449,7 +450,8 @@ Suggested first 10 assignments:
 - [x] Probe IFO entry points, LYT/VIS/WOK/PTH, and MDL transforms on m01aa (12 fixtures).
 - [ ] Close Bearing sign/zero, MDX block layout, camera Height, door appearance, and animation overrides.
 - [x] Define dispatcher `0x0052c0d0` and all 440 `LAB_` action handlers; decompile 441/441.
-- [ ] Rename the 125 pre-existing `FUN_` handler targets; exercise runtime dispatch behavior.
+- [x] Rename all 125 pre-existing `FUN_` handler targets; 565/565 targets named, 772/772 mapped.
+- [ ] Exercise runtime dispatch behavior and handler effects.
 - [ ] Freeze full artifact manifest (exe, key, tlk, erf, BIF headers, module hashes).
 - [ ] Implement GFF/2DA parsers from MIT Kaitai specs; validate against every resource.
 - [ ] Decompile every NCS with DeNCS/PyKotor/xoreos; publish per-file status.

@@ -60,6 +60,11 @@ Result: 440 handlers + dispatcher created and decompiled (441/441, 0 failures). 
 internal functions (8,616 baseline + 441) plus 350 external imports (9,407 total function-manager
 count). The original project and baseline export remain untouched.
 
+A second pass (`RenameActionHandlers.java` / `VerifyRenamedHandlers.java`, also in this directory)
+renamed the remaining 125 pre-existing `FUN_` handler targets to `ACT_<id>_<name>` and attached
+shared-action comments. Validation: 565/565 targets named once, 772/772 actions mapped, dispatcher
+present, 8,616 baseline functions retained, and 125/125 re-decompiled with matching hashes.
+
 Java scripts are compiled into a shared cache; use one JDK per cache (a class compiled by JDK 25
 cannot load under JDK 21). The pinned analysis runtime is JDK 21, but an existing JDK 25-compiled
 script must be recompiled or run under JDK 25.

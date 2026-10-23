@@ -212,11 +212,45 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def apply_renames(conn: sqlite3.Connection, path: str) -> int:
+    n = 0
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            entry = row["entry"]
+            if entry.lower().startswith("0x"):
+                entry = entry[2:]
+            cur = conn.execute("SELECT name FROM functions WHERE entry=?", (entry,)).fetchone()
+            if cur is None:
+                continue
+            conn.execute(
+                "UPDATE functions SET name=?, notes=? WHERE entry=?",
+                (row["new_name"], f"renamed from {row['old_name']} (primary action {row['primary_action_id']})",
+                 entry),
+            )
+            n += 1
+    add_artifact(conn, os.path.basename(path), "evidence", os.path.abspath(path), sha256_file(path),
+                 os.path.getsize(path), now(), f"{n} handler renames applied")
+    return n
+
+
 def cmd_add_functions(args: argparse.Namespace) -> int:
     conn = sqlite3.connect(args.db)
     n = import_functions(conn, args.path, args.status, args.artifact_name)
     conn.commit()
     print(f"imported {n} functions as {args.status}")
+    print_status(conn)
+    conn.close()
+    return 0
+
+
+def cmd_apply_renames(args: argparse.Namespace) -> int:
+    conn = sqlite3.connect(args.db)
+    n = apply_renames(conn, args.path)
+    conn.commit()
+    print(f"applied {n} renames")
     print_status(conn)
     conn.close()
     return 0
@@ -251,6 +285,10 @@ def main() -> int:
     p.add_argument("--status", default="handler-defined")
     p.add_argument("--artifact-name", default=None)
     p.set_defaults(func=cmd_add_functions)
+
+    p = sub.add_parser("apply-renames", help="apply handler renames to the function ledger")
+    p.add_argument("--path", required=True)
+    p.set_defaults(func=cmd_apply_renames)
 
     p = sub.add_parser("claim", help="add a cited claim")
     p.add_argument("claim")

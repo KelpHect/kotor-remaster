@@ -89,9 +89,9 @@ redistribute. The MIT Kaitai specs are the reusable baseline.
   the companion lane; the vtable pointers are independently verified).
 - **Coverage pass:** an isolated project copy defines and decompiles all 440 `LAB_` handler targets
   plus the dispatcher (**441/441, 0 failures**). The copy has 9,057 internal functions (8,616
-  baseline + 441) and 350 external imports (9,407 total `getFunctionCount`). The 125 pre-existing
-  `FUN_` handler targets were verified but not renamed; runtime dispatch has not been executed.
-  This does not change the 772-slot mapping.
+  baseline + 441) and 350 external imports (9,407 total `getFunctionCount`). All 125 pre-existing
+  `FUN_` handler targets were subsequently renamed, so 565/565 unique targets are named and all
+  772 actions map. Runtime dispatch has not been executed. This does not change the 772-slot mapping.
 - **NCS**: 13-byte header `NCS V1.0` + `0x42` + **big-endian** u32 size; all multi-byte values are
   big-endian. Opcodes `0x01–0x2D` (CPDOWNSP, RSADD, CPTOPSP, CONST, ACTION, arithmetic, jumps,
   JSR/RETN, DESTRUCT, SAVEBP/RESTOREBP, STORESTATE, …); `0x42` is a size pseudo-op. Type qualifiers:

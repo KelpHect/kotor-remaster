@@ -15,8 +15,9 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
 
 - Fresh Ghidra 12.1.4 analysis of a user-owned 1.0.3.0 build.
 - Full pseudocode pass for the initial function inventory: 8,616/8,616 decompiled with zero failures.
-- Script action table: **772/772 actions mapped**; 440 handler functions + dispatcher added and
-  decompiled in an isolated project copy (9,057 internal functions; 350 external imports).
+- Script action table: **772/772 actions mapped** and **565/565 handler targets named**; 440
+  handler functions + dispatcher were added and decompiled in an isolated project copy, then the
+  last 125 `FUN_` handlers were renamed (9,057 internal functions; 350 external imports).
 - Archive inventory: 25,836 base BIF resources, 20,575 module RIM resources, 1,936 global-RIM
   resources, plus patch/texture-pack ERFs; 49,265 TLK strings.
 - TLK V3.0 parser validated; SQLite evidence ledger; action-table extraction tooling.

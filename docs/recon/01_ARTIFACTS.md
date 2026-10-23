@@ -193,8 +193,9 @@ Combined (before dedup): ~46,411 resources, including **12,647 NCS**, **1,958 UT
 - Coverage pass on an isolated project copy: all **440 `LAB_` handler targets plus the dispatcher**
   were defined as functions and decompiled (**441/441, 0 failures**). The copy contains **9,057
   internal functions** (8,616 baseline + 441) and **350 external imports**, for 9,407 total
-  `getFunctionCount()`; no baseline function was lost. The 125 pre-existing `FUN_` handler targets
-  were verified but not renamed. Runtime dispatch behavior is not yet executed. Artifacts:
+  `getFunctionCount()`; no baseline function was lost. A follow-up pass renamed all 125 pre-existing
+  `FUN_` handler targets, so 565/565 unique targets are named and all 772 actions map; the
+  dispatcher is intact. Runtime dispatch behavior is not yet executed. Artifacts:
   `artifacts/analysis/ghidra-handlers/{coverage.json,verification-independent.json,new_functions.jsonl}`,
   `artifacts/action_table.json`, `artifacts/game-extract/nwscript.nss` (local only).
 
@@ -224,8 +225,8 @@ python tools/inventory/pe_summary.py \
 3. BWM section semantics (WOK/DWK/PWK types mapped), BTI/BTC binary layouts, type 2036 semantics.
 4. Unique NCS count and NSS↔NCS pairing after content hashing.
 5. Compiler fingerprint (no Rich header) and C++ runtime signatures.
-6. Handler naming/runtime coverage: 125 pre-existing `FUN_` handler targets are not renamed, and
-   runtime dispatch behavior has not been exercised.
+6. Runtime coverage: all 565 handler targets are now named (125 `FUN_` renames + 440 `LAB_`), but
+   dispatch behavior and handler effects have not been executed.
 7. Final pseudocode coverage for the coverage copy (441 handler/dispatcher functions added to the
    initial 8,616/8,616 baseline; all 441 decompiled).
 8. Dynamic-analysis harness integration and deterministic replay tolerances.
