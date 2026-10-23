@@ -39,9 +39,10 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   Override precedence, and quality 2/1/0 → tpa/tpb/tpc (`docs/recon/08`, `docs/recon/10`).
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
-- Function classification: 9,407 items all high-confidence — 8,549 engine, 417 CRT, 350 external
-  imports, 61 thunks, 30 compiler helpers, 0 unknown; 48/48 checks (`docs/recon/14`). Bearing
-  `R_z(+B)` is proven in engine code at `0x50a0e0`/`0x50a7b0` → `0x4ac960` → `0x5853c0`.
+- Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
+  350 external imports, 76 thunks, 30 compiler helpers, 0 unknown; 34/34 checks, 0 unexplained
+  `.text` bytes (`docs/recon/14`). Bearing `R_z(+B)` is proven in engine code at
+  `0x50a0e0`/`0x50a7b0` → `0x4ac960` → `0x5853c0`.
 - MDX layout decoded across the full corpus: 2,832/2,832 models, 76,703 blocks, 489,549,652 bytes
   exactly assigned to payload/sentinel/pad; stride formula and 968 skin blocks verified
   (`docs/recon/15`).
@@ -86,7 +87,7 @@ Start with:
 - [`docs/recon/11_GEOMETRY_PREVIEW.md`](docs/recon/11_GEOMETRY_PREVIEW.md) — m01aa LYT/WOK/MDL/PTH/GIT top-down preview and checks
 - [`docs/recon/12_COORDS_OPEN_ITEMS.md`](docs/recon/12_COORDS_OPEN_ITEMS.md) — corpus-scale Bearing, camera, ARE NorthAxis, and remaining open items
 - [`docs/recon/13_P0_INSTALL.md`](docs/recon/13_P0_INSTALL.md) — install validation, external cache profile, and the config-restore guard
-- [`docs/recon/14_P0_FUNCTION_CLASSIFICATION.md`](docs/recon/14_P0_FUNCTION_CLASSIFICATION.md) — engine/CRT/middleware/thunk classification of 9,407 items
+- [`docs/recon/14_P0_FUNCTION_CLASSIFICATION.md`](docs/recon/14_P0_FUNCTION_CLASSIFICATION.md) — exhaustive 11,199-row engine/CRT/middleware/thunk classification
 - [`docs/recon/15_MDX_LAYOUT.md`](docs/recon/15_MDX_LAYOUT.md) — verified MDX block/vertex/face layout and walkmesh correspondence
 - [`docs/adr/0001-runtime-and-renderer.md`](docs/adr/0001-runtime-and-renderer.md)
 - [`docs/adr/0002-coordinates-and-render-features.md`](docs/adr/0002-coordinates-and-render-features.md)

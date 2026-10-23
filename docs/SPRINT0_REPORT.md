@@ -14,7 +14,7 @@ turn limit; their datasets were complete enough for the integrator to finish the
 | 3 | Scripts | **met with coverage gap** — 8,666 unique NCS all decode; 285,015 ACTION ops, 0 unknown IDs; 5,262 reproducible | `docs/recon/09_SCRIPTS.md` |
 | 4 | Save/VFS | **met except real save** — 33 tests, 32 pass/1 skip; dynamic five-pass + quality mapping | `docs/recon/08`, `10` |
 | 5 | Dynamic harness | **met** — one local process session (Frida), VFS/VM/RNG/combat hooks; off-screen, no install writes | `docs/recon/08`; lane 06 logs |
-| 6 | Ghidra | **met** — 8,616 baseline, 9,057 coverage functions; 565/565 targets, 772/772 actions, 125 renamed | `docs/recon/02`; lane 07 |
+| 6 | Ghidra | **met** — v4 exhaustive inventory 10,849 internal + 350 external, all high confidence, 0 unexplained `.text` bytes; 565/565 targets, 772/772 actions, 125 renamed | `docs/recon/14`; lane 07 |
 | 7 | Engine scaffold | **met** — builds `/W4 /WX`, CTest 2/2, Vulkan 1.4 and GL 4.5 120-frame clears | `engine/docs/BUILD.md` |
 | 8 | Geometry path | **met** — m01aa LYT/WOK/MDL/PTH/GIT preview, 45/45 checks | `docs/recon/11_GEOMETRY_PREVIEW.md` |
 | 9 | Evidence/repo | **met** — ledger 24 cited claims; lane outputs integrated; no assets/secrets | `docs/recon/`; public repo |

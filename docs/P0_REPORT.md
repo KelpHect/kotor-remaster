@@ -9,7 +9,7 @@ specified or that a real save exists; those residuals are listed below and do no
 | # | P0 item | Result | Evidence |
 |---:|---|---|---|
 | 1 | Freeze manifest; pin JDK 21; validate fresh Ghidra project hash | **met** — 15,380 files / 3,602,889,094 B; JDK 21.0.12.1+1; target SHA-256 `0290889e…` | `docs/recon/06`, `tools/README.md` |
-| 2 | Export all functions; classify externals/thunks/CRT/middleware vs engine | **met** — 9,407 items labeled: 8,527 engine, 417 CRT, 350 external, 61 thunks, 30 compiler helpers, 22 unknown | `docs/recon/14` |
+| 2 | Export all functions; classify externals/thunks/CRT/middleware vs engine | **met** — exhaustive 11,199 rows: 10,302 engine, 441 CRT, 350 external, 76 thunks, 30 helpers, 0 unknown; 0 unexplained `.text` bytes | `docs/recon/14` |
 | 3 | Evidence DB + repo skeleton | **met** — SQLite ledger (27 cited claims), public repo, lane artifacts | `tools/evidence/ledger.py`; repo |
 | 4 | Install detection/validation + external cache profile | **met** — validator, deterministic profile (`6bf42d3c…`), 14 tests, output-refusal guard | `docs/recon/13` |
 | 5 | Original run under file/registry monitor; baseline settings/saves | **met with save caveat** — 332 read-only install opens/run, only profile `swkotor.ini` written, registry exports byte-identical; no save exists to capture | `docs/recon/08`; lane 06 `cont/` |
@@ -23,8 +23,9 @@ specified or that a real save exists; those residuals are listed below and do no
   baseline project never modified by classification.
 * **Inventory reconciled:** 15,380 files / 3,602,889,094 B, 0 missing, 0 extra, 0 size diffs;
   dataset subset 279 files / 2,113,227,942 B, 0 hash/size disagreements.
-* **Function inventory:** 8,616 baseline functions fully decompiled; 9,057 internal + 350 external
-  in the coverage/classification set; digests recorded.
+* **Function inventory:** v4 exhaustive inventory 10,849 internal + 350 external, all high
+  confidence; 0 unexplained `.text` bytes; baseline 8,616 pseudocode export retained, v4
+  export/ledger consolidation queued.
 * **Clean install:** `install_validate.py` returns VALID with 0 errors/warnings; `cache_profile.py
   verify` matches 279/279; both refuse to write inside the install.
 
@@ -45,8 +46,8 @@ Three off-screen runs reached `MAINMENU.rim`:
 
 ## Residual unknowns (carried into P1)
 
-* 22 disconnected functions remain `unknown`; 3,464 engine rows are medium-confidence,
-  region/call-graph based. Classification is a triage mask, not semantic specification.
+* Classification is exhaustive (0 unknown/medium), but 440 action targets are label-defined stubs
+  and 22,123 continuation bytes are unowned; these are semantic/spec work, not inventory gaps.
 * No real save exists; the save writer is structurally validated but not byte-compatible or
   retail-save-tested.
 * Source-level NCS decompilation is 60.72% reproducible; the bytecode codec itself is lossless
