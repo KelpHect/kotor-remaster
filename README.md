@@ -21,6 +21,8 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
 - Archive inventory: 25,836 base BIF resources, 20,575 module RIM resources, 1,936 global-RIM
   resources, plus patch/texture-pack ERFs; 49,265 TLK strings.
 - TLK V3.0 parser validated; SQLite evidence ledger; action-table extraction tooling.
+- Full install manifest: 15,380 files / 3.36 GiB hashed without modifying the install.
+- 2DA parser validates all 209 shipped tables (7,750 rows, 111,521 cells, zero failures).
 - GFF V3.2 wire semantics verified; the single-field struct rule is implemented and IFO/GIT/ARE
   validate. Coordinate probes on m01aa establish RH Z-up, 1 unit = 1 m, IFO ground-point/unit-dir,
   creature forward vectors, radian Bearing, world-space WOK, and the LYT/MDL transform chain;
@@ -45,6 +47,8 @@ Start with:
 - [`docs/recon/02_TECHNICAL_NOTES.md`](docs/recon/02_TECHNICAL_NOTES.md) — format, VM, VFS, rules notes
 - [`docs/recon/03_GFF_COORDINATES.md`](docs/recon/03_GFF_COORDINATES.md) — verified GFF wire semantics and coordinate evidence
 - [`docs/recon/04_GEOMETRY_COORDINATES.md`](docs/recon/04_GEOMETRY_COORDINATES.md) — IFO/WOK/LYT/MDL coordinate contract and fixtures
+- [`docs/recon/05_2DA.md`](docs/recon/05_2DA.md) — 209-table 2DA coverage
+- [`docs/recon/06_MANIFEST.md`](docs/recon/06_MANIFEST.md) — complete install manifest summary
 - [`docs/adr/0001-runtime-and-renderer.md`](docs/adr/0001-runtime-and-renderer.md)
 - [`docs/adr/0002-coordinates-and-render-features.md`](docs/adr/0002-coordinates-and-render-features.md)
 - [`docs/adr/0003-distribution-and-install-model.md`](docs/adr/0003-distribution-and-install-model.md)

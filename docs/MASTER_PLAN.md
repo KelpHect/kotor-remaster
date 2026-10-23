@@ -142,6 +142,8 @@ re-derives high-impact claims (action table, VM semantics, save layout) before a
 
 ### P1 — Data completeness (weeks 2–6)
 - Implement all format parsers (Kaitai MIT specs as a starting point); extract every resource.
+  2DA is complete: 209/209 tables, 7,750 rows, 1,596 columns, 111,521 cells, 0 failures
+  (`tools/formats/two_da.py`). TLK is validated; GFF corpus validation is in progress.
 - Round-trip GFF/ERF/RIM/2DA/TLK; validate TLK strings and 2DA row/column semantics.
 - Implement the save parser/writer (SAVEGAME.sav, nested module saves, sidecars) and a VFS
   precedence harness with discriminating assets; measure TexturePack quality selection.
@@ -452,8 +454,9 @@ Suggested first 10 assignments:
 - [x] Define dispatcher `0x0052c0d0` and all 440 `LAB_` action handlers; decompile 441/441.
 - [x] Rename all 125 pre-existing `FUN_` handler targets; 565/565 targets named, 772/772 mapped.
 - [ ] Exercise runtime dispatch behavior and handler effects.
-- [ ] Freeze full artifact manifest (exe, key, tlk, erf, BIF headers, module hashes).
-- [ ] Implement GFF/2DA parsers from MIT Kaitai specs; validate against every resource.
+- [x] Freeze full artifact manifest: 15,380 files, 3,602,889,094 bytes, SHA-256 manifest hash recorded.
+- [x] Validate 2DA parser on all 209 tables; promote `tools/formats/two_da.py` + tests.
+- [ ] Complete GFF corpus validation from MIT Kaitai specs; triage all failures.
 - [ ] Decompile every NCS with DeNCS/PyKotor/xoreos; publish per-file status.
 - [ ] Run the original under Frida; capture file I/O, RNG, combat and save traces for one area.
 - [ ] Implement the save parser/writer and VFS precedence fixtures; measure texture-pack selection.

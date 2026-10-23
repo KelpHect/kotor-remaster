@@ -16,6 +16,8 @@ Nothing here redistributes game assets or decompiled code. Generated data goes u
 | `analysis/extract_actions.py` | Extracts `nwscript.nss`, parses hex + decimal table writes, writes the complete 772/772 action map and dispatcher metadata | `python tools/analysis/extract_actions.py --game-dir <install>` |
 | `formats/tlk.py` | TLK V3.0 reader/validator (49,265 entries verified) | `python tools/formats/tlk.py <dialog.tlk> --check` |
 | `formats/gff.py` | Read-only GFF V3.2 probe: structs/fields/lists, single-field struct rule, structural checks; validates IFO/GIT/ARE | `python tools/formats/gff.py <file.git> --check --root --entries` |
+| `formats/two_da.py` | 2DA V2.b/V2.0 parser; validates all 209 shipped tables | `python tools/formats/validate_two_da.py --game-dir <install>` |
+| `formats/test_two_da.py` | 29 synthetic 2DA parser tests | `python tools/formats/test_two_da.py` |
 | `evidence/ledger.py` | SQLite artifact/function/action/resource/claim ledger and coverage view | `python tools/evidence/ledger.py init` then `status` |
 
 ```bash
