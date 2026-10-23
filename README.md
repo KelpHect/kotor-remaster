@@ -31,6 +31,9 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
 - GFF corpus validated: 11,143/11,143 shipped payloads parse, 1,854,982/1,854,982 values resolve,
   zero intrinsic failures; the struct-slot packing invariant was disproved by shipped files and
   replaced with disjoint-range checks (`docs/recon/07`, 30 regression tests).
+- Script corpus: 8,666 unique NCS (13,139 occurrences) all decode; 285,015 ACTION instructions
+  reference only known action IDs; 466/772 actions are used. 5,262/8,666 scripts round-trip through
+  the DeNCS lineage decompiler and compiler (`docs/recon/09`).
 - Architecture decisions for the runtime/renderer, coordinate + map-compilation contract, and the
   user-supplied-install distribution model.
 
@@ -54,6 +57,7 @@ Start with:
 - [`docs/recon/06_MANIFEST.md`](docs/recon/06_MANIFEST.md) — complete install manifest summary
 - [`docs/recon/07_GFF_CORPUS.md`](docs/recon/07_GFF_CORPUS.md) — all-resource GFF validation and corrected invariants
 - [`docs/recon/08_VFS_DYNAMIC.md`](docs/recon/08_VFS_DYNAMIC.md) — five-pass VFS order, precedence, and texture-quality mapping, measured in-process
+- [`docs/recon/09_SCRIPTS.md`](docs/recon/09_SCRIPTS.md) — 8,666-script NCS corpus, validation, action usage, and decompile coverage
 - [`docs/adr/0001-runtime-and-renderer.md`](docs/adr/0001-runtime-and-renderer.md)
 - [`docs/adr/0002-coordinates-and-render-features.md`](docs/adr/0002-coordinates-and-render-features.md)
 - [`docs/adr/0003-distribution-and-install-model.md`](docs/adr/0003-distribution-and-install-model.md)
