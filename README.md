@@ -20,6 +20,8 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
 - Archive inventory: 25,836 base BIF resources, 20,575 module RIM resources, 1,936 global-RIM
   resources, plus patch/texture-pack ERFs; 49,265 TLK strings.
 - TLK V3.0 parser validated; SQLite evidence ledger; action-table extraction tooling.
+- GFF V3.2 wire semantics verified on a real GIT/ARE pair; +Z-vertical evidence established;
+  handedness, units, and orientation conventions remain open (`docs/recon/03_GFF_COORDINATES.md`).
 - Architecture decisions for the runtime/renderer, coordinate + map-compilation contract, and the
   user-supplied-install distribution model.
 
@@ -36,6 +38,7 @@ Start with:
 - [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) — program lanes, phases, gates, verification
 - [`docs/recon/01_ARTIFACTS.md`](docs/recon/01_ARTIFACTS.md) — verified artifact/content inventory
 - [`docs/recon/02_TECHNICAL_NOTES.md`](docs/recon/02_TECHNICAL_NOTES.md) — format, VM, VFS, rules notes
+- [`docs/recon/03_GFF_COORDINATES.md`](docs/recon/03_GFF_COORDINATES.md) — verified GFF wire semantics and coordinate evidence
 - [`docs/adr/0001-runtime-and-renderer.md`](docs/adr/0001-runtime-and-renderer.md)
 - [`docs/adr/0002-coordinates-and-render-features.md`](docs/adr/0002-coordinates-and-render-features.md)
 - [`docs/adr/0003-distribution-and-install-model.md`](docs/adr/0003-distribution-and-install-model.md)

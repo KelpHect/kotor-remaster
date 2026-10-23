@@ -3,8 +3,9 @@
 Version 0.1 — 2026-10-23
 Target artifact: user-owned KotOR 1.0.3.0 build, SHA-256 `0290889e…74e6`.
 Companion docs: `recon/01_ARTIFACTS.md`, `recon/02_TECHNICAL_NOTES.md`,
-`adr/0001-runtime-and-renderer.md`, `adr/0002-coordinates-and-render-features.md`,
-`adr/0003-distribution-and-install-model.md`, `tools/README.md`.
+`recon/03_GFF_COORDINATES.md`, `adr/0001-runtime-and-renderer.md`,
+`adr/0002-coordinates-and-render-features.md`, `adr/0003-distribution-and-install-model.md`,
+`tools/README.md`.
 
 ## 1. Thesis
 
@@ -145,7 +146,9 @@ re-derives high-impact claims (action table, VM semantics, save layout) before a
   precedence harness with discriminating assets; measure TexturePack quality selection.
 - Run the coordinate probe; freeze the source→canonical transform contract; build landmark fixtures
   (objects, doors, waypoints, cameras) and a map compiler that hard-fails on bad winding, bounds,
-  walkmesh/PTH connectivity, lightmap UVs, or misplaced spawn/transition anchors.
+  walkmesh/PTH connectivity, lightmap UVs, or misplaced spawn/transition anchors. GFF wire semantics
+  and +Z-vertical evidence are verified (`recon/03`); handedness, units, Bearing/XOrientation, and
+  geometry transforms (IFO/LYT/WOK/MDL) remain open. No map compilation before the contract is green.
 - Build per-install cache with content hashes; first geometry/texture/UI viewer.
 - Deduplicate scripts by content hash; pair NSS with NCS; build script corpus.
 - Gate G1: 100% of base + module resources parsed with zero unhandled types; round-trip suite green;
@@ -437,6 +440,8 @@ Suggested first 10 assignments:
 - [x] Pin Temurin JDK 21.0.12.1+1 at `tools/jdk21` (archive SHA-256 recorded).
 - [x] Stand up SQLite evidence DB and coverage view (`tools/evidence/ledger.py`).
 - [x] Validate TLK V3.0 parser against `dialog.tlk` (49,265 entries, 3.42M chars).
+- [x] Verify GFF wire semantics and initial coordinate evidence on a real GIT/ARE pair.
+- [ ] Probe IFO entry points, LYT/VIS/WOK/PTH, and MDL transforms for handedness/units/bearing.
 - [x] Define dispatcher `0x0052c0d0` and all 440 `LAB_` action handlers; decompile 441/441.
 - [ ] Rename the 125 pre-existing `FUN_` handler targets; exercise runtime dispatch behavior.
 - [ ] Freeze full artifact manifest (exe, key, tlk, erf, BIF headers, module hashes).

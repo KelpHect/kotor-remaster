@@ -41,7 +41,11 @@ save compatibility, combat/script edge cases, UI fidelity, and media codecs.
 
 - **GFF**: V3.2 only. 56-byte header, 12-byte structs, 12-byte fields, 16-byte labels; top-level
   struct type `0xFFFFFFFF`. Field type 16 = Orientation (4 floats), 17 = Vector (3 floats),
-  18 = StrRef. Community docs sometimes invert 16/17. Preserve unknown fields and struct IDs.
+  18 = StrRef. Community docs sometimes invert 16/17. Wire order is verified on a real GIT/ARE
+  pair: field records are `{type, label, data}` (type first), field rows are reached through the
+  field-index table, and list values are byte offsets to `{u32 count, u32 struct indices[]}`.
+  Section counts for struct/field/label are entries; field-data/field-index/list-index lengths are
+  bytes. See `docs/recon/03_GFF_COORDINATES.md`. Preserve unknown fields and struct IDs.
 - **2DA**: K1 ships binary `2DA V2.b` (tab/NUL separated, u16 row offsets); ASCII V2.0 is also valid.
   Empty cell is not `"****"`; row label is not necessarily the row index.
 - **TLK**: V3.0, 20-byte header, 40-byte entries (flags, 16-byte sound resref, volume/pitch variance,

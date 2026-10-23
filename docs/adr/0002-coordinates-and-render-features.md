@@ -80,6 +80,19 @@ change simulation state.
   offset frame fails the gate.
 - Map validation is a release gate for every area (P1/P4/P6).
 
+### 4.1 Probe results (m12ab, 2026-10-23)
+
+- GFF wire semantics are verified on a real GIT/ARE pair: section lengths, struct/field record
+  layout, type-first fields, indirect field rows, and list records (`u32 count`, `u32 struct
+  indices[]`). Details and invariants: `docs/recon/03_GFF_COORDINATES.md`.
+- Z is vertical in this area: ten placeables lie within `|Z| <= 0.013` while X/Y span about
+  8.5/7.8 units; a sound emitter sits at Z ~0.991. +Z-up is supported by this sample.
+- Not proven: world handedness, unit scale, Bearing units/sign, and creature
+  XOrientation/YOrientation. The sample has no creatures/doors/cameras, all bearings are `-0.0`,
+  the ARE map calibration is zero, and entry points live in IFO. No conversion is frozen.
+- Next probes: IFO entry points, a populated module for creature/door orientations, LYT/VIS/WOK/PTH,
+  and MDL node transforms.
+
 ### 5. Render features and modes
 
 - **Classic (1:1 oracle):** emulates the original fixed-function pipeline, original lightmaps,
@@ -109,7 +122,8 @@ change simulation state.
 
 ## Open questions (must be closed by evidence)
 
-1. Source handedness, up-axis, unit scale, and GFF quaternion order.
+1. GFF wire semantics are verified; source handedness, unit scale, quaternion order, and
+   Bearing/XOrientation conventions remain open (+Z-up is supported by the probe).
 2. MDL node/matrix layout, bind-pose and supermodel composition, animation quaternion order.
 3. BWM/WOK vertex coordinate space and winding; LYT room origin semantics; PTH node space.
 4. Camera FOV/aspect/near/far conventions and DLG/GIT camera transforms.
