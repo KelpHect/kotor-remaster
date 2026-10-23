@@ -5,6 +5,11 @@ Read-only probe: [`tools/formats/gff.py`](../tools/formats/gff.py). Local inputs
 committed. No game run, no Ghidra, no project edits. This document records wire semantics and
 coordinate observations, not a finished conversion contract.
 
+> **Correction:** this initial probe missed the single-field struct rule. A struct with
+> `field_count == 1` stores a **direct field-table row**, not a byte offset; the parser and this
+> document's struct description are corrected, and IFO parsing is now validated. See
+> [`recon/04_GEOMETRY_COORDINATES.md`](04_GEOMETRY_COORDINATES.md).
+
 ## 1. Wire semantics (verified)
 
 Spec anchors are in the MIT Kaitai `bioware_gff_common.ksy`
@@ -20,9 +25,11 @@ field-index off/**byte len**, list-index off/**byte len**. GIT: 56 / 212 /
 1124 / 1604+150 / 1754+304 / 2058+84 = 2142 = EOF. ARE: 56 / 716 / 5756 /
 8188+1133 / 9321+1680 / 11001+180 = 11181 = EOF.
 
-**Struct** (12 B): `u32 type_id, u32 field_index_byte_offset, u32 field_count`.
-Root is `0xffffffff` at offset 0 (GIT @0x38, ARE @0x38). Byte offset / 4 gives
-the field-index slot; slots are packed in struct order. GIT struct 1 @0x44 =
+**Struct** (12 B): `u32 type_id, u32 data_or_offset, u32 field_count`.
+Root is `0xffffffff` at offset 0 (GIT @0x38, ARE @0x38). For `field_count > 1`, the
+value is a byte offset into the field-index table (`offset/4` is the slot, packed in
+struct order). For `field_count == 1`, it is a **direct field-table row**; this is
+required for IFO/UTC/UTD single-field list elements. GIT struct 1 @0x44 =
 (100, 48, 9) -> slot 12 (AreaProperties, 9 int32s).
 
 **Field** (12 B): `u32 type, u32 label_index, u32 data_or_data_offset`.

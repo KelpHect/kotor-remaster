@@ -7,11 +7,13 @@ Wire layout implemented (see docs/recon/03_GFF_COORDINATES.md for evidence):
             (struct off/cnt, field off/cnt, label off/cnt,
              field-data off/byte-len, field-index off/byte-len,
              list-index off/byte-len)
-  struct  : u32 type_id, u32 field_index_byte_offset, u32 field_count
+  struct  : u32 type_id, u32 data_or_offset, u32 field_count
+            field_count == 1  -> data_or_offset is a DIRECT field-table row
+            field_count >  1  -> data_or_offset is a BYTE offset into field_indices
   field   : u32 field_type, u32 label_index, u32 data_or_data_offset
             (type at +0 per bioware_gff_common.ksy lines 22 and 71-170;
              verified against every field in both sample files)
-  fields are referenced indirectly: field-index table[slot] -> field row.
+  multi-field structs are referenced indirectly: field-index table[slot] -> field row.
   label   : 16-byte NUL-padded ASCII, 16 bytes per entry
   list    : at list-data[offset]: u32 count, then count x u32 struct index
 
@@ -48,14 +50,15 @@ class Field:
 
 
 class Struct:
-    __slots__ = ("index", "type_id", "slot", "count", "rows")
+    __slots__ = ("index", "type_id", "slot", "count", "rows", "single")
 
-    def __init__(self, index, type_id, slot, count, rows):
+    def __init__(self, index, type_id, slot, count, rows, single=False):
         self.index = index
         self.type_id = type_id
-        self.slot = slot          # field-index slot (byte offset // 4)
+        self.slot = slot          # field-index slot; None for single-field structs
         self.count = count
-        self.rows = rows          # field-table row per slot
+        self.rows = rows          # field-table rows
+        self.single = single      # field_count == 1: direct row, no slot
 
 
 class Gff:
@@ -99,16 +102,24 @@ class Gff:
         self.structs = []
         for i in range(self.struct_cnt):
             type_id, off, cnt = struct.unpack_from("<3I", b, self.struct_off + i * 12)
-            if off % 4:
-                raise ValueError(f"struct {i}: field-index offset {off} not u32 aligned")
-            slot = off // 4
-            if slot + cnt > len(self.field_rows):
-                raise ValueError(f"struct {i}: field slots {slot}+{cnt} overflow")
-            rows = self.field_rows[slot:slot + cnt]
-            for r in rows:
-                if r >= self.field_cnt:
-                    raise ValueError(f"struct {i}: field row {r} out of range")
-            self.structs.append(Struct(i, type_id, slot, cnt, rows))
+            if cnt == 0:
+                rows, slot, single = [], None, False
+            elif cnt == 1:
+                if off >= self.field_cnt:
+                    raise ValueError(f"struct {i}: direct field row {off} out of range")
+                rows, slot, single = [off], None, True
+            else:
+                if off % 4:
+                    raise ValueError(f"struct {i}: field-index offset {off} not u32 aligned")
+                slot = off // 4
+                if slot + cnt > len(self.field_rows):
+                    raise ValueError(f"struct {i}: field slots {slot}+{cnt} overflow")
+                rows = self.field_rows[slot:slot + cnt]
+                for r in rows:
+                    if r >= self.field_cnt:
+                        raise ValueError(f"struct {i}: field row {r} out of range")
+                single = False
+            self.structs.append(Struct(i, type_id, slot, cnt, rows, single))
 
     # ---------- primitives ----------
     def _check_section(self, name, off, length):
@@ -218,9 +229,12 @@ def check(g):
     if any(c != 1 for c in refs):
         errs.append("field rows not a permutation: "
                     + str([(i, c) for i, c in enumerate(refs) if c != 1][:8]))
-    # 2. struct field slots are packed in struct order
+    # 2. multi-field struct slots are packed in struct order; single-field
+    #    structs use a direct field row and consume no field-index slot.
     slot = 0
     for s in g.structs:
+        if s.single or s.count == 0:
+            continue
         if s.slot != slot:
             errs.append(f"struct {s.index} slot {s.slot} != expected {slot}")
         slot += s.count
@@ -271,8 +285,9 @@ def fmt(v):
 
 def dump_root(g):
     print("\n== root struct 0 ==")
-    print(f"type_id=0x{g.structs[0].type_id:08x} slots={g.structs[0].slot} "
-          f"count={g.structs[0].count}")
+    s0 = g.structs[0]
+    where = f"single_row={s0.rows[0]}" if s0.single else f"slots={s0.slot}"
+    print(f"type_id=0x{s0.type_id:08x} {where} count={s0.count}")
     for f in g.fields_of(0):
         v = g.value(f)
         if f.type == 15:
@@ -288,7 +303,8 @@ def dump_root(g):
 
 def show_struct(g, si, indent="    "):
     s = g.structs[si]
-    print(f"{indent}struct[{si}] type_id=0x{s.type_id:08x} fields={s.count}")
+    where = f" single_row={s.rows[0]}" if s.single else ""
+    print(f"{indent}struct[{si}] type_id=0x{s.type_id:08x} fields={s.count}{where}")
     for f in g.fields_of(si):
         v = g.value(f)
         if f.type == 15:

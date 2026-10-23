@@ -29,13 +29,15 @@ change simulation state.
 
 - The engine's canonical space is **right-handed, Y-up, meters**, compatible with glTF and modern
   content tools.
-- The source Odyssey conventions (reported Z-up right-handed; exact handedness, units, quaternion
-  order, and matrix layout still to be verified) are converted exactly once in the asset/map
-  importer. Gameplay and renderer code never apply axis flips.
+- The source space is verified as **right-handed Z-up, 1 unit = 1 m** on a populated area
+  (WOK winding/normals, humanoid height, room geometry). Quaternion order is W,X,Y,Z. Source
+  transforms are converted exactly once in the asset/map importer; gameplay and renderer code
+  never apply axis flips.
 - Every converted asset stores the source resource hash and the converter/version that produced it.
   A transform or convention change forces a cache rebuild.
-- The specific source→canonical mapping is provisional until the coordinate probe validates it
-  against known world landmarks; the runtime consumes a matrix, not hardcoded flips.
+- Remaining orientation details (Bearing sign/zero, camera Height, door appearance final facing,
+  MDX block layout, animation/supermodel overrides) are open and must be closed by fixtures before
+  the canonical conversion is frozen. The runtime consumes a matrix, not hardcoded flips.
 
 ### 2. What must be decoded and validated
 
@@ -93,6 +95,26 @@ change simulation state.
 - Next probes: IFO entry points, a populated module for creature/door orientations, LYT/VIS/WOK/PTH,
   and MDL node transforms.
 
+### 4.2 Verified geometry contract (m01aa / Endar Spire)
+
+- **Source space:** right-handed, Z-up, 1 unit = 1 m. WOK faces pass `cross(v1-v0,v2-v0) · normal > 0`
+  for 1365/1365 faces; humanoid heights calibrate to 1.581/1.585 m.
+- **IFO entry:** X/Y/Z is a ground/feet point; `Mod_Entry_Dir_X/Y` is a unit 2D facing vector
+  (117/117 norms 1.0), with no Dir_Z. Entry area matches an ARE.
+- **GIT orientation:** creature `XOrientation/YOrientation` is a unit forward vector (26/26);
+  door/placeable `Bearing` is a scalar yaw in radians, matching the wall/hook plane. Use the
+  instance Bearing, not the LYT hook's facing. Door Z sits below the WOK floor; do not snap it.
+  The right-handed, +Y-forward interpretation is inferred from asymmetric chair placement; the
+  sign/zero convention still needs an asymmetric oracle.
+- **Area geometry:** LYT room origin is the MDL model origin; WOK vertices are already world-space
+  (do not add LYT origin or `WOK.position`); PTH points are 2D world space with Z from WOK.
+- **MDL:** quaternion order is W,X,Y,Z; world = room origin × parent→child node transforms with no
+  scale. The model-header bounding box is a dummy; trimesh bounds are node-local. MDX vertex/face
+  block layout is not yet decoded.
+- **GFF:** the single-field struct rule is required (`field_count == 1` → direct field row);
+  the public parser implements it and validates IFO/GIT/ARE.
+- Details and 12 fixture checks: `docs/recon/04_GEOMETRY_COORDINATES.md`.
+
 ### 5. Render features and modes
 
 - **Classic (1:1 oracle):** emulates the original fixed-function pipeline, original lightmaps,
@@ -122,12 +144,12 @@ change simulation state.
 
 ## Open questions (must be closed by evidence)
 
-1. GFF wire semantics are verified; source handedness, unit scale, quaternion order, and
-   Bearing/XOrientation conventions remain open (+Z-up is supported by the probe).
-2. MDL node/matrix layout, bind-pose and supermodel composition, animation quaternion order.
-3. BWM/WOK vertex coordinate space and winding; LYT room origin semantics; PTH node space.
-4. Camera FOV/aspect/near/far conventions and DLG/GIT camera transforms.
-5. Vulkan projection/viewport Y-flip and depth-range handling; confirm with a known screen landmark.
-6. Current FSR SDK version/license and RT capability baseline for the target hardware tiers.
+1. Bearing sign/zero needs an asymmetric oracle; camera `Height` semantics and door appearance →
+   final facing are open. WOK `position`, ARE `NorthAxis`, and the minimap transform are open.
+2. MDX vertex/face block layout; animation and supermodel bind-pose overrides.
+3. Camera FOV/aspect/near/far conventions and DLG/GIT camera transforms; Vulkan projection/viewport
+   Y-flip and depth range confirmed with a known screen landmark.
+4. Current FSR SDK version/license and RT capability baseline for the target hardware tiers.
 
-The coordinate probe and its fixtures are the first deliverable of lane L5 in this plan revision.
+The initial coordinate probe and 12 fixtures are delivered; mapping can start against the verified
+contract, but the open items above remain gates before freezing the cache/converter.

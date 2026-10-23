@@ -63,6 +63,7 @@ Fidelity levels, tracked separately:
 | Scripts | 1,784 NCS + 1,774 NSS in base; 10,863 NCS in modules; **772 actions, 772 handlers mapped** (774 writes) |
 | Binary | 8,616 baseline functions / 809,297 instructions, all decompiled; coverage copy adds 441 handler/dispatcher functions = **9,057 internal + 350 external**, 441/441 decompiled |
 | VM | NCS big-endian, 13-byte header, opcodes 0x01–0x2D; table verified; dispatcher `0x0052c0d0` (bound 772, null `-2002`) |
+| Coordinates | RH Z-up, 1 unit = 1 m; IFO ground point + unit 2D dir; WOK world-space; MDL WXYZ; Bearing radians (sign open) |
 | Key content | 117 ARE/GIT/IFO, 2,832 MDL + 2,832 MDX, 5,601 TGA + 5,615 TXI, 1,554 WOK/DWK/PWK, 1,167 DLG, 209 2DA, 84 GUI, 1,928 WAV, 16 SSF |
 | Loose media | 61 Bink movies (579 MB), 119 music streams (191 MB), 970 sound streams (115 MB), 13,799 waves (553 MB), 642 MB texture packs |
 | Toolchain | Ghidra 12.1.4 (JDK 25 currently; pin JDK 21), Java 25, Python 3.15, Node 24, Git 2.55, SDL3/Vulkan planned |
@@ -144,11 +145,12 @@ re-derives high-impact claims (action table, VM semantics, save layout) before a
 - Round-trip GFF/ERF/RIM/2DA/TLK; validate TLK strings and 2DA row/column semantics.
 - Implement the save parser/writer (SAVEGAME.sav, nested module saves, sidecars) and a VFS
   precedence harness with discriminating assets; measure TexturePack quality selection.
-- Run the coordinate probe; freeze the source→canonical transform contract; build landmark fixtures
-  (objects, doors, waypoints, cameras) and a map compiler that hard-fails on bad winding, bounds,
-  walkmesh/PTH connectivity, lightmap UVs, or misplaced spawn/transition anchors. GFF wire semantics
-  and +Z-vertical evidence are verified (`recon/03`); handedness, units, Bearing/XOrientation, and
-  geometry transforms (IFO/LYT/WOK/MDL) remain open. No map compilation before the contract is green.
+- Coordinate probe: verified right-handed Z-up, 1 unit = 1 m, IFO ground point + unit 2D direction,
+  creature forward vectors, radian Bearing, world-space WOK, LYT/MDL transform chain, and WXYZ
+  quaternions on m01aa (`recon/03`, `recon/04`). Build landmark fixtures and a map compiler that
+  hard-fails on bad winding, bounds, walkmesh/PTH connectivity, lightmap UVs, or misplaced anchors.
+  Remaining open: Bearing sign/zero, MDX block layout, camera Height, door appearance, animations.
+  No map compilation is frozen until the remaining fixtures close.
 - Build per-install cache with content hashes; first geometry/texture/UI viewer.
 - Deduplicate scripts by content hash; pair NSS with NCS; build script corpus.
 - Gate G1: 100% of base + module resources parsed with zero unhandled types; round-trip suite green;
@@ -289,8 +291,11 @@ Estimates assume 6–12 engineers plus the 10-agent RE swarm; a solo effort scal
 ### 7.3 Coordinates, map compilation, render features
 
 - Canonical space: right-handed Y-up meters; convert once at the importer, never in gameplay or
-  renderer code. Source conventions (Z-up, handedness, units, quaternion order, matrix layout) are
-  provisional until the coordinate probe and landmark fixtures verify them. See ADR 0002.
+  renderer code. Source space is verified right-handed Z-up with 1 unit = 1 m and WXYZ quaternions;
+  IFO entries are ground points with unit 2D directions, GIT uses creature forward vectors and
+  radian Bearing, WOK vertices are world-space, and the LYT/MDL transform chain is verified on
+  m01aa. Bearing sign, MDX blocks, camera height, door appearance, and animation overrides remain
+  open. See ADR 0002 and `recon/03`/`recon/04`.
 - Decode and validate: GFF positions/orientations, MDL pivots/bind poses/supermodels/animations,
   BWM/WOK/DWK/PWK winding and surface IDs, LYT/VIS/PTH spaces, door/transition anchors, cameras,
   UI coordinates. Vulkan clip-space Y/depth/winding adjustments live in the RHI/projection layer.
@@ -440,8 +445,9 @@ Suggested first 10 assignments:
 - [x] Pin Temurin JDK 21.0.12.1+1 at `tools/jdk21` (archive SHA-256 recorded).
 - [x] Stand up SQLite evidence DB and coverage view (`tools/evidence/ledger.py`).
 - [x] Validate TLK V3.0 parser against `dialog.tlk` (49,265 entries, 3.42M chars).
-- [x] Verify GFF wire semantics and initial coordinate evidence on a real GIT/ARE pair.
-- [ ] Probe IFO entry points, LYT/VIS/WOK/PTH, and MDL transforms for handedness/units/bearing.
+- [x] Verify GFF wire semantics and correct the single-field struct rule; validate IFO/GIT/ARE.
+- [x] Probe IFO entry points, LYT/VIS/WOK/PTH, and MDL transforms on m01aa (12 fixtures).
+- [ ] Close Bearing sign/zero, MDX block layout, camera Height, door appearance, and animation overrides.
 - [x] Define dispatcher `0x0052c0d0` and all 440 `LAB_` action handlers; decompile 441/441.
 - [ ] Rename the 125 pre-existing `FUN_` handler targets; exercise runtime dispatch behavior.
 - [ ] Freeze full artifact manifest (exe, key, tlk, erf, BIF headers, module hashes).
