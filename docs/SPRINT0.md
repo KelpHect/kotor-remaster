@@ -64,7 +64,7 @@ area and gameplay parity belong to P4/P5, not Sprint 0.
 | 05-save-vfs | complete | 33 tests (32 pass, 1 skipped: no real save); save reader/writer, archive readers/writers, five-pass VFS resolver; `docs/recon/10_SAVE_VFS.md` |
 | 06-dynamic | complete | five-pass order, first-hit precedence, Override shadow, and quality 2/1/0 → tpa/tpb/tpc measured in-process; `docs/recon/08_VFS_DYNAMIC.md` |
 | 08-engine | complete | `engine/` promotes the scaffold; 313-step MSVC `/W4 /WX` build, CTest 2/2, Vulkan 120 frames, GL 120 frames; `engine/docs/BUILD.md` |
-| 09-geometry-preview | complete | m01aa SVG preview, 1365/1365 winding, 45/45 cross-checks; `artifacts/lanes/09-geometry-preview/` |
+| 09-geometry-preview | complete | m01aa preview: 1,365 WOK triangles, 15 doors/hooks, 77 PTH nodes, 45/45 cross-checks; `tools/geometry/`, `docs/recon/11_GEOMETRY_PREVIEW.md` |
 | 07-ghidra-rename | complete | 125/125 renamed, 565/565 targets named, 772/772 actions, baseline retained; `artifacts/lanes/07-ghidra-rename/` |
 
 ## Out of scope for Sprint 0

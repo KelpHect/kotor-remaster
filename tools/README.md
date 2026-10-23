@@ -24,6 +24,8 @@ Nothing here redistributes game assets or decompiled code. Generated data goes u
 | `resources/kotor_vfs.py` | Five-pass VFS resolver with traces and shadowed hits | `python tools/resources/kotor_vfs.py resolve <install> <resref> <type>` |
 | `resources/build_dynamic_probes.py`, `resources/vfs_measure.py` | Build expected-lookup manifests and compare Frida hook logs | see `docs/recon/08_VFS_DYNAMIC.md` |
 | `tests/run_all.py` | 33 archive/save/GFF-writer/VFS tests (1 real-save test skipped when absent) | `KOTOR_GAME_DIR=<install> python tools/tests/run_all.py` |
+| `geometry/probe.py` | Parse m01aa LYT/WOK/MDL/PTH/IFO/GIT and print check values | `KOTOR_AREA_DIR=<flat-area-dir> python tools/geometry/probe.py` |
+| `geometry/preview.py` | Top-down SVG/JSON/Markdown preview with 45 self-checks | `KOTOR_AREA_DIR=<dir> KOTOR_PREVIEW_OUT=<out> python tools/geometry/preview.py` |
 | `harness/offscreen.py` | Launch/park dynamic-harness games windowed, on a private desktop, off-screen, at idle priority | `python tools/harness/offscreen.py launch --exe <game.exe> --cwd <profile> --wait` |
 | `evidence/ledger.py` | SQLite artifact/function/action/resource/claim ledger and coverage view | `python tools/evidence/ledger.py init` then `status` |
 

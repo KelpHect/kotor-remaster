@@ -40,6 +40,8 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
 - Engine scaffold: C++23 + SDL3 + Vulkan 1.4 (1.3 floor) + OpenGL 4.5 + ImGui builds from
   `engine/` with `/W4 /WX`; Vulkan and OpenGL both run 120 frames, headless CTest 2/2. This is a
   clear/ImGui presentation scaffold, not a renderer yet (`engine/docs/BUILD.md`).
+- m01aa geometry path: LYT/WOK/MDL/PTH/IFO/GIT parse into a top-down preview with 1,365 WOK
+  triangles, 15 doors/hooks, 77 PTH nodes, and 45/45 cross-checks (`docs/recon/11`).
 - Architecture decisions for the runtime/renderer, coordinate + map-compilation contract, and the
   user-supplied-install distribution model.
 
@@ -67,6 +69,7 @@ Start with:
 - [`docs/recon/08_VFS_DYNAMIC.md`](docs/recon/08_VFS_DYNAMIC.md) — five-pass VFS order, precedence, and texture-quality mapping, measured in-process
 - [`docs/recon/09_SCRIPTS.md`](docs/recon/09_SCRIPTS.md) — 8,666-script NCS corpus, validation, action usage, and decompile coverage
 - [`docs/recon/10_SAVE_VFS.md`](docs/recon/10_SAVE_VFS.md) — save containers, archive I/O, and the five-pass VFS resolver
+- [`docs/recon/11_GEOMETRY_PREVIEW.md`](docs/recon/11_GEOMETRY_PREVIEW.md) — m01aa LYT/WOK/MDL/PTH/GIT top-down preview and checks
 - [`docs/adr/0001-runtime-and-renderer.md`](docs/adr/0001-runtime-and-renderer.md)
 - [`docs/adr/0002-coordinates-and-render-features.md`](docs/adr/0002-coordinates-and-render-features.md)
 - [`docs/adr/0003-distribution-and-install-model.md`](docs/adr/0003-distribution-and-install-model.md)
