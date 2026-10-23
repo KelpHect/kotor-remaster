@@ -37,12 +37,16 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
 - Save/VFS: save container parser/validator and structural writer, archive readers/writers, and a
   five-pass resolver, with 33 synthetic/real-install tests. Dynamic hooks confirm the pass order,
   Override precedence, and quality 2/1/0 → tpa/tpb/tpc (`docs/recon/08`, `docs/recon/10`).
+- Engine scaffold: C++23 + SDL3 + Vulkan 1.4 (1.3 floor) + OpenGL 4.5 + ImGui builds from
+  `engine/` with `/W4 /WX`; Vulkan and OpenGL both run 120 frames, headless CTest 2/2. This is a
+  clear/ImGui presentation scaffold, not a renderer yet (`engine/docs/BUILD.md`).
 - Architecture decisions for the runtime/renderer, coordinate + map-compilation contract, and the
   user-supplied-install distribution model.
 
 ## Repository layout
 
 ```
+engine/      C++23 runtime scaffold: SDL3, Vulkan 1.4 / OpenGL 4.5, ImGui
 docs/        master plan, reconnaissance, ADRs, format/VM notes
 tools/       read-only inventory/parsers, Ghidra exporters, action-table and evidence tooling
 artifacts/   local only (gitignored): Ghidra projects, exports, caches, captured evidence
@@ -50,6 +54,7 @@ artifacts/   local only (gitignored): Ghidra projects, exports, caches, captured
 
 Start with:
 
+- [`engine/docs/BUILD.md`](engine/docs/BUILD.md) — build the engine scaffold and run its smoke tests
 - [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) — program lanes, phases, gates, verification
 - [`docs/SPRINT0.md`](docs/SPRINT0.md) — current foundation sprint exit criteria and lane board
 - [`docs/recon/01_ARTIFACTS.md`](docs/recon/01_ARTIFACTS.md) — verified artifact/content inventory

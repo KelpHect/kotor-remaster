@@ -1,0 +1,72 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "msvc-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "KOTOR_ENGINE_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "msvc-debug",
+      "displayName": "MSVC x64 Debug (Ninja)",
+      "inherits": "msvc-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "msvc-release",
+      "displayName": "MSVC x64 RelWithDebInfo (Ninja)",
+      "inherits": "msvc-base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "vs2026",
+      "displayName": "Visual Studio 2026 x64 (multi-config, no vcvars needed)",
+      "generator": "Visual Studio 18 2026",
+      "binaryDir": "${sourceDir}/build/vs2026",
+      "architecture": {
+        "value": "x64",
+        "strategy": "set"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "msvc-debug",
+      "configurePreset": "msvc-debug"
+    },
+    {
+      "name": "msvc-release",
+      "configurePreset": "msvc-release"
+    },
+    {
+      "name": "vs2026-release",
+      "configurePreset": "vs2026",
+      "configuration": "RelWithDebInfo"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "msvc-release",
+      "configurePreset": "msvc-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

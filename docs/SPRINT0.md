@@ -63,7 +63,7 @@ area and gameplay parity belong to P4/P5, not Sprint 0.
 | 04-ncs | datasets complete (agent turn-limited) | 8,666 unique NCS, 8,666 valid, 285,015 ACTION ops, 0 unknown ids; 5,262/8,666 reproducible; `docs/recon/09_SCRIPTS.md` |
 | 05-save-vfs | complete | 33 tests (32 pass, 1 skipped: no real save); save reader/writer, archive readers/writers, five-pass VFS resolver; `docs/recon/10_SAVE_VFS.md` |
 | 06-dynamic | complete | five-pass order, first-hit precedence, Override shadow, and quality 2/1/0 → tpa/tpb/tpc measured in-process; `docs/recon/08_VFS_DYNAMIC.md` |
-| 08-engine | complete | C++23/SDL3/Vulkan 1.4 + GL 4.5 scaffold, 313-step clean build, Vulkan 120 frames, GL 120 frames, smoke 5/5; `artifacts/lanes/08-engine/` |
+| 08-engine | complete | `engine/` promotes the scaffold; 313-step MSVC `/W4 /WX` build, CTest 2/2, Vulkan 120 frames, GL 120 frames; `engine/docs/BUILD.md` |
 | 09-geometry-preview | complete | m01aa SVG preview, 1365/1365 winding, 45/45 cross-checks; `artifacts/lanes/09-geometry-preview/` |
 | 07-ghidra-rename | complete | 125/125 renamed, 565/565 targets named, 772/772 actions, baseline retained; `artifacts/lanes/07-ghidra-rename/` |
 
