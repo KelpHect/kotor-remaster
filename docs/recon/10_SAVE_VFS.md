@@ -1,8 +1,9 @@
 # Save containers and VFS (lane 05)
 
-Status: **save layout, archive I/O, and the five-pass resolver are implemented and tested.** Dynamic
-precedence and texture-quality selection are verified in `docs/recon/08_VFS_DYNAMIC.md`. A real save
-folder is absent from the reference install, so real-save parsing is the one skipped test.
+Status: **structural parsing verified; retail save loading and reload remain unverified.** Archive
+I/O and the five-pass resolver have synthetic tests and the bounded dynamic measurements in
+`docs/recon/08_VFS_DYNAMIC.md`. Downloaded manual/autosave slots now exist in the test profile;
+the original reference install remains separate.
 
 ## Save container
 
@@ -86,21 +87,41 @@ tagged-2 texture pack (same `border2.tpc` payload), and the quality mapping:
 
 ## Tests
 
-`python tools/tests/run_all.py` (set `KOTOR_GAME_DIR` for real-install cases):
-**33 tests, 32 pass, 1 skip, 0 failures.** The skip is `test_real_save_if_present`; the reference
-install has no save folder. Fixtures are generated under `artifacts/tests/` and are entirely
-synthetic.
+The original lane run of `python tools/tests/run_all.py` recorded **33 tests, 32 pass, 1 skip,
+0 failures**. The skipped `test_real_save_if_present` checked the original install, which had no
+save slot; it did not check the later downloaded slots. Generated fixtures live in `artifacts/tests/`.
+
+The static recovery separately audited the two downloaded slots against source commit
+`cf2803839f789bbf149fc0a1b848998714d8c5ee` of `FlorianGG/savesKOTOR`:
+
+| slot | outer entries | nested modules | audited containers | errors / warnings |
+|---|---:|---:|---:|---:|
+| `000002 - Game1` | 21 | 9 | 52 | 0 / 7 |
+| `000001 - AUTOSAVE` | 21 | 9 | 53 | 0 / 8 |
+
+All ten files match the source blobs. The earlier six-module count was wrong. Both slots warn
+about a missing party-leader flag and six absent/empty module tags; autosave additionally lacks
+`SAVEGAMENAME`. No repair was applied. Evidence:
+`artifacts/lanes/06-dynamic/cont3/snapshots/recovery-static-20261023/save-validation/summary.json`
+and `source-provenance.json` in that recovery directory.
+
+The current modules are `unk_m41ab` and `unk_m41ad`; their 7 and 10 room-model sets have installed
+payload candidates. This is direct-reference coverage, not full transitive compatibility or proof
+that the saves are unmodified retail output. Engine listing, load request, confirmed module startup,
+new-save creation and reload are separate verification gates.
 
 ## Open items
 
-* No real save has been parsed; NFO/PT/GVT field semantics, autosave rules, and nested-module naming
-  beyond the documented layout remain inferred.
+* Both downloaded saves pass implemented structural checks, but NFO/PT/GVT runtime semantics,
+  full dependency compatibility, original-engine loading and save/reload acceptance remain open.
 * The writer is not byte-compatible; the retail engine accepted a synthetic `patch.erf` at boot, but
   this is structural acceptance, not a save/round-trip guarantee.
 * Pass-2 order is measured (`patch.erf` before `Override/textures.erf`); pass-3 RIM and pass-4
   tagged-2 orders are also measured last-added-first (MAINMENU over synthetic GLOBAL; gui over
   synthetic tpc). Duplicate-in-archive, `.mod` vs RIM, and save-vs-module remain in a closing pass.
-* Save-vs-module order and `.mod` precedence lack a real corpus (no module `.mod`, no save). The
-  controlled boot does not enumerate `saves/`; Load Game is a UI action. A closing pass is testing
-  an in-process load path.
+* The interrupted duplicate-in-archive probe did not look up its discriminating `lane06dup` key;
+  its 677 null-name hook records do not identify a winning duplicate. That gate remains open.
+* Save-vs-module and `.mod`/RIM precedence need an observed module-load path. Previous boot-only
+  runs did not enumerate saves; the newly authorized windowed foreground test uses normal Load Game
+  before any further native-call experiments.
 * Loose-directory scan order is assumed sorted; engine enumeration could differ.

@@ -1,10 +1,11 @@
-# P0 exit report — Foundation
+# P0 foundation report — strict closure in progress
 
-Status: **complete with documented residual unknowns.** Every P0 work item and the Gate G0
-requirements are satisfied. "Complete" does not mean every binary function is semantically
-specified or that a real save exists; those residuals are listed below and do not block P1.
+Status: **reopened for strict evidence closure; not 100% complete.** The earlier foundation-gate
+acceptance did not establish full decompilation, runtime equivalence, or save acceptance. Under the
+requested stricter standard, unresolved or blocked observations remain incomplete; they are not
+waivers. Analyzer confidence and byte accounting alone do not prove behavioral completeness.
 
-## P0 checklist
+## Historical foundation checks (not strict completion)
 
 | # | P0 item | Result | Evidence |
 |---:|---|---|---|
@@ -44,17 +45,30 @@ Three off-screen runs reached `MAINMENU.rim`:
   Capturing a save would require driving character creation/module load/save UI, which this harness
   does not do. This is a **blocked observation**, not a missing implementation.
 
-## Residual unknowns (carried into P1)
+## Outstanding strict-closure work
 
-* Classification is exhaustive (0 unknown/medium), but 440 action targets are label-defined stubs
-  and 22,123 continuation bytes are unowned; these are semantic/spec work, not inventory gaps.
-* No real save exists; the save writer is structurally validated but not byte-compatible or
-  retail-save-tested.
-* Source-level NCS decompilation is 60.72% reproducible; the bytecode codec itself is lossless
-  (8,666/8,666) and is the recommended verification path.
-* Animation controller payloads, MDX trailing LOD/skin data, and multi-group descriptors remain open.
+* Consolidated v4 pseudocode/body-hash export and ledger reconciliation are pending. The reported
+  10,849 internal functions and assigned `.text` ranges are an analysis inventory, not proof that
+  every original function or behavior has been recovered.
+* Downloaded manual/autosave files now exist in the lane profile (provenance in
+  `artifacts/lanes/06-dynamic/cont3/SAVE_PROVENANCE.md`). Retail loading, module activation, and
+  save-write/reload acceptance remain unverified; structural parser acceptance is insufficient.
+* The resumed clean-room NCS checkpoint contains 8,666 rows: 7,003 exact instruction-stream
+  matches, 514 reachable-only matches, 846 mismatches, and 303 compile failures. The reachable-only
+  comparison still needs deferred-action/STORESTATE coverage verification. Do not combine it with
+  exact matches as proof of full equivalence. The separate lossless bytecode codec is not source
+  decompilation.
+* Engine-side CameraAngle framing, supermodel override/node remap, and skin qbone/tbone/aux4
+  consumers remain under investigation. Full MDX byte accounting does not close these semantics;
+  multi-group behavior and bbox/rendering exceptions retain their limits.
+* Dynamic probes remain windowed. Without explicit foreground consent, they require verified
+  isolated virtual-screen execution; parking at `-32000` is not isolation. With the user's explicit
+  approval for a focused main-screen test, game-window activation/focus and normal UI input are
+  allowed and no virtual screen is required. No repeated focus reclamation, full-desktop capture,
+  auto-overwriting install guards, or process-name-wide manipulation. See `docs/SPRINT0.md`.
 * No engine renderer yet; the scaffold clears and draws ImGui only.
-* Public license and IP review remain open; DeNCS/NCSDecomp is BSL 1.1 and is an oracle only.
+* Public license and IP review remain open; the external decompiler remains an analysis oracle,
+  not a shipping dependency.
 
 ## Reproduce
 
@@ -66,5 +80,5 @@ python tools/install/cache_profile.py verify --profile artifacts/cache/profile.j
 KOTOR_GAME_DIR="$KOTOR_GAME_DIR" python tools/tests/run_all.py
 ```
 
-P1 starts from this frozen foundation: data completeness, round-trip suites, the coordinate
-transform contract, and the per-install asset cache.
+P1 work can reuse the foundation measurements, but it does not close the outstanding strict-P0
+items above. Completion requires reviewed evidence for each item, not only a passing gate summary.

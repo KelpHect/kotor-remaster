@@ -26,8 +26,8 @@ Nothing here redistributes game assets or decompiled code. Generated data goes u
 | `tests/run_all.py` | 33 archive/save/GFF-writer/VFS tests (1 real-save test skipped when absent) | `KOTOR_GAME_DIR=<install> python tools/tests/run_all.py` |
 | `geometry/probe.py` | Parse m01aa LYT/WOK/MDL/PTH/IFO/GIT and print check values | `KOTOR_AREA_DIR=<flat-area-dir> python tools/geometry/probe.py` |
 | `geometry/preview.py` | Top-down SVG/JSON/Markdown preview with 45 self-checks | `KOTOR_AREA_DIR=<dir> KOTOR_PREVIEW_OUT=<out> python tools/geometry/preview.py` |
-| `harness/offscreen.py` | Launch/park dynamic-harness games windowed, on a private desktop, off-screen, at idle priority | `python tools/harness/offscreen.py launch --exe <game.exe> --cwd <profile> --wait` |
-| `harness/install_guard.py` | Restore config files if a dynamic run rewrites the install | `python tools/harness/install_guard.py --install <install> --manifest artifacts/lanes/01-manifest/manifest.jsonl --minutes 120` |
+| `harness/offscreen.py` | Legacy window-parking helper; does not establish isolation | See dynamic harness safety; not required for an approved foreground test |
+| `harness/install_guard.py` | Legacy auto-restoring config watcher | Do not run; use read-only sentinel checks instead |
 | `install/install_validate.py` | Read-only install detection/validation without the executable | `KOTOR_GAME_DIR=<install> python tools/install/install_validate.py` |
 | `install/cache_profile.py` | Build/verify an external content-addressed dataset cache profile | `python tools/install/cache_profile.py build --out artifacts/cache/profile.json` |
 | `evidence/ledger.py` | SQLite artifact/function/action/resource/claim ledger and coverage view | `python tools/evidence/ledger.py init` then `status` |
@@ -40,25 +40,24 @@ python tools/inventory/kotor_inventory.py \
 
 ## Dynamic harness safety
 
-Any process that runs the game must stay windowed (`FullScreen=0`), out of the user's view, and at
-low priority. `tools/harness/offscreen.py` is the supported path:
+Keep the game windowed (`FullScreen=0`), with an explicit profile-local working directory and one
+owned instance. Preserve downloaded/original saves; create a new test slot rather than overwriting.
 
-```bash
-# private Win32 desktop, SW_SHOWMINNOACTIVE, idle priority; the caller attaches Frida by PID
-python tools/harness/offscreen.py launch --exe "<profile>/swkotor.exe" --cwd "<profile>"
+**Display consent:** without explicit foreground permission, verify isolated virtual-screen execution
+before launching. Parking at `-32000` on the interactive desktop is not isolation. If the user
+explicitly authorizes a focused main-screen test, normal game-window activation/restoration/focus
+(including `SetForegroundWindow`) and normal UI input are allowed for that test; no virtual screen
+or offscreen launcher is required. Do not repeatedly reclaim focus.
 
-# park a harness that was started another way (moves windows to -32000,-32000)
-python tools/harness/offscreen.py park --name swkotor.exe
+Capture only the identified game window, never the whole desktop or unrelated apps. Check that a
+capture belongs to that window; do not substitute an occluded desktop-region screenshot. Prefer the
+normal game UI before speculative input/native-call instrumentation.
 
-# keep re-parking new instances while a lane runs
-python tools/harness/offscreen.py watch --name swkotor.exe --minutes 60
-```
-
-Do not call `SetForegroundWindow`, do not capture the desktop (only the game window via
-`PrintWindow`), and never run fullscreen. DirectInput state can be spoofed in-process, so focus is
-not needed for input experiments. The game can rewrite the install's `swkotor.ini` even when
-launched from a profile copy; run `tools/harness/install_guard.py` for the session and verify the
-install against the manifest afterwards.
+`harness/offscreen.py` is a legacy helper, not a proof of isolation; its interactive fallback and
+process-name-wide parking/watch modes must not be used for an unattended isolation claim.
+`harness/install_guard.py` automatically overwrites changed settings and must not be used for these
+runs. Monitor installation hashes read-only and stop on drift; control only identity-verified owned
+processes. Historical offscreen instructions do not override the user's current display consent.
 
 ## Ghidra
 

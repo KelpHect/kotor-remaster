@@ -42,14 +42,19 @@ area and gameplay parity belong to P4/P5, not Sprint 0.
 
 ## Shared-resource rules
 
-- **Game process:** lane 06 only. It must not patch/bypass DRM, modify the install, or leave files it
-  created; all captures under its lane directory. Runs are windowed (`FullScreen=0`), off-screen, and
-  at idle priority: use `tools/harness/offscreen.py` (private desktop or park/watch) and never take
-  foreground focus or capture the user's desktop. Only the game window may be captured. Run
-  `tools/harness/install_guard.py` while the game runs: it can rewrite the install's
-  `swkotor.ini` even from a profile copy.
-- **Ghidra:** lane 07 only, on a fresh copy of the enhanced project. No other lane opens a Ghidra
-  project or runs analyzeHeadless.
+- **Game process:** the assigned dynamic lane only, one owned instance at a time. Never bypass DRM
+  or modify the install; use disposable profile-local state and preserve original saves.
+- **Display consent:** keep the game windowed (`FullScreen=0`). Without explicit foreground consent,
+  use a verified isolated virtual screen without changing the user's focus. When the user explicitly
+  authorizes a focused main-screen test, the lane may launch, restore, activate and focus the game
+  window and use normal UI input. A virtual screen/offscreen launcher is not required for that test.
+  Do not repeatedly reclaim focus. Historical offscreen recipes do not override current consent.
+- **Capture and cleanup:** capture only the identified game window; no full-desktop or unrelated-app
+  screenshots. Preserve evidence under the lane directory. Verify install hashes read-only and stop
+  on drift; do not use auto-overwriting config guards or process-name-wide parking/killing. Only
+  manage process handles whose path/start identity establishes harness ownership.
+- **Ghidra:** the assigned Ghidra lane only, on a project copy. No other lane opens a Ghidra project
+  or runs analyzeHeadless concurrently; the baseline remains unchanged.
 - **Repository:** no lane writes to tracked files, commits, pushes, or changes the public repo. The
   integrator promotes reviewed outputs.
 - **Game data:** never copied into tracked files; lane outputs stay under `artifacts/`.

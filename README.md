@@ -1,8 +1,8 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **P0 foundation complete** — there is no playable engine build yet. This repository
-contains the clean-room plan, reverse-engineering methodology, evidence tooling, and architecture
-decisions for a new, data-driven runtime for Star Wars: Knights of the Old Republic (2003).
+Status: **P0 strict evidence closure in progress — not 100% complete.** There is no playable
+engine build yet. The foundation milestones do not close the remaining decompiler, engine
+semantics, save-load, and export/ledger verification work; see `docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
 does not ship, download, extract, or redistribute game assets, and it does not require or execute
