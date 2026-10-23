@@ -47,6 +47,22 @@ cd "<GHIDRA_INSTALL>/support"
 # add --decompile as the second script argument for pseudocode + hashes
 ```
 
+### Action coverage pass
+
+`DefineActionHandlers.java` defines the dispatcher and the 440 `LAB_` action-handler targets on a
+**copy** of the project, decompiles them, and writes `coverage.json`, `audit.tsv`, and
+`new_functions.jsonl`. `VerifyActionHandlers.java` reopens the copy and re-checks entries, names,
+comments, bodies, terminal instructions, and sample pseudocode. `ProbeActionHandlers.java` is the
+read-only audit helper.
+
+Result: 440 handlers + dispatcher created and decompiled (441/441, 0 failures). The copy has 9,057
+internal functions (8,616 baseline + 441) plus 350 external imports (9,407 total function-manager
+count). The original project and baseline export remain untouched.
+
+Java scripts are compiled into a shared cache; use one JDK per cache (a class compiled by JDK 25
+cannot load under JDK 21). The pinned analysis runtime is JDK 21, but an existing JDK 25-compiled
+script must be recompiled or run under JDK 25.
+
 Upgrade target: Ghidra 12.2 once verified (CVE-2026-100503 affects ≤12.1.4).
 
 ## Planned external toolchain (licenses matter)

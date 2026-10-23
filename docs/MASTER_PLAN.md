@@ -60,7 +60,7 @@ Fidelity levels, tracked separately:
 | Global/patch/textures | 12 global RIMs (1,936), `patch.erf` (97), four texture ERFs (11,453), ~59,897 resources pre-dedup |
 | Strings | `dialog.tlk` V3.0, 49,265 entries |
 | Scripts | 1,784 NCS + 1,774 NSS in base; 10,863 NCS in modules; **772 actions, 772 handlers mapped** (774 writes) |
-| Binary | 8,616 defined functions / 809,297 instructions; **8,616/8,616 decompiled** (13.5 MB pseudocode); 440 `LAB_` action targets + dispatcher still to define |
+| Binary | 8,616 baseline functions / 809,297 instructions, all decompiled; coverage copy adds 441 handler/dispatcher functions = **9,057 internal + 350 external**, 441/441 decompiled |
 | VM | NCS big-endian, 13-byte header, opcodes 0x01–0x2D; table verified; dispatcher `0x0052c0d0` (bound 772, null `-2002`) |
 | Key content | 117 ARE/GIT/IFO, 2,832 MDL + 2,832 MDX, 5,601 TGA + 5,615 TXI, 1,554 WOK/DWK/PWK, 1,167 DLG, 209 2DA, 84 GUI, 1,928 WAV, 16 SSF |
 | Loose media | 61 Bink movies (579 MB), 119 music streams (191 MB), 970 sound streams (115 MB), 13,799 waves (553 MB), 642 MB texture packs |
@@ -170,9 +170,10 @@ re-derives high-impact claims (action table, VM semantics, save layout) before a
   `0x0052c0d0` is vtable `0x7450e4` slot +8 (pointer verified in the file); it checks id < 772,
   rejects null with `-2002`, and calls `handler(id, arg)`. ExecuteCode's ACTION path targets this
   service. There is no second table or base implementer.
-- Coverage follow-up: 565 unique handler targets (125 `FUN_`, 440 `LAB_`). Define the dispatcher and
-  audit/define all 440 `LAB_` targets, then re-export pseudocode. The 8,616-function count is the
-  initial pass, not final code coverage.
+- Action-handler coverage pass: 440 `LAB_` targets + dispatcher defined and decompiled (441/441,
+  0 failures) in an isolated project copy. The copy has 9,057 internal functions + 350 external;
+  no baseline function was lost. Remaining: rename the 125 pre-existing `FUN_` handler targets and
+  exercise runtime dispatch behavior.
 - Implement/mediate all 772 actions; start with logging stubs, then functional groups.
 - Decompile the corpus with DeNCS (MIT) and PyKotor/xoreos as independent oracles, diff outputs,
   recompile where possible, and publish per-file exact/normalized/failed status.
@@ -326,9 +327,10 @@ Estimates assume 6–12 engineers plus the 10-agent RE swarm; a solo effort scal
 
 ### 8.1 Coverage target
 - Analyze all code in `.text` (3.39 MB), including static CRT, middleware call sites, and engine code.
-- Initial metadata inventory: 8,616 defined functions / 809,297 instructions / 2.71 MB of bodies.
-  The action table adds 440 `LAB_` handler targets and dispatcher `0x0052c0d0` outside this count;
-  define/decompile them before declaring full coverage.
+- Baseline metadata inventory: 8,616 defined functions / 809,297 instructions / 2.71 MB of bodies.
+  The action-handler growth pass adds 441 functions (440 handlers + dispatcher): 9,057 internal
+  functions plus 350 external imports, all 441 new functions decompiled. Coverage is entry-level;
+  runtime dispatch and handler semantics still need tests.
 - Export every function with pseudocode; classify:
   `engine / CRT / middleware / thunk / external / data / unknown`.
 - "Complete" means every function is classified and every engine function has a spec or an explicit
@@ -435,7 +437,8 @@ Suggested first 10 assignments:
 - [x] Pin Temurin JDK 21.0.12.1+1 at `tools/jdk21` (archive SHA-256 recorded).
 - [x] Stand up SQLite evidence DB and coverage view (`tools/evidence/ledger.py`).
 - [x] Validate TLK V3.0 parser against `dialog.tlk` (49,265 entries, 3.42M chars).
-- [ ] Define dispatcher `0x0052c0d0`; audit/define the 440 `LAB_` action-handler targets; re-export.
+- [x] Define dispatcher `0x0052c0d0` and all 440 `LAB_` action handlers; decompile 441/441.
+- [ ] Rename the 125 pre-existing `FUN_` handler targets; exercise runtime dispatch behavior.
 - [ ] Freeze full artifact manifest (exe, key, tlk, erf, BIF headers, module hashes).
 - [ ] Implement GFF/2DA parsers from MIT Kaitai specs; validate against every resource.
 - [ ] Decompile every NCS with DeNCS/PyKotor/xoreos; publish per-file status.

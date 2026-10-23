@@ -50,7 +50,7 @@ Total 3.4 GB.
 | `Override/` | 0 | 0 | empty |
 | `chitin.key` | — | 569,239 B | resource index |
 | `dialog.tlk` | — | 5,394,446 B | string table |
-| `patch.erf` | — | 7,243,543 B | patch archive; entries not yet enumerated |
+| `patch.erf` | — | 7,243,543 B | 97 entries: 84 TPC, 7 GUI, 4 2DA, 1 MDL, 1 MDX |
 | `swkotor.exe` | — | 4,042,752 B | artifact of record |
 
 ## 3. Archive parsing results (verified)
@@ -185,15 +185,17 @@ Combined (before dedup): ~46,411 resources, including **12,647 NCS**, **1,958 UT
 - The earlier 757/772 count was an extraction artifact: Ghidra printed 15 store offsets in decimal
   and slot 0 without an offset, so a hex-only regex missed them. The corrected extractor reproduces
   772/772.
-- Dispatcher verified at **`0x0052c0d0`** (not defined by the initial Ghidra pass): it checks
-  id < 772, loads `[ecx+0xC][id]`, rejects null/out-of-range with `-2002` (`0xFFFFF82E`), and calls
-  the handler with `(id, arg)`. Confirmed from the bytes at VA `0x0052c0d0`. The service vtable
-  `0x7450e4` contains `0x0054c960` at +4 and `0x0052c0d0` at +8; both pointers are present in the
-  file.
-- Coverage caveat: the 772 slots use **565 unique targets — 125 `FUN_` and 440 `LAB_` addresses**.
-  The `LAB_` targets are not defined as functions by the initial pass, so the 8,616-function
-  inventory does not yet cover all action-handler code. Defining the dispatcher and auditing/
-  defining all 440 handler targets is required for complete code coverage. Artifacts:
+- Dispatcher verified at **`0x0052c0d0`** (missing from the initial Ghidra pass; defined in the
+  coverage copy): it checks id < 772, loads `[ecx+0xC][id]`, rejects null/out-of-range with `-2002`
+  (`0xFFFFF82E`), and calls the handler with `(id, arg)`. Confirmed from the bytes at VA
+  `0x0052c0d0`. The service vtable `0x7450e4` contains `0x0054c960` at +4 and `0x0052c0d0` at +8;
+  both pointers are present in the file.
+- Coverage pass on an isolated project copy: all **440 `LAB_` handler targets plus the dispatcher**
+  were defined as functions and decompiled (**441/441, 0 failures**). The copy contains **9,057
+  internal functions** (8,616 baseline + 441) and **350 external imports**, for 9,407 total
+  `getFunctionCount()`; no baseline function was lost. The 125 pre-existing `FUN_` handler targets
+  were verified but not renamed. Runtime dispatch behavior is not yet executed. Artifacts:
+  `artifacts/analysis/ghidra-handlers/{coverage.json,verification-independent.json,new_functions.jsonl}`,
   `artifacts/action_table.json`, `artifacts/game-extract/nwscript.nss` (local only).
 
 Important: module NCS counts include the same script names across modules; content hashing is required
@@ -222,9 +224,9 @@ python tools/inventory/pe_summary.py \
 3. BWM section semantics (WOK/DWK/PWK types mapped), BTI/BTC binary layouts, type 2036 semantics.
 4. Unique NCS count and NSS↔NCS pairing after content hashing.
 5. Compiler fingerprint (no Rich header) and C++ runtime signatures.
-6. Action-handler function-boundary coverage: 440 `LAB_` targets and dispatcher `0x0052c0d0`
-   are not defined functions in the initial Ghidra pass; define/decompile them.
-7. Final pseudocode coverage after defining the missing handler targets (the initial 8,616/8,616
-   pass is complete).
+6. Handler naming/runtime coverage: 125 pre-existing `FUN_` handler targets are not renamed, and
+   runtime dispatch behavior has not been exercised.
+7. Final pseudocode coverage for the coverage copy (441 handler/dispatcher functions added to the
+   initial 8,616/8,616 baseline; all 441 decompiled).
 8. Dynamic-analysis harness integration and deterministic replay tolerances.
 9. Localization: which TLK/voice assets exist for this install; language ID.

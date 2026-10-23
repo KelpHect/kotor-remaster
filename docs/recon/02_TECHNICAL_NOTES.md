@@ -83,10 +83,11 @@ redistribute. The MIT Kaitai specs are the reusable baseline.
   at `0x7450e4` holds `0x0054c960` at +4 and `0x0052c0d0` at +8; both pointers were found in the
   executable file. ExecuteCode's ACTION path targets this service (call-site observation is from
   the companion lane; the vtable pointers are independently verified).
-- **Coverage caveat:** 565 unique handler targets = 125 `FUN_` + 440 `LAB_`. The `LAB_` targets
-  are real code entry points but are not defined functions in the initial pass; define and
-  decompile them (plus the dispatcher) for complete action-handler coverage. This does not change
-  the 772-slot mapping.
+- **Coverage pass:** an isolated project copy defines and decompiles all 440 `LAB_` handler targets
+  plus the dispatcher (**441/441, 0 failures**). The copy has 9,057 internal functions (8,616
+  baseline + 441) and 350 external imports (9,407 total `getFunctionCount`). The 125 pre-existing
+  `FUN_` handler targets were verified but not renamed; runtime dispatch has not been executed.
+  This does not change the 772-slot mapping.
 - **NCS**: 13-byte header `NCS V1.0` + `0x42` + **big-endian** u32 size; all multi-byte values are
   big-endian. Opcodes `0x01–0x2D` (CPDOWNSP, RSADD, CPTOPSP, CONST, ACTION, arithmetic, jumps,
   JSR/RETN, DESTRUCT, SAVEBP/RESTOREBP, STORESTATE, …); `0x42` is a size pseudo-op. Type qualifiers:
