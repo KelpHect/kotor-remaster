@@ -1,6 +1,6 @@
 # Sprint 0 — Foundation exit criteria
 
-Status: in progress (ten lanes launched).
+Status: **complete** — see [`SPRINT0_REPORT.md`](SPRINT0_REPORT.md) for the exit report and gaps.
 Goal: finish the evidence/tooling foundation and prove the data→geometry path. A full engine-rendered
 area and gameplay parity belong to P4/P5, not Sprint 0.
 

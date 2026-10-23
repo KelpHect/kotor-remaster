@@ -1,8 +1,8 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **research and planning** — there is no playable engine build yet. This repository contains
-the clean-room plan, reverse-engineering methodology, evidence tooling, and architecture decisions
-for a new, data-driven runtime for Star Wars: Knights of the Old Republic (2003).
+Status: **foundation complete (Sprint 0)** — there is no playable engine build yet. This repository
+contains the clean-room plan, reverse-engineering methodology, evidence tooling, and architecture
+decisions for a new, data-driven runtime for Star Wars: Knights of the Old Republic (2003).
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
 does not ship, download, extract, or redistribute game assets, and it does not require or execute
@@ -58,6 +58,7 @@ Start with:
 
 - [`engine/docs/BUILD.md`](engine/docs/BUILD.md) — build the engine scaffold and run its smoke tests
 - [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) — program lanes, phases, gates, verification
+- [`docs/SPRINT0_REPORT.md`](docs/SPRINT0_REPORT.md) — Sprint 0 exit report, lane results, and gaps
 - [`docs/SPRINT0.md`](docs/SPRINT0.md) — current foundation sprint exit criteria and lane board
 - [`docs/recon/01_ARTIFACTS.md`](docs/recon/01_ARTIFACTS.md) — verified artifact/content inventory
 - [`docs/recon/02_TECHNICAL_NOTES.md`](docs/recon/02_TECHNICAL_NOTES.md) — format, VM, VFS, rules notes
