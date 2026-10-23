@@ -12,7 +12,7 @@ animation controller payloads remain open. Data lives under `artifacts/lanes/10-
 3,138 placeables, 3,970 waypoints, 1,099 cameras. Bearing evidence covers 699 doors and 5 chairs;
 use-point evidence covers 312 placeables; the stricter oracle covers 1,196 placeables with a PWK.
 
-## Bearing and door facing (RH verified under the use-point invariant)
+## Bearing and door facing (RH verified in engine code and by data oracle)
 
 * `Bearing` is a signed radian yaw in `[-π, π]`; 206 doors have `Bearing = 0` (205 of their hooks
   are also 0). There is no separate zero sentinel.
@@ -23,8 +23,14 @@ use-point evidence covers 312 placeables; the stricter oracle covers 1,196 place
   and by the mirrored yaw and tested against every area floor triangle. Ten cases are decisive
   for RH and **zero for LH**. Strongest: `m28aa` `plc_lockerlg`, `B = −π/2`; the RH use point is
   0.727 m inside a floor triangle, while the LH point is 0.484 m outside every floor (through the
-  wall). This verifies `R_z(+Bearing)` under the invariant that a use point must lie on walkable
-  floor; engine code was not observed.
+  wall). This independently verifies `R_z(+Bearing)` under the invariant that a use point must lie
+  on walkable floor.
+* **Engine code proof.** Door loader `0x50a0e0` and placeable loader `0x50a7b0` read GIT `Bearing`
+  B (radians), build `q = (cos B/2, 0, 0, sin B/2)` about +Z at `0x4ac960`, compute
+  `forward = (−sin B, cos B, 0)` at `0x5853c0` / `0x5896e0`, and store it at object `+0x9c` via
+  `0x4cd170`. The save path inverts with `atan2(−fx, fy)` (`0x4aa0f0`, `0x586a70`), and creatures
+  carry `X/Y/ZOrientation` directly (`0x4c8c70`). Status: verified from instructions, not only from
+  the oracle. Details: `artifacts/lanes/p0-classify/cont2/bearing_code_proof.md`.
 * **Door model selection is UTD `GenericType`, not `Appearance`.** The 358 shipped door UTDs all
   have `Appearance = 0`; they carry 48 distinct `GenericType` values that index
   `genericdoors.2da`. All 48 reachable rows resolve to shipped `DOR_*` models (47 are actually
@@ -94,8 +100,9 @@ from the ARE `Map` data or another field, not `NorthAxis`. `CameraStyle` is pres
   MDX-backed tracks are undecoded; the override rule is structural only.
 * **Room `WOK.position` authoring frame** — pivot semantics are verified for DWK/PWK; why room
   values differ by area is not.
-* **Engine code path for `R_z(+Bearing)`** — the oracle is data-based; keep the sign as one
-  versioned constant if a runtime trace ever contradicts it.
+* **None for Bearing sign** — `R_z(+B)` is proven in engine code (`0x50a0e0`/`0x50a7b0` →
+  `0x4ac960` → `0x5853c0`/`0x5896e0`) and by the PWK oracle. Keep the sign as one versioned
+  constant in the new engine.
 * **DLG/GIT camera transforms and the minimap transform** — not covered here.
 
 ## Evidence

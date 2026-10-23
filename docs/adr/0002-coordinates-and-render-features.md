@@ -145,7 +145,9 @@ change simulation state.
 ## Open questions (must be closed by evidence)
 
 1. Bearing sign/zero is resolved: radian yaw, no zero sentinel, same sign as the LYT hook yaw.
-   Handedness is **RH**, verified under the use-point-on-floor invariant (10 decisive cases, 0 LH).
+   Handedness is **RH**, verified in engine code (`0x50a0e0`/`0x50a7b0` load `Bearing`; `0x4ac960`
+   builds `q=(cos B/2,0,0,sin B/2)`; `0x5853c0`/`0x5896e0` produce `forward=(−sin B, cos B)`) and
+   independently by the PWK use-point oracle (10 decisive, 0 LH).
    Doors select their model by UTD `GenericType` → `genericdoors.2da`; `Appearance` is not the
    selector and adds no yaw. `WOK.position` is unused for room placement and is a pivot for
    DWK/PWK. Camera `Position` is a ground point with `eye = Position.z + Height` in 1,096/1,099

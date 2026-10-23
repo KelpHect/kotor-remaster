@@ -39,8 +39,9 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   Override precedence, and quality 2/1/0 → tpa/tpb/tpc (`docs/recon/08`, `docs/recon/10`).
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
-- Function classification: 9,407 items labeled — 8,527 engine, 417 CRT, 350 external imports,
-  61 thunks, 30 compiler helpers, 22 unknown; 16/16 invariants pass (`docs/recon/14`).
+- Function classification: 9,407 items all high-confidence — 8,549 engine, 417 CRT, 350 external
+  imports, 61 thunks, 30 compiler helpers, 0 unknown; 48/48 checks (`docs/recon/14`). Bearing
+  `R_z(+B)` is proven in engine code at `0x50a0e0`/`0x50a7b0` → `0x4ac960` → `0x5853c0`.
 - MDX layout decoded: no file header; blocks addressed by MDL `+324`; strides 24/32/40; 634 sampled
   blocks verified; 14/14 room walkmeshes match WOK (`docs/recon/15`).
 - Engine scaffold: C++23 + SDL3 + Vulkan 1.4 (1.3 floor) + OpenGL 4.5 + ImGui builds from
