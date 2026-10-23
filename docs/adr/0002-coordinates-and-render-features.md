@@ -144,11 +144,14 @@ change simulation state.
 
 ## Open questions (must be closed by evidence)
 
-1. Bearing sign/zero needs an asymmetric oracle; camera `Height` semantics and door appearance →
-   final facing are open. WOK `position`, ARE `NorthAxis`, and the minimap transform are open.
+1. Bearing sign/zero is resolved for convention: radian yaw, no zero sentinel, same sign as the LYT
+   hook yaw; handedness is inferred RH from use-point/floor votes and still wants an asymmetric
+   oracle. Camera `Position` is a ground point with `eye = Position.z + Height` in 1,096/1,099
+   cameras. Door appearance → final facing, WOK `position`, and the minimap transform remain open;
+   ARE `NorthAxis` is absent in all 106 scanned areas.
 2. MDX vertex/face block layout; animation and supermodel bind-pose overrides.
-3. Camera FOV/aspect/near/far conventions and DLG/GIT camera transforms; Vulkan projection/viewport
-   Y-flip and depth range confirmed with a known screen landmark.
+3. Camera FOV/pitch are degrees; aspect/near/far and DLG/GIT camera transforms remain open. Vulkan
+   projection/viewport Y-flip and depth range still need a rendered landmark in the new renderer.
 4. Current FSR SDK version/license and RT capability baseline for the target hardware tiers.
 
 The initial coordinate probe and 12 fixtures are delivered; mapping can start against the verified

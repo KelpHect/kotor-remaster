@@ -65,6 +65,7 @@ area and gameplay parity belong to P4/P5, not Sprint 0.
 | 06-dynamic | complete | five-pass order, first-hit precedence, Override shadow, and quality 2/1/0 → tpa/tpb/tpc measured in-process; `docs/recon/08_VFS_DYNAMIC.md` |
 | 08-engine | complete | `engine/` promotes the scaffold; 313-step MSVC `/W4 /WX` build, CTest 2/2, Vulkan 120 frames, GL 120 frames; `engine/docs/BUILD.md` |
 | 09-geometry-preview | complete | m01aa preview: 1,365 WOK triangles, 15 doors/hooks, 77 PTH nodes, 45/45 cross-checks; `tools/geometry/`, `docs/recon/11_GEOMETRY_PREVIEW.md` |
+| 10-coords-open | data complete (agent turn-limited) | 699 doors / 312 use points / 1,099 cameras / 106 areas; Bearing convention + RH inference, camera eye model, NorthAxis absent; `docs/recon/12_COORDS_OPEN_ITEMS.md`; MDX and animation remain open |
 | 07-ghidra-rename | complete | 125/125 renamed, 565/565 targets named, 772/772 actions, baseline retained; `artifacts/lanes/07-ghidra-rename/` |
 
 ## Out of scope for Sprint 0
