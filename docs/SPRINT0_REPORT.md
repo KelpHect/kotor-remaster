@@ -43,15 +43,19 @@ turn limit; their datasets were complete enough for the integrator to finish the
 * **VFS**: directories → ERF tag 1 → RIMs → ERF tag 2 → KEY/BIF, first hit wins; Override beats a
   texture pack; `Texture Quality` 2/1/0 selects tpa/tpb/tpc, with gui always loaded.
 * **Coordinates**: 1 unit = 1 m, RH Z-up; IFO entry is a ground point; WOK vertices are world-space;
-  LYT origin = MDL model origin; WXYZ quaternions; Bearing is radian yaw; camera position is a
-  ground point with `eye = z + Height`; ARE `NorthAxis` is absent.
+  LYT origin = MDL model origin; WXYZ quaternions; Bearing is radian yaw with RH `R_z(+B)` verified
+  under the use-point invariant; doors select models by UTD `GenericType`; camera position is a
+  ground point with `eye = z + Height`; ARE `NorthAxis` is absent; `WOK.position` is unused for
+  room placement.
 * **Ghidra**: dispatcher at `0x0052c0d0`; `0x0054c960` allocates the 772-slot table; service vtable
   `0x7450e4`; `-2002` null/out-of-range result.
 
 ## Known gaps carried into P1
 
-1. **MDX vertex/face blocks** and animation/supermodel bind-pose overrides are undecoded.
-2. **Door appearance → final facing**, `WOK.position`, and the minimap transform are open.
+1. **MDX vertex/face blocks** and animation controller payloads/supermodel override mechanics are
+   undecoded (the header survey and name-inheritance rule are bounded evidence).
+2. **Door appearance/facing and `WOK.position` placement are resolved.** Open coordinate items:
+   room-WOK authoring-frame semantics, the minimap transform, and DLG/GIT camera transforms.
 3. **No real save** exists in the reference install; the save writer is structural, not
    byte-compatible or retail-verified.
 4. **NCS decompiler coverage**: 3,404/8,666 scripts do not reproduce; a direct NCS→IR path or a

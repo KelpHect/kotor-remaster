@@ -183,7 +183,7 @@ re-derives high-impact claims (action table, VM semantics, save layout) before a
   unique targets are named, 772/772 actions map, and the dispatcher is intact. Remaining: exercise
   runtime dispatch behavior.
 - Implement/mediate all 772 actions; start with logging stubs, then functional groups.
-- Decompile the corpus with DeNCS (MIT) and PyKotor/xoreos as independent oracles, diff outputs,
+- Decompile the corpus with DeNCS/NCSDecomp (BSL 1.1) and PyKotor/xoreos as independent oracles, diff outputs,
   recompile where possible, and publish per-file exact/normalized/failed status.
 - Differential harness: hook `ExecuteCode`/`RunCommand`, run identical synthetic states in the
   original and new VM, compare IP/opcode/SP/BP/stack types/values/action args/returns/side effects.

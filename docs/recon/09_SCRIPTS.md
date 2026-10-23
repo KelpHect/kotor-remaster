@@ -1,8 +1,9 @@
 # NCS/NSS script corpus (lane 04)
 
-Status: **corpus, validation, and action usage complete; decompiler coverage measured.** The lane
-hit its turn limit before writing a curated final report, so this document summarizes the finished
-datasets. Extracted scripts and the external tools are lane-local and untracked.
+Status: **corpus, validation, action usage, and a lossless bytecode codec complete.** Source-level
+decompilation coverage is measured; the external decompiler is an oracle only. The original lane
+hit its turn limit, and a continuation finished the codec, failure clustering, and arity analysis.
+Extracted scripts and external tools are lane-local and untracked.
 
 ## Corpus
 
@@ -41,10 +42,31 @@ Top actions by occurrence: `GetIsObjectValid` 20,675, `GetHasSpell` 19,203,
 Data: `corpus_summary.json`, `ncs_validation_summary.json`, `action_usage.json`,
 `decompile_status.csv/jsonl` (per unique script).
 
-## Decompile round-trip (measured, external oracle)
+## Bytecode codec (verified lossless)
 
-Each unique NCS was decompiled with **NCSDecomp 1.0.2** (DeNCS lineage, MIT) and recompiled with
-`nwnnsscomp_ktool.exe`; the result was compared with the original bytecode:
+A clean-room decoder/encoder (`artifacts/lanes/04-ncs/cont/tools/ncs_encode.py`, independent of the
+lane's reader) decodes every instruction and re-emits the stream big-endian behind the 13-byte
+`NCS V1.0` header with a recomputed `0x42` size. Results over the unique corpus:
+
+| metric | value |
+|---|---:|
+| unique scripts | 8,666 |
+| byte-identical, readback mode | **8,666 / 8,666** |
+| byte-identical, semantic mode | **8,666 / 8,666** |
+| mismatches / mismatch offsets | 0 / none |
+| instructions re-emitted | 4,703,036 |
+| bytes re-emitted | 28,670,606 |
+
+No divergence is semantic or size/padding-related. **NCS→IR→NCS is lossless for the shipped
+corpus**, which gives a writer acceptance oracle without any decompiler. The codec is lane-local;
+a public `tools/formats/ncs.py` waits on documenting the provenance of the 772-entry action table
+(the codec itself uses only bytecode format facts).
+
+## Source decompilation (measured, external oracle)
+
+Each unique NCS was decompiled with **NCSDecomp 1.0.2** (DeNCS lineage; its bundle README is
+**BSL 1.1**, not MIT) and recompiled with `nwnnsscomp_ktool.exe`; the result was compared with the
+original bytecode:
 
 | outcome | files | share |
 |---|---:|---:|
@@ -57,36 +79,54 @@ Each unique NCS was decompiled with **NCSDecomp 1.0.2** (DeNCS lineage, MIT) and
 | **failed** | **3,404** | **39.28%** |
 
 “Normalized” means the recompiled instruction stream matches after expanding default arguments; the
-207 files are counted as reproduced. An earlier raw pass reported 4,692 exact (54.14%); the final
-classification supersedes it and separates normalized matches from failures.
+207 files count as reproduced. An earlier raw pass reported 4,692 exact (54.14%); the final
+classification supersedes it.
 
-Failure causes are decompiler/compiler limitations, not parse failures: DeNCS emits incomplete
-source (`No code could be decompiled`, stub branches) or source that `nwnnsscomp` rejects. A
-different decompiler or a direct NCS→IR→NCS path is required for the remaining 3,404 scripts. The
-public corpus does not currently include a reusable NCS decompiler; the lane tools are external
-oracles only.
+All 3,404 failures were re-decompiled and clustered. **99.53% are decompiler-side**, not parse or
+bytecode failures:
 
-## Action-arity anomalies (verified, cause open)
+| mechanism | files | share |
+|---|---:|---:|
+| decompiler stub (empty `main()`) | 1,262 | 37.07% |
+| decompiler type inference | 1,011 | 29.70% |
+| decompiler symbol table (`UnknownAction239`) | 607 | 17.83% |
+| decompiler codegen | 508 | 14.92% |
+| compiler produced no output | 10 | 0.29% |
+| compiler stream mismatch | 6 | 0.18% |
 
-Five shipped scripts encode an argument count that disagrees with the nwscript signature:
+The stub is a **scaling** failure: stub files are normal, large scripts (median 851 instructions);
+failure rate rises from ~0–5% in the smallest deciles to **99.65%** in the largest. Highest area
+rates are large-script areas (`tat_m18aa` 66.2%, `kas_m22aa` 66.1%, `korr_m39aa` 60.0%,
+`end_m01aa` 55.2%). Since the bytecode codec is lossless, the path forward is NCS→IR→NSS recovery
+validated by re-encoding, not the external compiler. NCSDecomp must not be shipped (BSL 1.1); it is
+an offline oracle only.
 
-| resref | action | encoded argc | signature argc |
-|---|---|---:|---:|
-| `k_act_carthjoin` | `AddPartyMember` | 1 | 2 |
-| `k_ptar_missjoin` | `AddPartyMember` | 1 | 2 |
-| `k_creditsplay` | `StartCreditSequence` | 2 | 1 |
-| `k_plev_corpse1` | `ActionBarkString` | 2 | 1 |
-| `nw_s0_lghtnbolt` | `EffectBlasterDeflectionIncrease` | 2 | 1 |
+## Action-arity anomalies (bytecode consistent; three explained, two open)
 
-These are either shipped-script bugs, compiler-version differences, or stack-effect conventions
-that need one runtime oracle. They are recorded, not “fixed”; the engine must reproduce the
-original behavior for these five.
+Arguments are pushed **right-to-left**, so `args[0]` is the last push. The `ACTION` instruction
+carries the pop count; extras are the deepest pushes (they never shift declared parameters), and a
+missing slot is an undefined/stale read, not zero.
+
+| resref | action | argc | finding |
+|---|---|---:|---|
+| `k_act_carthjoin` | `AddPartyMember` (574) | 1 | legacy 1-arg `AddPartyMember(object)` form; engine must accept it |
+| `k_ptar_missjoin` | `AddPartyMember` (574) | 1 | same legacy form (`OBJECT_SELF`) |
+| `k_creditsplay` | `StartCreditSequence` (518) | 2 | extra trailing string is inert and deepest; declared int is unaffected |
+| `k_plev_corpse1` | `ActionBarkString` (700) | 2 | slot 1 object, slot 2 int 1075; whether the engine reads slot 2 is **open** |
+| `nw_s0_lghtnbolt` | `EffectBlasterDeflectionIncrease` (469) | 2 | slot 1 object, slot 2 0; slot-2 semantics **open** |
+
+The two 574 sites are content-critical join scripts, so the K1 engine must implement the older
+1-arg action form even though the shipped prototype declares two parameters. The 700/469 sites
+need dispatcher evidence from a future Ghidra lane; they are recorded, not “fixed”.
 
 ## Open items
 
-* Decompiler coverage is 60.72% reproducible; no public tool proves all 8,666 scripts.
+* Source-level decompilation is 60.72% reproducible (99.53% of failures are decompiler-side); the
+  bytecode codec is lossless, so IR round-trip can replace compiler round-trip.
+* The two 700/469 argument-position cases need the engine dispatcher.
 * The 306 unused actions still need engine implementations for modded content and save/script
   compatibility, but shipped content does not exercise them.
-* Arity anomaly semantics (pop count vs ignored argument) are unverified.
+* Public `tools/formats/ncs.py` waits on documenting the action table's provenance; the bytecode
+  codec can be promoted after that review.
 * NSS/NCS pairing by resref is complete, but source-only differences (modded NSS without NCS) are
   out of the shipped corpus.

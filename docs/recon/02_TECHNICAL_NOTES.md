@@ -103,7 +103,7 @@ redistribute. The MIT Kaitai specs are the reusable baseline.
   and object templates, not VM constructs.
 - K1 differs from NWN/K2 mainly in the action table and four engine structs; K1 NCS is not
   compatible with K2. There are no array/GETREF opcodes in K1.
-- Tooling: **DeNCS (MIT)** is the best current decompiler; xoreos `ncsdis` is solid while
+- Tooling: **DeNCS/NCSDecomp (BSL 1.1)** is the best current decompiler; xoreos `ncsdis` is solid while
   `ncsdecomp` is partial; PyKotor (LGPL) has reader/writer/compiler and a known-failure corpus;
   KotOR.js and reone (GPL) contain VMs; `nwnsc` compiles NWN/K1 source. No public tool proves a
   round-trip of every shipped NCS. A community vanilla-source corpus exists for comparison.

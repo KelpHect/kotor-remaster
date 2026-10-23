@@ -115,7 +115,7 @@ Upgrade target: Ghidra 12.2 once verified (CVE-2026-100503 affects ≤12.1.4).
 | [PyKotor](https://github.com/OpenKOTOR/PyKotor) | Test oracle / CLI extraction | LGPL-3.0+; do not copy into the engine |
 | [xoreos-tools](https://github.com/xoreos/xoreos-tools) | Independent parser/NCS oracle | GPL-3.0; external process only |
 | [kotorblender](https://github.com/seedhartha/kotorblender) | MDL/MDX/LYT/PTH asset authoring | GPL-3.0; external tool |
-| DeNCS | NCS decompiler (best current coverage) | MIT; batch CLI; oracle only |
+| DeNCS / NCSDecomp | NCS decompiler (best current source coverage) | BSL 1.1; offline oracle only, never shipped |
 | xoreos-tools `ncsdis` / PyKotor | NCS disassembly, VM validation, compile | GPL-3.0 / LGPL-3.0+; external tools |
 | FFmpeg | Bink 1 decode for movies | LGPL/GPL build; dynamic external use |
 | SDL3 | Platform, window, input, audio | zlib |

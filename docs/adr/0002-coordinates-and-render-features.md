@@ -144,12 +144,16 @@ change simulation state.
 
 ## Open questions (must be closed by evidence)
 
-1. Bearing sign/zero is resolved for convention: radian yaw, no zero sentinel, same sign as the LYT
-   hook yaw; handedness is inferred RH from use-point/floor votes and still wants an asymmetric
-   oracle. Camera `Position` is a ground point with `eye = Position.z + Height` in 1,096/1,099
-   cameras. Door appearance → final facing, WOK `position`, and the minimap transform remain open;
-   ARE `NorthAxis` is absent in all 106 scanned areas.
-2. MDX vertex/face block layout; animation and supermodel bind-pose overrides.
+1. Bearing sign/zero is resolved: radian yaw, no zero sentinel, same sign as the LYT hook yaw.
+   Handedness is **RH**, verified under the use-point-on-floor invariant (10 decisive cases, 0 LH).
+   Doors select their model by UTD `GenericType` → `genericdoors.2da`; `Appearance` is not the
+   selector and adds no yaw. `WOK.position` is unused for room placement and is a pivot for
+   DWK/PWK. Camera `Position` is a ground point with `eye = Position.z + Height` in 1,096/1,099
+   cameras. Door-facing and WOK-position placement are closed; the minimap transform and DLG
+   cameras remain open; ARE `NorthAxis` is absent in all 106 scanned areas.
+2. Animation/supermodel header structure is surveyed (2,832 MDLs; 375 supermodels; identity bind
+   roots; name-based inheritance/override inferred). Animation controller payloads, the first-key
+   sentinel, MDX-backed tracks, and the MDX block layout are still open.
 3. Camera FOV/pitch are degrees; aspect/near/far and DLG/GIT camera transforms remain open. Vulkan
    projection/viewport Y-flip and depth range still need a rendered landmark in the new renderer.
 4. Current FSR SDK version/license and RT capability baseline for the target hardware tiers.
