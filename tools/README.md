@@ -18,6 +18,12 @@ Nothing here redistributes game assets or decompiled code. Generated data goes u
 | `formats/gff.py` | Read-only GFF V3.2 probe: structs/fields/lists, single-field struct rule, structural checks; validates IFO/GIT/ARE | `python tools/formats/gff.py <file.git> --check --root --entries` |
 | `formats/two_da.py` | 2DA V2.b/V2.0 parser; validates all 209 shipped tables | `python tools/formats/validate_two_da.py --game-dir <install>` |
 | `formats/test_gff_types.py` | 30 synthetic GFF tests (all types, malformed inputs, slot ordering) | `python -m unittest -v test_gff_types` |
+| `resources/kotor_archive.py` | ERF/MOD/SAV, RIM, BIFF and KEY readers; deterministic fixture writers | imported by save/VFS tools |
+| `resources/kotor_gff_write.py` | GFF V3.2 writer and semantic re-serializer | `python tools/resources/kotor_gff_write.py roundtrip IN.gff OUT.gff` |
+| `resources/kotor_save.py` | Save-folder parser/validator and structural writer; refuses writes inside an install | `python tools/resources/kotor_save.py validate "<slot>"` |
+| `resources/kotor_vfs.py` | Five-pass VFS resolver with traces and shadowed hits | `python tools/resources/kotor_vfs.py resolve <install> <resref> <type>` |
+| `resources/build_dynamic_probes.py`, `resources/vfs_measure.py` | Build expected-lookup manifests and compare Frida hook logs | see `docs/recon/08_VFS_DYNAMIC.md` |
+| `tests/run_all.py` | 33 archive/save/GFF-writer/VFS tests (1 real-save test skipped when absent) | `KOTOR_GAME_DIR=<install> python tools/tests/run_all.py` |
 | `harness/offscreen.py` | Launch/park dynamic-harness games windowed, on a private desktop, off-screen, at idle priority | `python tools/harness/offscreen.py launch --exe <game.exe> --cwd <profile> --wait` |
 | `evidence/ledger.py` | SQLite artifact/function/action/resource/claim ledger and coverage view | `python tools/evidence/ledger.py init` then `status` |
 

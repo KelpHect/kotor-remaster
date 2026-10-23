@@ -61,7 +61,7 @@ area and gameplay parity belong to P4/P5, not Sprint 0.
 | 02-2da | complete | 209/209 tables, 29 tests; `tools/formats/two_da.py`; `docs/recon/05_2DA.md` |
 | 03-gff | complete | 11,143/11,143 payloads, 1,854,982 values, 0 intrinsic failures; parser patch + 30 tests; `docs/recon/07_GFF_CORPUS.md` |
 | 04-ncs | datasets complete (agent turn-limited) | 8,666 unique NCS, 8,666 valid, 285,015 ACTION ops, 0 unknown ids; 5,262/8,666 reproducible; `docs/recon/09_SCRIPTS.md` |
-| 05-save-vfs | complete | 33 tests (32 pass, 1 skipped: no real save); save reader/writer, archive readers/writers, five-pass VFS resolver; `artifacts/lanes/05-save-vfs/RESULTS.md` |
+| 05-save-vfs | complete | 33 tests (32 pass, 1 skipped: no real save); save reader/writer, archive readers/writers, five-pass VFS resolver; `docs/recon/10_SAVE_VFS.md` |
 | 06-dynamic | complete | five-pass order, first-hit precedence, Override shadow, and quality 2/1/0 → tpa/tpb/tpc measured in-process; `docs/recon/08_VFS_DYNAMIC.md` |
 | 08-engine | complete | C++23/SDL3/Vulkan 1.4 + GL 4.5 scaffold, 313-step clean build, Vulkan 120 frames, GL 120 frames, smoke 5/5; `artifacts/lanes/08-engine/` |
 | 09-geometry-preview | complete | m01aa SVG preview, 1365/1365 winding, 45/45 cross-checks; `artifacts/lanes/09-geometry-preview/` |
