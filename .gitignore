@@ -1,0 +1,7 @@
+artifacts/
+tools/.venv/
+__pycache__/
+*.pyc
+.cache/
+tools/jdk21/
+tools/downloads/
