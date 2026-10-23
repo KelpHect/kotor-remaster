@@ -46,24 +46,25 @@ turn limit; their datasets were complete enough for the integrator to finish the
   archives). The game writes only its working-directory `swkotor.ini`, not the install, and no
   KotOR registry key changes during controlled runs.
 * **Coordinates**: 1 unit = 1 m, RH Z-up; IFO entry is a ground point; WOK vertices are world-space;
-  LYT origin = MDL model origin; WXYZ quaternions; Bearing is radian yaw with RH `R_z(+B)` verified
-  under the use-point invariant; doors select models by UTD `GenericType`; camera position is a
-  ground point with `eye = z + Height`; ARE `NorthAxis` is absent; `WOK.position` is unused for
-  room placement.
+  LYT origin = MDL model origin; WXYZ quaternions; Bearing is radian yaw with RH `R_z(+B)` proven in
+  engine code; doors select models by UTD `GenericType`; `WOK.position` is the room walkmesh node
+  (545) local translation; camera `forward = R_yaw·(0, sin Pitch, −cos Pitch)`; ARE minimap affine
+  and DLG camera models are decoded; `NorthAxis` is a UI selector, not part of the affine.
 * **Ghidra**: dispatcher at `0x0052c0d0`; `0x0054c960` allocates the 772-slot table; service vtable
   `0x7450e4`; `-2002` null/out-of-range result.
 
 ## Known gaps carried into P1
 
-1. **Animation controller payloads and supermodel override mechanics** remain undecoded; the MDX
-   block layout is now verified (`docs/recon/15`) and the animation header/name survey is bounded
-   (`docs/recon/12`).
-2. **Door appearance/facing and `WOK.position` placement are resolved.** Open coordinate items:
-   room-WOK authoring-frame semantics, the minimap transform, and DLG/GIT camera transforms.
+1. **Animation payloads are decoded** (type 8 additive position, type 20 absolute orientation, no
+   NaN sentinel). Remaining: DLG `CameraAnimation`/`CameraAngle` composition and supermodel
+   nearest-override/name-remap semantics.
+2. **Door appearance/facing and `WOK.position` are resolved.** WOK `position` is the room walkmesh
+   node translation; the ARE minimap affine and DLG camera models are decoded. Remaining:
+   `CameraAnimation`/`CameraAngle` and supermodel remap.
 3. **No real save** exists in the reference install; the save writer is structural, not
    byte-compatible or retail-verified.
-4. **NCS decompiler coverage**: 3,404/8,666 scripts do not reproduce; a direct NCS→IR path or a
-   better decompiler is needed.
+4. **NCS source decompilation**: the bytecode codec is lossless (8,666/8,666), but source
+   decompilation is 60.72% with the external oracle; a clean-room decompiler is in progress.
 5. **Real intra-pass order** is measured for pass 2 (`patch.erf` before `Override/textures.erf`);
    RIM and tagged-2 orders remain inferred. No shipped duplicate resource or module `.mod` exists.
 6. **Engine**: clear + ImGui only; no depth/mesh pipeline, no asset rendering, no Vulkan validation

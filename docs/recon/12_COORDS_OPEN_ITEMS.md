@@ -1,117 +1,120 @@
-# Coordinate open items (lane 10)
+# Coordinate, animation, and camera findings (lane 10)
 
-Status: **continued and largely resolved.** The original lane produced the corpus datasets; a
-continuation resolved the Bearing sign (RH), door model selection/facing, `WOK.position`, and the
-animation/supermodel header survey. MDX block layout is handled in a separate continuation and
-animation controller payloads remain open. Data lives under `artifacts/lanes/10-coords-open/`
-(untracked); nothing from the install was modified.
+Status: **largely verified.** Bearing/door facing, `WOK.position`, animation controller payloads,
+GIT/ARE camera-minimap fields, and DLG camera models are decoded. Remaining: DLG
+`CameraAnimation`/`CameraAngle` composition and supermodel override/name-remap semantics (a
+targeted continuation is running). MDX is in `docs/recon/15`. Data is under
+`artifacts/lanes/10-coords-open/` (untracked); the install was not modified.
 
 ## Corpus
 
-106 areas scanned (GIT/LYT/IFO/ARE plus archive identity): 1,546 creatures, 704 doors,
-3,138 placeables, 3,970 waypoints, 1,099 cameras. Bearing evidence covers 699 doors and 5 chairs;
-use-point evidence covers 312 placeables; the stricter oracle covers 1,196 placeables with a PWK.
+106 areas (GIT/LYT/IFO/ARE): 1,546 creatures, 704 doors, 3,138 placeables, 3,970 waypoints,
+1,099 cameras. Bearing evidence: 699 doors, 5 chairs, 1,196 PWK placeables. Animation survey:
+2,832 MDLs. MDX sample: 634 blocks / 84,707 faces (plus a broader 528-file pass).
 
-## Bearing and door facing (RH verified in engine code and by data oracle)
+## Bearing and door facing (RH verified in code and by data)
 
-* `Bearing` is a signed radian yaw in `[-π, π]`; 206 doors have `Bearing = 0` (205 of their hooks
-  are also 0). There is no separate zero sentinel.
-* `Bearing mod π` matches the LYT hook yaw plane for all 699 doors (max deviation
-  `1.55e-4 rad`). Among 345 doors with a well-conditioned hook angle, 341 have `Bearing ≈ θ` and
-  4 have `Bearing ≈ θ ± π`; the 9 exact +π cases are front/back-symmetric door models.
-* **Handedness is RH.** For 1,196 placeables with a PWK, the use point was rotated by `R_z(+B)`
-  and by the mirrored yaw and tested against every area floor triangle. Ten cases are decisive
-  for RH and **zero for LH**. Strongest: `m28aa` `plc_lockerlg`, `B = −π/2`; the RH use point is
-  0.727 m inside a floor triangle, while the LH point is 0.484 m outside every floor (through the
-  wall). This independently verifies `R_z(+Bearing)` under the invariant that a use point must lie
-  on walkable floor.
-* **Engine code proof.** Door loader `0x50a0e0` and placeable loader `0x50a7b0` read GIT `Bearing`
-  B (radians), build `q = (cos B/2, 0, 0, sin B/2)` about +Z at `0x4ac960`, compute
-  `forward = (−sin B, cos B, 0)` at `0x5853c0` / `0x5896e0`, and store it at object `+0x9c` via
-  `0x4cd170`. The save path inverts with `atan2(−fx, fy)` (`0x4aa0f0`, `0x586a70`), and creatures
-  carry `X/Y/ZOrientation` directly (`0x4c8c70`). Status: verified from instructions, not only from
-  the oracle. Details: `artifacts/lanes/p0-classify/cont2/bearing_code_proof.md`.
-* **Door model selection is UTD `GenericType`, not `Appearance`.** The 358 shipped door UTDs all
-  have `Appearance = 0`; they carry 48 distinct `GenericType` values that index
-  `genericdoors.2da`. All 48 reachable rows resolve to shipped `DOR_*` models (47 are actually
-  used), each with an MDL and three DWK states. Row 0 maps to `T_DOOR01`, which is absent from
-  the install, so an `Appearance`-based lookup would be wrong.
-* **The model contributes no yaw or translation.** All 47 used door models have identity root
-  nodes, and all 47 closed-state DWKs are X-wide/Y-thin. The instance transform is therefore:
+* `Bearing` is a signed radian yaw in `[-π, π]`; 206 doors have `Bearing = 0` (205 hooks also 0).
+* `Bearing mod π` matches the LYT hook yaw plane for all 699 doors (max `1.55e-4 rad`); the 9
+  exact +π cases are front/back-symmetric models.
+* **RH proven in engine code:** door loader `0x50a0e0` and placeable loader `0x50a7b0` read
+  `Bearing` B, build `q=(cos B/2,0,0,sin B/2)` about +Z (`0x4ac960`), compute
+  `forward=(−sin B, cos B, 0)` (`0x5853c0`/`0x5896e0`), and store it at `+0x9c` (`0x4cd170`).
+  Save inverts with `atan2(−fx,fy)` (`0x4aa0f0`, `0x586a70`); creatures carry
+  `X/Y/ZOrientation` directly (`0x4c8c70`). The PWK use-point oracle independently gives 10
+  RH-decisive, 0 LH.
+* **Door model selection is UTD `GenericType`**, not `Appearance` (all 358 UTDs have
+  `Appearance=0`; 48 reachable `GenericType`s → `genericdoors.2da` → 47 used models, all with
+  MDL + 3 DWK states). All used models have identity roots; closed DWKs are X-wide/Y-thin.
+  `world = T_GIT · R_z(Bearing) · M_local`.
 
-  ```
-  world_door = T_GIT(X,Y,Z) · R_z(Bearing) · M_local(model/DWK)
-  ```
+## `WOK.position` (verified: walkmesh-node translation)
 
-## `WOK.position` (verified unused for room placement; pivot for DWK/PWK)
+`WOK.position` is exactly the local translation of the room MDL's walkmesh geometry node
+(type **545**). The BWM is exported from that node, so it is an export pivot, not a centroid,
+LYT origin, or area frame:
 
-Across 936 room WOKs, `position` matches the local AABB centre only 4/936 within 1 mm
-(116/936 within 1 cm), the vertex centroid 9/936, and is zero in 7/936; the median max-axis
-deviation is 9.58 m (p90 132 m, max 424.5 m). It is not a centroid, LYT origin, or consistent
-local frame. Room WOK vertices are already world-space and the verified door chain has no
-`position` term, so it is **unused for placement**.
+* 453 rooms sampled across 103 areas: `WOK.position == node545.pos` **bit-exact, 453/453**; every
+  sampled room has exactly one 545 node.
+* Rejected across 936 WOKs: centroid 9/936 within 1 cm; local AABB centre 4/936 within 1 mm;
+  LYT origin median deviation 141.8 m.
+* World placement remains `LYT origin + node chain`; the value is not added. For DWK/PWK it is a
+  slide pivot (`dor_lhr01` closed 0, leaves `(-2.785,0.052,0)` = closed X half-extent).
 
-For sub-walkmeshes it is a pivot: 246/278 DWK/PWK resources have a non-zero `position`; a
-two-leaf door (`dor_lhr01`) has closed `position=(0,0,0)` and both opening leaves at
-`(-2.785, 0.052, 0)`, exactly the closed-state X half-extent. Why room WOKs use inconsistent
-authoring frames remains open.
+## Animation (payloads verified)
 
-## Animation / supermodel (header survey verified; override rule inferred)
+MDL V1.0 layout (offsets relative to file byte 12): animation table at +100 (offset/count),
+supermodel +148..179, scale +144. Animation header 44 B; animation node 80 B; controller 16 B:
+type +0, unknown +4, rows +6, timeIndex +8, dataIndex +10, columns +12.
 
-2,832 MDLs parse with zero errors: 375 name a supermodel, 1,027 have animations, 146 have both.
-All 2,832 root nodes are identity bind poses, so the instance origin is never displaced by bind
-pose or animation scale. Supermodel chains reach depth 7; 133/146 both-models resolve to a shipped
-supermodel (13 name missing models).
+* **Type 8 = position** (`columns=3` linear, `columns=19` Bézier stride 9); **type 20 =
+  orientation** (`columns=4` XYZW float, `columns=2` packed three 11-bit components, w =
+  −sqrt(1−x²−y²−z²)). Array indices are float indices, not byte offsets.
+* **Position is additive to the bind local translation; orientation replaces the bind rotation.**
+  Clip nodes key a subset of geometry node numbers (p50 33 nodes, 82.8%).
+* **No NaN sentinel.** The all-ones packed word `0x7fdffbff` decodes to identity `(0,0,0,w=−1)`;
+  0 NaN floats across 120 animated models / 1,619 clips (14,932 identity words).
+* Validation: rigid clips (`n_bith`, `c_rancors`) preserve bone lengths to ~1e-15; `dor_lhr01`
+  `closed` matches bind at 0.059°; `opening1` leaf X travel −2.020/+3.453 m sums to the 5.473 m
+  door width. First-key position offsets are zero for 76–84% of controllers (rest pose).
+* Supermodel graph: 375 MDLs name a supermodel, 146 have both; 133 resolve to shipped models.
+  **116/133 child/super pairs are clip-name disjoint (inherit).** 17/133 share names; all 71
+  shared definitions differ, so nearest (child) override matters. The order and inherited-clip
+  name-vs-index remap are still being closed (engine proof/runtime not yet observed).
+* MDX skinning: skinned nodes carry a bone map (57–75 entries, −1 unused) indexing geometry nodes;
+  weights/IDs are read from MDX at the skin header offsets (`mesh+332+12/+16`). Animation keys
+  address the same node numbers.
 
-Worked example: `m01aa_c01_char01` (242 nodes, 18 clips, scale 1.06) → `S_Male02` (164 nodes,
-166 clips) → `S_Male01` (82 nodes, 12 clips) → `NULL`. The child's 18 clip names are disjoint from
-`S_Male02`; it inherits the parent's set and adds its own. Of 133 resolved child/super pairs, 17
-share at least one clip name (nearest definition overrides) and 116 are disjoint (inherit).
+## Cameras and minimap (fields/formulas verified)
 
-Clips key a subset of geometry node indices; controllers are present (type 20 position, type 8
-orientation). The structural contract is: bind pose supplies every local transform; a clip
-replaces the keyed nodes' local transforms; untouched nodes keep bind pose; world transforms
-compose parent→child as `T·R`. Controller keyframe payloads (including the `NaN,NaN,-0` first
-key) and MDX-backed tracks are not decoded, so this rule is inferred, not frame-proven.
+GIT `CameraList` (1,099): `CameraID`, `Position`, `Orientation` WXYZ (yaw-only), `Pitch` degrees,
+`Height` m, `FieldOfView` degrees.
 
-## Camera (verified field roles, outliers recorded)
+```
+eye     = Position + (0,0,Height)
+R_yaw   = yaw from Orientation about +Z
+forward = R_yaw * (0, sin(Pitch), -cos(Pitch))   # Pitch=90 horizontal, 0 down, >90 up
+right   = R_yaw * (1,0,0)
+up      = right x forward
+```
 
-1,099 GIT cameras across 106 areas:
+Aiming at nearby actors gives median best dot **0.987** (85.9% >0.9) for this convention vs
+0.542 for the down-from-horizontal variant. Aspect, near, and far are **absent** from GIT/ARE/DLG;
+they are engine/renderer defaults.
 
-* `Position` behaves as a ground point: 1,096/1,099 are within 1 mm of a WOK floor, 1,097 within
-  5 mm; all 1,099 are over a floor within 0.5 m.
-* `Height` is an offset: `eye = Position.z + Height` is the natural model. Median height 1.55 m,
-  range −1.95 to 22.9 m. Two cameras have negative height (`m38ab` -1.95, `m45ac` -0.05).
-* `Pitch` is non-negative degrees (range 10.4–144.7; 90 is the mode), and `FOV` is degrees (55 is the
-  mode, 745/1,099; others 35/45/60/65/75).
-* 141 cameras carry a ceiling value; 3 (`m26ad` 5/6/7) place the eye above that ceiling, and 2
-  (`m13aa` 28/30) place `Position.z` above the floor. These are special-case cameras; do not clamp
-  height or snap position generally.
+ARE `Map` is a nested struct: `MapResX`, `NorthAxis` (0–3), `WorldPt1/2X/Y`, `MapPt1/2X/Y`,
+`MapZoom` (1). Per-axis affine:
 
-## ARE `NorthAxis` (resolved: absent)
+```
+u = MapPt1X + (x - WorldPt1X) * (MapPt2X - MapPt1X) / (WorldPt2X - WorldPt1X)
+v = MapPt1Y + (y - WorldPt1Y) * (MapPt2Y - MapPt1Y) / (WorldPt2Y - WorldPt1Y)
+```
 
-`NorthAxis` is absent (`None`) in all 106 shipped ARE files. The minimap orientation must be derived
-from the ARE `Map` data or another field, not `NorthAxis`. `CameraStyle` is present (0 for `m01aa`).
+`MapPt` axis signs are arbitrary per area, so `NorthAxis` is a UI/compass selector, not part of
+the affine. 18/106 maps are degenerate (zero extent or `MapResX=0`); `MapResY` is absent;
+`MapResX` is a resolution hint (inferred, not used by the affine).
+
+DLG: root `CameraModel` names one of 22 shipped two-node camera MDLs (`camerahook`); clips store
+`camerahook` position/orientation with the animation rule above. All 3,036 DLG `CameraID`s fall in
+the GIT `CameraID` domain. `CameraAngle` (0–6) and `CameraAnimation` (ms-scale cue) roles remain
+being closed.
 
 ## Still open
 
-* **MDX vertex/face blocks** — a separate continuation is decoding the layout and payloads.
-* **Animation controller payloads** — type 20/8 field semantics, the first-key sentinel, and
-  MDX-backed tracks are undecoded; the override rule is structural only.
-* **Room `WOK.position` authoring frame** — pivot semantics are verified for DWK/PWK; why room
-  values differ by area is not.
-* **None for Bearing sign** — `R_z(+B)` is proven in engine code (`0x50a0e0`/`0x50a7b0` →
-  `0x4ac960` → `0x5853c0`/`0x5896e0`) and by the PWK oracle. Keep the sign as one versioned
-  constant in the new engine.
-* **DLG/GIT camera transforms and the minimap transform** — not covered here.
+* DLG `CameraAnimation` clip/time selection and `CameraAngle` composition (targeted continuation).
+* Supermodel nearest-override order and inherited-clip name-vs-index remap (engine/runtime proof).
+* `MapResX` role and minimap texture semantics (inferred).
+* Particle/light/animation-node controller types (36/76/80/84/88/100/120/124/132/176/216/224/232/
+  236/240/284/380/392) are catalogued but not needed for skeletal pose; type 132 is a FrameEnd cue.
+* `m01aa_07b` has no 545 node, so no WOK cross-check.
 
 ## Evidence
 
 | dataset | contents |
 |---|---|
-| `bearing.json`, `pwk_vote.json` | 699 door `B/θ/Δ/Δ mod π`; 312 use-point votes |
-| `cont/misc/bearing_oracle.json` | 1,196 PWK use-point RH/LH floor tests; 10 RH-decisive |
-| `cont/misc/door_appearance.json` | UTD `GenericType` → `genericdoors` → model/DWK mapping |
-| `cont/misc/wok_position.json` | 936 room WOKs vs centroid/AABB; DWK pivot examples |
-| `cont/misc/anims_survey.json` | 2,832 MDLs, supermodel chains, clip-name collisions |
-| `cameras.json`, `areas.json` | 1,099 cameras; 106 areas with GIT/LYT/IFO/ARE |
+| `misc2/mdl_anim.py`, `anim_decode.json` | controller layout, pose validation, supermodel/skin |
+| `misc2/anim_payload_stats.json` | 120 models, 56,174 controllers, sentinel/column stats |
+| `misc2/wok_position_verify.json` | 453/453 node-545 proof, rejected alternatives |
+| `misc2/camera_are_dlg.json` | GIT formula, 106 ARE maps, 22 DLG camera models |
+| `misc2/camera_aim_verify.json` | pitch convention aim test; DLG CameraID domain |
+| `cont/misc/*.json` | earlier Bearing/door/WOK/camera corpus data |

@@ -149,16 +149,19 @@ change simulation state.
    builds `q=(cos B/2,0,0,sin B/2)`; `0x5853c0`/`0x5896e0` produce `forward=(−sin B, cos B)`) and
    independently by the PWK use-point oracle (10 decisive, 0 LH).
    Doors select their model by UTD `GenericType` → `genericdoors.2da`; `Appearance` is not the
-   selector and adds no yaw. `WOK.position` is unused for room placement and is a pivot for
-   DWK/PWK. Camera `Position` is a ground point with `eye = Position.z + Height` in 1,096/1,099
-   cameras. Door-facing and WOK-position placement are closed; the minimap transform and DLG
-   cameras remain open; ARE `NorthAxis` is absent in all 106 scanned areas.
-2. Animation/supermodel header structure is surveyed (2,832 MDLs; 375 supermodels; identity bind
-   roots; name-based inheritance/override inferred). The MDX block layout is decoded
-   (`docs/recon/15`). Animation controller payloads, the first-key sentinel, MDX-backed tracks, and
-   trailing LOD/skin data remain open.
-3. Camera FOV/pitch are degrees; aspect/near/far and DLG/GIT camera transforms remain open. Vulkan
-   projection/viewport Y-flip and depth range still need a rendered landmark in the new renderer.
+   selector and adds no yaw. `WOK.position` is the room walkmesh node (type 545) local translation
+   (453/453 bit-exact), not a placement term; it is a pivot for DWK/PWK. Camera `Position` is a
+   ground point with `eye = Position.z + Height` and
+   `forward = R_yaw·(0, sin Pitch, −cos Pitch)`. The ARE minimap two-point affine is decoded and
+   DLG camera models resolve; `CameraAnimation`/`CameraAngle` composition remains open.
+2. Animation payloads are decoded: type 8 position is additive to bind, type 20 orientation is
+   absolute, there is no NaN sentinel (0x7fdffbff is identity). Supermodel inheritance is verified
+   for disjoint clips; nearest override order and inherited-clip name-vs-index remap remain open.
+   The MDX block layout is decoded (`docs/recon/15`); trailing LOD/skin data and multi-group
+   descriptors are in a closing pass.
+3. Camera FOV/pitch are degrees and the GIT view basis is verified; aspect/near/far are absent
+   (engine defaults). Vulkan projection/viewport Y-flip and depth range still need a rendered
+   landmark in the new renderer.
 4. Current FSR SDK version/license and RT capability baseline for the target hardware tiers.
 
 The initial coordinate probe and 12 fixtures are delivered; mapping can start against the verified

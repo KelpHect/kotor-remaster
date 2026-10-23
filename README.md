@@ -44,6 +44,9 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   `R_z(+B)` is proven in engine code at `0x50a0e0`/`0x50a7b0` → `0x4ac960` → `0x5853c0`.
 - MDX layout decoded: no file header; blocks addressed by MDL `+324`; strides 24/32/40; 634 sampled
   blocks verified; 14/14 room walkmeshes match WOK (`docs/recon/15`).
+- Animation/camera: type 8 position is additive to bind, type 20 orientation is absolute, no NaN
+  sentinel; `WOK.position` is room walkmesh node 545 translation (453/453 bit-exact); GIT/ARE/DLG
+  camera and minimap formulas decoded (`docs/recon/12`).
 - Engine scaffold: C++23 + SDL3 + Vulkan 1.4 (1.3 floor) + OpenGL 4.5 + ImGui builds from
   `engine/` with `/W4 /WX`; Vulkan and OpenGL both run 120 frames, headless CTest 2/2. This is a
   clear/ImGui presentation scaffold, not a renderer yet (`engine/docs/BUILD.md`).

@@ -77,8 +77,8 @@ Position=ground.
 
 1. Bearing sign/zero: resolved; RH `R_z(+B)` is oracle-backed (`docs/recon/12`).
 2. MDX vertex/face blocks: decoded (`docs/recon/15`); animation controller payloads remain open.
-3. `WOK.position` is unused for placement and ARE `NorthAxis` is absent (`docs/recon/12`); ARE Map
-   minimap semantics remain open.
+3. `WOK.position` is the room walkmesh node (type 545) local translation, not a placement term;
+   ARE `NorthAxis` is absent (`docs/recon/12`). ARE Map minimap affine is decoded.
 4. Door appearance → model/facing: resolved via UTD `GenericType` → `genericdoors.2da` (`docs/recon/12`).
 5. Camera `Height`; animation/supermodel bind-pose overrides.
 6. `gff.py` single-field bug; use `c2_gff.py`.
