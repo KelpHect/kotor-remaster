@@ -27,6 +27,9 @@ Nothing here redistributes game assets or decompiled code. Generated data goes u
 | `geometry/probe.py` | Parse m01aa LYT/WOK/MDL/PTH/IFO/GIT and print check values | `KOTOR_AREA_DIR=<flat-area-dir> python tools/geometry/probe.py` |
 | `geometry/preview.py` | Top-down SVG/JSON/Markdown preview with 45 self-checks | `KOTOR_AREA_DIR=<dir> KOTOR_PREVIEW_OUT=<out> python tools/geometry/preview.py` |
 | `harness/offscreen.py` | Launch/park dynamic-harness games windowed, on a private desktop, off-screen, at idle priority | `python tools/harness/offscreen.py launch --exe <game.exe> --cwd <profile> --wait` |
+| `harness/install_guard.py` | Restore config files if a dynamic run rewrites the install | `python tools/harness/install_guard.py --install <install> --manifest artifacts/lanes/01-manifest/manifest.jsonl --minutes 120` |
+| `install/install_validate.py` | Read-only install detection/validation without the executable | `KOTOR_GAME_DIR=<install> python tools/install/install_validate.py` |
+| `install/cache_profile.py` | Build/verify an external content-addressed dataset cache profile | `python tools/install/cache_profile.py build --out artifacts/cache/profile.json` |
 | `evidence/ledger.py` | SQLite artifact/function/action/resource/claim ledger and coverage view | `python tools/evidence/ledger.py init` then `status` |
 
 ```bash
@@ -53,7 +56,9 @@ python tools/harness/offscreen.py watch --name swkotor.exe --minutes 60
 
 Do not call `SetForegroundWindow`, do not capture the desktop (only the game window via
 `PrintWindow`), and never run fullscreen. DirectInput state can be spoofed in-process, so focus is
-not needed for input experiments.
+not needed for input experiments. The game can rewrite the install's `swkotor.ini` even when
+launched from a profile copy; run `tools/harness/install_guard.py` for the session and verify the
+install against the manifest afterwards.
 
 ## Ghidra
 

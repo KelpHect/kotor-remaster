@@ -45,7 +45,9 @@ area and gameplay parity belong to P4/P5, not Sprint 0.
 - **Game process:** lane 06 only. It must not patch/bypass DRM, modify the install, or leave files it
   created; all captures under its lane directory. Runs are windowed (`FullScreen=0`), off-screen, and
   at idle priority: use `tools/harness/offscreen.py` (private desktop or park/watch) and never take
-  foreground focus or capture the user's desktop. Only the game window may be captured.
+  foreground focus or capture the user's desktop. Only the game window may be captured. Run
+  `tools/harness/install_guard.py` while the game runs: it can rewrite the install's
+  `swkotor.ini` even from a profile copy.
 - **Ghidra:** lane 07 only, on a fresh copy of the enhanced project. No other lane opens a Ghidra
   project or runs analyzeHeadless.
 - **Repository:** no lane writes to tracked files, commits, pushes, or changes the public repo. The

@@ -37,6 +37,8 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
 - Save/VFS: save container parser/validator and structural writer, archive readers/writers, and a
   five-pass resolver, with 33 synthetic/real-install tests. Dynamic hooks confirm the pass order,
   Override precedence, and quality 2/1/0 → tpa/tpb/tpc (`docs/recon/08`, `docs/recon/10`).
+- Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
+  profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Engine scaffold: C++23 + SDL3 + Vulkan 1.4 (1.3 floor) + OpenGL 4.5 + ImGui builds from
   `engine/` with `/W4 /WX`; Vulkan and OpenGL both run 120 frames, headless CTest 2/2. This is a
   clear/ImGui presentation scaffold, not a renderer yet (`engine/docs/BUILD.md`).
@@ -72,6 +74,7 @@ Start with:
 - [`docs/recon/10_SAVE_VFS.md`](docs/recon/10_SAVE_VFS.md) — save containers, archive I/O, and the five-pass VFS resolver
 - [`docs/recon/11_GEOMETRY_PREVIEW.md`](docs/recon/11_GEOMETRY_PREVIEW.md) — m01aa LYT/WOK/MDL/PTH/GIT top-down preview and checks
 - [`docs/recon/12_COORDS_OPEN_ITEMS.md`](docs/recon/12_COORDS_OPEN_ITEMS.md) — corpus-scale Bearing, camera, ARE NorthAxis, and remaining open items
+- [`docs/recon/13_P0_INSTALL.md`](docs/recon/13_P0_INSTALL.md) — install validation, external cache profile, and the config-restore guard
 - [`docs/adr/0001-runtime-and-renderer.md`](docs/adr/0001-runtime-and-renderer.md)
 - [`docs/adr/0002-coordinates-and-render-features.md`](docs/adr/0002-coordinates-and-render-features.md)
 - [`docs/adr/0003-distribution-and-install-model.md`](docs/adr/0003-distribution-and-install-model.md)
