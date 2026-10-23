@@ -58,12 +58,22 @@ type +0, unknown +4, rows +6, timeIndex +8, dataIndex +10, columns +12.
   `closed` matches bind at 0.059°; `opening1` leaf X travel −2.020/+3.453 m sums to the 5.473 m
   door width. First-key position offsets are zero for 76–84% of controllers (rest pose).
 * Supermodel graph: 375 MDLs name a supermodel, 146 have both; 133 resolve to shipped models.
-  **116/133 child/super pairs are clip-name disjoint (inherit).** 17/133 share names; all 71
-  shared definitions differ, so nearest (child) override matters. The order and inherited-clip
-  name-vs-index remap are still being closed (engine proof/runtime not yet observed).
-* MDX skinning: skinned nodes carry a bone map (57–75 entries, −1 unused) indexing geometry nodes;
-  weights/IDs are read from MDX at the skin header offsets (`mesh+332+12/+16`). Animation keys
-  address the same node numbers.
+  116/133 child/super pairs are clip-name disjoint (inherit). 17/133 share names; all 71 shared
+  definitions differ.
+* **Clip precedence is explicit in code.** Clip lookup `0x4822a0` searches the local array
+  (`data+0x58/count+0x5c`) in ascending order, then the linked `+0x64` chain; only the terminal
+  model tries `"default"` locally. Playback `0x485bd0` reuses an active same-name instance, then
+  searches `+0x64`, then `+0x58`; a miss returns 0 with no state change. Query `0x484d20` checks the
+  active list `+0xb0`, then `+0x64`, then `+0x58`; a miss returns duration −1.
+* **Binding is by supernode, not raw index.** Node header: type +0, supernode `+2`, node number
+  `+4`. Hierarchy clone `0x449200` copies signed16 `[src+2]` to runtime `+0x28`; binder `0x483d80`
+  compares that with animation-child `+2` (not the array index). A runtime `+0x28 == −1` skips the
+  child; no match scans the animation-child cycle and then skips the runtime child/subtree. A missing
+  animation node therefore leaves the prior local state; no bind-pose reset or name fallback at node
+  level is observed. Visual confirmation needs a synthetic child/super chain.
+* MDX skinning: skinned nodes carry a bone map (57–75 entries, −1 unused) indexing geometry nodes.
+  qbone/tbone/aux4 are per-node `qbone_ref_inv` (16 B), `tbone_ref_inv` (12 B), and
+  `boneconstantindices` (4 B) arrays (see `docs/recon/15`).
 
 ## Cameras and minimap (fields/formulas verified)
 
@@ -102,18 +112,38 @@ the GIT `CameraID` domain. **`CameraAnimation` is a clip id, not milliseconds:**
 the sole outlier is 10098 with no model. All 219 values occur on `CameraAngle=4`.
 
 `CameraAngle` branches: **6** = static GIT camera (3,036/3,036 carry IDs); **4** = camera-model
-shot (219 animations); **1/2/3** use `CamHeightOffset` into `FUN_006306e0`→`FUN_006bd260`; **0** =
-default; **5** rare. `FUN_0059eaa0` forces `CameraID=−1` for angle≠6. The exact 0–5 framing
-constants require a corrected decompile of `FUN_006306e0` (the export mis-assigns stack args).
+shot (219 animations); **1/2/3** use `CamHeightOffset`/`TarHeightOffset` into
+`FUN_006306e0`→`FUN_006bd260`; **0** falls through the default coefficient path; **5** restores the
+prior actor pair and is not a distance preset. `FUN_0059eaa0` parses CameraAngle→+8, CameraID→+0xc
+(non-6 forces −1), CamHeightOffset→+0x10, TarHeightOffset→+0x14, CameraAnimation→+0x18, CamVidEffect
+→+0x20, CamFieldOfView→+0x1c.
+
+`FUN_006306e0` is an ECX receiver plus **six** 4-byte stack args (`RET 0x18` at `0x631390`), not a
+seven-arg C function. `FUN_006bd260` (`RET 0x18` at `0x6bd976`) stores h/t/range at camera
+`+0x1c/+0x20/+0x24`. For mode `+0x38==0`, with h,t,r from those fields, Z=(0,0,1), R a +Z yaw of
++30° (or −30° for side 2; ±90° for angle 3), and N a normalize:
+
+```
+1: T = A - 0.2 N(d) + (t - 0.04 - 0.2r) Z
+   E = T - (0.5 + r) N(R d) + (h + 0.2r) Z
+2: D=|B-A|; A'=A-0.1DZ; B'=B-0.05DZ; d=A'-B'; T=B'+0.3d+tZ
+   E = T - 0.8 R d - 0.15 N(R d) + h Z
+3: D=|B-A|; d=A-B; T=B+0.5d+(t-0.2D)Z
+   E = T - 1.5 R d + (h+0.3D) Z
+```
+
+Constants are at `0x6bb861–0x6bb90c`; position math at `0x6bc090–0x6bc545`. Coincident anchors set
+the close-up flag `+0x34` and replace B by `A+(1.5,1.5,0.1)`. The meaning of mode `+0x38` and the
+full obstruction policy remain open; angle 0 is caller/state-dependent.
 
 ## Still open
 
-* `CameraAngle` 0–5 framing constants (branch structure verified; corrected `FUN_006306e0`
-  decompile required).
-* Supermodel nearest-override **engine order** (86/86 shared definitions differ; nearest-wins is
-  data-supported; raw-index remap is impossible, name remap is required). Candidates are vtable
-  `+0x10c` (`GetNodeByName`) and `+0x1c` (`PlayAnimation` by name); a runtime trace or corrected
-  model-class decompile is needed.
+* Camera mode `+0x38` semantics and the full obstruction policy; angle-0 behavior is
+  caller/state-dependent. Dynamic camera matrices are still needed to compare the algebra.
+* Supermodel visual behavior needs a synthetic child/super chain with duplicate, ancestor-only and
+  missing clips; the code paths and supernode binding are verified, but visual output is not.
+* qbone/tbone/aux4 CPU consumers are mapped; the GPU/aux4 consumer and relocation routine remain
+  open (`docs/recon/15`).
 * `MapResX` role and minimap texture semantics (inferred).
 * Particle/light/animation-node controller types (36/76/80/84/88/100/120/124/132/176/216/224/232/
   236/240/284/380/392) are catalogued but not needed for skeletal pose; type 132 is a FrameEnd cue.

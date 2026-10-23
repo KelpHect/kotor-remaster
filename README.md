@@ -48,8 +48,8 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   (`docs/recon/15`).
 - Animation/camera: type 8 position is additive to bind, type 20 orientation is absolute, no NaN
   sentinel; `WOK.position` is room walkmesh node 545 translation (453/453 bit-exact); DLG
-  `CameraAnimation` = `1200+(N−1)` → `cutNNNw`; supermodel raw-index remap is impossible, name
-  remap required (`docs/recon/12`).
+  `CameraAnimation` = `1200+(N−1)` → `cutNNNw`; `CameraAngle` ABI/framing decoded; supermodel
+  precedence and supernode binding verified; qbone/tbone/aux4 identities decoded (`docs/recon/12`, `15`).
 - Engine scaffold: C++23 + SDL3 + Vulkan 1.4 (1.3 floor) + OpenGL 4.5 + ImGui builds from
   `engine/` with `/W4 /WX`; Vulkan and OpenGL both run 120 frames, headless CTest 2/2. This is a
   clear/ImGui presentation scaffold, not a renderer yet (`engine/docs/BUILD.md`).

@@ -52,6 +52,14 @@ next block = end of previous pad (== next mesh header's +324)
   `+372` 12 B/node tbone; `+384` 4 B/node aux4; `+396` u16[B] node-number bone list. Weights sum to
   1 and bone ids are integral; 0 bad weights/bones. A `c_bantha` vertex was reconstructed 64/64
   bytes and resolved to `BTShoulders`/`BTRFUpperleg`.
+* **Engine identities (verified):** `0x46a2f0` binds `"qbone_ref_inv"`→data-header `+0x1b8`
+  (16 B), `"tbone_ref_inv"`→`+0x1c4` (12 B), `"boneconstantindices"`→`+0x1d0` (4 B). File-header
+  words are offsets relative to byte 12; runtime `+0x1b8/+0x1c4/+0x1d0` are heap pointers with
+  used/capacity companions. CPU skin `0x487570` uses the inline bone list + node2bone map, while
+  `0x48a0d0` and palettes `0x48a520/0x48c650/0x48d040` consume qbone/tbone (T += R(Q)·tbone,
+  Q *= qbone). A secondary u16 bone-id index path exists at `0x487b04`; its reachability is open.
+  The GPU bone-constant consumer and relocation routine are not yet identified; do not call aux4
+  unused.
 * Groups: `+176` counts (= fc·3), `+188` offsets, `+200` runtime pool handles; the old “unknown
   second u32” is handle[0] (`handles_ptr == offsets_ptr + 4` in 76,703/76,703). Group count is
   **1 in every shipped mesh**; multi-group addressing has no shipped data.
@@ -75,8 +83,9 @@ next block = end of previous pad (== next mesh header's +324)
 
 ## Remaining semantic questions
 
-1. **qbone/tbone/aux4 consumer semantics** — layouts and per-node arrays are verified; how the
-   engine consumes qbone/tbone and what aux4 contains requires engine code or a runtime trace.
+1. **GPU skin consumer / relocation** — CPU qbone/tbone paths and `aux4 =
+   boneconstantindices` are verified; the GPU bone-constant consumer, the file→runtime relocation
+   routine, and the secondary u16 index path's reachability remain open.
 2. **Multi-group addressing** — no shipped mesh has group count > 1; a synthetic asset would be
    needed. The engine loop is structurally N-group capable.
 3. **Bbox expansion source** — exporter/scene-time provenance; values are known, origin is not in the
