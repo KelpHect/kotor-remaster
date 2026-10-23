@@ -42,8 +42,9 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
 - Function classification: 9,407 items all high-confidence — 8,549 engine, 417 CRT, 350 external
   imports, 61 thunks, 30 compiler helpers, 0 unknown; 48/48 checks (`docs/recon/14`). Bearing
   `R_z(+B)` is proven in engine code at `0x50a0e0`/`0x50a7b0` → `0x4ac960` → `0x5853c0`.
-- MDX layout decoded: no file header; blocks addressed by MDL `+324`; strides 24/32/40; 634 sampled
-  blocks verified; 14/14 room walkmeshes match WOK (`docs/recon/15`).
+- MDX layout decoded across the full corpus: 2,832/2,832 models, 76,703 blocks, 489,549,652 bytes
+  exactly assigned to payload/sentinel/pad; stride formula and 968 skin blocks verified
+  (`docs/recon/15`).
 - Animation/camera: type 8 position is additive to bind, type 20 orientation is absolute, no NaN
   sentinel; `WOK.position` is room walkmesh node 545 translation (453/453 bit-exact); GIT/ARE/DLG
   camera and minimap formulas decoded (`docs/recon/12`).

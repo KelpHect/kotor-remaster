@@ -50,6 +50,9 @@ turn limit; their datasets were complete enough for the integrator to finish the
   engine code; doors select models by UTD `GenericType`; `WOK.position` is the room walkmesh node
   (545) local translation; camera `forward = R_yaw·(0, sin Pitch, −cos Pitch)`; ARE minimap affine
   and DLG camera models are decoded; `NorthAxis` is a UI selector, not part of the affine.
+* **MDX**: full shipped corpus accounted — 2,832/2,832 models, 76,703 blocks, 489,549,652 bytes
+  exactly split into payload/sentinel/pad; stride formula, skin blocks, and group handles verified
+  (`docs/recon/15`).
 * **Ghidra**: dispatcher at `0x0052c0d0`; `0x0054c960` allocates the 772-slot table; service vtable
   `0x7450e4`; `-2002` null/out-of-range result.
 

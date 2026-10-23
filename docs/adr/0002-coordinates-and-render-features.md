@@ -157,8 +157,9 @@ change simulation state.
 2. Animation payloads are decoded: type 8 position is additive to bind, type 20 orientation is
    absolute, there is no NaN sentinel (0x7fdffbff is identity). Supermodel inheritance is verified
    for disjoint clips; nearest override order and inherited-clip name-vs-index remap remain open.
-   The MDX block layout is decoded (`docs/recon/15`); trailing LOD/skin data and multi-group
-   descriptors are in a closing pass.
+   The MDX layout is decoded across the full shipped corpus (2,832 pairs, 76,703 blocks, every byte
+   assigned; `docs/recon/15`). Open: qbone/tbone/aux4 consumer semantics, multi-group addressing
+   (no shipped data), and the source of 108 bbox expansion vectors.
 3. Camera FOV/pitch are degrees and the GIT view basis is verified; aspect/near/far are absent
    (engine defaults). Vulkan projection/viewport Y-flip and depth range still need a rendered
    landmark in the new renderer.

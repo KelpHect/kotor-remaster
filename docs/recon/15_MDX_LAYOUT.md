@@ -1,82 +1,89 @@
-# MDX vertex/index layout (lane 10 continuation)
+# MDX layout and full-corpus coverage (lane 10 continuation)
 
-Status: **verified on shipped bytes.** The MDX block layout, vertex strides, face records, duplicate
-index buffer, bbox rule, and walkmesh correspondence are decoded. A few data quirks remain open.
-Static parsing only: no game run, no Ghidra, no install writes.
+Status: **complete for the shipped corpus.** Every MDX byte reachable from `chitin.key` and the
+module archives is assigned to a decoded field, sentinel, or allocator pad. Three semantic
+questions remain and are explicitly labeled; none is a byte-accounting gap.
+
+## Coverage
+
+| metric | value |
+|---|---:|
+| chitin.key MDL/MDX pairs | **2,832 / 2,832** (0 parse errors) |
+| additional unique pairs in RIM/ERF | 0 (212 resrefs all already in KEY) |
+| MDL bytes / MDX bytes | 477,561,259 / 489,549,652 |
+| MDX payload / sentinel / pad | 486,271,196 / 2,886,776 / 391,680 |
+| payload + sentinel + pad | **489,549,652 (exact)** |
+| mesh nodes / valid blocks | 76,782 / 76,703 |
+| vertices / MDX-backed faces | 11,648,777 / 5,718,604 |
+| empty/procedural meshes | 79 (64 saber + 15 placeholders) |
+| files with accounting mismatch | **0** |
+
+The 528-file sample is explained by the same rules; full counts are 5.4× the sample. Every block is
+contiguous, the first starts at 0, and the last tail ends exactly at EOF.
 
 ## Layout
 
-MDX has **no file header**. Each mesh/walkmesh block is addressed by the MDL mesh header's `+324`
-u32 (byte offset into the MDX). Blocks appear in ascending `+324` order, first at 0.
-
 ```
-payload = vertex_count(+304 & 0xFFFF) * stride(+252) bytes
-vertex  = position f32[3] @ +0
-          normal   f32[3] @ +12
-          uv0      f32[2] @ +24   (stride 32 and 40)
-          uv1      f32[2] @ +32   (stride 40 only)
-tail    = one sentinel record of `stride` bytes (f32 1e7,1e7,1e7, then zeros)
-block   = align16(payload + stride); next block starts there
+block      = vc * stride payload
+           + one stride-byte sentinel
+           + 0..12 bytes allocator pad
+next block = end of previous pad (== next mesh header's +324)
 ```
 
-Strides observed: 32 B (position, normal, uv0), 40 B (adds uv1/lightmap), 24 B (position, normal
-only). One empty `stride=0xFFFFFFFF, count=0` placeholder exists in `m01aa_03a`.
+* Sentinel: static `1e7,1e7,1e7` then zeros; skin `1e6,1e6,1e6`, zeros, `1.0` in the weights slot,
+  then zeros. 0 bad sentinels / 76,703. Pad is allocator slack (0/4/8/12 B); 15,666 blocks carry
+  nonzero stale bytes, the only bytes without a semantic invariant.
+* **Stride = 24 + 8·textureCount + 32·skin + 36·TBN**, with `textureCount = mesh+304 >> 16`;
+  verified for all 76,703 blocks (79 empty/procedural special cases).
 
-Faces live in the MDL, not the MDX. Each mesh header has `+8` (offset relative to file+12) and
-`+12` (count) for 32-byte face records:
+| stride | count | fields |
+|---:|---:|---|
+| 24 | 13,467 | pos, normal |
+| 32 | 20,419 | + uv0 |
+| 40 | 37,011 | + uv0, uv1 |
+| 60 | 23 | + T,B,N (default basis) |
+| 64 | 892 | skin: uv0, weights 4f, bone ids 4f |
+| 68 | 286 | + uv0, T,B,N |
+| 76 | 4,529 | + uv0, uv1, T,B,N |
+| 100 | 76 | skin: uv0, T,B,N, weights, bone ids |
 
-| offset | type | meaning |
-|---|---|---|
-| +0 | 3f | unit face normal |
-| +12 | f32 | negated plane distance (`n·v0 + value = 0`) |
-| +16 | u32 | material id |
-| +20 | 3×u16 | adjacency face indices (`0xFFFF` = none) |
-| +26 | 3×u16 | vertex indices into the MDX block |
+* 968 skin blocks (B = 1..17), 386,120 vertices. `mesh+344/+348` are MDX offsets; `+352` is a
+  node→bone f32 map (node-number order, −1 unused); `+356` node count; `+360` 16 B/node qbone;
+  `+372` 12 B/node tbone; `+384` 4 B/node aux4; `+396` u16[B] node-number bone list. Weights sum to
+  1 and bone ids are integral; 0 bad weights/bones. A `c_bantha` vertex was reconstructed 64/64
+  bytes and resolved to `BTShoulders`/`BTRFUpperleg`.
+* Groups: `+176` counts (= fc·3), `+188` offsets, `+200` runtime pool handles; the old “unknown
+  second u32” is handle[0] (`handles_ptr == offsets_ptr + 4` in 76,703/76,703). Group count is
+  **1 in every shipped mesh**; multi-group addressing has no shipped data.
 
-The `+188` descriptor points to a second, compact index buffer: its first u32 locates
-`descriptor+8`, which holds `face_count` triples of u16. In **634/634** sampled meshes this buffer is
-byte-identical in order to the face records' indices. The descriptor's second u32 is unexplained.
-There is no index block in the MDX itself.
+## Exception classification
 
-## Verified checks
+* **Bbox**: 76,595/76,703 = min/max(vertices ∪ origin) within 1e-5. The 108 exceptions are a
+  one-sided expansion by a vector T (0.004–87.7 m) that matches no node/parent/world/animation
+  transform; it is exporter/scene-time data. Exact offsets/sizes/values are recorded; the source is
+  **open/irreducible from the file**.
+* **Winding**: 389 faces / 19 blocks across mirrored door/panel/track surfaces, wing membranes, the
+  `c_notready` test asset, hoses, turret/loft pieces, droid hands, an effect quad, one room floor,
+  and a dev cone. Consistent with mirrored/double-sided surfaces; render side is not decidable
+  statically.
+* **Plane residual**: 13,190 faces / 40 blocks. 20 blocks (504 faces) are float32 precision at
+  2,244–10,025 m; 20 blocks (12,686 faces) are stale/deformed face records (normals still aligned,
+  plane constant does not match the only stored position set). Irreducible from the shipped bytes.
+* **Zero normals**: 13,018 verts / 3,083 blocks; 87.3% on foliage/billboard textures; 155 are
+  unreferenced. No fallback rule is stored; unlit/alpha/collision surfaces is inferred.
+* Degenerate 40/15; 12 UV sentinels `0xFEFFEEEE`; 64 saber + 15 empty placeholders.
 
-Sample: 15 `m01aa_*` rooms plus `mydoor`, `plc_chair2`, `plc_metalbox`, `c_drdastro`, `pmbam`,
-`n_commm` — **634 mesh blocks, 182,150 vertices, 84,707 faces**. MDX sizes match the MDL field at
-`+188` in every file.
+## Remaining semantic questions
 
-* Block addressing accounts for every byte in 19/21 files (`pmbam`/`n_commm` have trailing data).
-* Every face index is below the vertex count and max index = count−1; zero degenerate triangles.
-* Face plane `n·v0 + value < 3e-7` on 632/634 blocks (the two exceptions are `mydoor` panels).
-* Bbox equals vertex min/max plus the node-local origin; 633/634 match to < 2e-5.
-* Winding: 84,638/84,707 faces have `cross(v1−v0,v2−v0)·normal > 0`; all rooms, chair, metalbox, and
-  droid are 100% positive (RH, CCW front).
-* Walkmesh (node type 545) uses the same layout and is node-local model space. For 14/14 rooms with
-  a 545 node, the MDX vertex set matches the WOK set 1:1 (unique counts equal); max nearest distance
-  is 8.3e-5 m for `01a` and ≤ 4.90 mm for all 14 (12/14 < 1 mm). World placement is
-  `LYT origin + node chain`, with no WOK `position` term.
-
-## Inferred
-
-* Positions/normals are node-local; the node chain supplies world placement.
-* `uv0` is the diffuse UV (tiles outside [0,1]); `uv1` is the lightmap UV (0.0039–0.9961).
-* The 1e7 sentinel plus 16-byte alignment is an exporter allocation artifact.
-* `+188` is a per-vertex-group descriptor; count is 1 in every sampled static mesh, so multi-group
-  addressing is untested.
-
-## Open
-
-1. `pmbam` (75,937 B) and `n_commm` (66,913 B) have MDX data after the last addressed block; all
-   trimesh headers are accounted for, so it is likely LOD/skin/animation payload, not a missed node.
-2. `mydoor` two 256-face panels (ni 2/8) have 37/32 reversed faces and a plane residual up to
-   1.186 m; likely a mirrored/animated pair, rendering side not decidable statically.
-3. `m01aa_06a` ni 11 (`Object978`) has a header bbox larger than its 64 vertices; whether it is a
-   union/skin bound is unknown.
-4. 74/182,150 vertex normals are zero (rooms plus `mydoor`), presumably unlit/alpha surfaces; no
-   fallback rule is specified.
-5. Multi-group descriptor layout (`+184`/`+188`, count > 1) is untested; the second u32 is unexplained.
-6. `m01aa_07b` has no 545 walkmesh node, so its WOK could not be cross-checked.
+1. **qbone/tbone/aux4 consumer semantics** — layouts and per-node arrays are verified; how the
+   engine consumes qbone/tbone and what aux4 contains requires engine code or a runtime trace.
+2. **Multi-group addressing** — no shipped mesh has group count > 1; a synthetic asset would be
+   needed. The engine loop is structurally N-group capable.
+3. **Bbox expansion source** — exporter/scene-time provenance; values are known, origin is not in the
+   shipped file.
 
 ## Evidence
 
-`artifacts/lanes/10-coords-open/cont/mdx/` (untracked): `summary.md`, `mdx_mdl.py` (clean-room
-reader/validator), `run_sample.py`, `mdx_report.json`, annotated dumps, and read-only MDX copies.
+`artifacts/lanes/10-coords-open/cont/mdx2/` (untracked): `summary.md`, `mdx2_mdl.py`, `full_scan.py`,
+`final_stats.py`, `full/full_scan.json`, `full/final_stats.json`, `coverage_v2.json`, probes.
+Earlier sample: `cont/mdx/` (634 blocks, 14/14 WOK walkmesh match).
