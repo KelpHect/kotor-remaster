@@ -57,6 +57,7 @@ area and gameplay parity belong to P4/P5, not Sprint 0.
 |---|---|---|
 | 01-manifest | complete | 15,380 files / 3,602,889,094 B hashed; manifest SHA-256 recorded; install unchanged |
 | 02-2da | complete | 209/209 tables, 29 tests; `tools/formats/two_da.py`; `docs/recon/05_2DA.md` |
+| 03-gff | complete | 11,143/11,143 payloads, 1,854,982 values, 0 intrinsic failures; parser patch + 30 tests; `docs/recon/07_GFF_CORPUS.md` |
 | 07-ghidra-rename | complete | 125/125 renamed, 565/565 targets named, 772/772 actions, baseline retained; `artifacts/lanes/07-ghidra-rename/` |
 
 ## Out of scope for Sprint 0

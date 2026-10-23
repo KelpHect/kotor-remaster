@@ -28,6 +28,9 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   creature forward vectors, radian Bearing, world-space WOK, and the LYT/MDL transform chain;
   Bearing sign, MDX blocks, camera height, and animation overrides remain open
   (`docs/recon/03`, `docs/recon/04`).
+- GFF corpus validated: 11,143/11,143 shipped payloads parse, 1,854,982/1,854,982 values resolve,
+  zero intrinsic failures; the struct-slot packing invariant was disproved by shipped files and
+  replaced with disjoint-range checks (`docs/recon/07`, 30 regression tests).
 - Architecture decisions for the runtime/renderer, coordinate + map-compilation contract, and the
   user-supplied-install distribution model.
 
@@ -49,6 +52,7 @@ Start with:
 - [`docs/recon/04_GEOMETRY_COORDINATES.md`](docs/recon/04_GEOMETRY_COORDINATES.md) — IFO/WOK/LYT/MDL coordinate contract and fixtures
 - [`docs/recon/05_2DA.md`](docs/recon/05_2DA.md) — 209-table 2DA coverage
 - [`docs/recon/06_MANIFEST.md`](docs/recon/06_MANIFEST.md) — complete install manifest summary
+- [`docs/recon/07_GFF_CORPUS.md`](docs/recon/07_GFF_CORPUS.md) — all-resource GFF validation and corrected invariants
 - [`docs/adr/0001-runtime-and-renderer.md`](docs/adr/0001-runtime-and-renderer.md)
 - [`docs/adr/0002-coordinates-and-render-features.md`](docs/adr/0002-coordinates-and-render-features.md)
 - [`docs/adr/0003-distribution-and-install-model.md`](docs/adr/0003-distribution-and-install-model.md)

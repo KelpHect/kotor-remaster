@@ -18,6 +18,20 @@ Wire layout implemented (see docs/recon/03_GFF_COORDINATES.md for evidence):
   list    : at list-data[offset]: u32 count, then count x u32 struct index
 
 Read-only: opens paths 'rb' and never writes to them.
+
+LANE 03 PATCH (proposal only; public tools/formats/gff.py is unchanged):
+  * value(): explicit field-data bounds checks for types 6/7/9/10/11/12/13/16/17
+    with byte offsets in the error text instead of bare struct.error.
+  * CExoLocString: validates count/substring lengths and KotOR's
+    total == 8 + substring-bytes convention.
+  * list_of(): clean bounds errors.
+  * check(): field-index slots need only be disjoint and in range. Shipped
+    KotOR files order slots by creation, not struct index (root often last),
+    and may carry stale unreferenced slot entries, so the old exact
+    "packed in struct order / ends at field_rows" rule is a false positive.
+  * check(): added struct->field->label contiguity checks.
+  * check_values(): opt-in value resolution with per-field offsets.
+  * as_pairs(): preserves duplicate record labels (shipped DLG quirk).
 """
 from __future__ import annotations
 
@@ -130,6 +144,13 @@ class Gff:
         raw = self.buf[off:off + maxlen].split(b"\0")[0]
         return raw.decode("latin-1")
 
+    def _need(self, off, length, what):
+        if off < 0 or length < 0 or off + length > len(self.fdata):
+            raise ValueError(
+                f"{what}: needs {length} bytes at field-data+{off}, "
+                f"field-data length {len(self.fdata)}")
+        return self.fdata
+
     # ---------- value resolution ----------
     def value(self, f):
         t, d = f.type, f.data
@@ -146,40 +167,62 @@ class Gff:
         if t == 5:
             return struct.unpack("<i", struct.pack("<I", d))[0]
         if t == 6:
+            self._need(d, 8, "uint64")
             return struct.unpack_from("<Q", self.fdata, d)[0]
         if t == 7:
+            self._need(d, 8, "int64")
             return struct.unpack_from("<q", self.fdata, d)[0]
         if t == 8:
             return struct.unpack("<f", struct.pack("<I", d))[0]
         if t == 9:
+            self._need(d, 8, "double")
             return struct.unpack_from("<d", self.fdata, d)[0]
-        if t == 10:  # CExoString: u32 length incl. NUL, bytes
+        if t == 10:  # CExoString: u32 byte count, no terminator required
+            self._need(d, 4, "string length")
             n = struct.unpack_from("<I", self.fdata, d)[0]
+            self._need(d + 4, n, "string bytes")
             return self.fdata[d + 4:d + 4 + n].split(b"\0")[0].decode("latin-1")
-        if t == 11:  # ResRef: u8 length, bytes
+        if t == 11:  # ResRef: u8 byte count, no terminator required
+            self._need(d, 1, "resref length")
             n = self.fdata[d]
+            self._need(d + 1, n, "resref bytes")
             return self.fdata[d + 1:d + 1 + n].decode("latin-1")
         if t == 12:  # CExoLocString
+            self._need(d, 12, "locstring header")
             total, strref, count = struct.unpack_from("<3I", self.fdata, d)
-            out = {"strref": strref, "substrings": []}
+            if count > (len(self.fdata) - (d + 12)) // 8:
+                raise ValueError(f"locstring count {count} overruns field data")
+            out = {"total": total, "strref": strref, "substrings": []}
             p = d + 12
-            for _ in range(count):
+            for i in range(count):
+                self._need(p, 8, f"locstring substring {i} header")
                 lang, n = struct.unpack_from("<2I", self.fdata, p)
                 p += 8
+                self._need(p, n, f"locstring substring {i} bytes")
                 out["substrings"].append(
                     (lang, self.fdata[p:p + n].split(b"\0")[0].decode("latin-1")))
                 p += n
+            # KotOR writes total = 8 + substring bytes (it excludes itself).
+            actual = 8 + (p - (d + 12))
+            if total != actual:
+                raise ValueError(
+                    f"locstring total {total} != expected {actual} "
+                    f"(8 + substring bytes)")
             return out
         if t == 13:  # binary: u32 length, bytes
+            self._need(d, 4, "binary length")
             n = struct.unpack_from("<I", self.fdata, d)[0]
+            self._need(d + 4, n, "binary bytes")
             return self.fdata[d + 4:d + 4 + n]
         if t == 14:
             return {"__struct__": d}
         if t == 15:
             return {"__list__": d}
         if t == 16:
+            self._need(d, 16, "vector4")
             return struct.unpack_from("<4f", self.fdata, d)
         if t == 17:
+            self._need(d, 12, "vector3")
             return struct.unpack_from("<3f", self.fdata, d)
         if t == 18:
             return d
@@ -201,13 +244,21 @@ class Gff:
             out[f.label] = v
         return out
 
+    def as_pairs(self, sindex):
+        """Label/value pairs preserving duplicate record labels (DLG quirk)."""
+        return [(f.label, self.value(f)) for f in self.fields_of(sindex)]
+
     def list_of(self, f):
         """Return (count, struct_indices) for a LIST field."""
         if f.type != 15:
             raise ValueError(f"{f.label} is not a list")
         off = f.data
+        if off < 0 or off + 4 > len(self.lidx):
+            raise ValueError(f"{f.label}: list offset {off} outside list-index")
         n = struct.unpack_from("<I", self.lidx, off)[0]
-        idx = list(struct.unpack_from("<%dI" % n, self.lidx, off + 4))
+        if off + 4 + 4 * n > len(self.lidx):
+            raise ValueError(f"{f.label}: {n} entries overrun list-index")
+        idx = list(struct.unpack_from("<%dI" % n, self.lidx, off + 4)) if n else []
         return n, idx
 
     def describe(self):
@@ -229,18 +280,36 @@ def check(g):
     if any(c != 1 for c in refs):
         errs.append("field rows not a permutation: "
                     + str([(i, c) for i, c in enumerate(refs) if c != 1][:8]))
-    # 2. multi-field struct slots are packed in struct order; single-field
-    #    structs use a direct field row and consume no field-index slot.
-    slot = 0
+    # 2. multi-field structs own disjoint field-index slot ranges within the
+    #    table. Shipped KotOR files order ranges by creation, not struct index
+    #    (the root is often written last) and may contain stale unreferenced
+    #    entries, so packing/order/full-coverage are NOT invariants.
+    ranges = []
     for s in g.structs:
         if s.single or s.count == 0:
             continue
-        if s.slot != slot:
-            errs.append(f"struct {s.index} slot {s.slot} != expected {slot}")
-        slot += s.count
-    if slot != len(g.field_rows):
-        errs.append(f"struct slots end {slot} != field-index entries {len(g.field_rows)}")
-    # 3. sections are contiguous and in header order
+        if s.slot is None or s.slot * 4 + s.count * 4 > g.fidx_len:
+            errs.append(f"struct {s.index} slot range {s.slot}+{s.count} "
+                        f"outside field-index bytes {g.fidx_len}")
+            continue
+        ranges.append((s.slot, s.slot + s.count, s.index))
+    ranges.sort()
+    pos = 0
+    for a, z, si in ranges:
+        if a < pos:
+            errs.append(f"struct {si} slots {a}:{z} overlap previous range")
+        pos = max(pos, z)
+    # 3. tables are contiguous and in header order (header is 56 bytes).
+    if g.struct_off != 56:
+        errs.append(f"struct table starts at {g.struct_off}, expected 56")
+    if g.field_off != g.struct_off + g.struct_cnt * 12:
+        errs.append("struct table does not end at field table start")
+    if g.label_off != g.field_off + g.field_cnt * 12:
+        errs.append("field table does not end at label table start")
+    if g.fidx_len % 4:
+        errs.append(f"field-index byte length {g.fidx_len} not a multiple of 4")
+    if g.lidx_len % 4:
+        errs.append(f"list-index byte length {g.lidx_len} not a multiple of 4")
     if g.label_off + g.label_cnt * 16 != g.fdata_off:
         errs.append("label section does not end at field-data start")
     if g.fdata_off + g.fdata_len != g.fidx_off:
@@ -271,6 +340,24 @@ def check(g):
         if b0 < a1:
             errs.append(f"list ranges overlap: {la} {a0}:{a1} vs {lb} {b0}:{b1}")
     return errs
+
+
+def check_values(g):
+    """Resolve every field value; return [(offset, message)] with file offsets."""
+    out = []
+    offset_types = {6, 7, 9, 10, 11, 12, 13, 16, 17}
+    for s in g.structs:
+        for f in g.fields_of(s.index):
+            try:
+                g.value(f)
+                if f.type == 15:
+                    g.list_of(f)
+            except Exception as exc:
+                where = (g.fdata_off + f.data if f.type in offset_types
+                         else g.field_off + f.row * 12)
+                out.append((where, f"struct {s.index} {f.label}: "
+                                  f"{type(exc).__name__}: {exc}"))
+    return out
 
 
 def fmt(v):
