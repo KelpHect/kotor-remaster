@@ -214,7 +214,8 @@ templates/scripts; TSLPatcher-style appends preserve indices, whole-file replace
 The engine performs five first-match-wins passes over key tables (it does not branch by type):
 
 1. Directories: `Override/`, plus top-level `streammusic/`, `streamwaves/`, `movies/`.
-2. ERFs tagged 1: `patch.erf`, `Override/textures.erf`.
+2. ERFs tagged 1: `Override/textures.erf`, `patch.erf` (patch is loaded second and searched first;
+   measured).
 3. RIMs: active module `_a.rim`, `_adx.rim`, `_s.rim`; `rims/global.rim`;
    `mainmenu.rim`/`chargen.rim` while active.
 4. ERFs tagged 2: module `.mod`, saved module state, `lips/*.mod`, `players`, `TexturePacks`.

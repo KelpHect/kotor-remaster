@@ -152,8 +152,9 @@ change simulation state.
    cameras. Door-facing and WOK-position placement are closed; the minimap transform and DLG
    cameras remain open; ARE `NorthAxis` is absent in all 106 scanned areas.
 2. Animation/supermodel header structure is surveyed (2,832 MDLs; 375 supermodels; identity bind
-   roots; name-based inheritance/override inferred). Animation controller payloads, the first-key
-   sentinel, MDX-backed tracks, and the MDX block layout are still open.
+   roots; name-based inheritance/override inferred). The MDX block layout is decoded
+   (`docs/recon/15`). Animation controller payloads, the first-key sentinel, MDX-backed tracks, and
+   trailing LOD/skin data remain open.
 3. Camera FOV/pitch are degrees; aspect/near/far and DLG/GIT camera transforms remain open. Vulkan
    projection/viewport Y-flip and depth range still need a rendered landmark in the new renderer.
 4. Current FSR SDK version/license and RT capability baseline for the target hardware tiers.

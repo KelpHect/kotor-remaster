@@ -450,15 +450,16 @@ class Vfs:
         p1.notes.append("Override first; first-launch WAV quirk promotes streamwaves for type 4")
         self.passes.append(p1)
 
-        # Pass 2: ERFs tagged 1.  textures.erf is added after patch.erf, so it
-        # is searched first under the last-added-first rule.
+        # Pass 2: ERFs tagged 1.  Measured mount order is textures.erf first,
+        # patch.erf second, so patch.erf is searched first under the
+        # last-added-first rule.
         p2 = Pass(2, PASS_NAMES[2])
-        self._add_erf(p2, "textures.erf", "Override/textures.erf")
         self._add_erf(p2, "patch.erf", "patch.erf")
+        self._add_erf(p2, "textures.erf", "Override/textures.erf")
         for rel in self.extra_erfs:
             if rel.lower().endswith("textures.erf"):
                 self._add_erf(p2, Path(rel).name, rel)
-        p2.notes.append("Override/textures.erf searched before patch.erf (last-added-first)")
+        p2.notes.append("patch.erf searched before Override/textures.erf (last-added-first; measured)")
         self.passes.append(p2)
 
         # Pass 3: RIMs.  Search order assumes global/menu are mounted first and

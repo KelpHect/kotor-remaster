@@ -1,6 +1,6 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **foundation complete (Sprint 0)** — there is no playable engine build yet. This repository
+Status: **P0 foundation complete** — there is no playable engine build yet. This repository
 contains the clean-room plan, reverse-engineering methodology, evidence tooling, and architecture
 decisions for a new, data-driven runtime for Star Wars: Knights of the Old Republic (2003).
 
@@ -41,6 +41,8 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: 9,407 items labeled — 8,527 engine, 417 CRT, 350 external imports,
   61 thunks, 30 compiler helpers, 22 unknown; 16/16 invariants pass (`docs/recon/14`).
+- MDX layout decoded: no file header; blocks addressed by MDL `+324`; strides 24/32/40; 634 sampled
+  blocks verified; 14/14 room walkmeshes match WOK (`docs/recon/15`).
 - Engine scaffold: C++23 + SDL3 + Vulkan 1.4 (1.3 floor) + OpenGL 4.5 + ImGui builds from
   `engine/` with `/W4 /WX`; Vulkan and OpenGL both run 120 frames, headless CTest 2/2. This is a
   clear/ImGui presentation scaffold, not a renderer yet (`engine/docs/BUILD.md`).
@@ -63,6 +65,7 @@ Start with:
 - [`engine/docs/BUILD.md`](engine/docs/BUILD.md) — build the engine scaffold and run its smoke tests
 - [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) — program lanes, phases, gates, verification
 - [`docs/SPRINT0_REPORT.md`](docs/SPRINT0_REPORT.md) — Sprint 0 exit report, lane results, and gaps
+- [`docs/P0_REPORT.md`](docs/P0_REPORT.md) — P0 foundation exit report and Gate G0
 - [`docs/SPRINT0.md`](docs/SPRINT0.md) — current foundation sprint exit criteria and lane board
 - [`docs/recon/01_ARTIFACTS.md`](docs/recon/01_ARTIFACTS.md) — verified artifact/content inventory
 - [`docs/recon/02_TECHNICAL_NOTES.md`](docs/recon/02_TECHNICAL_NOTES.md) — format, VM, VFS, rules notes
@@ -78,6 +81,7 @@ Start with:
 - [`docs/recon/12_COORDS_OPEN_ITEMS.md`](docs/recon/12_COORDS_OPEN_ITEMS.md) — corpus-scale Bearing, camera, ARE NorthAxis, and remaining open items
 - [`docs/recon/13_P0_INSTALL.md`](docs/recon/13_P0_INSTALL.md) — install validation, external cache profile, and the config-restore guard
 - [`docs/recon/14_P0_FUNCTION_CLASSIFICATION.md`](docs/recon/14_P0_FUNCTION_CLASSIFICATION.md) — engine/CRT/middleware/thunk classification of 9,407 items
+- [`docs/recon/15_MDX_LAYOUT.md`](docs/recon/15_MDX_LAYOUT.md) — verified MDX block/vertex/face layout and walkmesh correspondence
 - [`docs/adr/0001-runtime-and-renderer.md`](docs/adr/0001-runtime-and-renderer.md)
 - [`docs/adr/0002-coordinates-and-render-features.md`](docs/adr/0002-coordinates-and-render-features.md)
 - [`docs/adr/0003-distribution-and-install-model.md`](docs/adr/0003-distribution-and-install-model.md)

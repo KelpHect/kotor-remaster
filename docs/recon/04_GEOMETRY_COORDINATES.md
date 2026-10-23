@@ -62,7 +62,8 @@ animation_count 1 but no anim nodes; node transforms are the static bind pose. *
 dummy** (−5,−5,−1)..(5,5,10) for every model checked — never use it. Trimesh bboxes are node-local (floor
 and ceiling meshes land on WOK z=−1.275/1.700 after node translation). Local→world:
 `world = T(room_origin)·T_node(pos)·R_node(quat)` accumulated parent→child, no scale. Door nodes verify the
-chain exactly. **MDX vertex/face block layout not decoded**; mesh vertex mapping is open.
+chain exactly. **MDX layout is decoded in `docs/recon/15_MDX_LAYOUT.md`** (no header; blocks
+addressed by MDL `+324`; strides 24/32/40; 634 sampled blocks verified).
 
 ## 5. Camera (inferred)
 
@@ -74,10 +75,11 @@ Position=ground.
 
 ## 6. Open evidence / traps
 
-1. Bearing sign/zero: needs one asymmetric Bearing oracle or the engine yaw function.
-2. MDX vertex/face blocks (rendering only).
-3. `WOK.position` / ARE `NorthAxis`; ARE Map is minimap-only.
-4. Door appearance 0 → model/DWK final facing.
+1. Bearing sign/zero: resolved; RH `R_z(+B)` is oracle-backed (`docs/recon/12`).
+2. MDX vertex/face blocks: decoded (`docs/recon/15`); animation controller payloads remain open.
+3. `WOK.position` is unused for placement and ARE `NorthAxis` is absent (`docs/recon/12`); ARE Map
+   minimap semantics remain open.
+4. Door appearance → model/facing: resolved via UTD `GenericType` → `genericdoors.2da` (`docs/recon/12`).
 5. Camera `Height`; animation/supermodel bind-pose overrides.
 6. `gff.py` single-field bug; use `c2_gff.py`.
 7. **Traps:** double LYT origin on WOK; dummy MDL bbox; Bearing as degrees/quat; hook facing instead of
@@ -107,6 +109,6 @@ artifacts, not part of the public toolset.
 
 ## 8. Remaining evidence
 
-MDX vertex/face block layout; animation and supermodel bind-pose overrides; an asymmetric
-Bearing-sign/zero oracle; camera `Height` semantics; door appearance → final facing; `WOK.position`
-and ARE `NorthAxis`/minimap transform.
+Animation controller keyframe payloads and supermodel override mechanics (header survey in
+`docs/recon/12`); minimap/DLG camera transforms; camera aspect/near/far; MDX trailing LOD/skin data
+and multi-group descriptors (`docs/recon/15`).

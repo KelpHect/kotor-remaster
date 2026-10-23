@@ -62,12 +62,12 @@ area and gameplay parity belong to P4/P5, not Sprint 0.
 | 01-manifest | complete | 15,380 files / 3,602,889,094 B hashed; manifest SHA-256 recorded; install unchanged |
 | 02-2da | complete | 209/209 tables, 29 tests; `tools/formats/two_da.py`; `docs/recon/05_2DA.md` |
 | 03-gff | complete | 11,143/11,143 payloads, 1,854,982 values, 0 intrinsic failures; parser patch + 30 tests; `docs/recon/07_GFF_CORPUS.md` |
-| 04-ncs | datasets complete (agent turn-limited) | 8,666 unique NCS, 8,666 valid, 285,015 ACTION ops, 0 unknown ids; 5,262/8,666 reproducible; `docs/recon/09_SCRIPTS.md` |
-| 05-save-vfs | complete | 33 tests (32 pass, 1 skipped: no real save); save reader/writer, archive readers/writers, five-pass VFS resolver; `docs/recon/10_SAVE_VFS.md` |
-| 06-dynamic | complete | five-pass order, first-hit precedence, Override shadow, and quality 2/1/0 → tpa/tpb/tpc measured in-process; `docs/recon/08_VFS_DYNAMIC.md` |
+| 04-ncs | complete | 8,666 unique NCS; 8,666/8,666 byte-identical re-encode; 285,015 ACTION ops, 0 unknown ids; 5,262 source-reproducible; `docs/recon/09_SCRIPTS.md` |
+| 05-save-vfs | complete | 33 tests (32 pass, 1 skipped: no real save); writer accepted structurally at boot; pass-2 order corrected; `docs/recon/10_SAVE_VFS.md` |
+| 06-dynamic | complete | five-pass order, first-hit/Override/quality; file+registry baseline (install read-only); fourth loader named; pass-2 duplicate measured; `docs/recon/08_VFS_DYNAMIC.md` |
 | 08-engine | complete | `engine/` promotes the scaffold; 313-step MSVC `/W4 /WX` build, CTest 2/2, Vulkan 120 frames, GL 120 frames; `engine/docs/BUILD.md` |
 | 09-geometry-preview | complete | m01aa preview: 1,365 WOK triangles, 15 doors/hooks, 77 PTH nodes, 45/45 cross-checks; `tools/geometry/`, `docs/recon/11_GEOMETRY_PREVIEW.md` |
-| 10-coords-open | data complete (agent turn-limited) | 699 doors / 312 use points / 1,099 cameras / 106 areas; Bearing convention + RH inference, camera eye model, NorthAxis absent; `docs/recon/12_COORDS_OPEN_ITEMS.md`; MDX and animation remain open |
+| 10-coords-open | complete | Bearing RH oracle (10-0), door `GenericType` selector, WOK.position unused, MDX layout 634 blocks; animation payloads open; `docs/recon/12`, `15` |
 | 07-ghidra-rename | complete | 125/125 renamed, 565/565 targets named, 772/772 actions, baseline retained; `artifacts/lanes/07-ghidra-rename/` |
 
 ## Out of scope for Sprint 0

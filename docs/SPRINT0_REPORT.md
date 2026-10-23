@@ -41,7 +41,10 @@ turn limit; their datasets were complete enough for the integrator to finish the
 * **Scripts**: all ACTION instruction ids are known; 466 of 772 actions are used; five scripts carry
   arity anomalies that must be reproduced, not “fixed”.
 * **VFS**: directories → ERF tag 1 → RIMs → ERF tag 2 → KEY/BIF, first hit wins; Override beats a
-  texture pack; `Texture Quality` 2/1/0 selects tpa/tpb/tpc, with gui always loaded.
+  texture pack; `Texture Quality` 2/1/0 selects tpa/tpb/tpc, with gui always loaded. Within pass 2,
+  `patch.erf` is searched before `Override/textures.erf` (measured with duplicate synthetic
+  archives). The game writes only its working-directory `swkotor.ini`, not the install, and no
+  KotOR registry key changes during controlled runs.
 * **Coordinates**: 1 unit = 1 m, RH Z-up; IFO entry is a ground point; WOK vertices are world-space;
   LYT origin = MDL model origin; WXYZ quaternions; Bearing is radian yaw with RH `R_z(+B)` verified
   under the use-point invariant; doors select models by UTD `GenericType`; camera position is a
@@ -52,15 +55,17 @@ turn limit; their datasets were complete enough for the integrator to finish the
 
 ## Known gaps carried into P1
 
-1. **MDX vertex/face blocks** and animation controller payloads/supermodel override mechanics are
-   undecoded (the header survey and name-inheritance rule are bounded evidence).
+1. **Animation controller payloads and supermodel override mechanics** remain undecoded; the MDX
+   block layout is now verified (`docs/recon/15`) and the animation header/name survey is bounded
+   (`docs/recon/12`).
 2. **Door appearance/facing and `WOK.position` placement are resolved.** Open coordinate items:
    room-WOK authoring-frame semantics, the minimap transform, and DLG/GIT camera transforms.
 3. **No real save** exists in the reference install; the save writer is structural, not
    byte-compatible or retail-verified.
 4. **NCS decompiler coverage**: 3,404/8,666 scripts do not reproduce; a direct NCS→IR path or a
    better decompiler is needed.
-5. **Real intra-pass order** (two same-tier archives with a duplicate resource) is unmeasured.
+5. **Real intra-pass order** is measured for pass 2 (`patch.erf` before `Override/textures.erf`);
+   RIM and tagged-2 orders remain inferred. No shipped duplicate resource or module `.mod` exists.
 6. **Engine**: clear + ImGui only; no depth/mesh pipeline, no asset rendering, no Vulkan validation
    layer installed; swapchain format changes are fatal.
 7. **Legal**: license TBD; external GPL/LGPL tools are oracles only; public release needs IP review.

@@ -26,8 +26,9 @@ Each nested module ERF holds `Module.ifo`, `Module.are` (NWM modules may omit it
 Synthetic fixtures (manual, autosave, corrupt, missing sidecar) parse and validate; a semantic
 rewrite reproduces IFO entry, ARE rooms, GIT counts, party/gold/journal, GVT values, and inventory
 counts with zero parser check errors. The writer is **structural only**: it does not preserve
-original padding, unused labels, or row order, and retail engine acceptance is unverified. It refuses
-to write inside a game install.
+original padding, unused labels, or row order. A synthetic 97-entry `patch.erf` built by this writer
+was accepted by the retail engine at boot (menu loaded, duplicate lookup served); byte compatibility
+is still unverified. It refuses to write inside a game install.
 
 ## Archive and VFS implementation
 
@@ -64,6 +65,12 @@ Synthetic precedence cases cover Override, `patch.erf` vs RIM, same-pass last-ad
 RIM vs `.mod`, texture pack vs `.mod`, save-only/module/save-vs-RIM, base-only, duplicate keys,
 case-variant duplicates, independent types, and the first-launch loose-WAV quirk.
 
+Measured pass-2 order: the engine loads `Override/textures.erf` first and `patch.erf` second, so
+`patch.erf` is searched first under last-added-first. A two-archive synthetic test (`mainmenu/2047`
+in both) returned the `patch.erf` table. This corrects the earlier resolver note that searched
+`Override/textures.erf` first; the resolver and test now follow the measurement. The other
+intra-pass orders (RIMs, tagged-2 ERFs) remain inferred.
+
 ## Dynamic confirmation
 
 In-process hooks confirmed the five-pass order and first-hit precedence, Override beating a
@@ -88,8 +95,10 @@ synthetic.
 
 * No real save has been parsed; NFO/PT/GVT field semantics, autosave rules, and nested-module naming
   beyond the documented layout remain inferred.
-* The writer is not byte-compatible and has not been accepted by the retail engine.
-* Intra-pass table order for RIMs and tagged-2 ERFs is inferred from the model; a real duplicate
-  resource in two same-tier archives is still needed.
-* Save-vs-module order and `.mod` precedence lack a real corpus (no module `.mod`, no save).
+* The writer is not byte-compatible; the retail engine accepted a synthetic `patch.erf` at boot, but
+  this is structural acceptance, not a save/round-trip guarantee.
+* Pass-2 order is measured (`patch.erf` before `Override/textures.erf`); RIM and tagged-2 intra-pass
+  order remain inferred. No shipped duplicate resource or module `.mod` exists.
+* Save-vs-module order and `.mod` precedence lack a real corpus (no module `.mod`, no save). The
+  off-screen boot stops at `MAINMENU.rim`; no `saves/` or `modules/*` resource is opened.
 * Loose-directory scan order is assumed sorted; engine enumeration could differ.

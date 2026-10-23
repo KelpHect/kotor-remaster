@@ -33,8 +33,9 @@ class VfsFixtureTests(unittest.TestCase):
         v = fixture_vfs()
         self.assertEqual(winner(v, "patch_vs_rim", 2010)[2], b"PATCH_VS_RIM")
         self.assertEqual(winner(v, "patch_vs_rim", 2010)[1], "patch.erf")
-        # textures.erf is added after patch.erf, so it is searched first.
-        self.assertEqual(winner(v, "patch_vs_tex", 3007)[1], "textures.erf")
+        # Measured engine order: textures.erf loads first, patch.erf second, so
+        # patch.erf is searched first (last-added-first).
+        self.assertEqual(winner(v, "patch_vs_tex", 3007)[1], "patch.erf")
         self.assertEqual(winner(v, "tex_erf_probe", 3007)[1], "textures.erf")
         self.assertEqual(winner(v, "patch_only", 2017)[1], "patch.erf")
 
