@@ -17,7 +17,8 @@ Nothing here redistributes game assets or decompiled code. Generated data goes u
 | `formats/tlk.py` | TLK V3.0 reader/validator (49,265 entries verified) | `python tools/formats/tlk.py <dialog.tlk> --check` |
 | `formats/gff.py` | Read-only GFF V3.2 probe: structs/fields/lists, single-field struct rule, structural checks; validates IFO/GIT/ARE | `python tools/formats/gff.py <file.git> --check --root --entries` |
 | `formats/two_da.py` | 2DA V2.b/V2.0 parser; validates all 209 shipped tables | `python tools/formats/validate_two_da.py --game-dir <install>` |
-| `formats/test_two_da.py` | 29 synthetic 2DA parser tests | `python tools/formats/test_two_da.py` |
+| `formats/test_gff_types.py` | 30 synthetic GFF tests (all types, malformed inputs, slot ordering) | `python -m unittest -v test_gff_types` |
+| `harness/offscreen.py` | Launch/park dynamic-harness games windowed, on a private desktop, off-screen, at idle priority | `python tools/harness/offscreen.py launch --exe <game.exe> --cwd <profile> --wait` |
 | `evidence/ledger.py` | SQLite artifact/function/action/resource/claim ledger and coverage view | `python tools/evidence/ledger.py init` then `status` |
 
 ```bash
@@ -25,6 +26,26 @@ python tools/inventory/kotor_inventory.py \
   --game-dir "<KOTOR_INSTALL>" \
   --out artifacts/inventory.json
 ```
+
+## Dynamic harness safety
+
+Any process that runs the game must stay windowed (`FullScreen=0`), out of the user's view, and at
+low priority. `tools/harness/offscreen.py` is the supported path:
+
+```bash
+# private Win32 desktop, SW_SHOWMINNOACTIVE, idle priority; the caller attaches Frida by PID
+python tools/harness/offscreen.py launch --exe "<profile>/swkotor.exe" --cwd "<profile>"
+
+# park a harness that was started another way (moves windows to -32000,-32000)
+python tools/harness/offscreen.py park --name swkotor.exe
+
+# keep re-parking new instances while a lane runs
+python tools/harness/offscreen.py watch --name swkotor.exe --minutes 60
+```
+
+Do not call `SetForegroundWindow`, do not capture the desktop (only the game window via
+`PrintWindow`), and never run fullscreen. DirectInput state can be spoofed in-process, so focus is
+not needed for input experiments.
 
 ## Ghidra
 

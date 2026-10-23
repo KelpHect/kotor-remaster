@@ -43,7 +43,9 @@ area and gameplay parity belong to P4/P5, not Sprint 0.
 ## Shared-resource rules
 
 - **Game process:** lane 06 only. It must not patch/bypass DRM, modify the install, or leave files it
-  created; all captures under its lane directory.
+  created; all captures under its lane directory. Runs are windowed (`FullScreen=0`), off-screen, and
+  at idle priority: use `tools/harness/offscreen.py` (private desktop or park/watch) and never take
+  foreground focus or capture the user's desktop. Only the game window may be captured.
 - **Ghidra:** lane 07 only, on a fresh copy of the enhanced project. No other lane opens a Ghidra
   project or runs analyzeHeadless.
 - **Repository:** no lane writes to tracked files, commits, pushes, or changes the public repo. The
@@ -58,6 +60,10 @@ area and gameplay parity belong to P4/P5, not Sprint 0.
 | 01-manifest | complete | 15,380 files / 3,602,889,094 B hashed; manifest SHA-256 recorded; install unchanged |
 | 02-2da | complete | 209/209 tables, 29 tests; `tools/formats/two_da.py`; `docs/recon/05_2DA.md` |
 | 03-gff | complete | 11,143/11,143 payloads, 1,854,982 values, 0 intrinsic failures; parser patch + 30 tests; `docs/recon/07_GFF_CORPUS.md` |
+| 05-save-vfs | complete | 33 tests (32 pass, 1 skipped: no real save); save reader/writer, archive readers/writers, five-pass VFS resolver; `artifacts/lanes/05-save-vfs/RESULTS.md` |
+| 06-dynamic | complete | five-pass order, first-hit precedence, Override shadow, and quality 2/1/0 → tpa/tpb/tpc measured in-process; `docs/recon/08_VFS_DYNAMIC.md` |
+| 08-engine | complete | C++23/SDL3/Vulkan 1.4 + GL 4.5 scaffold, 313-step clean build, Vulkan 120 frames, GL 120 frames, smoke 5/5; `artifacts/lanes/08-engine/` |
+| 09-geometry-preview | complete | m01aa SVG preview, 1365/1365 winding, 45/45 cross-checks; `artifacts/lanes/09-geometry-preview/` |
 | 07-ghidra-rename | complete | 125/125 renamed, 565/565 targets named, 772/772 actions, baseline retained; `artifacts/lanes/07-ghidra-rename/` |
 
 ## Out of scope for Sprint 0

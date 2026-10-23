@@ -53,6 +53,7 @@ Start with:
 - [`docs/recon/05_2DA.md`](docs/recon/05_2DA.md) — 209-table 2DA coverage
 - [`docs/recon/06_MANIFEST.md`](docs/recon/06_MANIFEST.md) — complete install manifest summary
 - [`docs/recon/07_GFF_CORPUS.md`](docs/recon/07_GFF_CORPUS.md) — all-resource GFF validation and corrected invariants
+- [`docs/recon/08_VFS_DYNAMIC.md`](docs/recon/08_VFS_DYNAMIC.md) — five-pass VFS order, precedence, and texture-quality mapping, measured in-process
 - [`docs/adr/0001-runtime-and-renderer.md`](docs/adr/0001-runtime-and-renderer.md)
 - [`docs/adr/0002-coordinates-and-render-features.md`](docs/adr/0002-coordinates-and-render-features.md)
 - [`docs/adr/0003-distribution-and-install-model.md`](docs/adr/0003-distribution-and-install-model.md)
