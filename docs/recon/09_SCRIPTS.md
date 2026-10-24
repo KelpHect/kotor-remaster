@@ -1,9 +1,10 @@
 # NCS/NSS script corpus (lane 04)
 
-Status: **corpus, validation, action usage, and a lossless bytecode codec complete.** Source-level
-decompilation coverage is measured; the external decompiler is an oracle only. The original lane
-hit its turn limit, and a continuation finished the codec, failure clustering, and arity analysis.
-Extracted scripts and external tools are lane-local and untracked.
+Status: **corpus, validation, action usage, lossless bytecode codec, and clean-room source
+decompilation measured.** The clean-room decompiler currently reproduces **8,352 / 8,666**
+unique scripts byte-identically and with identical instruction streams; the residual classes are
+quantified below. The external decompiler is retained only as a historical oracle. Extracted
+scripts and external tools are lane-local and untracked.
 
 ## Corpus
 
@@ -62,7 +63,59 @@ corpus**, which gives a writer acceptance oracle without any decompiler. The cod
 a public `tools/formats/ncs.py` waits on documenting the provenance of the 772-entry action table
 (the codec itself uses only bytecode format facts).
 
-## Source decompilation (measured, external oracle)
+## Clean-room source decompilation (current)
+
+`artifacts/lanes/ncs-decompiler/cont2/` contains the lane-local clean-room decompiler
+(`tools/ncsdecomp.py`, SHA-256 `782e93ae…`) and the `final-v10` corpus run. Each unique NCS was
+decompiled to NSS, recompiled with the shipped compiler, and compared byte-for-byte and
+instruction-for-instruction:
+
+| outcome | files | share |
+|---|---:|---:|
+| exact (byte-identical + full-stream) | **8,428** | **97.26%** |
+| mismatch | 228 | 2.63% |
+| compile_fail | 5 | 0.06% |
+| reachable only (not full-stream) | 5 | 0.06% |
+| partial_decompilation | 0 | 0% |
+
+Regressions versus the 8,352/8,395 checkpoints: **0**. The cont4 pass closed 33 more files with zero
+regressions (nested-switch joins, shared default/case targets, integer/float coercion, 12-byte
+aggregate comparisons, case-local declaration blocks, prefix increment/while-local blocks). The five
+remaining `compile_fail` files are **header-limited**, not decompiler failures: each is byte-identical
+when recompiled with one lane-local prototype (`AddPartyMember(object)` twice,
+`StartCreditSequence(int,string)`, `ActionBarkString(object,int)`,
+`EffectBlasterDeflectionIncrease(object,object)`). No decompiler-side compile failure remains.
+
+Residual taxonomy for the 238 non-exact scripts:
+
+| class | count | status |
+|---|---:|---|
+| `CPTOPBP`+`DESTRUCT` struct-global group slice | 201 | compiler-limited |
+| action default-argument materialization | 24 | compiler-limited |
+| function layout / body order | 3 | compiler-determined |
+| header-limited compile failures | 5 | header-limited |
+| reachable-only | 5 | not full-stream |
+
+The three body-order files (`k_pend_chest02`, `k_ren_visionland`, `k_sup_galaxmap`) are pure
+layout permutations: every body and every JSR callee is present and identical; only body addresses
+and JSR displacements differ. The historical compiler assigned body addresses in emitted-code order,
+while `nwnnsscomp_ktool` assigns them in source parse order; nine deterministic definition/prototype
+orders per file compile byte-identically, and swapping calls to force the original layout changes the
+callee binding (a type error in `k_pend_chest02`). The class is therefore compiler-determined, not
+decompiler-side. **Decompiler-side open: 0.** Compiler-limited classes cannot be byte-exact with
+`nwnnsscomp_ktool`; they are never counted exact. Total: 8,428 exact + 228 compiler-limited + 5
+header-limited + 5 reachable = 8,666.
+
+Evidence: `cont2/out/summary.{md,json}`, `cont2/out/residual-taxonomy.json`,
+`runs/incwhile-v10`, `work/probes/cont4/`, `work/probes/hdr-identity-v5/`,
+`work/probes/order-v1/evidence.json` (SHA-256 `bf5f2a4e…`), checkpoints
+`20261023T224905931420Z-final-v10-output` / `…-output-2` / `…-output-3`, and the
+`proposed/0003-…`/`0004-…`/`0005-ncsdecomp-cont5-order-classification.patch` series.
+
+## Legacy external-oracle measurement (superseded)
+
+The earlier NCSDecomp 1.0.2 measurement is retained for provenance; it is not the current
+decompiler path.
 
 Each unique NCS was decompiled with **NCSDecomp 1.0.2** (DeNCS lineage; its bundle README is
 **BSL 1.1**, not MIT) and recompiled with `nwnnsscomp_ktool.exe`; the result was compared with the
@@ -121,8 +174,10 @@ need dispatcher evidence from a future Ghidra lane; they are recorded, not “fi
 
 ## Open items
 
-* Source-level decompilation is 60.72% reproducible (99.53% of failures are decompiler-side); the
-  bytecode codec is lossless, so IR round-trip can replace compiler round-trip.
+* Clean-room source decompilation is **8,428/8,666 exact**; the non-exact set is 228
+  compiler-limited (including the 3 body-layout files), 5 header-limited, and 5 reachable-only.
+  Decompiler-side open is **0**. The legacy 60.72% external-oracle figure above is historical and is
+  not the current coverage.
 * The two 700/469 argument-position cases need the engine dispatcher.
 * The 306 unused actions still need engine implementations for modded content and save/script
   compatibility, but shipped content does not exercise them.

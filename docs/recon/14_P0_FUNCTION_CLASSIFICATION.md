@@ -1,9 +1,11 @@
 # P0 function inventory and classification (v4)
 
-Status: **exhaustive and all high-confidence:** 11,199 rows (10,849 internal functions + 350 external
-imports), 0 medium/low/unknown, 34/34 strict checks, and **0 unexplained `.text` bytes**. The four
-decompiler refusals were 60-second timeouts and now decompile at 300 seconds. A consolidation pass
-to export all v4 pseudocode and update the ledger is queued; the classification itself is complete.
+Status: **exhaustive, all high-confidence, and fully exported:** 11,199 rows (10,849 internal
+functions + 350 external imports), 0 medium/low/unknown, 34/34 strict checks, and **0 unexplained
+`.text` bytes**. The four decompiler refusals were 60-second timeouts and now decompile at 300
+seconds. The v4 export is complete: 10,849/10,849 internal functions decompiled, 0
+missing/extra/duplicate bodies, and the evidence ledger records 10,849/10,849 decompiled. This is
+inventory coverage, not proof of semantic or runtime equivalence.
 
 ## Result
 
@@ -44,6 +46,41 @@ The 4,861 orphan instructions have no call or pointer target except one (`0x709d
 are continuation blocks after jump tables, not function entries. Every function entry is an
 instruction start that passes a register-liveness test and decodes to a terminator.
 
+## Export and ledger (v4)
+
+`artifacts/lanes/engine-semantics/export-v4/` (untracked) ran one read-only headless pass on a `cp
+-a` copy whose source and copy trees were hashed before and after and are equal. The baseline
+project was not opened.
+
+| item | value |
+|---|---:|
+| rows | 11,199 (10,849 internal + 350 external) |
+| internal functions exported | 10,849 |
+| decompiled with C emitted | 10,849 |
+| failed decompiles | 0 |
+| missing / extra internal | 0 / 0 |
+| duplicate entries | 0 |
+| exact-range overlapping bodies | 0 |
+| ledger ids generated | 10,849 |
+| body bytes | 3,101,994 |
+| instructions | 924,820 |
+
+`functions-v4.jsonl` (10,461,354 B, SHA-256
+`8c106dc051254aa794e46be47ebf29378378781bcd71953f1b3fcd5b7623578d`) carries entry, name,
+namespace, thunk flag, body ranges, instruction count, assembly/body SHA-256, and pseudocode
+SHA-256 for every row. The C text itself is not retained. `ledger-ids.txt` has SHA-256
+`871c14b2e1ff6147281c76ab3f379835f686b4004e3c5216bc73ed9300e580b1`; the manifest (including
+Ghidra/JDK and script hashes) is `manifest.json`. The ledger import produced 441 duplicate
+`handler-defined` rows with `0x`-prefixed entries; each was verified to fall inside a v4 body with
+the same renamed handler name and removed after a database backup
+(`artifacts/evidence.db.bak-v4-merge`). Final ledger: `functions_total=10849`,
+`functions_decompiled=10849`, `actions_mapped=772`, `claims_total=43`.
+
+Four rows keep stale classification size/instruction counts (`0043fb90`, `00656d20`, `006fb369`,
+`006fee94`); membership is valid and the export body is authoritative. Bodies use every exact
+`AddressRange`, not min/max: 663 functions carry disjoint EH ranges, and a min/max comparison would
+falsely report 21 overlaps.
+
 ## Discovery method
 
 * v2: all 9,057 internal functions decompiled; label-only callers recovered; 363 vtable/pointer tables
@@ -68,8 +105,8 @@ See `bearing_code_proof.md`.
 
 ## Residuals
 
-* **Pseudocode export/ledger consolidation** for all 10,849 internal functions is queued; the
-  classification rows and audit decompilations exist lane-locally.
+* **Coverage is not semantics.** All 10,849 bodies emit decompiler C and are hash-recorded, but
+  successful decompilation does not prove original-source equivalence or runtime reachability.
 * **22,123 unowned continuation bytes** are accounted but not function-owned; they are after jump
   tables/terminators, with one created entry.
 * **440 action targets** are label-defined stubs; classification covers dispatch identity, not
@@ -83,6 +120,8 @@ See `bearing_code_proof.md`.
 `artifacts/lanes/p0-classify/cont3/` (untracked): `classification.jsonl`, `counts.json`, `diff.json`,
 `validation.json`, `summary.md`, `out/coverage_v7.json`, `out/coverage_accounting.json`,
 `out/refusal_diag*`, `out/audit_new.jsonl`, `scripts/`. Bearing proof:
-`cont2/bearing_code_proof.md`.
+`cont2/bearing_code_proof.md`. Export:
+`artifacts/lanes/engine-semantics/export-v4/` (`functions-v4.jsonl`, `ledger-ids.txt`,
+`manifest.json`, `reconciliation.md`, `reconciliation.json`, `raw/`).
 
 Do not treat `engine` as "specified": specification coverage is still zero; this is triage.

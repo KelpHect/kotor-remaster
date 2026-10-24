@@ -1,10 +1,11 @@
 # Coordinate, animation, and camera findings (lane 10)
 
-Status: **largely verified.** Bearing/door facing, `WOK.position`, animation controller payloads,
-GIT/ARE camera-minimap fields, and DLG camera models are decoded. Remaining: DLG
-`CameraAnimation`/`CameraAngle` composition and supermodel override/name-remap semantics (a
-targeted continuation is running). MDX is in `docs/recon/15`. Data is under
-`artifacts/lanes/10-coords-open/` (untracked); the install was not modified.
+Status: **verified at the shipped-code boundary.** Bearing/door facing, `WOK.position`,
+animation controller payloads, GIT/ARE camera-minimap fields, DLG camera models, `CameraAnimation`,
+`CameraAngle`, camera mode `+0x38`, and supermodel precedence/binding are decoded. Remaining P1
+observations: dialogue-camera object live check, supermodel visual chain, `MapResX` semantics, and
+the controller-type catalogue not needed for skeletal pose. MDX is in `docs/recon/15`. Data is
+under `artifacts/lanes/10-coords-open/` (untracked); the install was not modified.
 
 ## Corpus
 
@@ -133,17 +134,51 @@ seven-arg C function. `FUN_006bd260` (`RET 0x18` at `0x6bd976`) stores h/t/range
 ```
 
 Constants are at `0x6bb861–0x6bb90c`; position math at `0x6bc090–0x6bc545`. Coincident anchors set
-the close-up flag `+0x34` and replace B by `A+(1.5,1.5,0.1)`. The meaning of mode `+0x38` and the
-full obstruction policy remain open; angle 0 is caller/state-dependent.
+the close-up flag `+0x34` and replace B by `A+(1.5,1.5,0.1)`.
+
+**Camera mode `+0x38` is construction-time and zero in shipped code.** The dialogue-camera object is
+a separate 0x9c-byte class (vtable `0x756ae8`, constructor `0x6bb670`, virtual ID `0x106d` from
+`0x6bb740`). Its `+0x38` is written only at construction (`0x6bb6f8`) from controller `+0xc4`; the
+camera factory `FUN_006412f0` receives that value (`0x641362`–`0x64136f`), and the dialogue-controller
+constructor zeroes `+0xc4` (`FUN_0062fed0` at `0x630244`, `EBX=0` from `0x62feed`). A whole-program
+`[reg+0xc4]` write scan (64 writes, stack excluded) finds no other write attributable to that
+controller; within the dialogue-camera code the only reads are the three camera-creation reads
+(`0x62bf4e`, `0x6320c9`, `0x632127`). Derived conclusion: mode `+0x38` is 0 for every shipped camera
+and the nonzero branches are unreachable (legacy/disabled), unless an unexamined alias or an
+unrelated class holding the controller pointer writes `+0xc4`. Mode 0 means "height-adjusted or
+CAMERAHOOK anchors, standard/close-up construction"; mode nonzero would use raw origins, add heights
+inside the evaluator, and use one (not three) angle-3 segment query.
+
+**`+0x34` is a per-update close-up/query flag, not a persistent obstruction input.** Writers:
+constructor `0x6bb701`=0, static camera `0x6bb59d`=0, `FUN_006bd260` reset `0x6bd2e2`=0,
+coincident-anchor test `0x6bb811`=1, and post-query hit `0x6bd928`=1. Readers are only `0x6bbde1`,
+`0x6bc098`, `0x6bc49f` inside `FUN_006bb7b0`; because `FUN_006bd260` resets the field at entry, the
+`0x6bd928` value is not read before the next reset. The live meaning is "anchors coincident"
+(close-up, range suppressed, and the mode-nonzero evaluator query gate).
+
+**Obstruction segments.** `FUN_006bd260` queries the scene interface (`self+0x10` vtable `+0x104`,
+query vtable `+0x38`) after the evaluator: angle 3 uses `0x6bd811`, `0x6bd86d`, `0x6bd8c2` (three
+segments) when mode 0; all other procedural angles use `0x6bd911` (one). The mode-nonzero evaluator
+adds one coincident-only query at `0x6bbfb4` (unreachable with mode 0). The angle-6 static path
+(`FUN_0062c030` -> `FUN_006bb590` at `0x62c23f`) bypasses the evaluator and performs no query; the
+CameraAnimation clip path (`FUN_0062bf70` -> `FUN_00641010` at `0x6320a1`/`0x62c00f`) also bypasses it
+and reads neither `+0x34` nor `+0x38`.
+
+Do not treat `0x62a970@0x62a9ce` as the camera mode writer: it zeroes controller `+0x38` in the
+0xc24-byte dialogue controller, a different object. `FUN_0062aa00` writes that controller's `+0x34`
+(1/2/3) and reads its `+0x38`; these are controller state fields, not the camera's.
 
 ## Still open
 
-* Camera mode `+0x38` semantics and the full obstruction policy; angle-0 behavior is
-  caller/state-dependent. Dynamic camera matrices are still needed to compare the algebra.
+* Camera `+0x38` is statically zero for every shipped construction path. The live 1280×720 Taris
+  probe confirmed the dialogue-controller constructor sets controller `+0xc4 = 0` (the source
+  value) in-process. No dialogue camera was constructed in that non-dialogue scene, so the camera
+  object's field itself was not observed live; a dialogue/cutscene scene is P1 verification. The
+  mode-nonzero branches remain unreachable in shipped data.
 * Supermodel visual behavior needs a synthetic child/super chain with duplicate, ancestor-only and
   missing clips; the code paths and supernode binding are verified, but visual output is not.
-* qbone/tbone/aux4 CPU consumers are mapped; the GPU/aux4 consumer and relocation routine remain
-  open (`docs/recon/15`).
+* aux4 is parsed, relocated, copied and freed but has no consumer; the GPU path uses qbone/tbone,
+  so no aux4 decode remains (`docs/recon/15`).
 * `MapResX` role and minimap texture semantics (inferred).
 * Particle/light/animation-node controller types (36/76/80/84/88/100/120/124/132/176/216/224/232/
   236/240/284/380/392) are catalogued but not needed for skeletal pose; type 132 is a FrameEnd cue.

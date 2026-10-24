@@ -1,6 +1,7 @@
 # Sprint 0 exit report
 
-Status: **complete with documented gaps.** Ten lanes ran against a user-owned KotOR 1.0.3.0
+Status: **complete with documented gaps; see “Post-report updates” for the later strict-closure
+results.** Ten lanes ran against a user-owned KotOR 1.0.3.0
 install; all outputs reviewed, testable results integrated, and the public repository contains no
 game assets, extracted data, or decompiled program text. Three lanes (04, 06, 10) hit their agent
 turn limit; their datasets were complete enough for the integrator to finish the reports.
@@ -14,7 +15,7 @@ turn limit; their datasets were complete enough for the integrator to finish the
 | 3 | Scripts | **met with coverage gap** — 8,666 unique NCS all decode; 285,015 ACTION ops, 0 unknown IDs; 5,262 reproducible | `docs/recon/09_SCRIPTS.md` |
 | 4 | Save/VFS | **met except real save** — 33 tests, 32 pass/1 skip; dynamic five-pass + quality mapping | `docs/recon/08`, `10` |
 | 5 | Dynamic harness | **met** — one local process session (Frida), VFS/VM/RNG/combat hooks; off-screen, no install writes | `docs/recon/08`; lane 06 logs |
-| 6 | Ghidra | **met** — v4 exhaustive inventory 10,849 internal + 350 external, all high confidence, 0 unexplained `.text` bytes; 565/565 targets, 772/772 actions, 125 renamed | `docs/recon/14`; lane 07 |
+| 6 | Ghidra | **met** — v4 exhaustive inventory 10,849 internal + 350 external, all high confidence, 0 unexplained `.text` bytes; 10,849/10,849 decompiled and exported, ledger 10,849/10,849; 565/565 targets, 772/772 actions, 125 renamed | `docs/recon/14`; lane 07 |
 | 7 | Engine scaffold | **met** — builds `/W4 /WX`, CTest 2/2, Vulkan 1.4 and GL 4.5 120-frame clears | `engine/docs/BUILD.md` |
 | 8 | Geometry path | **met** — m01aa LYT/WOK/MDL/PTH/GIT preview, 45/45 checks | `docs/recon/11_GEOMETRY_PREVIEW.md` |
 | 9 | Evidence/repo | **met** — ledger 24 cited claims; lane outputs integrated; no assets/secrets | `docs/recon/`; public repo |
@@ -74,6 +75,24 @@ turn limit; their datasets were complete enough for the integrator to finish the
 6. **Engine**: clear + ImGui only; no depth/mesh pipeline, no asset rendering, no Vulkan validation
    layer installed; swapchain format changes are fatal.
 7. **Legal**: license TBD; external GPL/LGPL tools are oracles only; public release needs IP review.
+
+## Post-report updates (2026-10-24)
+
+These supersede the corresponding gaps above; the exit criteria table remains the Sprint 0 record.
+
+* **NCS source decompilation** reached **8,428/8,666** exact (97.26%), with 0 decompiler-side open,
+  5 header-limited, and 5 reachable-only; the remaining 228 are compiler-limited (`docs/recon/09`).
+* **Real save acceptance** is verified at a true 1280×720 windowed client with a permanent
+  clean-room executable patch: Taris Hideout loads to the HUD, F4 writes a valid quicksave, and F5
+  quickload restores it. The earlier black screen was Frame Buffer Effects (`Frame Buffer=0`). See
+  `docs/recon/10`, `docs/recon/16`.
+* **VFS closing pass** measured duplicate-in-archive/KEY first-wins, `.mod`/RIM, save-vs-module,
+  pass-3/4 order, and flat loose directories; the remaining inferred items are enumerated in
+  `docs/recon/10`.
+* **Windowed 1280×720** is a permanent mod (`tools/mod/kotor_windowed_1280.py`) with resolution
+  validation, tooltip, and HUD 720 branches, not a live harness hack.
+* **IP review** is documented in `docs/LEGAL_REVIEW.md`; license selection remains an owner
+  decision before public release.
 
 ## Reproduce the foundation
 

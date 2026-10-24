@@ -1,8 +1,10 @@
 # MDX layout and full-corpus coverage (lane 10 continuation)
 
-Status: **complete for the shipped corpus.** Every MDX byte reachable from `chitin.key` and the
-module archives is assigned to a decoded field, sentinel, or allocator pad. Three semantic
-questions remain and are explicitly labeled; none is a byte-accounting gap.
+Status: **complete for the shipped corpus and shipped code paths.** Every MDX byte reachable from
+`chitin.key` and the module archives is assigned to a decoded field, sentinel, or allocator pad.
+Relocation, the GPU skin path, and aux4 are resolved; a live 1280×720 Taris probe selected the GPU
+skin path, and the CPU u16 bone-read branch is resolved statically. The remaining limits are
+corpus/static (aux4 dead data, no shipped multi-group mesh, bbox origin), not byte-accounting gaps.
 
 ## Coverage
 
@@ -57,12 +59,38 @@ next block = end of previous pad (== next mesh header's +324)
   words are offsets relative to byte 12; runtime `+0x1b8/+0x1c4/+0x1d0` are heap pointers with
   used/capacity companions. CPU skin `0x487570` uses the inline bone list + node2bone map, while
   `0x48a0d0` and palettes `0x48a520/0x48c650/0x48d040` consume qbone/tbone (T += R(Q)·tbone,
-  Q *= qbone). A secondary u16 bone-id index path exists at `0x487b04`; its reachability is open.
-  The GPU bone-constant consumer and relocation routine are not yet identified; do not call aux4
-  unused.
+  Q *= qbone). The u16 bone-index read at `0x487b04` is the per-weight CPU-skin path, not an
+  alternate format: at `0x487ad0` it loads weight *i*, compares with `FCOMP` against the constant
+  at `0x73d700` (0.0), and `JNP 0x487bee` skips only zero/NaN weights. For an ordered nonzero
+  weight it reads a u16 index from the runtime array at `[ESI+0x1ac]` (`0x487b04`–`0x487b12`),
+  then resolves it through the inline node→bone map at `[ESI+0x1dc]` (`0x487b16`). Shipped skins
+  have weights summing to 1, so the path is statically reachable. In the live 1280×720 Taris probe
+  the CPU-skin entry and this instruction were not entered; that scene uses the GPU skin path
+  (`0x48a0d0`/palettes), so the CPU path remains a shipped-code path rather than a live-observed
+  one.
+  **Relocation (verified):** the binary loader copies the MDL body from file byte 12
+  (`FUN_004a1260`); `FUN_004a1030` calls `FUN_004a0900` with that block as base (`0x4a117f`), type
+  `0x61` dispatches to `FUN_004a01b0` (`0x4a0a34`), which adds the base to
+  `+0x1b0/+0x1b8/+0x1c4/+0x1d0` (`0x4a01c6`–`0x4a022f`) and zeroes a pointer when its used count is
+  0. Thus `runtimePtr = dataHeader + word`, file offset `12 + word` (c_bantha qbone 94374 = 12 +
+  g(360), tbone/aux4 95110/95662).
+  **GPU path (verified):** palettes `FUN_0048a520`/`0x48c650`/`0x48d040` read qbone `+0x1b8`/tbone
+  `+0x1c4` and upload rows at `program.env[3*map+0x12..0x14]`; `0x48a63c` sets
+  `program.env[16]=(0,2,3,1)`. The eight `!!ARBvp` skin programs use `boneArray[51] =
+  program.env[18..68]`, weights `attrib[1]` and bone IDs `attrib[4]`; `FUN_00478f50` binds those
+  attributes. CPU skin `0x487570` uses the inline `+0x1dc` list and node2bone `+0x1b0`.
+  **aux4 has no consumer.** A whole-program `[reg+0x1d0]` scan (114 rows) finds only binder
+  `0x46a39e`, relocation `0x4a01b0`, constructor `0x44ac70`, destructor `0x448e60`, and reset/copy
+  `0x489340`; other hits are different classes. The corpus's 537 aux4 blocks / 34,854 words contain
+  65.6% non-coherent values (ASCII `ROOT`, heap-like/pointer values, floats); it is exporter
+  scratch/stale data, dead on PC.
 * Groups: `+176` counts (= fc·3), `+188` offsets, `+200` runtime pool handles; the old “unknown
-  second u32” is handle[0] (`handles_ptr == offsets_ptr + 4` in 76,703/76,703). Group count is
-  **1 in every shipped mesh**; multi-group addressing has no shipped data.
+  second u32” is handle[0] (`handles_ptr == offsets_ptr + 4` in 76,703/76,703). GPU draw
+  `FUN_0046f900`/`0x477830` loops `dataHeader+0x104` groups using `+0x100` counts and `+0x118`
+  offsets (`0x46f9ad`, `0x477a9d`); CPU skin `0x487570` loops `+0x11c` (`0x487741`/`0x4879e4`);
+  `FUN_004a0c00` relocates both arrays. All 26,648 valid meshes in the 528-pair sample are `1|1|1`
+  (10 empty/procedural are `0|0|0`); prior full-corpus evidence reports 1 for all 76,703 valid
+  blocks. The two loops use different count fields, equal in shipped data.
 
 ## Exception classification
 
@@ -83,13 +111,20 @@ next block = end of previous pad (== next mesh header's +324)
 
 ## Remaining semantic questions
 
-1. **GPU skin consumer / relocation** — CPU qbone/tbone paths and `aux4 =
-   boneconstantindices` are verified; the GPU bone-constant consumer, the file→runtime relocation
-   routine, and the secondary u16 index path's reachability remain open.
-2. **Multi-group addressing** — no shipped mesh has group count > 1; a synthetic asset would be
-   needed. The engine loop is structurally N-group capable.
-3. **Bbox expansion source** — exporter/scene-time provenance; values are known, origin is not in the
-   shipped file.
+1. **Secondary u16 bone-id path** — resolved statically: it is the per-weight CPU-skin read at
+   `0x487b04`, entered for every ordered nonzero weight; zero/NaN weights skip it at `0x487afe`.
+   It resolves through the inline node→bone map at `0x487b16`. The live Taris scene used the GPU
+   skin path and did not enter the CPU entry/u16 hooks; this is a renderer path choice, not an
+   unresolved format question. The GPU consumer and relocation are resolved; no path reads aux4.
+2. **Multi-group addressing** — the engine loops are N-group capable (`+0x100` counts array,
+   `+0x118` offsets, `+0x11c` group count; both arrays relocated by `FUN_004a0c00`), but no shipped
+   mesh has group count > 1; all 76,703 shipped blocks are `1|1|1`. A synthetic engine load with
+   divergent counts is P1 renderer verification, not a shipped-data gap.
+3. **Bbox expansion source** — 108/76,703 meshes (29/26,648 in the sample) carry a stored bbox
+   expanded beyond the vertex AABB, one-sided on a single axis, median 0.925 m, max 87.72 m; no code
+   writes it and it matches no node/parent/world/animation transform. Origin is exporter/scene-time
+   and not recoverable from the file; the runtime must preserve the stored values rather than
+   recompute them.
 
 ## Evidence
 

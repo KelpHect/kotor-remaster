@@ -23,7 +23,8 @@ Nothing here redistributes game assets or decompiled code. Generated data goes u
 | `resources/kotor_save.py` | Save-folder parser/validator and structural writer; refuses writes inside an install | `python tools/resources/kotor_save.py validate "<slot>"` |
 | `resources/kotor_vfs.py` | Five-pass VFS resolver with traces and shadowed hits | `python tools/resources/kotor_vfs.py resolve <install> <resref> <type>` |
 | `resources/build_dynamic_probes.py`, `resources/vfs_measure.py` | Build expected-lookup manifests and compare Frida hook logs | see `docs/recon/08_VFS_DYNAMIC.md` |
-| `tests/run_all.py` | 33 archive/save/GFF-writer/VFS tests (1 real-save test skipped when absent) | `KOTOR_GAME_DIR=<install> python tools/tests/run_all.py` |
+| `tests/run_all.py` | 47 archive/save/GFF-writer/VFS/harness tests (1 real-save test skipped when absent) | `KOTOR_GAME_DIR=<install> python tools/tests/run_all.py` |
+| `mod/kotor_windowed_1280.py` | Clean-room 1280×720 windowed patch for a user-owned 1.0.3.0 `swkotor.exe`: resolution validation, tooltip and HUD 720 branches; apply/revert/check with hash guard | `python tools/mod/kotor_windowed_1280.py --exe <swkotor.exe> --check` |
 | `geometry/probe.py` | Parse m01aa LYT/WOK/MDL/PTH/IFO/GIT and print check values | `KOTOR_AREA_DIR=<flat-area-dir> python tools/geometry/probe.py` |
 | `geometry/preview.py` | Top-down SVG/JSON/Markdown preview with 45 self-checks | `KOTOR_AREA_DIR=<dir> KOTOR_PREVIEW_OUT=<out> python tools/geometry/preview.py` |
 | `harness/offscreen.py` | Legacy window-parking helper; does not establish isolation | See dynamic harness safety; not required for an approved foreground test |
@@ -103,6 +104,17 @@ present, 8,616 baseline functions retained, and 125/125 re-decompiled with match
 Java scripts are compiled into a shared cache; use one JDK per cache (a class compiled by JDK 25
 cannot load under JDK 21). The pinned analysis runtime is JDK 21, but an existing JDK 25-compiled
 script must be recompiled or run under JDK 25.
+
+### v4 full export
+
+`artifacts/lanes/engine-semantics/export-v4/` (untracked) is one read-only headless pass on a
+verified copy of the closed classification project. It exports all 10,849 internal functions
+(10,849 decompiled, 0 failures) plus 350 external symbols, with assembly, body, and pseudocode
+SHA-256 per row; bodies total 3,101,994 B and 924,820 instructions. `manifest.json` pins the
+Ghidra/JDK/script hashes and the source/copy trees; `reconciliation.md` records 0 missing/extra/
+duplicate/exact-range-overlap rows and the four stale classification size fields. The evidence
+ledger imports the v4 IDs at 10,849/10,849 coverage (441 duplicate handler rows were verified
+in-body and removed after a database backup).
 
 Upgrade target: Ghidra 12.2 once verified (CVE-2026-100503 affects ≤12.1.4).
 

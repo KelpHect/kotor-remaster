@@ -1,8 +1,8 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **P0 strict evidence closure in progress — not 100% complete.** There is no playable
-engine build yet. The foundation milestones do not close the remaining decompiler, engine
-semantics, save-load, and export/ledger verification work; see `docs/P0_REPORT.md`.
+Status: **P0 foundation complete (strict closure, 2026-10-24).** There is no playable engine build
+yet; P1 data completeness and P4/P5 renderer work continue. The P0 gate, strict-closure evidence,
+and the P1/P4 handoff are in `docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
 does not ship, download, extract, or redistribute game assets, and it does not require or execute
@@ -14,7 +14,9 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
 ## Verified progress
 
 - Fresh Ghidra 12.1.4 analysis of a user-owned 1.0.3.0 build.
-- Full pseudocode pass for the initial function inventory: 8,616/8,616 decompiled with zero failures.
+- Full pseudocode export for the v4 inventory: **10,849/10,849 internal functions decompiled**,
+  0 failures, 0 missing/extra/duplicate or overlapping bodies, with assembly/body/pseudocode hashes
+  (350 external imports included; ledger 10,849/10,849).
 - Script action table: **772/772 actions mapped** and **565/565 handler targets named**; 440
   handler functions + dispatcher were added and decompiled in an isolated project copy, then the
   last 125 `FUN_` handlers were renamed (9,057 internal functions; 350 external imports).
@@ -26,17 +28,27 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
 - GFF V3.2 wire semantics verified; the single-field struct rule is implemented and IFO/GIT/ARE
   validate. Coordinate probes on m01aa establish RH Z-up, 1 unit = 1 m, IFO ground-point/unit-dir,
   creature forward vectors, radian Bearing, world-space WOK, and the LYT/MDL transform chain;
-  Bearing sign, MDX blocks, camera height, and animation overrides remain open
-  (`docs/recon/03`, `docs/recon/04`).
+  Bearing sign and MDX layout are closed at the shipped-code boundary
+  (`docs/recon/03`, `docs/recon/04`, `docs/recon/15`).
 - GFF corpus validated: 11,143/11,143 shipped payloads parse, 1,854,982/1,854,982 values resolve,
   zero intrinsic failures; the struct-slot packing invariant was disproved by shipped files and
   replaced with disjoint-range checks (`docs/recon/07`, 30 regression tests).
 - Script corpus: 8,666 unique NCS (13,139 occurrences) all decode; 285,015 ACTION instructions
-  reference only known action IDs; 466/772 actions are used. 5,262/8,666 scripts round-trip through
-  the DeNCS lineage decompiler and compiler (`docs/recon/09`).
+  reference only known action IDs; 466/772 actions are used. Clean-room decompilation reaches
+  **8,428 exact** byte-identical/full-stream matches (97.26%), with 228 compiler-limited, 0
+  decompiler-side open, 5 header-limited, and 5 reachable-only; 0 partial, 0 regressions
+  (`docs/recon/09`).
 - Save/VFS: save container parser/validator and structural writer, archive readers/writers, and a
-  five-pass resolver, with 33 synthetic/real-install tests. Dynamic hooks confirm the pass order,
-  Override precedence, and quality 2/1/0 → tpa/tpb/tpc (`docs/recon/08`, `docs/recon/10`).
+  five-pass resolver, with 47 synthetic/real-install tests (46 pass, 1 skip). Dynamic hooks confirm
+  the pass order,
+  Override precedence, and quality 2/1/0 → tpa/tpb/tpc. The closing pass measured duplicate-in-
+  archive and KEY first-wins, `.mod`/RIM, save-vs-module, pass-3/4 order (save > `.mod` > players >
+  texture packs), and flat one-level loose directories. Retail save acceptance is verified at a
+  true 1280×720 windowed client with the permanent windowed mod: the vanilla Taris Hideout save
+  loads to the HUD, F4 writes a valid `000000 - QUICKSAVE` (`last_module=tar_m02af`), and F5
+  quickload restores it. The earlier black screen was Frame Buffer Effects; `Frame Buffer=0`
+  removes the 120×120 Mesa pbuffer path. The save-thumbnail resampler still needs a renderer shim
+  under Mesa. See `docs/recon/08`, `docs/recon/10`, `docs/recon/16`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -44,12 +56,16 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   `.text` bytes (`docs/recon/14`). Bearing `R_z(+B)` is proven in engine code at
   `0x50a0e0`/`0x50a7b0` → `0x4ac960` → `0x5853c0`.
 - MDX layout decoded across the full corpus: 2,832/2,832 models, 76,703 blocks, 489,549,652 bytes
-  exactly assigned to payload/sentinel/pad; stride formula and 968 skin blocks verified
+  exactly assigned to payload/sentinel/pad; relocation `runtimePtr = dataHeader + word`, GPU
+  qbone/tbone skinning via `program.env[18..68]`, and aux4 is dead exporter data with no shipped
+  consumer. All 76,703 blocks are group count 1; bbox expansion is exporter/scene-time
   (`docs/recon/15`).
 - Animation/camera: type 8 position is additive to bind, type 20 orientation is absolute, no NaN
   sentinel; `WOK.position` is room walkmesh node 545 translation (453/453 bit-exact); DLG
   `CameraAnimation` = `1200+(N−1)` → `cutNNNw`; `CameraAngle` ABI/framing decoded; supermodel
-  precedence and supernode binding verified; qbone/tbone/aux4 identities decoded (`docs/recon/12`, `15`).
+  precedence and supernode binding verified; camera `+0x38` is construction-time zero from
+  controller `+0xc4` (live probe confirmed `+0xc4 = 0` in-process), `+0x34` is a per-update
+  coincident flag, and obstruction segments/clip paths are mapped (`docs/recon/12`, `15`).
 - Engine scaffold: C++23 + SDL3 + Vulkan 1.4 (1.3 floor) + OpenGL 4.5 + ImGui builds from
   `engine/` with `/W4 /WX`; Vulkan and OpenGL both run 120 frames, headless CTest 2/2. This is a
   clear/ImGui presentation scaffold, not a renderer yet (`engine/docs/BUILD.md`).

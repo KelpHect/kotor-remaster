@@ -125,26 +125,84 @@ The earlier install-config change was therefore not reproduced by the controlled
 guard remains mandatory because a run launched with the install as its working directory could
 write `swkotor.ini`; the restored file matches the manifest hash.
 
-## Unresolved
+## Closing-pass measurements (2026-10-24)
 
-* Save-vs-module order and real save loading remain untested because this install has no save
-  folder; the controlled boot does not enumerate `saves/` (Load Game is a UI action). Lane 05's
-  synthetic save tests pass.
-* Duplicate keys inside one archive, `.mod` vs RIM, and save-vs-module/shadowing are being measured
-  with synthetic archives and an in-process save/load path.
-* The shipped install has no duplicate keys and no module `.mod`; these cases need synthetic
-  archives in the lane profile.
-* The game rewrites `.\swkotor.ini` in its working directory (not the install in the controlled
-  runs); probes must set and restore settings explicitly and run the install guard.
+The closing pass used pre-first-instruction Frida hooks (`0x4071a0`/`0x407230` lookups,
+`0x40e990` `CExoKeyTable::AddKey`, ERF/RIM/KEY loaders and record reads) plus synthetic fixtures in
+the lane profile. Exact events and fixture hashes are in
+`artifacts/lanes/06-dynamic/vfs-precedence/`. All measured runs report integrity OK; install files
+are unchanged and the saves/patch/ini were restored. A second elevated pass on 2026-10-24 added the
+`runs2/` cases below.
+
+* **Duplicate key inside one archive: first entry wins.** `patch.erf` (tag 1) `border2` entry 97 won
+  over entry 98 (395 B read; 16,523 B ignored); `rims/mainmenu.rim` entry 1 won over entry 2; a
+  module `.mod` `m41ad` entry 3 won over entry 4. The second `AddKey` returned 0 and the duplicate
+  was never read.
+* **`.mod` vs RIM (loaded-save path):** when a `.mod` is present, it is mounted *instead of*
+  `_s.rim` (no `_s` loader). A mounted RIM (`rims/global.rim`) beats `.mod` because pass 3 precedes
+  pass 4. `.mod` beats `lips/localization.mod` (same pass 4). This refines “`.mod` loses to every
+  RIM”: for `_s` the RIM is not mounted at all.
+* **Save vs module:** the save's nested module ERF loses to module `_s` RIM for a stored key
+  (`module`/2014 resolved to `_s` entry 246; save entry 2 ignored), but wins over `.mod` (both pass
+  4, save searched first; save entry 2, `.mod` entry 0 ignored). The save supplies area/git; `_s`
+  supplies static resources. These are resolver-hit observations during extraction/load, not proof
+  of playability.
+* **Pass 3:** `_s` is searched before `global.rim` (last-added-first). **Pass 4:** save nested ERF
+  > `.mod` > `LIPS:localization` > `HD0:players` > texture packs, last-added-first; `.mod` >
+  `lips/localization.mod`. The `LIPS` vs `players` position is now measured directly: with a
+  shared `m12ab`/3000 key, `runs2/lips-vs-players-2` returned `LIPS:localization` (pass event 483,
+  resman 484) after mounting players (seq 404) and LIPS (416/418). **Pass 2** remains `patch.erf`
+  before `Override/textures.erf`.
+* **KEY duplicates:** a byte-patched profile `chitin.key` (25,836→25,837 records) with a duplicate
+  `mainmenu`/3008 appended returned the first record's table index; the second `AddKey` returned 0.
+  First KEY record wins, consistent with ERF/RIM.
+* **Loose directories are flat, one level.** `FindFirstFile*` scans `.\override\*.*`,
+  `.\MOVIES\*.*`, `.\STREAMWAVES\*.*`, `.\STREAMMUSIC\*.*` once and never enumerates a child
+  directory. `MOVIES` honours its ini alias; `streammusic`/`streamwaves` opens use HD0 root paths
+  and ignore their aliases. A top-level `streamwaves/border2.tpc` wins pass 1; a subdirectory-only
+  copy is never opened and falls through to the texture pack. The earlier “sorted/recursive”
+  assumption is withdrawn for this build.
+* **Directory enumeration order is the OS order, not a user-space sort.** `runs2/enum-dirs-1`
+  created `zz_lane06a.tpc`, `aa_lane06b.tpc`, `mm_lane06c.tpc`, `border2.tpc`; `FindFirstFile`
+  returned `aa_lane06b.tpc`, `border2.tpc`, `mm_lane06c.tpc`, `zz_lane06a.tpc` (NTFS name order).
+  The index follows enumeration order.
+* **Pass-1 directory tables are last-added-first.** All four loose directories indexed the
+  controlled `border2`/3007 key; `AddKey` order was Override (seq 18), `HD0:MOVIES` (175),
+  `HD0:STREAMWAVES` (1170), `HD0:STREAMMUSIC` (1425), and the lookup at seq 3187 returned
+  **`HD0:STREAMMUSIC`**. Pass 1 still wins over tags/RIMs/KEY; within pass 1 the last-added table
+  wins.
+* **Save-nested duplicate drop site is at conversion output.** `runs2/save-dup-1` appended a
+  510-byte `module`/2014 duplicate (`VFSDUP-SECOND`) at index 3 of nested `m12ab.sav`. After Load,
+  `gameinprogress/m12ab.sav` still had 4 entries, but `currentgame/m12ab.rim` had 3 (the duplicate
+  gone) and `CURRENTGAME:m12ab` (AddKey seq 475) saw only those 3. The converter is not
+  instruction-traced; the drop is proven before the `CURRENTGAME` table is built.
+
+## Remaining inferred / open
+
+* Fresh-module area-RIM intra-order (`_a`, `_adx`, `.rim`, `_s`) and `.mod` vs area RIM remain
+  unmeasured: controlled New Game runs reach `RIMS:CHARGEN`, but the character-generation `PLAY`
+  control did not activate under posted or hardware mouse input, arrow keys, Enter, or the
+  number hotkeys (the sheet stayed on `PORTRAIT`). This is an input blocker, not a loader stall.
+  `_s` > `global` and `MAINMENU` > `GLOBAL` are measured; the loaded-save path mounts only `_s` or
+  `.mod` instead.
+* `streamwaves` *audio* requests before gameplay remain unobserved; the directory itself, its
+  one-level scan, and its pass-1 index are measured.
+* Save playability/HUD/new-save/reload is verified separately at 1280×720
+  (`docs/recon/10_SAVE_VFS.md`, `docs/recon/16_WINDOWED_1280.md`); this lane measured resolver hits
+  during extraction/load.
+
+The closing passes used the user-authorized focused windowed Load Game path; they were windowed
+only, captured only the game window, and took no full-desktop capture. See
+`artifacts/lanes/06-dynamic/vfs-precedence/summary.md`.
 
 ## Safety
 
-Dynamic runs are windowed (`FullScreen=0`), launched suspended, parked off-screen, and run at idle
-priority. `SetForegroundWindow` is replaced in-process and windows are shown with
-`SW_SHOWNOACTIVATE`; `CreateWindowEx*` is parked before first show, `SetWindowPos`/`MoveWindow` are
-rewritten to `-32000`, and a watchdog re-parks new instances. `max_render_onscreen=0` was sampled
-throughout. See `tools/harness/offscreen.py`, `tools/harness/install_guard.py`, and the
-shared-resource rules in `docs/SPRINT0.md`.
+Dynamic runs are windowed (`FullScreen=0`). The earlier off-screen runs were launched suspended,
+parked off-screen, and run at idle priority. The user then explicitly authorized a focused
+main-screen test: the closing passes used normal game-window activation/focus and input, with only
+the game window captured and no full-desktop capture. No install guard overwrite, no
+process-name-wide manipulation, and no repeated focus reclamation. See the shared-resource rules in
+`docs/SPRINT0.md`.
 
 Full-desktop captures from the earlier lane (`sess_*.bmp`, `screen*.bmp`, `state_01/02`, movie
 frames) were removed for privacy and are listed in
