@@ -32,6 +32,16 @@ Nothing here redistributes game assets or decompiled code. Generated data goes u
 | `install/install_validate.py` | Read-only install detection/validation without the executable | `KOTOR_GAME_DIR=<install> python tools/install/install_validate.py` |
 | `install/cache_profile.py` | Build/verify an external content-addressed dataset cache profile | `python tools/install/cache_profile.py build --out artifacts/cache/profile.json` |
 | `evidence/ledger.py` | SQLite artifact/function/action/resource/claim ledger and coverage view | `python tools/evidence/ledger.py init` then `status` |
+| `inventory/resource_coverage.py` | Sprint 1 G1 ledger: every shipped resource typed/hashed/validated, zero unhandled types | `python tools/inventory/resource_coverage.py --game-dir <install>` |
+| `formats/validate_all.py` | Sprint 1 format matrix driver: all parsers + byte-identical round-trips (GFF/2DA/TLK/ERF/RIM/BIF/KEY) | `python tools/formats/validate_all.py --game-dir <install>` |
+| `formats/lyt.py`, `wok.py`, `bwm.py`, `pth.py`, `vis.py`, `mdl.py` | LYT/WOK/BWM/PTH/VIS/MDL-MDX readers (wire layouts per `docs/recon/15`, `19`) | imported; see `docs/recon/18_FORMAT_MATRIX.md` |
+| `formats/tpc.py`, `txi.py`, `dds.py`, `tga.py`, `ssf.py`, `lip.py`, `gui.py`, `bik.py`, `wav.py`, `mp3.py` | Texture/audio/movie/GUI container readers + validators | same |
+| `formats/two_da_ascii.py`, `formats/tlk_write.py` | 2DA V2.b (incl. NUL variant) byte-identical writer + ASCII V2.0 writer; TLK V3.0 writer | `docs/recon/18_FORMAT_MATRIX.md` |
+| `mapcompile/` | Sprint 1 map compiler: 117-area loader + hard-fail validator (R1–R6) + frozen coordinate contract | `python -m tools.mapcompile.compile --game-dir <install>`; `docs/recon/19_MAP_COMPILE.md` |
+| `scripts/` | NCS codec, action table/usage, decompile status, NSS pairing corpus ledger | `docs/recon/20_SCRIPT_CORPUS.md` |
+| `resources/kotor_save_parity.py` | Retail save byte-parity layer: verbatim re-encode + from-scratch faithful writer | `docs/recon/21_SAVE_BYTEPARITY.md` |
+| `harness/sprint1_probes.py`, `sprint1_dynamic_run.py`, `sprint1_hooks.js` | Consent-gated dynamic probe harness (one owned game instance; install sentinels) | `docs/recon/22_DYNAMIC_P1.md` |
+| `viewer/` | Tools-side textured area renderer + `.gui` screen renderer (pure-Python PNG) | `docs/recon/24_VIEWER.md` |
 
 ```bash
 python tools/inventory/kotor_inventory.py \
@@ -117,6 +127,41 @@ ledger imports the v4 IDs at 10,849/10,849 coverage (441 duplicate handler rows 
 in-body and removed after a database backup).
 
 Upgrade target: Ghidra 12.2 once verified (CVE-2026-100503 affects ≤12.1.4).
+
+## Hydralysis + Hydra Engine (shared warm analysis engine)
+
+Set up 2026-11-01 from the now-public repos, latest releases:
+
+- **Hydralysis v0.7.0** (`github.com/RusticStack/Hydralysis`, tag `v0.7.0`, MIT): checkout at
+  `tools/hydralysis/` (gitignored), editable-installed into `tools/.venv/` (gitignored).
+  CLI/MCP: `tools/.venv/Scripts/hydralysis.exe` (20 tools; `rusticre` alias also installed).
+- **Hydra Engine 12.3-hydra.5** (`github.com/RusticStack/hydra-engine`, tag `v12.3-hydra.5`,
+  Apache-2.0, Ghidra 12.3 DEV fork, headless only): installed by `hydralysis backend install`
+  into `tools/hydra-root/backends/hydra-12.3-hydra.5` (engine) and
+  `.../hydra-client-12.3-hydra.5` (Python client), SHA-256-verified against the release
+  `SHA256SUMS` before extraction. JDK: Eclipse Adoptium `jdk-25.0.4.101-hotspot` (found by
+  `backend install`; JDK 25+ required).
+- Data root (engines, daemon state, jobs, evidence): `tools/hydra-root/` (gitignored), pinned in
+  `%LOCALAPPDATA%\Hydralysis\hydralysis.local.json` via `python -m hydralysis.environment init`,
+  so every harness launch resolves the same root; also set as `HYDRALYSIS_ROOT` in the MCP env.
+- Registered as Vibe MCP server `hydralysis` (stdio `hydralysis.exe mcp`, tools
+  `mcp__hydralysis__*`) in `~/.vibe/config.toml`; skill `hydralysis` installed at
+  `~/.vibe/skills/hydralysis/SKILL.md` from the checkout.
+
+Verify:
+
+```bash
+tools/.venv/Scripts/hydralysis.exe backend inspect        # ready: true, engine 12.3-hydra.5 pinned
+tools/.venv/Scripts/hydralysis.exe backend status         # daemon running, protocol 3
+tools/.venv/Scripts/hydralysis.exe call backend --args '{"action":"status"}'
+```
+
+Notes: Hydralysis runs Hydra Engine only; the ambient `GHIDRA_INSTALL_DIR` (stock Ghidra 12.1.4)
+is ignored and reported under `ignored` by `backend inspect`. The stock-Ghidra project of record
+remains `artifacts/ghidra/kotor.gpr`; adopt it in place with
+`hydralysis prepare --adopt artifacts/ghidra --exe <install>/swkotor.exe --target kotor` when a
+warm target is needed (a Hydra-saved project cannot be reopened by Ghidra ≤12.2). The data root is
+on NTFS, so `fork_project` copies instead of block-cloning (warning `root_not_cow`).
 
 ## Planned external toolchain (licenses matter)
 
