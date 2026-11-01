@@ -7,3 +7,5 @@ tools/jdk21/
 tools/downloads/
 
 engine/build/
+tools/hydralysis/
+tools/hydra-root/

@@ -1,8 +1,9 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **P0 foundation complete (strict closure, 2026-10-24).** There is no playable engine build
-yet; P1 data completeness and P4/P5 renderer work continue. The P0 gate, strict-closure evidence,
-and the P1/P4 handoff are in `docs/P0_REPORT.md`.
+Status: **Sprint 1 (P1 data completeness) complete — gate G1 met (2026-11-01).** There is still no
+playable engine build; P2/P3 binary+VM work and P4/P5 renderer work continue on the frozen data
+foundation. The Sprint 1 plan and exit report are in `docs/SPRINT1.md` / `docs/SPRINT1_REPORT.md`;
+the P0 gate and handoff remain in `docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
 does not ship, download, extract, or redistribute game assets, and it does not require or execute
@@ -49,6 +50,16 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   quickload restores it. The earlier black screen was Frame Buffer Effects; `Frame Buffer=0`
   removes the 120×120 Mesa pbuffer path. The save-thumbnail resampler still needs a renderer shim
   under Mesa. See `docs/recon/08`, `docs/recon/10`, `docs/recon/16`.
+- Sprint 1 (P1, gate G1): 93,053/93,053 shipped resources typed, hashed, and validated with zero
+  unhandled types and 18/18 manifest cross-checks; byte-identical round-trips for GFF (11,143),
+  2DA (519, incl. the NUL-separated RIM variant and ASCII V2.0), TLK (49,265), ERF (5), RIM (246),
+  BIF (26), KEY, and whole retail save slots; map compiler over all 117 areas with hard-fail rules
+  R1–R6 and the ADR 0002 coordinate contract frozen; script corpus ledger (8,666 unique NCS,
+  8,666/8,666 lossless re-encode, 8,428 exact decompiles, NSS pairing, per-module action usage);
+  retail save rewrite accepted by the original engine; live measurements of module mount order,
+  streamwaves scan/index, and camera `+0x38 = 0`; Hydra h5 evidence claims #11–#22 for the P0
+  binary handoff; tools-side textured area/GUI viewer. See `docs/recon/17`–`24` and
+  `docs/SPRINT1_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -87,6 +98,8 @@ Start with:
 
 - [`engine/docs/BUILD.md`](engine/docs/BUILD.md) — build the engine scaffold and run its smoke tests
 - [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) — program lanes, phases, gates, verification
+- [`docs/SPRINT1_REPORT.md`](docs/SPRINT1_REPORT.md) — Sprint 1 (P1) exit report and gate G1
+- [`docs/SPRINT1.md`](docs/SPRINT1.md) — Sprint 1 plan: exit criteria, lanes, shared-resource rules
 - [`docs/SPRINT0_REPORT.md`](docs/SPRINT0_REPORT.md) — Sprint 0 exit report, lane results, and gaps
 - [`docs/P0_REPORT.md`](docs/P0_REPORT.md) — P0 foundation exit report and Gate G0
 - [`docs/SPRINT0.md`](docs/SPRINT0.md) — current foundation sprint exit criteria and lane board
