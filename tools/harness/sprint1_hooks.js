@@ -7,7 +7,7 @@
 // docs/recon/08_VFS_DYNAMIC.md and docs/recon/12_COORDS_OPEN_ITEMS.md.
 
 const CFG = {
-  targets: ['end_m01aa', 'tar_m02af', 'module', 'm01aa', 'm02af', 'k_hcar_dialog',
+  targets: ['end_m01aa', 'tar_m02af', 'module', 'm01aa', 'm02af', 'k_hcar_dialog', 'plc_bed1',
             'mainmenu', 'chargen', 'global', 'mainmenudx', 'chargendx'],
   addKeyRefs: ['end_m01aa', 'tar_m02af', 'module', 'm01aa', 'm02af'],
   addKeyTypes: [2011, 2012, 2014, 2023, 2057, 3002, 4],
@@ -26,6 +26,7 @@ const BASE = game.base;
 const IMAGE_BASE = 0x400000;
 function A(abs) { return BASE.add(abs - IMAGE_BASE); }
 let seq = 0;
+let modelN = 0;
 function emit(o) { o.seq = ++seq; o.t = Date.now(); send(o); }
 function cstra(p, max) { try { return p.readAnsiString(max || 256); } catch (e) { return null; } }
 function cstrw(p) { try { return p.readUtf16String(1024); } catch (e) { return null; } }
@@ -143,7 +144,9 @@ try {
       this.type = args[1].toInt32();
       this.outTable = args[2];
       this.outEntry = args[3];
-      this.want = wantResref(this.rr) || this.type === 4 || this.type === 2029; // WAV + DLG lookups
+      this.want = wantResref(this.rr) || this.type === 4 || this.type === 2029 ||
+        ((this.type === 2002 || this.type === 3008) && modelN < 900);
+      if ((this.type === 2002 || this.type === 3008)) modelN++;
       this.tid = this.threadId;
     },
     onLeave(ret) {
@@ -161,7 +164,7 @@ try {
 
 // ---- file opens / directory enumeration ------------------------------------
 const k32 = Process.getModuleByName('kernel32.dll');
-const KEEP_EXTS = ['.erf','.rim','.mod','.sav','.nwm','.2da','.tpc','.tga','.ifo','.are','.git','.key','.bif','.wav','.bik','.mp3','.wma','.rsv','.ini'];
+const KEEP_EXTS = ['.erf','.rim','.mod','.sav','.nwm','.2da','.tpc','.tga','.ifo','.are','.git','.key','.bif','.wav','.bik','.mp3','.wma','.rsv','.ini','.mdl','.mdx','.pwk','.bwm','.lip','.ssf','.dlg','.ncs','.nss','.utc','.utt','.utp','.utd','.utm','.jrl','.bic']
 const KEEP_DIRS = ['saves','currentgame','gameinprogress','futuregame','override'];
 function tracePath(path) {
   if (!path) return false;
@@ -315,12 +318,8 @@ for (const off of camReadSites) {
 }
 
 // ---- disclosed shims: save-thumbnail ret + glu mipmap (Mesa llvmpipe) ------
-try {
-  const shot = A(0x420f20);
-  Memory.protect(shot, 8, 'rwx');
-  shot.writeU8(0xC3);
-  emit({ f: 'patch', target: 'screenshot_ret_0x420f20', addr: shot.toString() });
-} catch (e) { emit({ f: 'hookerr', name: 'screenshot_patch', e: String(e) }); }
+// ret-patch of 0x420f20 is applied in the synth block below (attach first)
+
 try {
   Interceptor.attach(A(0x45dad0), {
     onEnter(a) {
@@ -414,7 +413,7 @@ rpc.exports = {
     if (Array.isArray(c.addKeyTypes)) CFG.addKeyTypes = c.addKeyTypes.map((x) => Number(x));
     return { ok: true, cfg: CFG };
   },
-  stats() { return { seq: seq, addKeyN: addKeyN }; },
+  stats() { return { seq: seq, addKeyN: addKeyN, meshTotal: (typeof meshTotal !== 'undefined' ? meshTotal : -1) }; },
   ping() { return 'pong'; },
   hwnd() { return targetWindow(); },
   focusinproc() { focusResult = focusGameWindow(); return focusResult; },
@@ -447,3 +446,246 @@ rpc.exports = {
   }
 };
 emit({ f: 'agent_s1_06', base: BASE.toString(), pid: Process.id, cfg: CFG });
+
+// ---- Sprint-1 closure: N-group mesh processing (docs/recon/23 #11-#13) -------
+// build sha256 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+// Mesh data header: +0x100 face-count array ptr (+0x104/+0x108 counts),
+// +0x10c handles ptr (+0x110/+0x114), +0x118 group-offsets ptr, +0x11c/+0x120 group count.
+function meshFields(r) {
+  return { f100: u32(r, 0x100), f104: u32(r, 0x104), f108: u32(r, 0x108),
+           f10c: u32(r, 0x10c), f110: u32(r, 0x110), f114: u32(r, 0x114),
+           f118: u32(r, 0x118), f11c: u32(r, 0x11c), f120: u32(r, 0x120) };
+}
+function isMultiGroup(f) {
+  return f && (f.f104 > 1 || f.f11c > 1 || f.f120 > 1 || f.f108 > 1 || f.f110 > 1 || f.f114 > 1);
+}
+let meshLogN = 0;
+function emitMesh(o) {
+  if (meshLogN < 400) { meshLogN++; emit(o); }
+}
+// relocation FUN_004a0c00: guarded adds + per-group loop 0x4a0ce0-0x4a0d7b
+let meshTotal = 0;
+camHook(0x4a0c5e, 'reloc_add_faces_0x4a0c5e', function () {
+  const f = meshFields(this.context.ebx);
+  meshTotal++;
+  if (isMultiGroup(f)) {
+    emitMesh({ f: 'reloc_faces', site: '0x4a0c5e', hdr: this.context.ebx.toString(), fields: f, multi: true, tid: this.threadId });
+  }
+});
+camHook(0x4a0ce0, 'reloc_group_loop_0x4a0ce0', function () {
+  if (u32(this.context.ebx, 0x11c) <= 1) return;
+  const f = meshFields(this.context.ebx);
+  if (isMultiGroup(f)) {
+    emitMesh({ f: 'reloc_group', site: '0x4a0ce0', hdr: this.context.ebx.toString(),
+               g: this.context.eax.toInt32(), fields: f, tid: this.threadId });
+  }
+});
+camHook(0x4a0d68, 'reloc_group_tail_0x4a0d68', function () {
+  if (u32(this.context.ebx, 0x11c) <= 1) return;
+  const f = meshFields(this.context.ebx);
+  if (isMultiGroup(f)) {
+    emitMesh({ f: 'reloc_group_tail', site: '0x4a0d68', hdr: this.context.ebx.toString(),
+               eax: this.context.eax.toInt32(), ecx: this.context.ecx.toInt32(),
+               groupCount: f.f11c, tid: this.threadId });
+  }
+});
+// GPU draw FUN_0046f900: bound [esi+0x104] at 0x46f967, loop head 0x46f990
+camHook(0x46f967, 'draw_bound_0x46f967', function () {
+  if (u32(this.context.esi, 0x104) <= 1 && u32(this.context.esi, 0x11c) <= 1) return;
+  const f = meshFields(this.context.esi);
+  if (isMultiGroup(f)) {
+    emitMesh({ f: 'draw_bound', site: '0x46f967', mesh: this.context.esi.toString(), fields: f, tid: this.threadId });
+  }
+});
+camHook(0x46f990, 'draw_group_loop_0x46f990', function () {
+  if (u32(this.context.esi, 0x104) <= 1 && u32(this.context.esi, 0x11c) <= 1) return;
+  const f = meshFields(this.context.esi);
+  if (isMultiGroup(f)) {
+    emitMesh({ f: 'draw_group', site: '0x46f990', mesh: this.context.esi.toString(),
+               g: this.context.edi.toInt32(), ebp: this.context.ebp.toInt32(),
+               offsetsArr: hs(ptrAt(this.context.esi, 0x118)),
+               countsArr: hs(ptrAt(this.context.esi, 0x100)),
+               offsets_g: ptrAt(ptrAt(this.context.esi, 0x118), this.context.edi.toInt32() * 4) ? u32(ptrAt(this.context.esi, 0x118), this.context.edi.toInt32() * 4) : null,
+               counts_g: u32(ptrAt(this.context.esi, 0x100), this.context.edi.toInt32() * 4),
+               tid: this.threadId });
+  }
+});
+camHook(0x477a80, 'draw2_group_loop_0x477a80', function () {
+  if (u32(this.context.edi, 0x104) <= 1 && u32(this.context.edi, 0x11c) <= 1) return;
+  const f = meshFields(this.context.edi);
+  if (isMultiGroup(f)) {
+    emitMesh({ f: 'draw2_group', site: '0x477a80', mesh: this.context.edi.toString(),
+               g: this.context.ebx.toInt32(), bound: this.context.eax.toInt32(), fields: f, tid: this.threadId });
+  }
+});
+camHook(0x487760, 'cpuskin_group_loop_0x487760', function () {
+  if (u32(this.context.eax, 0x11c) <= 1) return;
+  const f = meshFields(this.context.eax);
+  if (isMultiGroup(f)) {
+    emitMesh({ f: 'cpuskin_group', site: '0x487760', mesh: this.context.eax.toString(),
+               g: this.context.ebp.toInt32(), ecx: this.context.ecx.toInt32(), fields: f, tid: this.threadId });
+  }
+});
+
+function pickName(args) {
+  for (let i = 0; i < 3; i++) {
+    for (const a of [args[i], ptrAt(args[i], 0)]) {
+      try {
+        const s = cstra(a, 64);
+        if (s && /^[a-zA-Z0-9_]{2,}$/.test(s)) return s;
+      } catch (e) {}
+      try {
+        const w = cstrw(a, 32);
+        if (w && /^[a-zA-Z0-9_]{2,}$/.test(w)) return w;
+      } catch (e) {}
+    }
+  }
+  return null;
+}
+
+// ---- Sprint-1 closure: supermodel clip chain (docs/recon/23 #14-#16) ---------
+// FUN_004822a0 clip lookup: local array +0x58/+0x5c, super link +0x64.
+let clipN = 0;
+const clipDepth = {};
+try {
+  Interceptor.attach(A(0x4822a0), {
+    onEnter(args) {
+      this.obj = this.context.ecx;
+      this.nm = pickName(args);
+      const nm = this.nm;
+      const tid = this.threadId;
+      const d = (clipDepth[tid] || 0) + 1;
+      clipDepth[tid] = d;
+      this.d = d;
+      if (clipN < 1200) {
+        clipN++;
+        emit({ f: 'clip_lookup', phase: d > 1 ? 'super_enter' : 'enter', depth: d,
+               obj: this.obj.toString(), name: nm,
+               local: hs(ptrAt(this.obj, 0x58)), localCount: u32(this.obj, 0x5c),
+               super: hs(ptrAt(this.obj, 0x64)), tid: tid });
+      }
+    },
+    onLeave(ret) {
+      clipDepth[this.threadId] = Math.max(0, (clipDepth[this.threadId] || 1) - 1);
+      if (clipN <= 1200) {
+        emit({ f: 'clip_lookup', phase: 'leave', depth: this.d, obj: this.obj.toString(),
+               name: this.nm, ret: ret.toInt32(), hit: ret.toInt32() !== 0, tid: this.threadId });
+      }
+    }
+  });
+  emit({ f: 'hook', target: 'clip_lookup_0x4822a0', addr: '0x4822a0' });
+} catch (e) { emit({ f: 'hookerr', name: 'clip_lookup', e: String(e) }); }
+camHook(0x482463, 'clip_super_link_0x482463', function () {
+  const o = this.context.esi;
+  emit({ f: 'clip_super_link', site: '0x482463', obj: o.toString(),
+         super: hs(ptrAt(o, 0x64)), local: hs(ptrAt(o, 0x58)), localCount: u32(o, 0x5c),
+         tid: this.threadId });
+});
+camHook(0x482459, 'clip_local_miss_0x482459', function () {
+  emit({ f: 'clip_local_miss', site: '0x482459', obj: this.context.esi.toString(),
+         super: hs(ptrAt(this.context.esi, 0x64)), tid: this.threadId });
+});
+let playN = 0;
+try {
+  Interceptor.attach(A(0x485bd0), {
+    onEnter(args) {
+      this.obj = this.context.esi;
+      this.nm = pickName(args);
+      const nm = this.nm;
+      if (playN < 300) {
+        playN++;
+        emit({ f: 'clip_play', phase: 'enter', obj: this.obj.toString(), name: nm,
+               active: hs(ptrAt(this.obj, 0xb0)), activeCount: u32(this.obj, 0xb4),
+               local: hs(ptrAt(this.obj, 0x58)), localCount: u32(this.obj, 0x5c),
+               super: hs(ptrAt(this.obj, 0x64)), tid: this.threadId });
+      }
+    },
+    onLeave(ret) {
+      if (playN <= 300) {
+        emit({ f: 'clip_play', phase: 'leave', obj: this.obj.toString(), name: this.nm,
+               ret: ret.toInt32(), tid: this.threadId });
+      }
+    }
+  });
+  emit({ f: 'hook', target: 'clip_play_0x485bd0', addr: '0x485bd0' });
+} catch (e) { emit({ f: 'hookerr', name: 'clip_play', e: String(e) }); }
+let queryN = 0;
+try {
+  Interceptor.attach(A(0x484d20), {
+    onEnter(args) {
+      this.obj = this.context.ecx;
+      this.nm = pickName(args);
+      const nm = this.nm;
+      if (queryN < 200) {
+        queryN++;
+        emit({ f: 'clip_query', phase: 'enter', obj: this.obj.toString(), name: this.nm,
+               active: hs(ptrAt(this.obj, 0xb0)), activeCount: u32(this.obj, 0xb4),
+               super: hs(ptrAt(this.obj, 0x64)), tid: this.threadId });
+      }
+    },
+    onLeave(ret) {
+      if (queryN <= 200) {
+        emit({ f: 'clip_query', phase: 'leave', obj: this.obj.toString(), name: this.nm,
+               ret: ret.toInt32(), tid: this.threadId });
+      }
+    }
+  });
+  emit({ f: 'hook', target: 'clip_query_0x484d20', addr: '0x484d20' });
+} catch (e) { emit({ f: 'hookerr', name: 'clip_query', e: String(e) }); }
+
+// ---- Sprint-1 closure: replace the save-thumbnail writer 0x420f20 (cdecl, 1 arg) --
+// so the Mesa-faulting resampler FUN_0045dad0 (faults at 0x45db21) never runs; the
+// replacement writes a synthesized 256x256 24bpp TGA to the destination path instead.
+try {
+  const k32w = Process.getModuleByName('kernel32.dll');
+  const createFileW = new NativeFunction(k32w.getExportByName('CreateFileW'), 'pointer',
+    ['pointer', 'uint', 'uint', 'pointer', 'uint', 'uint', 'pointer'], 'stdcall');
+  const writeFile = new NativeFunction(k32w.getExportByName('WriteFile'), 'int',
+    ['pointer', 'pointer', 'uint', 'pointer', 'pointer'], 'stdcall');
+  const closeHandle = new NativeFunction(k32w.getExportByName('CloseHandle'), 'int', ['pointer'], 'stdcall');
+  const tga = new Uint8Array(18 + 256 * 256 * 3);
+  tga[2] = 2; tga[12] = 0; tga[13] = 1; tga[14] = 0; tga[15] = 1; tga[16] = 24;
+  for (let i = 18; i < tga.length; i += 3) { tga[i] = 0x60; tga[i + 1] = 0x60; tga[i + 2] = 0x60; }
+  function synthPath(arg) {
+    for (const a of [arg, ptrAt(arg, 0)]) {
+      try { const w = cstrw(a, 260); if (w && /screen\.tga$/i.test(w)) return w; } catch (e) {}
+      try { const c = cstra(a, 260); if (c && /screen\.tga$/i.test(c)) return c; } catch (e) {}
+    }
+    return null;
+  }
+  const repl = new NativeCallback(function () {
+    // 0-arg default-abi replacement == plain `ret` for this cdecl target (caller cleans).
+    // The single stack arg (dest path) sits at [esp+4] on entry.
+    const arg = Memory.readPointer(this.context.esp.add(4));
+    const path = synthPath(arg);
+    emit({ f: 'thumb_replace_0x420f20', arg: hs(arg), path: path, tid: this.threadId });
+    if (path) {
+      try {
+        const p = Memory.allocUtf16String(path);
+        const h = createFileW(p, 0x40000000, 0, null, 2, 0, null);
+        if (h && !h.isNull() && h.toInt32() !== -1) {
+          const buf = Memory.alloc(tga.length);
+          buf.writeByteArray(tga);
+          const written = Memory.alloc(4);
+          writeFile(h, buf, tga.length, written, null);
+          closeHandle(h);
+          emit({ f: 'screen_tga_synth', path: path, bytes: tga.length, written: written.readU32(), tid: this.threadId });
+        }
+      } catch (e) { emit({ f: 'screen_tga_err', path: path, e: String(e) }); }
+    }
+    return 0;
+  }, 'int', []);
+  Interceptor.replace(A(0x420f20), repl);
+  emit({ f: 'hook', target: 'thumb_replace_0x420f20', addr: '0x420f20' });
+} catch (e) { emit({ f: 'hookerr', name: 'thumb_replace', e: String(e) }); }
+// log-only attach on the faulting resampler (never entered while 0x420f20 is replaced)
+try {
+  Interceptor.attach(A(0x45dad0), {
+    onEnter(a) {
+      emit({ f: 'resample_0x45dad0_ENTERED', sw: a[1].toInt32(), sh: a[2].toInt32(),
+             dw: a[4].toInt32(), dh: a[5].toInt32(), tid: this.threadId });
+    }
+  });
+} catch (e) { emit({ f: 'hookerr', name: 'resample', e: String(e) }); }
+
+emit({ f: 'agent_s1_06_closure', pid: Process.id });

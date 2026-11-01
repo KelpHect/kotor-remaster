@@ -40,7 +40,7 @@ import sprint1_probes as sp  # noqa: E402
 REPO = sp.REPO_ROOT
 LANE = sp.LANE
 PROFILE = LANE / "profile"
-HOOK = HERE / "sprint1_hooks.js"
+HOOK = Path(os.environ.get("SP1_HOOK", str(HERE / "sprint1_hooks.js")))
 RUNS = LANE / "runs"
 
 ENV_EXTRA = {"GALLIUM_DRIVER": "llvmpipe", "MESA_LOADER_DRIVER_OVERRIDE": "llvmpipe"}
@@ -92,6 +92,12 @@ u32.SetActiveWindow.restype = wt.HWND
 u32.SetFocus.argtypes = [wt.HWND]
 u32.SetFocus.restype = wt.HWND
 k32.GetCurrentThreadId.restype = wt.DWORD
+k32.OpenProcess.argtypes = [wt.DWORD, wt.BOOL, wt.DWORD]
+k32.OpenProcess.restype = wt.HANDLE
+k32.GetExitCodeProcess.argtypes = [wt.HANDLE, ctypes.POINTER(wt.DWORD)]
+k32.GetExitCodeProcess.restype = wt.BOOL
+k32.CloseHandle.argtypes = [wt.HANDLE]
+k32.CloseHandle.restype = wt.BOOL
 u32.AttachThreadInput.argtypes = [wt.DWORD, wt.DWORD, wt.BOOL]
 u32.AttachThreadInput.restype = wt.BOOL
 k32.SetThreadExecutionState.argtypes = [wt.DWORD]
@@ -251,24 +257,34 @@ def send_key(vk: int, up: bool, hold: float = 0.06) -> None:
         time.sleep(hold)
 
 
+MOUSEEVENTF_ABSOLUTE = 0x8000
+
+
 def hw_click(pid: int, x: int, y: int) -> dict:
     w = render_window(pid)
     if not w:
         return {"ok": False, "why": "no render window"}
     h = w["hwnd"]
-    pt = ctypes.wintypes.POINT(x, y)
-    u32.ClientToScreen(h, ctypes.byref(pt))
-    u32.SetCursorPos(pt.x, pt.y)
-    time.sleep(0.05)
-    for flags in (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP):
+    r = RECT()
+    u32.GetClientRect(h, ctypes.byref(r))
+    cw, ch = r.right - r.left, r.bottom - r.top
+    # absolute normalized 0..65535 over the client area
+    ax = int(x * 65535 / max(1, cw))
+    ay = int(y * 65535 / max(1, ch))
+    for flags in (MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
+                  MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_ABSOLUTE,
+                  MOUSEEVENTF_LEFTUP | MOUSEEVENTF_ABSOLUTE):
         inp = INPUT()
         inp.type = INPUT_MOUSE
-        inp.union.mi.dx = pt.x
-        inp.union.mi.dy = pt.y
-        inp.union.mi.dwFlags = flags | MOUSEEVENTF_MOVE
+        inp.union.mi.dx = ax
+        inp.union.mi.dy = ay
+        inp.union.mi.dwFlags = flags
         u32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
         time.sleep(0.08)
-    return {"ok": True, "hwnd": int(h), "x": x, "y": y, "screen": [pt.x, pt.y]}
+    gp = ctypes.wintypes.POINT()
+    u32.GetCursorPos(ctypes.byref(gp))
+    return {"ok": True, "hwnd": int(h), "x": x, "y": y, "abs": [ax, ay],
+            "cursor_screen": [gp.x, gp.y]}
 
 
 def preflight(args) -> dict:
@@ -319,6 +335,16 @@ class Session:
         self.pid = self.dev.spawn([str(PROFILE / "swkotor.exe")], cwd=str(PROFILE),
                                   env=env, stdio="pipe")
         self.session = self.dev.attach(self.pid)
+        self.detach_info = None
+
+        def on_detached(reason, crash):
+            self.detach_info = {"reason": str(reason), "crash": str(crash)}
+            try:
+                self.events_f.write(json.dumps({"f": "session_detached", **self.detach_info}) + "\n")
+            except Exception:
+                pass
+
+        self.session.on("detached", on_detached)
         self.events_f = self.events_path.open("w", encoding="utf-8", buffering=1)
 
         def on_message(msg, data):
@@ -403,6 +429,32 @@ def serve_control(sess: Session, run: Path, steps_out: list) -> int:
             n = int(cmd.get("n", 20))
             lines = sess.events_path.read_text(encoding="utf-8", errors="replace").splitlines()
             return {"ok": True, "lines": lines[-n:]}
+        if op == "interactive":
+            # nested accept loop: lets an external client drive the session live
+            deadline = time.time() + float(cmd.get("s", 300))
+            n = 0
+            while time.time() < deadline and not stop_flag["quit"]:
+                try:
+                    srv.settimeout(max(0.1, deadline - time.time()))
+                    conn, _ = srv.accept()
+                except socket.timeout:
+                    continue
+                with conn:
+                    buf = b""
+                    while not buf.endswith(b"\n"):
+                        chunk = conn.recv(65536)
+                        if not chunk:
+                            break
+                        buf += chunk
+                    if not buf.strip():
+                        continue
+                    try:
+                        res = handle(json.loads(buf.decode("utf-8")))
+                    except Exception as exc:
+                        res = {"ok": False, "error": repr(exc)}
+                    conn.sendall((json.dumps(res, ensure_ascii=False) + "\n").encode())
+                    n += 1
+            return {"ok": True, "interactive_commands": n}
         if op == "quit":
             stop_flag["quit"] = True
             return {"ok": True, "quitting": True}
@@ -456,10 +508,12 @@ def main() -> int:
     ap.add_argument("--mesa-source", default=None,
                     help="dir with Mesa opengl32.dll/libgallium_wgl.dll/dxil.dll to copy into the profile")
     ap.add_argument("--game-dir", default=None)
+    ap.add_argument("--runs-dir", default=None)
     args = ap.parse_args()
 
     pre = preflight(args)
-    run = RUNS / args.label
+    runs_root = Path(args.runs_dir) if args.runs_dir else RUNS
+    run = runs_root / args.label
     if run.exists():
         print(f"RUN EXISTS {run}", file=sys.stderr)
         return 2
@@ -508,9 +562,21 @@ def main() -> int:
                 for n in sp.SENTINELS}
         post_ok = all(post[n] == exp for n, exp in sp.SENTINELS.items())
         saves_after = tree(PROFILE / "saves")
+        exit_code = None
+        try:
+            ph = k32.OpenProcess(0x1010, False, sess.pid)  # PROCESS_QUERY_LIMITED_INFORMATION|PROCESS_VM_READ
+            if ph:
+                ec = wt.DWORD()
+                k32.GetExitCodeProcess(ph, ctypes.byref(ec))
+                exit_code = ec.value
+                k32.CloseHandle(ph)
+        except Exception as exc:
+            exit_code = f"err {exc!r}"
         summary = {
             "label": args.label,
             "pid": sess.pid,
+            "detach_info": getattr(sess, "detach_info", None),
+            "exit_code": exit_code,
             "steps": len(steps_out),
             "install_sentinels_after": post,
             "install_ok_after": post_ok,

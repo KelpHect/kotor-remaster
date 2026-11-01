@@ -142,3 +142,106 @@ docs/recon/15). Closed. Evidence #21, #22.
 | #20 | ev_55464e0054a33884e4ed7736c8d594ba6c1f3920495c73e93918d57c9fb79a7e | mode-nonzero branches unreachable |
 | #21 | ev_b6c1d328ed67cd6a30c0c225e1bb8bd1ecfa63193d65929d1b960ace8bb6ac8b | GPU skin env[18..68] + shaders |
 | #22 | ev_36d79876b511cf9ef2d618b0ff3930e0a5f24f7be83634edc324155a2a089902 | aux4 no consumer |
+
+---
+
+# Closure addendum (integrator follow-up, agent `s1_07b`, read-only on the sealed master)
+
+Scope: statically close, as far as the binary allows, the two input-blocked dynamic items of
+`docs/recon/22_DYNAMIC_P1.md` §6 — (A) the fresh-New-Game area-RIM mount order, (B) the
+dialogue-start camera path. All queries `ghidra_query` on target `kotor` with `options.as =
+"s1_07b"`; build SHA-256 `0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6`
+quoted on every address. Raw transcripts: `artifacts/lanes/s1-07-binary/queries-closure/`.
+Evidence claims **#23–#28**.
+
+## A. Fresh-module area-RIM mount order (New Game path) — VERIFIED statically
+
+Entry chain (all addresses build `0290889e…74e6`):
+
+1. Main-loop handlers call the thunk `FUN_004ae860` (`0x4ae860 mov ecx,[ecx+4]` /
+   `0x4ae863 jmp 0xbabb0`) from `0x401cf3` (after the `DAT_007a39fc+8` non-null check,
+   `0x401ce3–0x401cf3`) and `0x404757`.
+2. `FUN_004babb0` (`[4babb0,4bb335]`, module transition handler): request object
+   `puVar10 = *(DAT_007a39fc+0x14)`; kind `puVar10[1]`: `1`/`3` with `puVar10[3]==0` →
+   `FUN_004c9050` at `0x4bb0e8` (loaded-save path, builds `CURRENTGAME:<mod>`);
+   `puVar10[3]==puVar10[2]` → `FUN_004c5880`; **else → `FUN_004c5720(puVar10[2],puVar10[3])`
+   at `0x4bb142`** (new/different module).
+3. `FUN_004c5720` (`[4c5720,4c587a]`): `*(param_1+0x1c8)==0` is the **new-game** branch
+   (default `0x7f000000`), else `*(param_1+0x40)`; both call the mounter
+   **`FUN_004c44d0(param_1+0x5c)`** at `0x4c57c8` (`0x4c57c2 lea eax,[esi+0x5c];
+   0x4c57c5 push eax; 0x4c57c8 call 0xc44d0`) and `0x4c5805`. (`FUN_004c9050` also calls it at
+   `0x4c9132`; `FUN_004c68a0` at `0x4c69b4`.)
+
+Mount order inside `FUN_004c44d0` (`[4c44d0,4c4b7d]`, resman `DAT_007a39e8`), disasm-cited:
+
+| # | site | action |
+|---|---|---|
+| 1 | `0x4c44fb call 0x8820` | mount caller's full table `param_1` (`TAG:name`; `:` split at `0x4c450c`) from the pass-3 ERF list (`FUN_00408820 = FUN_00407830(name,3)`) |
+| 2 | `0x4c458f/0x4c45d1/0x4c4621/0x4c465f` | `CURRENTGAME:` create pass-2 (`0x8800 = FUN_00406e20(name,2,0)`), mount `CURRENTGAME:<mod>` (RIM list `0x8830` / ERF list `0x8820`), remove pass-2 (`0x88d0`) |
+| 3 | `0x4c468f call 0x8800` | create pass-2 `MODULES:` table (for a potential `<mod>.mod`) |
+| 4 | `0x4c46b6 push 0x7db; 0x4c46c0 call 0x8bc0` | **probe `modules/<mod>.mod` (resref `<mod>`, type 2011)**; if found → `0x4c46f9 call 0x8820` mount `MODULES:<mod>` **from the .mod** |
+| 5 | `0x4c4743 push 0xbba; 0x4c4753 call 0x8bc0` | else probe `<mod>_s` (type 3002 RIM); if found: new game (`edi==0`) → `0x4c47dc call 0x8830` mount **RIM `MODULES:<mod>_s`**; otherwise `0x4c4851 call 0x8830` mount `LIVE%d:MODULES\<mod>_s` (fmt `0x7458c4`) |
+| 6 | `0x4c488f call 0x88d0` | remove pass-2 `MODULES:` |
+| 7 | `0x4c48d6 / 0x4c48f9 call 0x8820` | mount `LIPS:<loc>_loc` (sprintf `0x7458ac`) and `LIPS:localization` (`0x745898`) |
+| 8 | `0x4c494e call 0x8bc0` (type 0xbba) → `0x4c49d0 call 0x8830` | if `<mod>_a.rim` exists, mount RIM `RIMS:<mod>_a` |
+| 9 | `0x4c4a4f call 0x8bc0` → `0x4c4ad1 call 0x8830` | if `<mod>_adx.rim` exists, mount RIM `RIMS:<mod>_adx` |
+| 10 | `0x4c4b2c call 0x8820` | mount `HD0:players` (`0x7458b8`) |
+
+Loader dispatch (claim #25): `FUN_00410190` switches pass: 1→`FUN_0040fb80` (KEY, `0x4101df`),
+2→`FUN_0040f200`, 3→`FUN_0040f3c0` (ERF, `0x41021d` — the live `loader_erf` hook),
+4→`FUN_0040f990` (RIM, `0x41023c` — the live `loader_rim` hook); `FUN_00406e20` creates the
+0x34-byte table object and calls it at `0x406fbc`. `FUN_00408830` mounts from the pass-4 RIM
+list (`+0x1c`); `FUN_00408bc0` = find (nonzero eax = exists).
+
+**Answer:** on a fresh New Game load with no `modules/<mod>.mod`, the **first module RIM opened
+is `<mod>_s.rim` as `MODULES:<mod>_s`** (step 5); a `modules/<mod>.mod` would instead be mounted
+as `MODULES:<mod>` (step 4) and suppress the `_s` mount; `_a`/`_adx` RIMs open only if present,
+after the LIPS ERFs (steps 8–9). Retail install (read-only `ls`): `modules/` = 234 `.rim`
+(117 `<mod>.rim` + 117 `<mod>_s.rim` pairs, e.g. `end_m01aa.rim` holds the 3 area files
+IFO/ARE/GIT-type 2012, `end_m01aa_s.rim` the 368 static entries), **zero `.mod`, zero
+`_a`/`_adx`** — so only the `_s` probe can hit. Consistent with the live loaded-save run
+(docs/recon/22 §2a: `tar_m02af`/2011 probe ret 0, `loader_rim MODULES:tar_m02af_s`,
+`loader_erf CURRENTGAME:tar_m02af`). The fresh-path intra-order is therefore static-closed;
+the only live-only residue is observing `end_m01aa_s` actually firing, blocked by the
+chargen-input blocker, not by any binary ambiguity. Claims #23, #24, #25.
+
+## B. Dialogue-start camera path — VERIFIED statically (construction-zero holds)
+
+* Camera creation on dialogue start: `FUN_0062bf30` (`[62bf30,62bf6d]`) —
+  `if (*(param_1+0xb20)==0 && FUN_005ed530()!=0) FUN_006412f0(*(param_1+0xc4));`
+  disasm `0x22bf4e mov ecx,[esi+0xc4]; 0x22bf54 push ecx; 0x22bf57 call 0x2412f0`;
+  callers `0x6338aa/0x63390c/0x6342ef/0x62eae7` (dialogue-controller methods). The other two
+  creation reads are in `FUN_00631d80` (`0x6320c9`, `0x632127`).
+* DLG camera-model/clip path: `FUN_005a13d0` (DLG node processor; the sibling
+  `FUN_005a2ae0` calls the DLG camera-field parser `FUN_0059eaa0` at `0x5a2ef9/0x5a3162`)
+  calls `FUN_00631d80` at `0x5a1b98`; `FUN_00631d80` calls `FUN_0062bf70` with the DLG
+  `CameraAnimation` value at `0x6320a1` (`0x23209f mov ecx,esi; 0x2320a1 call 0x22bf70`);
+  `FUN_0062bf70` (`999 < val < 1728`, `+0xb28`) calls `FUN_00641010` at `0x62c00f`;
+  `FUN_00641010` attaches the **`camerahook`** camera model via vtable `+0x74`
+  (`0x241174 push 0x74f42c; 0x24117c call [edx+0x74]`; string rva `0x34f42c`) and maps the
+  value to the clip with `FUN_006288f0` at `0x64119b` (`case 1000 -> "cut001"`, `0x3e9 ->
+  "cut002"`, …, `0x2772` special — the `cut{N:03d}`/cutW/cutL/cutWL bands of docs/recon/12),
+  then plays it via vtable `+0x1c/+0x18`. Claims #26, #27.
+* `+0x38` on this path: all three dialogue creation sites feed controller `+0xc4` into
+  `FUN_006412f0`, which forwards it into ctor `FUN_006bb670`
+  (`0x64135f–0x64136f`, call at `0x64136f`); the ctor writes `+0x38` only at `0x6bb6f8`
+  (`0x6bb6f1 mov ecx,[esp+0x24]; 0x6bb6f8 mov [esi+0x38],ecx`); controller `+0xc4` is zeroed
+  at ctor (`0x630244`, `xor ebx,ebx` at `0x62feed`) and the `writes offset=0xc4` scan finds no
+  other writer in the dialogue region (57 sites program-wide; only `0x630244` and `0x63e695`,
+  both ctors storing 0). ⇒ **the dialogue-start camera object is also constructed with
+  `+0x38 = 0`**; mode-nonzero branches remain unreachable. Claim #28 (cross-refs #18–#20).
+  Live run b already observed this chain firing at module-load camera setup
+  (`camera_mode_read 0x6320c9 c4=0` → `camera_mode_write 0x6bb6f8 value=0`); the only
+  remaining live-only piece is observing it inside an actual conversation, which stays with
+  lane s1-06 (input blocker), but the binary leaves no room for a nonzero mode.
+
+## Closure evidence index (build 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6)
+
+| claim | evidence_id | item |
+|---:|---|---|
+| #23 | ev_fd962aa1a4886068e0b9ffc5c6d26d111103a7fb04afaec1b3b55ff930f3ffc5 | A: entry chain 0x4ae860→0x4babb0→0x4c5720→0x4c44d0 |
+| #24 | ev_97f328390d16d2323a7e726ca8c61d69ecb1b41b1da32a6c4fb9c3515eb93472 | A: mount order in FUN_004c44d0 (.mod probe → _s → LIPS → _a/_adx → players) |
+| #25 | ev_1769fe3e3088d47f4e6995172cffbe425b58ea20d5f4b64a03357e9f9081bf71 | A: loader dispatch FUN_00410190 passes 1–4 |
+| #26 | ev_618dec026831a095531fde1d6b74faaf2ecb1afbbb1b502c42d7b5987197b9cf | B: FUN_0062bf30 dialogue camera creation from +0xc4 |
+| #27 | ev_16304624dda5cbaa6121ea534498ecebef8d2b0064830201b4fd0cae61211dbd | B: CameraAnimation → camerahook model + cutNNN clip (0x62bf70→0x641010→0x6288f0) |
+| #28 | ev_bb7dea8a9e8b5d786d6ab34fcee6b0e2ca99a4e23f9cf966a2ed5eb37a5bd519 | B: +0x38 construction-zero on the dialogue path |

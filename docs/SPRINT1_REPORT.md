@@ -20,7 +20,7 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
 | 4 | Script corpus ledger | **met** — 13,139 NCS occurrences → 8,666 unique, 8,666/8,666 byte-identical re-encode (two independent paths agree, 0/8,666 differ vs lane-04 index); NSS pairing 1,680/8,666 (base layer 1,611/1,637 = 98.41%); decompile classes merged 8,666/8,666 (8,428 exact); 5 bug-parity arity anomalies explicit; per-module action usage (117 modules) | `docs/recon/20_SCRIPT_CORPUS.md`; `artifacts/lanes/s1-04-scripts/` |
 | 5 | Save/VFS completion | **met** — unmodified re-encode of a retail save slot byte-identical 100% (ERF verbatim 46/46 across 14 real slots, GFF verbatim 100%, whole-slot 5/5); from-scratch ERF writer byte-identical to retail; GFF sidecars field-equal (diff classes classified); all inferred VFS items closed synthetically or handed to s1-06 | `docs/recon/21_SAVE_BYTEPARITY.md`; `artifacts/lanes/s1-05-save-vfs/` |
 | 6 | Dynamic P1 measurements | **met with 4 documented blockers** — loaded-save RIM order verified (`HD0:players → LIPS → MODULES:<m>_s → CURRENTGAME:<m>`; `.mod` misses all passes on retail); boot order re-verified; streamwaves scan+index verified (1,144 files, 978 wavs; zero streamwaves `.wav` opens in menu→module→gameplay, all wav opens were streammusic); camera `+0x38 = 0` from controller `+0xc4 = 0` observed live in-process; rewritten save `000007 - PARITY` accepted by the retail engine via the normal Load Game UI | `docs/recon/22_DYNAMIC_P1.md`; `artifacts/lanes/s1-06-dynamic/` |
-| 7 | Binary P1 verification (hydralysis / Hydra h5) | **met** — 12 evidence-DB claims (#11–#22) on the sealed master, every address quoted with the build SHA-256: N-group mesh loops proven N-group capable; supermodel chain semantics (duplicate/ancestor-only/missing); camera `+0x38` write set proven construction-zero, mode-nonzero branches unreachable; MDX GPU skinning via `program.env[18..68]`, aux4 proven consumer-less | `docs/recon/23_BINARY_P1.md`; `artifacts/lanes/s1-07-binary/` |
+| 7 | Binary P1 verification (hydralysis / Hydra h5) | **met** — 18 evidence-DB claims (#11–#28) on the sealed master, every address quoted with the build SHA-256: N-group mesh loops proven N-group capable; supermodel chain semantics (duplicate/ancestor-only/missing); camera `+0x38` write set proven construction-zero, mode-nonzero branches unreachable; MDX GPU skinning via `program.env[18..68]`, aux4 proven consumer-less | `docs/recon/23_BINARY_P1.md`; `artifacts/lanes/s1-07-binary/` |
 | 8 | First textured tools-side viewer | **met** — `tools/viewer/` renders m01aa (top-down + perspective, 9 TPC textures, 42/42 checks; counts match recon/11) and m09ab (26/26), plus `mainmenu.gui` (9/9) and `maininterface.gui` (31/31) to PNG | `docs/recon/24_VIEWER.md`; `artifacts/lanes/s1-08-viewer/` |
 | 9 | Evidence/repo hygiene | **met** — lanes wrote only their own new files; integrator owns edits to existing tracked files and this report; tests green (see below); no assets/secrets in tracked files | this report; `git status` |
 
@@ -56,26 +56,55 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
   lines; streamwaves is scan+indexed but issues no `.wav` file opens before gameplay voice; camera
   `+0x38 = 0` observed live; the byte-parity rewritten save loads in the retail engine.
 - **Binary (Hydra h5):** all four P0-handoff binary items proved with line-cited queries on the
-  sealed master; evidence DB claims #11–#22.
+  sealed master; evidence DB claims #11–#28.
 
-## Open items carried forward (with owners)
+## Closure pass (2026-11-01, after the initial commit) — what changed
 
-1. **Fresh New Game path** — chargen PLAY control does not activate under synthetic input; the
-   `_a`/`_adx`/`.mod` fresh-module RIM intra-order remains unmeasured (no such files ship in retail
-   anyway). Owner: P4 vertical slice (drive chargen with real input recording).
-2. **streamwaves voice-line trigger** — per-file streamwaves audio requests need an in-game voice
-   line; scan/index behavior is measured. Owner: P5 audio lane.
-3. **Map-compile hard classes on shipped data** — lightmap-UV wrap semantics and minimap
+- **`kotor_vfs.py` defaults fixed to the measured rules** (integrator): flat one-level OS-order
+  directory scan (was recursive+sorted), pass-1 last-added-first search (AddKey order Override,
+  MOVIES, STREAMWAVES, STREAMMUSIC), measured pass-4 order save > `.mod` > `LIPS:localization` >
+  players > `swpc_tex_gui` > quality tier (was packs before lips/players). Pinned by rewritten
+  tests in `tools/tests/test_vfs_p1.py` / `test_vfs.py` (+ a `streammusic/wav_probe.wav` fixture
+  making the first-launch streamwaves quirk observable). Full suite still green (102 + 211 tests).
+- **Synthetic 2-group mesh — verified live** (`docs/recon/25_SYNTHETIC_RUNTIME.md`): a crafted
+  group-count-2 `p_carthh` MDL in profile Override was read by the engine, which entered the
+  per-group relocation loop at `0x4a0ce0` (`g=2`, fields `+0x104/+0x108/+0x110/+0x114/+0x11c/
+  +0x120 = 2`) — N-group capability confirmed at runtime, matching the static proof (#11–13).
+- **Supermodel chain — verified live**: 2,918 clip lookups at `0x4822a0` with 579 `super_enter`
+  depth-2 recursions into `+0x64`, 32 terminal misses, 154 plays at `0x485bd0`, 1,092 queries at
+  `0x484d20` — exactly the statically predicted chain semantics (#14–17).
+- **From-scratch parity save slot accepted by the retail engine** (run `h-paritysrc`): the
+  `--mode parity` rewrite loaded via the normal Load Game UI; slot unchanged after load.
+- **Fresh-module RIM mount order — proved statically** (evidence #23–#25): New Game path
+  `FUN_004babb0` → `FUN_004c5720` → mounter `FUN_004c44d0` probes `modules/<mod>.mod` first
+  (absent in retail), then mounts `MODULES:<mod>_s` **first**, then LIPS, then conditional
+  `_a`/`_adx`, then players. Only `_s` can fire in retail — consistent with the live loaded-save
+  run. **Dialogue-start camera path — proved statically** (#26–#28): `+0x38` is construction-zero
+  on the dialogue path too (`FUN_0062bf30` → controller `+0xc4` → factory `0x6412f0` → ctor write
+  `0x6bb6f8`); CameraAnimation maps via `FUN_006288f0` to `cutNNN` (`camerahook` model).
+
+## Open items carried forward (with owners and blockers)
+
+1. **Chargen PLAY / in-dialogue live runs** — injected input does not reach the chargen 3D screen
+   or dialogue targeting under llvmpipe (DirectInput), logged verbatim across distinct approaches
+   (posted clicks, SendInput absolute, keyboard traversal, GUI-derived coords, orca screenshots,
+   89-click grid). Both items are now **statically bounded** (#23–#28: only `_s`-first mounting and
+   camera mode 0 are possible), so the residual is environmental, not a data gap. Owner: P4
+   vertical slice on hardware (the P0 elevated 1280×720 session already proved F4/F5 saves work).
+2. **streamwaves per-file audio requests** — scan + pass-1 index measured; no voice line could be
+   triggered under the input blocker above; zero streamwaves `.wav` opens observed in
+   menu→module→gameplay. Owner: P5 audio lane on hardware.
+3. **F4 quicksave thumbnail leg under Mesa** — `Interceptor.replace` on `0x420f20` is in place
+   (runs k3/k4) but the quicksave stalls upstream of the thumbnail in the non-elevated llvmpipe
+   harness; needs the elevated session + GL shims of `docs/recon/16` §6. Owner: P4 renderer
+   (save data/reload unaffected; P0 already verified a real F4→F5 round trip).
+4. **Map-compile hard classes on shipped data** — lightmap-UV wrap semantics and minimap
    rasterization renderer-side confirmation. Owner: P5/P6 (recon/19 handoff).
-4. **Save-thumbnail resampler shim under Mesa** — F4 quicksave completion needs a synthesized
-   `Screen.tga`; save data/reload unaffected. Owner: P4 renderer (unchanged from P0).
-5. **GFF sidecar byte-parity** — retail does not 4-align fdata; field-level equality proven, diff
-   classes classified (global row interleaving, PARTYTABLE orphaned fidx copies). Owner: P3 save
-   round-trip matrix if byte parity of sidecars is ever required.
-6. **Two `kotor_vfs.py` defaults contradict measurements** (recursive+sorted dir scan; pass-4
-   texture-packs-before-lips) — pinned by new tests, fix scheduled as an integrator/P2 change to
-   the tracked resolver (recon/21).
-7. **228 compiler-limited decompiles + 306 unused actions** — engine implementations needed for
+5. **GFF sidecar byte-parity** — verbatim re-encode is byte-identical; the from-scratch writer is
+   field-equal but not byte-identical (retail does not 4-align fdata; diff classes classified:
+   global row interleaving, PARTYTABLE orphaned fidx copies). Owner: P3 save round-trip matrix if
+   byte parity of sidecars is ever required.
+6. **228 compiler-limited decompiles + 306 unused actions** — engine implementations needed for
    modded content. Owner: P3 VM conformance.
 
 ## Reproduce
