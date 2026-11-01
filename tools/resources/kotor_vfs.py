@@ -19,9 +19,10 @@ Rules implemented:
 * the first-launch streamwaves/Override loose-WAV quirk is modeled as a
   directory-table special case.
 
-The intra-pass order for passes 3 and 4 and the texture-quality mapping are
-inferred, not measured.  ``mounts`` and every Resolution carry notes.  The
-resolver never writes to the game directory.
+Intra-pass orders and the texture-quality mapping were measured in-process on
+2026-10-24/2026-11-01 (docs/recon/08, 10, 22); the pass-3 ``_a``/``_adx`` positions
+remain inferred (no such files ship in retail).  ``mounts`` and every Resolution
+carry notes.  The resolver never writes to the game directory.
 """
 from __future__ import annotations
 
@@ -167,18 +168,17 @@ class Table:
 class DirectoryTable(Table):
     kind = "directory"
 
-    def __init__(self, name: str, path: Path, game_dir: Path, recursive: bool = True):
+    def __init__(self, name: str, path: Path, game_dir: Path, recursive: bool = False):
+        # Measured 2026-10-24 (docs/recon/08, runs2/enum-dirs-1): the engine
+        # scans loose directories flat, one level, in OS enumeration order and
+        # never sorts; child directories are never indexed.
         super().__init__(name, path, game_dir)
         if not path.is_dir():
             return
-        files = []
         if recursive:
-            for p in path.rglob("*"):
-                if p.is_file():
-                    files.append(p)
+            files = [p for p in path.rglob("*") if p.is_file()]
         else:
             files = [p for p in path.iterdir() if p.is_file()]
-        files.sort(key=lambda p: relative_label(game_dir, p).lower())
         for p in files:
             stem = p.stem
             rtype = ext_to_type(p.suffix)
@@ -397,8 +397,10 @@ class Vfs:
         self.extra_dirs = list(extra_dirs)
         self.notes: list[str] = [
             "five-pass precedence follows docs/recon/02_TECHNICAL_NOTES.md section 7",
-            "intra-pass order for RIMs and ERFs tagged 2 is inferred; measure with lane 06",
-            "texture-pack quality mapping is unverified; quality=auto assumes tpa",
+            "intra-pass orders measured in-process 2026-10-24/2026-11-01 "
+            "(docs/recon/08, 10, 22); pass-3 _a/_adx positions inferred (no retail files)",
+            "texture quality 2/1/0 -> tpa/tpb/tpc verified, swpc_tex_gui always loaded; "
+            "quality=auto assumes tpa",
         ]
         self.passes: list[Pass] = []
         self._build()
@@ -437,17 +439,21 @@ class Vfs:
         self._add_erf(p, label, relative)
 
     def _build(self) -> None:
-        # Pass 1: directories.  Override is head by default.  The loose-WAV
-        # first-launch quirk is applied at lookup time.
+        # Pass 1: directories.  Measured AddKey order (docs/recon/08,
+        # runs2/enum-dirs-1) is Override, MOVIES, STREAMWAVES, STREAMMUSIC; the
+        # pass is searched last-added-first (see _pass1_order), so STREAMMUSIC
+        # wins a key shared by loose dirs.  The loose-WAV first-launch quirk
+        # is applied at lookup time.
         p1 = Pass(1, PASS_NAMES[1])
         for label, rel in (("Override", "Override"),
-                           ("streammusic", "streammusic"),
+                           ("movies", "movies"),
                            ("streamwaves", "streamwaves"),
-                           ("movies", "movies")):
+                           ("streammusic", "streammusic")):
             self._add_dir(p1, label, rel)
         for rel in self.extra_dirs:
             self._add_dir(p1, Path(rel).name, rel)
-        p1.notes.append("Override first; first-launch WAV quirk promotes streamwaves for type 4")
+        p1.notes.append("flat one-level OS-order scan; searched last-added-first; "
+                        "first-launch WAV quirk promotes streamwaves for type 4")
         self.passes.append(p1)
 
         # Pass 2: ERFs tagged 1.  Measured mount order is textures.erf first,
@@ -494,11 +500,14 @@ class Vfs:
                     if t.name == name and t not in ordered:
                         ordered.append(t)
             p3.tables = ordered + [t for t in p3.tables if t not in ordered]
-        p3.notes.append("static/adx/area RIMs searched before menu/global; inferred order")
+        p3.notes.append("search order measured 2026-10-24/2026-11-01: _s > _adx/_a/area > "
+                        "menu > global (docs/recon/08, 10, 22); _a/_adx positions inferred "
+                        "(no retail files)")
         self.passes.append(p3)
 
-        # Pass 4: ERFs tagged 2.  Search order: saved module state, module .mod,
-        # texture packs, lips, players.  "Texture packs below module archives".
+        # Pass 4: ERFs tagged 2.  Measured search order (docs/recon/08, 10, 22):
+        # save nested ERF > module .mod > LIPS:localization > players > texture
+        # packs, with swpc_tex_gui searched before the quality tier pack.
         p4 = Pass(4, PASS_NAMES[4])
         save_table = self._load_save_table()
         if save_table is not None:
@@ -506,14 +515,10 @@ class Vfs:
         if self.active_module:
             self._add_erf(p4, f"{self.active_module}.mod",
                           f"modules/{self.active_module}.mod")
-        if self.include_texture_packs:
-            for qname, rel in self._quality_files():
-                self._add_erf(p4, qname, rel)
-            self._add_erf(p4, "swpc_tex_gui.erf", "TexturePacks/swpc_tex_gui.erf")
+        self._add_erf(p4, "localization.mod", "lips/localization.mod")
         if self.active_module:
             root = self.active_module
             self._add_erf(p4, f"{root}_loc.mod", f"lips/{root}_loc.mod")
-        self._add_erf(p4, "localization.mod", "lips/localization.mod")
         players = self._path("players")
         if players.exists():
             self._add_erf(p4, "players", "players")
@@ -521,9 +526,13 @@ class Vfs:
             if rel.lower().endswith("textures.erf"):
                 continue
             self._add_erf(p4, Path(rel).name, rel)
+        if self.include_texture_packs:
+            self._add_erf(p4, "swpc_tex_gui.erf", "TexturePacks/swpc_tex_gui.erf")
+            for qname, rel in self._quality_files():
+                self._add_erf(p4, qname, rel)
         p4.notes.append(
-            "search order: saved module ERF, module .mod, texture packs, lips, players "
-            "(inferred; module archives beat texture packs)")
+            "search order (measured): save ERF > module .mod > LIPS:localization > "
+            "players > swpc_tex_gui > quality tier pack")
         if self.loaded_save is not None and save_table is None:
             p4.notes.append("loaded save did not yield a nested module ERF")
         self.passes.append(p4)
@@ -597,11 +606,12 @@ class Vfs:
     # ------------------------------------------------------------------
 
     def _pass1_order(self, res_type: int) -> list[Table]:
-        tables = self.passes[0].tables
+        # Measured (docs/recon/08): pass-1 tables are searched last-added-first.
+        tables = list(reversed(self.passes[0].tables))
         if self.first_launch and res_type == 4:
-            names = ["streamwaves", "Override", "streammusic", "movies"]
-            return sorted(tables, key=lambda t: names.index(t.name)
-                          if t.name in names else len(names))
+            # first-launch quirk: streamwaves audio is served before the rest
+            return ([t for t in tables if t.name == "streamwaves"]
+                    + [t for t in tables if t.name != "streamwaves"])
         return tables
 
     def _tables_for(self, p: Pass, res_type: int) -> list[Table]:
@@ -632,7 +642,8 @@ class Vfs:
                                      error=hit.error))
         notes = list(self.notes)
         if self.quality not in ("tpa", "tpb", "tpc", "all", "none"):
-            notes.append("quality=auto used swpc_tex_tpa.erf; mapping unverified")
+            notes.append("quality=auto used swpc_tex_tpa.erf "
+                         "(measured mapping: quality 2/1/0 -> tpa/tpb/tpc)")
         if self.active_module:
             notes.append(f"active_module={self.active_module}")
         return Resolution(resref=key[0], res_type=key[1], found=bool(traces),

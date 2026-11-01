@@ -176,17 +176,72 @@ Lane-06 already proved load→HUD→F4→F5 at 1280×720 for the engine-written 
   (each with `events.jsonl`, `orchestrator.json`, `saves-before.json`, `summary.json`,
   `frames/`), `logs/`, `comparison/`.
 
-## 4. Open items (blockers)
+## 4. Open items (blockers) — superseded by the §6 closure runs below
 
-1. (a) fresh-module `end_m01aa` area-RIM intra-order — **open**: chargen PLAY input
-   blocker reproduced verbatim (§2a); no `_a`/`_adx`/`.mod` ship in retail.
-2. (b) per-file streamwaves audio requests — **open**: no voice line triggered; scan +
-   pass-1 index verified (§2b).
-3. (c) dialogue-started camera observation — **open**: fields observed live on the
-   module-load camera path (§2c); no DLG lookup occurred (blind clicks didn't hit Carth).
-4. (d) `--mode parity` (from-scratch) slot acceptance + F5 reload leg — **open**:
-   verbatim slot accepted (§2d); F4 slot write didn't complete without a synthesized
-   `Screen.tga`.
+## 6. Sprint-1 closure runs (consent in force; raw logs under `artifacts/lanes/s1-06-dynamic/runs-sprint1-closure/`)
 
-Stop rule: no repeated identical failures — the PLAY-input blocker was hit twice with
-identical result and is now documented exactly (§2a) per the stop rule.
+Build SHA-256 `0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6`; all runs on
+the patched profile copy, one owned instance at a time, install sentinels re-verified after
+every run (`ok`, 0 drift, 0 leftover processes). Harness: `tools/harness/sprint1_dynamic_run.py`
++ `sprint1_hooks.js` (Frida), fixture builder `sprint1_fixture_2group.py`; scenarios under
+`scenarios/`; interactive driving via the control socket + orca-computer screenshots.
+
+### Task 1 (item a) fresh New Game → `end_m01aa` — **OPEN (stop rule reached)**
+
+Runs `j2-newgame`/`j3-newgame`: `RIMS:CHARGEN` mounted (seq 7758) but the first module never
+loaded. Approaches tried (all distinct, logged in `chargen-drive*.jsonl`): posted
+`clickfast` at lane-06 coords and at GUI-file-derived coords (buttons read from
+`mainmenu`/`classsel`/`abchrgen` .gui via `tools/formats/gui.py`: BTN_NEWGAME design
+(285,222,210x22), classsel portraits, BTN_ACCEPT (253,410,134x28) in the 640x480 design
+space → client (x*1.5+160, y*1.5)); absolute SendInput `hwclick` (fixed to
+MOUSEEVENTF_ABSOLUTE); keyboard Enter/Tab/Space; orca-computer screenshots of the chargen
+screen. After chargen mounted, **zero** game events were produced by any click (last event
+seq 7963) — injected input does not reach the chargen 3D screen in this environment
+(DirectInput under llvmpipe), reproducing lane-06's PLAY blocker. Verbatim loader tail:
+`[HD0:CHITIN, OVERRIDE:textures, HD0:patch, RIMS:GLOBAL, TEXTUREPACKS:swpc_tex_tpa,
+TEXTUREPACKS:swpc_tex_gui, RIMS:MAINMENU, RIMS:CHARGEN]` — no `end_m01aa*` loader.
+Loaded-save path remains as measured in §2a.
+
+### Task 2 (item b) streamwaves voice requests + Task 3 (item c) dialogue — **OPEN (stop rule reached)**
+
+Run `i-dialogue` (Taris Hideout save loaded, gameplay reached): 89 SendInput grid clicks +
+13 posted clicks over the play area (`hunt.jsonl`, `hunt2.jsonl`) — **zero** type-2029 (DLG)
+lookups, **zero** `streamwaves\*.wav` file opens, no new camera events. Carth
+(`k_hcar_dialog`, indexed at boot from `HD0:CHITIN` addkey seq 3951) was never clicked
+successfully; no voice line played. Camera `+0x38`/`+0xc4` live evidence stands from run b
+(§2c). Blocker: injected mouse input does not drive the in-game world cursor here (same
+DirectInput blocker as task 1).
+
+### Task 4 (item d) from-scratch parity slot — **VERIFIED (load acceptance); F4/F5 leg OPEN**
+
+Run `h-paritysrc` loaded `000008 - PARITY-SRC` (s1-05 `kotor_save_parity.py rewrite-parity
+--mode parity` from-scratch output, staged as a fresh slot) via the normal Load Game UI:
+
+```
+seq 7314 file CreateFileW .\saves\000008 - PARITY-SRC\SAVEGAME.sav ok=true
+seq 7888 loader_rim MODULES:tar_m02af_s
+seq 7896 loader_erf CURRENTGAME:tar_m02af
+seq 7916 resman module 2014 ret 1 tableName "CURRENTGAME:tar_m02af"
+run summary: install_ok_after true, changed_save_files [], detach application-requested (clean quit 0xDEADBEEF)
+```
+
+— **verified**: the original engine accepts and boots the from-scratch rewritten save
+(verbatim mode verified in run d, §2d).
+
+F4/F5 leg (follow-up #2, runs `k3-f4f5`/`k4-f4f5`): the thumbnail writer `0x420f20` was
+replaced with a cdecl-safe `Interceptor.replace` (0-arg default-abi NativeCallback reading
+the dest path from `[esp+4]`, writing a synthesized 256x256 24bpp `Screen.tga` via
+kernel32). Hook installed cleanly in run k4 — verbatim: `seq 16 {"f": "hook", "target":
+"thumb_replace_0x420f20", "addr": "0x420f20"}` (an earlier attempt with explicit `'cdecl'`
+abi failed: `hookerr thumb_replace "invalid abi specified"`; this frida 17.24.3 win32
+binding accepts only the default abi). Result: F4 starts the quicksave
+(`gameinprogress` AVAILNPC2.utc write-intent, k4 seq 9165-9166) but the save stalls before
+the thumbnail — `thumb_replace_0x420f20` fired 0 times, `resample_0x45dad0_ENTERED` 0 times,
+no `saves` `000000 - QUICKSAVE` write-intent opens, no slot on disk, and F5 had nothing to
+load (no loaders after F5). — **open**, blocker: the quicksave stalls upstream of the
+thumbnail in this non-elevated llvmpipe harness (lane-06's working F4/F5 acceptance needed
+an elevated session + GL-context shims, docs/recon/16 §6); the replace mechanism is
+installed and will exercise as soon as the save reaches `0x420f20`.
+
+### Tasks 5–6 — see `docs/recon/25_SYNTHETIC_RUNTIME.md` (2-group relocation VERIFIED live;
+supermodel clip chain VERIFIED live with 579 super-recursions).

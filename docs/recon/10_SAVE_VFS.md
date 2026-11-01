@@ -1,10 +1,15 @@
 # Save containers and VFS (lane 05)
 
 Status: **structural parsing verified; retail save load, save-write, and reload verified at
-1280×720 (2026-10-24). Fresh-module area-RIM order and streamwaves audio requests remain
-unmeasured (P1).** Archive I/O and the five-pass resolver have synthetic tests and the bounded
-dynamic measurements in `docs/recon/08_VFS_DYNAMIC.md`. Downloaded manual/autosave slots now exist
-in the test profile; the original reference install remains separate.
+1280×720 (2026-10-24); Sprint 1 (2026-11-01) added byte-parity rewriting of retail slots and
+closed every inferred VFS item — see `docs/recon/21_SAVE_BYTEPARITY.md` and
+`docs/recon/22_DYNAMIC_P1.md`.** The `kotor_vfs.py` resolver defaults were corrected to the
+measured rules (flat one-level OS-order directory scan; pass-1 last-added-first; measured pass-4
+order save > `.mod` > `LIPS:localization` > players > gui pack > quality tier) and are pinned by
+`tools/tests/test_vfs_p1.py`. Fresh-module area-RIM order and streamwaves audio requests are the
+only items still with the dynamic lane. Archive I/O and the five-pass resolver have synthetic tests
+and the bounded dynamic measurements in `docs/recon/08_VFS_DYNAMIC.md`. Downloaded manual/autosave
+slots now exist in the test profile; the original reference install remains separate.
 
 ## Save container
 

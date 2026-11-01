@@ -98,7 +98,7 @@ class VfsFixtureTests(unittest.TestCase):
         auto = fixture_vfs(quality="auto")
         res = auto.trace("quality_probe", 3007)
         self.assertEqual(res.winner.table.name, "swpc_tex_tpa.erf")
-        self.assertTrue(any("mapping unverified" in n for n in res.notes))
+        self.assertTrue(any("measured mapping" in n for n in res.notes))
         self.assertEqual(winner(fixture_vfs(quality="tpb"), "quality_probe", 3007)[1],
                          "swpc_tex_tpb.erf")
         self.assertEqual(winner(fixture_vfs(quality="tpc"), "quality_probe", 3007)[1],
@@ -109,9 +109,13 @@ class VfsFixtureTests(unittest.TestCase):
                          "chitin.key")
 
     def test_first_launch_wav_quirk(self):
+        # Measured (docs/recon/08): pass-1 loose dirs are searched
+        # last-added-first (AddKey order Override, MOVIES, STREAMWAVES,
+        # STREAMMUSIC), so streammusic wins the shared wav normally; the
+        # first-launch quirk promotes streamwaves for type 4.
         normal = fixture_vfs(first_launch=False)
-        self.assertEqual(winner(normal, "wav_probe", 4)[1], "Override")
-        self.assertEqual(winner(normal, "wav_probe", 4)[2], b"OVERRIDE_WAV")
+        self.assertEqual(winner(normal, "wav_probe", 4)[1], "streammusic")
+        self.assertEqual(winner(normal, "wav_probe", 4)[2], b"STREAMMUSIC_WAV_SHARED")
         launch = fixture_vfs(first_launch=True)
         self.assertEqual(winner(launch, "wav_probe", 4)[1], "streamwaves")
         self.assertEqual(winner(launch, "wav_probe", 4)[2], b"STREAMWAVES_WAV")

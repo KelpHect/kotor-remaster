@@ -293,6 +293,10 @@ def build_vfs_fixture() -> str:
     _write(VFS_GAME / "Override" / "wav_probe.wav", b"OVERRIDE_WAV")
     _write(VFS_GAME / "streamwaves" / "wav_probe.wav", b"STREAMWAVES_WAV")
     _write(VFS_GAME / "streammusic" / "music_probe.wav", b"STREAMMUSIC_WAV")
+    # shared type-4 key in streammusic too: pass 1 is searched last-added-first
+    # (Override, MOVIES, STREAMWAVES, STREAMMUSIC AddKey order, docs/recon/08),
+    # so streammusic wins normally and streamwaves only on first launch.
+    _write(VFS_GAME / "streammusic" / "wav_probe.wav", b"STREAMMUSIC_WAV_SHARED")
     _write(VFS_GAME / "movies" / "movie_probe.bik", b"MOVIE_BIK")
     # Pass 2: ERFs tagged 1.
     ka.write_erf(VFS_GAME / "patch.erf", [

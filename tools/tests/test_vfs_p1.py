@@ -9,18 +9,16 @@ fixture cannot decide (engine mount order of fresh-module area RIMs, real
 streamwaves audio requests) are listed in ``OPEN_FOR_S1_06`` and stay with
 lane s1-06 dynamic measurement.
 
-Two resolver defaults in ``kotor_vfs.py`` contradict the 2026-10-24
-measurements and are pinned here as documented gaps (this lane may not edit
-the tracked file; the integrator owns it):
+The two resolver defaults that contradicted the 2026-10-24 measurements
+(flat/OS-order directory scan; measured pass-4 order) were fixed in
+``kotor_vfs.py`` by the integrator; the tests below now pin the measured
+defaults:
 
-* ``Vfs._add_dir`` builds ``DirectoryTable`` with ``recursive=True`` and a
-  name-sorted enumeration, while the engine scans loose directories flat,
-  one level, in OS (NTFS name) order and never sorts
+* ``DirectoryTable`` defaults to a flat, one-level, OS-order (unsorted) scan
   (08: "Loose directories are flat, one level", ``runs2/enum-dirs-1``).
-* ``Vfs`` pass 4 lists texture packs before lips/players, while the measured
-  pass-4 order is save > .mod > LIPS:localization > HD0:players > texture
-  packs (08: "Pass 4: save nested ERF > .mod > LIPS:localization >
-  HD0:players > texture packs").
+* ``Vfs`` pass 4 is built in the measured search order: save > .mod >
+  LIPS:localization > HD0:players > swpc_tex_gui > quality tier pack
+  (08/10/22).
 
 Build under test: SHA-256 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6.
 """
@@ -199,24 +197,22 @@ class ModRimSaveTests(VfsP1Fixture, unittest.TestCase):
         p4.tables.remove(next(t for t in p4.tables if t.name == "players.mod"))
         self.assertEqual(v.trace("shared", 2010).winner.table.name, "swpc_tex_tpa.erf")
 
-    def test_pass4_default_order_gap_is_documented(self):
-        # GAP (flagged for the integrator; kotor_vfs.py is not editable by
-        # this lane): the default pass-4 table order lists texture packs
-        # before lips/players, so a key shared by a pack and lips resolves to
-        # the pack, contradicting the measured order (lips > players > packs).
+    def test_pass4_default_order_matches_measurement(self):
+        # Integrator fix verified: the default pass-4 table order now IS the
+        # measured order save > .mod > LIPS:localization > players >
+        # swpc_tex_gui > tier pack (08/10/22).
         v = self.vfs(active_module="active", loaded_save=self.save,
                      include_texture_packs=True, extra_erfs=["players.mod"])
         v.passes[2].tables.clear()  # isolate pass 4
-        for t in list(v.passes[3].tables):
-            if t.name.startswith("SAVEGAME.sav"):
-                v.passes[3].tables.remove(t)
-            if t.name == "active.mod":
-                v.passes[3].tables.remove(t)
         names = [t.name for t in v.passes[3].tables]
-        self.assertLess(names.index("swpc_tex_tpa.erf"), names.index("localization.mod"))
+        self.assertLess(names.index("localization.mod"), names.index("players.mod"))
+        self.assertLess(names.index("players.mod"), names.index("swpc_tex_gui.erf"))
+        self.assertLess(names.index("swpc_tex_gui.erf"), names.index("swpc_tex_tpa.erf"))
+        for t in list(v.passes[3].tables):
+            if t.name.startswith("SAVEGAME.sav") or t.name == "active.mod":
+                v.passes[3].tables.remove(t)
         res = v.trace("shared", 2010)
-        self.assertEqual(res.winner.table.name, "swpc_tex_tpa.erf")  # default gap
-        # measured rule (08) would return localization.mod here
+        self.assertEqual(res.winner.table.name, "localization.mod")  # measured rule
 
 
 class LooseDirTests(VfsP1Fixture, unittest.TestCase):
@@ -230,34 +226,28 @@ class LooseDirTests(VfsP1Fixture, unittest.TestCase):
         self.assertNotIn(("only_sub", 4), keys)  # subdir-only copy invisible
         self.assertEqual(len([e for e in flat.entries if e.key == ("flat_probe", 4)]), 1)
 
-    def test_recursive_default_gap_is_documented(self):
-        # GAP (flagged for the integrator; kotor_vfs.py is not editable by
-        # this lane): Vfs._add_dir uses the default recursive=True, which
-        # WOULD index streamwaves/sub/only_sub.wav - contradicting the
-        # measured flat rule.  The table also sorts by name while the engine
-        # keeps OS enumeration order (08 runs2/enum-dirs-1).
+    def test_flat_one_level_default_matches_measurement(self):
+        # Integrator fix verified: the default DirectoryTable is flat, one
+        # level, unsorted (OS order) - subdirectory-only resources are NOT
+        # indexed (08 runs2/enum-dirs-1).  recursive=True remains available
+        # only as an explicit opt-in.
         rec = DirectoryTable("streamwaves", self.game / "streamwaves",
                              self.game, recursive=True)
         self.assertIn(("only_sub", 4), {e.key for e in rec.entries})
         v = self.vfs()
         p1_names = [t.name for t in v.passes[0].tables]
-        self.assertEqual(p1_names, ["Override", "streammusic", "streamwaves", "movies"])
+        self.assertEqual(p1_names, ["Override", "movies", "streamwaves", "streammusic"])
         sw = next(t for t in v.passes[0].tables if t.name == "streamwaves")
-        self.assertTrue(any(e.resref == "only_sub" for e in sw.entries))  # default gap
+        self.assertFalse(any(e.resref == "only_sub" for e in sw.entries))
 
     def test_pass1_last_added_first(self):
         # measured (08): pass-1 tables are searched last-added-first; the
         # engine added Override, MOVIES, STREAMWAVES, STREAMMUSIC in that
-        # order and STREAMMUSIC won the shared border2 key.  Model the
-        # measured search order explicitly (resolver list order is reversed
-        # add order) and assert the same winner.
+        # order and STREAMMUSIC won the shared border2 key.  The resolver
+        # default now implements exactly this (integrator fix).
         (self.game / "streammusic" / "ov_probe.tga").write_bytes(b"MUSIC")
         try:
             v = self.vfs()
-            p1 = v.passes[0]
-            add_order = ["Override", "movies", "streamwaves", "streammusic"]
-            p1.tables = [t for name in reversed(add_order)
-                         for t in p1.tables if t.name == name]
             res = v.trace("ov_probe", 3)
             self.assertEqual(res.winner.pass_no, 1)
             self.assertEqual(res.winner.table.name, "streammusic")
