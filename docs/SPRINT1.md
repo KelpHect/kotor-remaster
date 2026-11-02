@@ -71,7 +71,8 @@ Carried over from Sprint 0 (`docs/SPRINT0.md`), plus:
   isolated virtual screen without changing focus, or defer the lane and mark its items blocked.
   Capture only the identified game window. Never bypass DRM/ownership checks; never modify or
   overwrite original saves — use a fresh slot.
-- **Hydralysis / Hydra h5:** the sealed master of target `kotor` (Hydra Engine 12.3-hydra.5,
+- **Hydralysis / Hydra (h5 at the time; h6 since 2026-11-02, see
+  `docs/recon/40_HYDRA_UPGRADE.md`):** the sealed master of target `kotor` (Hydra Engine
   `tools/hydra-root/`) is read-only for everyone. Only lane s1-07 calls `evidence_add`, and each
   editing agent must pass a distinct `options.as` view id. Never run `prepare`/import; the target
   is already adopted. Quote the build SHA-256 with every address. Runtime attach/spawn belongs to

@@ -3,6 +3,9 @@
 Status: **complete for the four P1 binary handoff items.** All claims verified against the sealed
 master view of target `kotor` (Hydra Engine 12.3-hydra.5) with build SHA-256
 `0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6` quoted on every address.
+Re-verified on Hydralysis 0.8.0 / Hydra 12.3-hydra.6 (2026-11-02): claims #11, #18 and #19 return
+the same body bounds and the same 57-site `+0xc4` write set, so the upgrade invalidates none of
+this lane (`docs/recon/40_HYDRA_UPGRADE.md`).
 Queries used `ghidra_query` actions `decompile/scan/writes/xrefs/function/status` with
 `options.as = "s1_07"` (read-only on master; no `prepare`/`import`; no `runtime` — that belongs to
 lane s1-06). Raw `disasm`/`strings` ran read-only against the install exe. Transcripts:
