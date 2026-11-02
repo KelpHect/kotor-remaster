@@ -97,11 +97,12 @@ def _idiv(a: int, b: int) -> int:
 
 class VM:
     def __init__(self, instructions: list[ncs.Instruction], specs: dict,
-                 budget: int = 200_000, blocking_actions=(202,)):
+                 budget: int = 200_000, blocking_actions=(202,), runtime=None):
         self.ins = instructions
         self.specs = {a["id"]: a for a in specs["actions"]}
         self.budget = budget
         self.blocking_actions = set(blocking_actions)
+        self.runtime = runtime
         self.stack: list[Value] = []
         self.bp = 0
         self.call_stack: list[int] = []
@@ -151,19 +152,26 @@ class VM:
         if spec is None:
             raise VMError(f"unknown action id {aid}")
         params = spec["params"]
+        args: list[list[Value]] = []
         for k in range(argc):
             typ = params[k]["type"] if k < len(params) else "int"
             if typ == "action":
                 # Functors are created by STORESTATE and are not stack cells.
+                args.append([])
                 self.pending_functor = False
                 continue
             width = STRUCT_SLOTS.get(typ, 1)
-            self._pop(width)
+            args.append(self._pop(width))
         if argc < len(params):
             self.notes["action_missing_args"] += 1
         elif argc > len(params):
             self.notes["action_extra_args"] += 1
         self.action_counts[aid] += 1
+        if self.runtime is not None:
+            cells = self.runtime.call(aid, args, self)
+            if cells:
+                self.stack.extend(cells)
+            return
         if aid in self.blocking_actions:
             self.status = "blocked"
             self.blocked_action = aid
@@ -444,7 +452,7 @@ class VM:
         if self.stack:
             v = self.stack[-1]
             top = {"type": v.typ, "value": v.value}
-        return {
+        out = {
             "status": self.status,
             "steps": self.steps,
             "max_sp": self.max_sp,
@@ -456,6 +464,9 @@ class VM:
             "blocked_action": self.blocked_action,
             "top": top,
         }
+        if self.runtime is not None:
+            out["runtime"] = self.runtime.summary()
+        return out
 
 
 def validate_control_flow(instructions: list[ncs.Instruction]) -> list[dict]:
@@ -475,14 +486,16 @@ def validate_control_flow(instructions: list[ncs.Instruction]) -> list[dict]:
     return bad
 
 
-def run_file(path: str, specs: dict, budget: int = 200_000) -> dict:
+def run_file(path: str, specs: dict, budget: int = 200_000,
+             runtime_factory=None) -> dict:
     data = Path(path).read_bytes()
     try:
         instructions = ncs.decode(data)
     except Exception as exc:
         return {"status": "decode_error", "error": str(exc), "steps": 0,
                 "instruction_count": 0, "invalid_jump_targets": []}
-    result = VM(instructions, specs, budget=budget).run()
+    runtime = runtime_factory() if runtime_factory is not None else None
+    result = VM(instructions, specs, budget=budget, runtime=runtime).run()
     result["instruction_count"] = len(instructions)
     result["invalid_jump_targets"] = validate_control_flow(instructions)
     return result
@@ -494,17 +507,24 @@ def main(argv=None) -> int:
     ap.add_argument("--one")
     ap.add_argument("--corpus")
     ap.add_argument("--budget", type=int, default=200_000)
+    ap.add_argument("--runtime", action="store_true",
+                    help="use the stateful action runtime instead of typed defaults")
     ap.add_argument("--out")
     args = ap.parse_args(argv)
     specs = json.loads(Path(args.specs).read_text(encoding="utf-8"))
+    factory = None
+    if args.runtime:
+        from vm.actions_runtime import ActionRuntime
+        factory = lambda: ActionRuntime(specs)  # noqa: E731
     if args.one:
-        print(json.dumps(run_file(args.one, specs, args.budget), indent=2, sort_keys=True))
+        print(json.dumps(run_file(args.one, specs, args.budget, factory),
+                         indent=2, sort_keys=True))
         return 0
     if not args.corpus:
         ap.error("one of --one or --corpus is required")
     rows = []
     for path in sorted(glob.glob(os.path.join(args.corpus, "*.ncs"))):
-        r = run_file(path, specs, args.budget)
+        r = run_file(path, specs, args.budget, factory)
         r["file"] = os.path.basename(path)
         rows.append(r)
     counts = Counter(r["status"] for r in rows)

@@ -28,14 +28,18 @@ sys.path.insert(0, _HERE)
 sys.path.insert(0, os.path.join(_HERE, ".."))
 
 from vm import ncs_vm  # noqa: E402
+from vm.actions_runtime import ActionRuntime  # noqa: E402
 
 EXPECTED_FILES = 8666
 
 
-def run_corpus(corpus: str, specs: dict, budget: int) -> dict:
+def run_corpus(corpus: str, specs: dict, budget: int,
+               use_runtime: bool = False) -> dict:
+    factory = (lambda: ActionRuntime(specs)) if use_runtime else None
     rows = []
     for path in sorted(glob.glob(os.path.join(corpus, "*.ncs"))):
-        result = ncs_vm.run_file(path, specs, budget=budget)
+        result = ncs_vm.run_file(path, specs, budget=budget,
+                                 runtime_factory=factory)
         result["file"] = os.path.basename(path)
         rows.append(result)
     status_counts = Counter(r["status"] for r in rows)
@@ -52,6 +56,20 @@ def run_corpus(corpus: str, specs: dict, budget: int) -> dict:
     for r in rows:
         for bad in r.get("invalid_jump_targets", []):
             invalid_targets.append({"file": r["file"], **bad})
+    runtime_specific: set[str] = set()
+    runtime_generic: set[str] = set()
+    runtime_default: set[str] = set()
+    runtime_calls = runtime_timers = runtime_queued = 0
+    for r in rows:
+        rt = r.get("runtime")
+        if not rt:
+            continue
+        runtime_calls += rt.get("calls", 0)
+        runtime_specific.update(rt.get("specific", []))
+        runtime_generic.update(rt.get("generic", []))
+        runtime_default.update(rt.get("default", []))
+        runtime_timers += rt.get("timers", 0)
+        runtime_queued += rt.get("queued_actions", 0)
     summary = {
         "schema": "kotor-s2-vm-corpus/1",
         "build_sha256": specs.get("build_sha256"),
@@ -74,6 +92,15 @@ def run_corpus(corpus: str, specs: dict, budget: int) -> dict:
         "total_steps": sum(r.get("steps", 0) for r in rows),
         "instructions": sum(r.get("instruction_count", 0) for r in rows),
         "invalid_jump_targets": invalid_targets,
+        "runtime": {
+            "enabled": use_runtime,
+            "calls": runtime_calls,
+            "specific": sorted(runtime_specific),
+            "generic": sorted(runtime_generic),
+            "default": sorted(runtime_default),
+            "timers": runtime_timers,
+            "queued_actions": runtime_queued,
+        },
         "files": rows,
     }
     summary["gate"] = {
@@ -84,6 +111,9 @@ def run_corpus(corpus: str, specs: dict, budget: int) -> dict:
         "all_772_specs": len(spec_ids) == 772,
         "zero_invalid_jump_targets": not invalid_targets,
     }
+    if use_runtime:
+        summary["gate"]["zero_default_corpus_actions"] = not runtime_default
+        summary["gate"]["runtime_enabled"] = True
     summary["gate"]["status"] = "closed" if all(summary["gate"].values()) else "open"
     return summary
 
@@ -95,13 +125,18 @@ def markdown(s: dict, specs: dict) -> str:
         action_counts.update(r.get("actions", {}))
     top = action_counts.most_common(20)
     g = s["gate"]
+    mode = ("stateful action runtime" if s["runtime"]["enabled"]
+            else "typed-default mediation")
+    title = ("# 29 — Functional NCS runtime: full-corpus execution"
+             if s["runtime"]["enabled"]
+             else "# 27 — Independent NCS VM: full-corpus execution")
     lines = [
-        "# 27 — Independent NCS VM: full-corpus execution",
+        title,
         "",
         f"Status: **{g['status']}** — {s['count']:,}/{s['expected_files']:,} unique shipped NCS "
-        f"for build SHA-256 `{s['build_sha256']}`.",
+        f"for build SHA-256 `{s['build_sha256']}` ({mode}).",
         "",
-        "## Gate S2 checks",
+        "## Gate checks",
         "",
         "| check | result |",
         "|---|---|",
@@ -111,6 +146,10 @@ def markdown(s: dict, specs: dict) -> str:
         f"| Unknown action ids | **{len(s['unknown_action_ids'])}** |",
         f"| Invalid jump/STORESTATE targets | **{len(s['invalid_jump_targets'])}** |",
         f"| Action specs available | **{s['action_specs']}/772** |",
+    ]
+    if s["runtime"]["enabled"]:
+        lines.append(f"| Zero default corpus actions | **{len(s['runtime']['default'])}** |")
+    lines += [
         f"| Gate | **{g['status']}** |",
         "",
         "## Execution results",
@@ -132,6 +171,28 @@ def markdown(s: dict, specs: dict) -> str:
         "| id | action | calls |",
         "|---:|---|---:|",
     ]
+    if s["runtime"]["enabled"]:
+        rt = s["runtime"]
+        runtime_lines = [
+            "## Functional runtime coverage",
+            "",
+            f"- ACTION calls mediated: **{rt['calls']:,}**",
+            f"- Specific handlers used: **{len(rt['specific'])}**",
+            f"- Generic state/effect handlers used: **{len(rt['generic'])}**",
+            f"- Unclassified/default handlers used: **{len(rt['default'])}**",
+            f"- Timers scheduled: **{rt['timers']:,}**; queued actions: "
+            f"**{rt['queued_actions']:,}**",
+            "",
+        ]
+        if rt["default"]:
+            runtime_lines.append(
+                "Default-used actions: " + ", ".join(f"`{x}`" for x in rt["default"]) + ".")
+            runtime_lines.append("")
+        try:
+            idx = lines.index("## Top actions by calls")
+            lines[idx:idx] = runtime_lines
+        except ValueError:
+            lines += runtime_lines
     for aid, count in top:
         lines.append(f"| {aid} | {names.get(aid, '?')} | {count:,} |")
     lines += [
@@ -181,6 +242,17 @@ def markdown(s: dict, specs: dict) -> str:
         "```",
         "",
     ]
+    if s["runtime"]["enabled"]:
+        idx = lines.index("## Reproduce")
+        lines[idx:idx] = [
+            "- Functional mode uses `tools/vm/actions_runtime.py` over `tools/vm/state.py`: "
+            "object/tag/area, inventory/party, local/global variables, strings/vectors, action "
+            "queue, and timers are stateful; combat/dialogue/effects/audio are mediated and "
+            "recorded. No original engine code is called.",
+            "",
+        ]
+        cmd_idx = lines.index("  --out-json artifacts/lanes/s2-03-vm-corpus/vm_corpus.json \\")
+        lines.insert(cmd_idx, "  --runtime \\")
     return "\n".join(lines)
 
 
@@ -189,11 +261,13 @@ def main(argv=None) -> int:
     ap.add_argument("--corpus", required=True)
     ap.add_argument("--specs", required=True)
     ap.add_argument("--budget", type=int, default=200_000)
+    ap.add_argument("--runtime", action="store_true",
+                    help="use the stateful action runtime")
     ap.add_argument("--out-json", required=True)
     ap.add_argument("--out-doc", required=True)
     args = ap.parse_args(argv)
     specs = json.loads(Path(args.specs).read_text(encoding="utf-8"))
-    summary = run_corpus(args.corpus, specs, args.budget)
+    summary = run_corpus(args.corpus, specs, args.budget, use_runtime=args.runtime)
     out_json = Path(args.out_json)
     out_json.parent.mkdir(parents=True, exist_ok=True)
     out_json.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
