@@ -10,8 +10,8 @@ from pathlib import Path
 _TOOLS = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_TOOLS))
 
-from scripts import (codegen_reconcile, historical_headers, return_cleanup,
-                     struct_source)  # noqa: E402
+from scripts import (body_order, codegen_reconcile, historical_headers,
+                     return_cleanup, struct_source, unreachable)  # noqa: E402
 
 REPO = _TOOLS.parent
 ORIG = REPO / "artifacts" / "lanes" / "04-ncs" / "extracted" / "unique"
@@ -59,6 +59,20 @@ class ReturnCleanupTests(unittest.TestCase):
         new = return_cleanup.add_duplicate_return(text, "10")
         self.assertIsNotNone(new)
         self.assertEqual(new.count("return v1;"), 2)
+
+
+class BodyOrderTests(unittest.TestCase):
+    def test_case_fix_for_stock_lexer(self):
+        text = "void f(INT n, OBJECT_ID o);"
+        fixed = body_order._compiler_header(text)
+        self.assertEqual(fixed, "void f(int n, object o);")
+
+
+class UnreachableTests(unittest.TestCase):
+    def test_four_restored_statements(self):
+        self.assertEqual(len(unreachable.RESTORATIONS), 4)
+        for text in unreachable.RESTORATIONS.values():
+            self.assertIn('SetGlobalNumber("tat_LinesChecked", 0);', text)
 
 
 class CodegenReconcileTests(unittest.TestCase):

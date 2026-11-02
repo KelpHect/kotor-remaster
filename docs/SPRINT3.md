@@ -1,8 +1,8 @@
 # Sprint 3 — P3 functional action runtime and object/timer model
 
-Status: **complete — gate S3 met (2026-11-02), with the 15-file compiler-ABI completion
-accepted by the finish directive** — see [`SPRINT3_REPORT.md`](SPRINT3_REPORT.md) for the exit
-report and evidence.
+Status: **complete — gate S3 met (2026-11-02)** — all 228 compiler-limited recompiles are
+source-level byte-identical with zero ABI transforms. See
+[`SPRINT3_REPORT.md`](SPRINT3_REPORT.md) for the exit report and evidence.
 
 Goal: turn the Sprint 2 mediated NCS VM into a **stateful, functional script runtime** for the
 shipped corpus, and close the P3/G3 residuals: the object/timer/action-queue model, explicit
@@ -38,13 +38,14 @@ Baseline: Sprint 2 / gate S2 (`docs/SPRINT2_REPORT.md`): 772 action specs, engin
    engine's action id/IP/SP/BP, post-action stack depth, and return cells exactly; capture the
    shared action-dispatch path and the queued-command runner (`0x005d45d0`). Evidence:
    `docs/recon/32_LIVE_DIFFERENTIAL.md`.
-8. **228 compiler-limited recompiles** — 24/24 default-argument cases are raw byte-identical
-   with historical prototype headers; 201/201 structs are recovered source-level (189 fully
-   exact, 12 different-cleanup ABI); 3 body-order cases are byte-identical through the documented
-   ABI completion. Full 8,666 rerun: 8,646 raw exact. Evidence:
-   `docs/recon/33_HISTORICAL_HEADERS.md`, `docs/recon/36_STRUCT_RECOVERY.md`,
-   `docs/recon/37_RETURN_CLEANUP.md`, `docs/recon/31_COMPILER_CODEGEN.md`,
-   `artifacts/lanes/s3-live/codegen_reconcile.json`.
+8. **228 compiler-limited recompiles** - all 228 are source-level byte-identical with zero
+   bytecode transforms: 24 historical prototype headers, 201 struct recoveries (189
+   duplicate-return + 12 historical `ActionStartConversation` prototypes), and 3 body-order
+   files compiled with the historical `nwnnsscomp` rebuild. Full 8,666 rerun: 8,665 raw exact,
+   1 documented reachability residual. Evidence: `docs/recon/33_HISTORICAL_HEADERS.md`,
+   `docs/recon/36_STRUCT_RECOVERY.md`, `docs/recon/37_RETURN_CLEANUP.md`,
+   `docs/recon/38_BODY_ORDER.md`, `docs/recon/39_UNREACHABLE.md`,
+   `docs/recon/31_COMPILER_CODEGEN.md`, `artifacts/lanes/s3-live/codegen_reconcile.json`.
 9. **306 corpus-unused actions** — every id outside the 466 used by the shipped corpus is invoked
    against a prepared world; 0 unclassified/default, 0 errors, and state-derived/mediation
    assertions for every action. Evidence: `docs/recon/34_ACTION_BEHAVIOR.md`,
