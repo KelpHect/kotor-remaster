@@ -127,16 +127,15 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
 
 ## Open items carried forward (with owners and blockers)
 
-1. **Chargen PLAY / in-dialogue live runs** — the earlier llvmpipe runs could not inject input,
-   but the 2026-11-02 **elevated Mesa** runs proved input/focus work: `elev-menu-load` reached the
-   Load Game listing and quit cleanly; `elev-live-taris2` selected the Taris row (changed 1280×720
-   frame) before the module-load transition terminated the process. A hardware-driver profile
-   (`profile-hw`, no Mesa DLLs) booted to the menu streams and then terminated at the
-   render/context transition with no render window. A private Win32 desktop (`SP1_DESKTOP=1`,
-   `CreateDesktopW` + suspended `CreateProcessW` + Frida + `ResumeThread`) reached `status-0` at
-   15 s then terminated before 45 s with no render window: a private desktop also lacks the
-   GL surface. So the remaining live blocker is the chargen/module transition on this
-   monitor-off host, not input. Both data questions are
+1. **Chargen PLAY / in-dialogue live runs** — the monitor-on hardware profile now renders at
+   1280×720 and accepts input through the menu, Load Game listing, class selection and the
+   `Quick Character` screen (`hw-live-taris-20261102`, `hw-newgame-20261102`,
+   `hw-quickchar-20261102`). The final chargen screen reaches `(1) PORTRAIT / (2) NAME /
+   (3) PLAY`, but the `(2) NAME` and `(3) PLAY` controls do not accept posted mouse messages,
+   SendInput clicks, or keyboard/`WM_CHAR` events (`hw-name*`/`hw-key*` runs); the load path
+   mounts `CURRENTGAME:tar_m02af` + `MODULES:tar_m02af_s` and then terminates in the load
+   transition. So the remaining live blocker is the chargen final-control/load transition, not
+   the data path. Both data questions are
    **statically bounded** (#23–#28: only `_s`-first mounting and camera mode 0 are possible;
    #32: streamwaves voice path). Owner: P4 vertical slice with an active display/context; run
    artifacts under `artifacts/lanes/s1-06-dynamic/runs/elev-*` and `hw-b-load-taris-20261102`.

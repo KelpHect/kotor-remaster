@@ -251,6 +251,27 @@ resumed the process, emitted `status-0` at seq 7299 (15 s), then the process ter
 display/context limitation, not an input failure. A real virtual display adapter (IDD) or an
 active monitor/RDP session is required for the remaining live captures.
 
+### 2026-11-02 live hardware captures (monitor on)
+
+With the monitor active, the non-Mesa `profile-hw` renders and is stable at 1280×720. The
+following live frames were captured (run dirs under `artifacts/lanes/s1-06-dynamic/runs/`):
+
+* `hw-live-taris-20261102`: main menu, Load Game listing (Taris row visible), row selected;
+  clicking Load starts the module mount (`CURRENTGAME:tar_m02af`, `MODULES:tar_m02af_s`,
+  `m02af` GIT/ARE/PTH) and the process then terminates during the load transition.
+* `hw-newgame-20261102`: New Game reaches `CHARACTER GENERATION / CHOOSE YOUR CLASS`; the
+  class portraits render and accept the posted click.
+* `hw-quickchar-20261102`: selecting a class and `Quick Character` reaches the final chargen
+  screen with `(1) PORTRAIT`, `(2) NAME`, `(3) PLAY`; frames `03-quick.bmp` show the screen.
+* `hw-name*`/`hw-key*`: attempts to activate `(2) NAME` and `(3) PLAY` with posted mouse
+  messages, SendInput hardware clicks, and keyboard/`WM_CHAR` events. The screen remains on
+  `(1) PORTRAIT`; the final PLAY control does not accept any of those input paths. This is the
+  original chargen PLAY blocker, now isolated to the final control rather than the whole screen.
+
+The hardware profile also loads the Taris save's module resources and then terminates in the
+load transition; the exact crash point is not a data error (all mounts return 1, install
+sentinels unchanged, no save writes).
+
 ### 2026-11-02 hardware-profile attempt
 
 To separate the llvmpipe input blocker from the game path, a lane-local `profile-hw` copy was
