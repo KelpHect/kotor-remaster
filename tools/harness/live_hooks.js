@@ -11,6 +11,7 @@
 // operations instead.
 const game = Process.getModuleByName('swkotor.exe');
 const k32 = Process.getModuleByName('kernel32.dll');
+function A(rva) { return game.base.add(rva - 0x400000); }
 let seq = 0;
 try {
   Interceptor.attach(k32.getExportByName('ExitProcess'), {
@@ -104,6 +105,85 @@ try {
 } catch (e) {
   emit({ f: 'hookerr', name: 'glGetString_shim', e: String(e) });
 }
+
+// ---- save-thumbnail shims (Mesa llvmpipe) ---------------------------------
+// FUN_00420f20 writes the save screenshot; under Mesa the resampler
+// FUN_0045dad0 faults.  Replace the writer with a synthetic 256x256 TGA and
+// the resampler with the same nearest-neighbour math as thumb_shim.py.
+try {
+  const createFileW = new NativeFunction(k32.getExportByName('CreateFileW'), 'pointer',
+    ['pointer', 'uint', 'uint', 'pointer', 'uint', 'uint', 'pointer'], 'stdcall');
+  const writeFile = new NativeFunction(k32.getExportByName('WriteFile'), 'int',
+    ['pointer', 'pointer', 'uint', 'pointer', 'pointer'], 'stdcall');
+  const closeHandle = new NativeFunction(k32.getExportByName('CloseHandle'), 'int', ['pointer'], 'stdcall');
+  const tga = new Uint8Array(18 + 256 * 256 * 3);
+  tga[2] = 2; tga[12] = 0; tga[13] = 1; tga[14] = 0; tga[15] = 1; tga[16] = 24;
+  for (let i = 18; i < tga.length; i += 3) { tga[i] = 0x60; tga[i + 1] = 0x60; tga[i + 2] = 0x60; }
+  function synthPath(arg) {
+    const candidates = [];
+    for (const a of [arg, arg.readPointer()]) {
+      try { const w = cstrw(a, 260); if (w) candidates.push(w); } catch (e) {}
+      try { const c = cstra(a, 260); if (c) candidates.push(c); } catch (e) {}
+    }
+    if (candidates.length) emit({ f: 'thumb_path_candidates', candidates: candidates });
+    for (let s of candidates) {
+      if (!/screen(\.tga)?$/i.test(s)) continue;
+      if (!/\.tga$/i.test(s)) s += '.tga';
+      if (/^SAVES:/i.test(s)) s = '.\\saves\\' + s.slice(6);
+      return s;
+    }
+    return null;
+  }
+  const repl = new NativeCallback(function (arg) {
+    const path = synthPath(arg);
+    emit({ f: 'thumb_replace_0x420f20', arg: hs(arg), path: path, tid: this.threadId });
+    if (path) {
+      try {
+        const p = Memory.allocUtf16String(path);
+        const h = createFileW(p, 0x40000000, 0, ptr(0), 2, 0, ptr(0));
+        if (h && !h.isNull() && h.toInt32() !== -1) {
+          const buf = Memory.alloc(tga.length);
+          buf.writeByteArray(tga);
+          const written = Memory.alloc(4);
+          writeFile(h, buf, tga.length, written, ptr(0));
+          closeHandle(h);
+          emit({ f: 'screen_tga_synth', path: path, bytes: tga.length, written: written.readU32(), tid: this.threadId });
+        }
+      } catch (e) { emit({ f: 'screen_tga_err', path: path, e: String(e) }); }
+    }
+    return 0;
+  }, 'int', ['pointer']);
+  Interceptor.replace(A(0x420f20), repl);
+  emit({ f: 'hook', target: 'thumb_replace_0x420f20' });
+} catch (e) { emit({ f: 'hookerr', name: 'thumb_replace', e: String(e) }); }
+
+try {
+  const gameNew = new NativeFunction(A(0x2fa7e6), 'pointer', ['uint']);
+  const resampleShim = new NativeCallback(function (src, sw, sh, ch, dw, dh) {
+    sw = sw | 0; sh = sh | 0; ch = ch | 0; dw = dw | 0; dh = dh | 0;
+    if (!src || sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0 ||
+        (ch !== 3 && ch !== 4) || dw * dh * ch > 16 * 1024 * 1024) {
+      emit({ f: 'resample_shim_reject', sw, sh, ch, dw, dh, tid: this.threadId });
+      return ptr(0);
+    }
+    let out = null;
+    try { out = gameNew(dw * dh * ch); } catch (e) {}
+    if (!out || out.isNull()) out = Memory.alloc(dw * dh * ch);
+    for (let y = 0; y < dh; y++) {
+      const sy = Math.min(sh - 1, Math.floor(y * sh / dh));
+      for (let x = 0; x < dw; x++) {
+        const sx = Math.min(sw - 1, Math.floor(x * sw / dw));
+        const s = (sy * sw + sx) * ch;
+        const d = (y * dw + x) * ch;
+        for (let c = 0; c < ch; c++) out.add(d + c).writeU8(src.add(s + c).readU8());
+      }
+    }
+    emit({ f: 'resample_shim_0x45dad0', sw, sh, ch, dw, dh, tid: this.threadId });
+    return out;
+  }, 'pointer', ['pointer', 'int', 'int', 'int', 'int', 'int']);
+  Interceptor.replace(A(0x45dad0), resampleShim);
+  emit({ f: 'hook', target: 'resample_shim_0x45dad0' });
+} catch (e) { emit({ f: 'hookerr', name: 'resample_shim', e: String(e) }); }
 
 function hookFile(name, wide) {
   try {
@@ -319,6 +399,44 @@ try {
   emit({ f: 'hook', target: 'direct_play_0x6eff80' });
 } catch (e) { emit({ f: 'hookerr', name: 'direct_play', e: String(e) }); }
 
+// ---- quicksave: action 0xDA in the input action dispatcher FUN_00621210 ----
+// FUN_006227e0 runs the per-frame input update with ECX = the input object;
+// action 0xDA is Quick Save (FUN_005df4e0/FUN_005edba0/FUN_005f4b50).
+try {
+  Interceptor.attach(A(0x4b58a0), {
+    onEnter(args) {
+      try {
+        emit({ f: 'save_writer', self: this.context.ecx.toString(),
+               a0: args[0].toString(), a1: args[1].toString(),
+               a2: args[2].toString(), a3: args[3] ? args[3].toString() : null });
+      } catch (e) {}
+    }
+  });
+  emit({ f: 'hook', target: 'save_writer_0x4b58a0' });
+} catch (e) { emit({ f: 'hookerr', name: 'save_writer', e: String(e) }); }
+let inputObj = null;
+let doQuicksave = false;
+let actionFn = null;
+try {
+  Interceptor.attach(A(0x6227e0), {
+    onEnter() { inputObj = this.context.ecx; }
+  });
+  actionFn = new NativeFunction(A(0x621210), 'void', ['pointer', 'int', 'int'], 'thiscall');
+  const gl = Process.getModuleByName('opengl32.dll');
+  Interceptor.attach(gl.getExportByName('wglSwapBuffers'), {
+    onEnter() {
+      if (!doQuicksave) return;
+      doQuicksave = false;
+      if (inputObj === null) { emit({ f: 'quicksave_error', e: 'no input object captured' }); return; }
+      try {
+        actionFn(inputObj, 0xda, 1);
+        emit({ f: 'quicksave_called', fn: '0x621210', obj: inputObj.toString(), tid: this.threadId });
+      } catch (e) { emit({ f: 'quicksave_error', e: String(e) }); }
+    }
+  });
+  emit({ f: 'hook', target: 'quicksave_0x621210' });
+} catch (e) { emit({ f: 'hookerr', name: 'quicksave', e: String(e) }); }
+
 rpc.exports = {
   stats() { return { seq: seq }; },
   ping() { return 'pong'; },
@@ -344,6 +462,11 @@ rpc.exports = {
     doStart = true;
     return { ok: true, queued: true, mgr: mgr.toString(),
              panel: quickPanel ? quickPanel.toString() : null, step: step };
+  },
+  quicksave() {
+    if (inputObj === null) return { ok: false, why: 'no input object captured' };
+    doQuicksave = true;
+    return { ok: true, queued: true, obj: inputObj.toString() };
   },
   hwclick2(x, y) {
     const tw = targetWindow();

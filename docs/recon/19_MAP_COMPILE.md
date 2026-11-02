@@ -62,8 +62,10 @@ Frozen rules, each with its evidence. Status: **verified** = checked against shi
     (`(x,y,z)→(x,z,−y)` with conjugated quaternions, MASTER_PLAN §7.1); never swap axes
     alone (winding flips). — verified as the contract; the cache format itself is P4.
 11. **ARE Map minimap affine** uses only `WorldPt1/2` → `MapPt1/2` per axis; `NorthAxis` is
-    a UI/compass selector, not part of the affine (recon/12). — verified (fields), inferred (role of NorthAxis)
-12. **MapResX role** — see §6. — inferred
+    a UI/compass/rotation selector, not part of the affine (recon/12). — verified (fields),
+    **verified in the engine** (`FUN_00508c50` → `FUN_00578c60`, §6)
+12. **MapResX role** — see §6. — **verified in the engine** (`FUN_00508c50` passes it as the
+    first parameter to `FUN_00578c60`; capped at 0x58, independent of the affine)
 13. Camera `Position` is a ground point, `eye = Position.z + Height`,
     `forward = R_yaw·(0, sin Pitch, −cos Pitch)`, FOV/Pitch degrees (recon/12). — verified (formula), open (live dialogue-camera object — lane s1-06)
 
@@ -143,15 +145,22 @@ module lists; `final.log` is the console transcript.
 - **MapResX role** — 117/117 AREs carry a `Map` struct. `MapResX` values are small ints
   {0,1,15,16,20,24,25,32,…}; exactly the 26 areas with `MapResX = 0` are the ones with a
   degenerate (zero-world-extent) affine — verified by reading all 117 Map structs. The
-  affine itself uses only `WorldPt1/2`→`MapPt1/2` (recon/12). **Inferred:** `MapResX` is
-  the minimap texture width/resolution hint; it is not part of the world→map affine.
-  `MapResY` is absent from every label table (recon/03 §3). — verified (data), inferred (role)
+  affine itself uses only `WorldPt1/2`→`MapPt1/2` (recon/12). **Verified in the engine:**
+  `FUN_00508c50` reads `MapResX`, `NorthAxis`, `MapZoom`, `MapPt1/2`, and `WorldPt1/2`,
+  loads the `lbl_map%s` minimap control, and calls `FUN_00578c60`; that function takes
+  `MapResX` as its first parameter (capped at `0x58`), applies `NorthAxis`/`MapZoom`, then
+  computes `scaleX=(MapPt2X-MapPt1X)/(WorldPt2X-WorldPt1X)`, the matching Y scale, and the
+  offsets. `MapResX` is therefore the minimap resolution hint, not an affine input.
+  `MapResY` is absent from every label table (recon/03 §3). — verified (data + engine)
 - **Minimap texture semantics** — a full scan of `chitin.key` (26 BIFs, 25,836
   resources), the 12 global RIMs, `patch.erf`, and all four `TexturePacks/*.erf` finds
   **no** `<area>`-named TGA/TPC (e.g. no `m01aa` texture anywhere; `m01aa` exists only as
   LYT 3000 + VIS 3001). **Verified from data alone:** this install ships no per-area
   minimap bitmap; the map is rasterized from the ARE `Map` affine over area geometry.
-  Which engine pass does that rasterization is binary-side → **marked for lane s1-07**.
+  **Renderer-side confirmed statically:** `FUN_00508c50` loads `lbl_map%s`, reads the
+  `Map` fields, and calls `FUN_00578c60`, which computes the world→map scale/offset from
+  `MapPt1/2` and `WorldPt1/2`; no per-area texture is required. The earlier "lane s1-07"
+  pointer is closed.
 - The remaining recon/12 opens (live dialogue-camera object field, supermodel visual
   chain, camera mode `+0x38` live observation) were closed or statically bounded by the
   Sprint-1 closure: supermodel chain verified live (recon/25 §6), camera `+0x38 = 0` on the
