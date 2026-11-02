@@ -10,6 +10,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 TESTS = Path(__file__).resolve().parent
+VM_TESTS = REPO_ROOT / "tools" / "vm" / "tests"
 RESULTS = REPO_ROOT / "artifacts" / "tests" / "results"
 sys.path.insert(0, str(TESTS))
 
@@ -40,8 +41,12 @@ class RecordingResult(unittest.TextTestResult):
 
 def main() -> int:
     support.ensure_fixtures()
-    suite = unittest.defaultTestLoader.discover(str(TESTS), pattern="test_*.py",
-                                                top_level_dir=str(TESTS))
+    suite = unittest.TestSuite([
+        unittest.defaultTestLoader.discover(str(TESTS), pattern="test_*.py",
+                                            top_level_dir=str(TESTS)),
+        unittest.defaultTestLoader.discover(str(VM_TESTS), pattern="test_*.py",
+                                            top_level_dir=str(VM_TESTS)),
+    ])
     result = unittest.TextTestRunner(verbosity=2, resultclass=RecordingResult).run(suite)
     rows = [result.rows[k] for k in sorted(result.rows)]
     passed = result.testsRun - len(result.failures) - len(result.errors) - len(result.skipped)
