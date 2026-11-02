@@ -26,10 +26,10 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
 
 ## Test totals (integrator re-run on the merged tree)
 
-- `python tools/tests/run_all.py` → **107 tests, OK (1 pre-existing skip: no save in the reference
+- `python tools/tests/run_all.py` → **110 tests, OK (1 pre-existing skip: no save in the reference
   install itself)**; `artifacts/tests/results/test-results.json` regenerated.
 - `python -m unittest discover -s tools/formats -p "test_*.py"` → **211 tests, OK**.
-- `tools/scripts/tests` → **29, OK**; `tools/tests/test_mapcompile.py` → **17, OK** (13 strict +
+- `tools/scripts/tests` → **32, OK**; `tools/tests/test_mapcompile.py` → **17, OK** (13 strict +
   4 retail-profile triage); `tools/inventory` tests → **25, OK (1 opt-in skip)**;
   `tools/tests/test_save_parity.py` **12/12**, `test_vfs_p1.py` 12/12,
   `tools/tests/test_viewer.py` 19/19 (all inside run_all or lane suites).
@@ -109,30 +109,51 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
   parsed struct/field-row layout and fidx table while re-encoding values. The from-scratch
   `--mode parity` rewrite is now **5/5 files + nested 1/1 byte-identical** on the quicksave and
   100% GFF parity on every real retail slot (31/31, 30/30, 24/24, 6/6, 6/6).
-- **Test suite**: `run_all.py` **107 OK (1 skip)**, `tools/formats` **211 OK**,
+- **F4 thumbnail shim implemented and tested**: `tools/harness/thumb_shim.py` is a clean-room
+  nearest-neighbour resampler + 24-bpp TGA writer; `sprint1_hooks.js` now replaces both the
+  screenshot writer `0x420f20` and the faulting resampler `FUN_0045dad0` (same math). Tests:
+  `test_harness.py` **7/7** (TGA header, nearest-neighbour corners, short-source rejection);
+  `node --check` on the Frida script passes. Live F4 generation still needs the elevated
+  renderer session; the shim path itself is no longer an unknown.
+- **228 compiler-limited decompiles formally descoped**: `tools/scripts/residuals.py` reads the
+  corpus/action-usage artifacts and emits `g1.status=closed`, `g1.open_items=[]`, with the 228
+  compiler-limited recompiles and 306 unused actions explicitly owned by P3 VM conformance
+  (compiler-codegen/modded-content work, not shipped-data coverage). Result:
+  `artifacts/lanes/s1-04-scripts/residuals.json`; tests `tools/scripts/tests` **32/32**.
+- **Test suite**: `run_all.py` **110 OK (1 skip)**, `tools/formats` **211 OK**,
   `test_mapcompile.py` **17 OK**, `test_save_parity.py` **12/12**,
-  `test_vfs_p1.py` **12/12**. README/recon status lines updated to remove stale open items.
+  `test_vfs_p1.py` **12/12**, `tools/scripts/tests` **32/32**. README/recon status lines
+  updated to remove stale open items.
 
 ## Open items carried forward (with owners and blockers)
 
 1. **Chargen PLAY / in-dialogue live runs** — injected input does not reach the chargen 3D screen
    or dialogue targeting under llvmpipe (DirectInput), logged verbatim across distinct approaches
    (posted clicks, SendInput absolute, keyboard traversal, GUI-derived coords, orca screenshots,
-   89-click grid). Both items are now **statically bounded** (#23–#28: only `_s`-first mounting and
-   camera mode 0 are possible), so the residual is environmental, not a data gap. Owner: P4
-   vertical slice on hardware (the P0 elevated 1280×720 session already proved F4/F5 saves work).
+   89-click grid). A 2026-11-02 hardware-driver attempt (`profile-hw`, no Mesa DLLs,
+   `SP1_HARDWARE=1`, scenario `b-load-taris`) booted to the menu streams and installed the new
+   resampler shim, then terminated at the render/context transition with
+   `process-terminated`/`crash None` and no render window (run
+   `artifacts/lanes/s1-06-dynamic/runs/hw-b-load-taris-20261102/`). Both items are **statically
+   bounded** (#23–#28: only `_s`-first mounting and camera mode 0 are possible), so the residual
+   is environmental, not a data gap. Owner: P4 vertical slice in an elevated session with the
+   working GL shims of `docs/recon/16` §6.
 2. **streamwaves per-file audio requests** — **closed statically** (claim #32): voice streams
    build `HD0:STREAMWAVES\%s` / localized `%s\%s\%s`, type 4 opens the `.wav` through
    `FUN_005dbd30`/`AIL_open_stream`; music/effects use `STREAMMUSIC`/`STREAMSOUNDS`. The
    dynamic lane's zero opens mean no voice line fired under the input blocker, not a missing
    path. A hardware run can repeat the observation; no data gap remains.
-3. **F4 quicksave thumbnail leg under Mesa** — `Interceptor.replace` on `0x420f20` is in place
-   (runs k3/k4) but the quicksave stalls upstream of the thumbnail in the non-elevated llvmpipe
-   harness; needs the elevated session + GL shims of `docs/recon/16` §6. Owner: P4 renderer
-   (save data/reload unaffected; P0 already verified a real F4→F5 round trip).
-4. **228 compiler-limited decompiles + 306 unused actions** — P3 VM-conformance work for modded
-   content; the shipped corpus is fully decoded and the 8,428 exact recompiles are unchanged.
-   Not a G1 data gap. Owner: P3 VM conformance.
+3. **F4 quicksave thumbnail leg under Mesa** — the shim is now implemented and tested:
+   `tools/harness/thumb_shim.py` (nearest-neighbour resampler + 24-bpp TGA writer) and
+   `sprint1_hooks.js` replace both `0x420f20` and the faulting `FUN_0045dad0`; `test_harness.py`
+   is 7/7. The remaining live part is the non-elevated llvmpipe quicksave stalling upstream of
+   the thumbnail; the elevated session + GL shims of `docs/recon/16` §6 are still needed to
+   observe it in-process. Owner: P4 renderer (save data/reload unaffected).
+4. **228 compiler-limited decompiles + 306 unused actions** — formally descoped from G1 by
+   `tools/scripts/residuals.py` (`g1.status=closed`, `open_items=[]`); owned by P3 VM
+   conformance. The shipped corpus is fully decoded (8,428 exact + 5 header-limited + 5
+   reachable-only; 228 compiler-codegen-limited recompiles), and the 306 unused actions are
+   modded-content implementations, not data gaps.
 5. **Minimap rasterization renderer-side confirmation** — the data-side affine/MapResX/minimap
    absence is verified (recon/19 §6); the engine pass that rasterizes it is P5 renderer work.
    The map compiler itself is green under the retail profile.

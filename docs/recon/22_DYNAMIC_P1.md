@@ -219,6 +219,23 @@ localized `%s\%s\%s` form), type 4 opens the `.wav` through `FUN_005dbd30` /
 `AIL_open_stream`; music and effects use `STREAMMUSIC`/`STREAMSOUNDS`. A live voice line is
 still needed only to repeat the observation, not to establish the path.
 
+### 2026-11-02 hardware-profile attempt (new)
+
+To separate the llvmpipe input blocker from the game path, a lane-local `profile-hw` copy was
+made without the Mesa DLLs (`opengl32.dll`, `libgallium_wgl.dll`, `dxil.dll` removed) and the
+harness was run with `SP1_HARDWARE=1` / `SP1_PROFILE=.../profile-hw`, scenario
+`b-load-taris.json`. The process booted far enough to load the menu streams (music
+`STREAMMUSIC\mus_theme_cult.wav`, texture packs, main-menu RIMs) and installed the new
+`resample_shim_0x45dad0` hook, then **terminated without a crash report** at the render/context
+transition: `session_detached {"reason": "process-terminated", "crash": "None"}`, `frame` steps
+reported `no render window`, and no `swkotor.exe` remained. Run:
+`artifacts/lanes/s1-06-dynamic/runs/hw-b-load-taris-20261102/` (summary, events, orchestrator).
+Conclusion: the hardware driver path cannot create the frame/context this build needs in this
+session, so chargen PLAY and a live dialogue click remain **environmental** blockers (elevated
+session + the working GL shim path of `docs/recon/16` §6). The fresh-module mount order and
+dialogue camera path remain statically closed (#23–#28), and the stream voice path is static
+(#32); no data/loader ambiguity remains.
+
 ### Task 4 (item d) from-scratch parity slot — **VERIFIED (load acceptance); F4/F5 leg OPEN**
 
 Run `h-paritysrc` loaded `000008 - PARITY-SRC` (s1-05 `kotor_save_parity.py rewrite-parity

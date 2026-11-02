@@ -14,7 +14,7 @@ SAVE_FIXTURES = FIXTURES / "save"
 VFS_FIXTURES = FIXTURES / "vfs"
 VFS_GAME = VFS_FIXTURES / "game"
 TMP = REPO_ROOT / "artifacts" / "tests" / "tmp"
-HARNESS = TOOLS
+HARNESS = REPO_ROOT / "tools" / "harness"
 TMP.mkdir(parents=True, exist_ok=True)
 REAL_GAME = Path(os.environ.get("KOTOR_GAME_DIR") or "<not-set>")
 REAL_SAVES = REAL_GAME / "saves"

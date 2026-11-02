@@ -39,11 +39,14 @@ import sprint1_probes as sp  # noqa: E402
 
 REPO = sp.REPO_ROOT
 LANE = sp.LANE
-PROFILE = LANE / "profile"
+# SP1_PROFILE lets a hardware-driver run use a profile copy without Mesa DLLs;
+# SP1_HARDWARE=1 suppresses the llvmpipe environment overrides.
+PROFILE = Path(os.environ.get("SP1_PROFILE", str(LANE / "profile")))
 HOOK = Path(os.environ.get("SP1_HOOK", str(HERE / "sprint1_hooks.js")))
 RUNS = LANE / "runs"
 
-ENV_EXTRA = {"GALLIUM_DRIVER": "llvmpipe", "MESA_LOADER_DRIVER_OVERRIDE": "llvmpipe"}
+ENV_EXTRA = ({} if os.environ.get("SP1_HARDWARE") == "1" else
+             {"GALLIUM_DRIVER": "llvmpipe", "MESA_LOADER_DRIVER_OVERRIDE": "llvmpipe"})
 MESA_DLLS = ("opengl32.dll", "libgallium_wgl.dll", "dxil.dll")
 
 
@@ -526,6 +529,7 @@ def main() -> int:
     scenario = json.loads(Path(args.scenario).read_text(encoding="utf-8"))
     sess = Session(run, args.label)
     steps_out: list[dict] = []
+    post_ok = True
     try:
         launch_info = sess.launch(Path(args.mesa_source) if args.mesa_source else None)
         (run / "launch.json").write_text(json.dumps(launch_info, indent=2) + "\n", encoding="utf-8")
@@ -587,9 +591,9 @@ def main() -> int:
         }
         (run / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
         print("SUMMARY", json.dumps(summary)[:600], flush=True)
-        if not post_ok:
-            print("STOP: install sentinel drift after run", file=sys.stderr)
-            return 3
+    if not post_ok:
+        print("STOP: install sentinel drift after run", file=sys.stderr)
+        return 3
     return 0
 
 
