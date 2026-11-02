@@ -678,14 +678,43 @@ try {
   Interceptor.replace(A(0x420f20), repl);
   emit({ f: 'hook', target: 'thumb_replace_0x420f20', addr: '0x420f20' });
 } catch (e) { emit({ f: 'hookerr', name: 'thumb_replace', e: String(e) }); }
-// log-only attach on the faulting resampler (never entered while 0x420f20 is replaced)
+// Clean-room replacement for the faulting resampler FUN_0045dad0:
+// (src, src_w, src_h, channels, dst_w, dst_h) -> newly allocated dst pixels.
+// Nearest-neighbour is deterministic and avoids the Mesa-faulting box path.
+// This is the JS twin of tools/harness/thumb_shim.py resample_nearest().
 try {
-  Interceptor.attach(A(0x45dad0), {
-    onEnter(a) {
-      emit({ f: 'resample_0x45dad0_ENTERED', sw: a[1].toInt32(), sh: a[2].toInt32(),
-             dw: a[4].toInt32(), dh: a[5].toInt32(), tid: this.threadId });
+  const resampleShim = new NativeCallback(function (src, sw, sh, ch, dw, dh) {
+    sw = sw | 0; sh = sh | 0; ch = ch | 0; dw = dw | 0; dh = dh | 0;
+    if (!src || sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0 ||
+        (ch !== 3 && ch !== 4) || dw * dh * ch > 16 * 1024 * 1024) {
+      emit({ f: 'resample_shim_reject', sw, sh, ch, dw, dh, tid: this.threadId });
+      return ptr(0);
     }
-  });
-} catch (e) { emit({ f: 'hookerr', name: 'resample', e: String(e) }); }
+    const out = Memory.alloc(dw * dh * ch);
+    for (let y = 0; y < dh; y++) {
+      const sy = Math.min(sh - 1, Math.floor(y * sh / dh));
+      for (let x = 0; x < dw; x++) {
+        const sx = Math.min(sw - 1, Math.floor(x * sw / dw));
+        const s = (sy * sw + sx) * ch;
+        const d = (y * dw + x) * ch;
+        for (let c = 0; c < ch; c++) out.add(d + c).writeU8(src.add(s + c).readU8());
+      }
+    }
+    emit({ f: 'resample_shim_0x45dad0', sw, sh, ch, dw, dh, tid: this.threadId });
+    return out;
+  }, 'pointer', ['pointer', 'int', 'int', 'int', 'int', 'int']);
+  Interceptor.replace(A(0x45dad0), resampleShim);
+  emit({ f: 'hook', target: 'resample_shim_0x45dad0', addr: '0x45dad0' });
+} catch (e) {
+  emit({ f: 'hookerr', name: 'resample_shim', e: String(e) });
+  try {
+    Interceptor.attach(A(0x45dad0), {
+      onEnter(a) {
+        emit({ f: 'resample_0x45dad0_ENTERED', sw: a[1].toInt32(), sh: a[2].toInt32(),
+               dw: a[4].toInt32(), dh: a[5].toInt32(), tid: this.threadId });
+      }
+    });
+  } catch (e2) { emit({ f: 'hookerr', name: 'resample', e: String(e2) }); }
+}
 
 emit({ f: 'agent_s1_06_closure', pid: Process.id });

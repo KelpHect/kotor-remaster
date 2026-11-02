@@ -5,6 +5,7 @@ import unittest
 
 import support
 import build_dynamic_probes as bdp
+import thumb_shim
 import vfs_measure as vm
 
 
@@ -84,6 +85,39 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(norm[0]["type"], 3)
         self.assertEqual(norm[0]["pass"], 1)
         self.assertIn("override", norm[0]["table"].lower())
+
+    def test_thumb_shim_tga_header(self):
+        blob = thumb_shim.screen_tga()
+        self.assertEqual(len(blob), 18 + 256 * 256 * 3)
+        self.assertEqual(blob[2], 2)                     # uncompressed RGB
+        self.assertEqual(int.from_bytes(blob[12:14], "little"), 256)
+        self.assertEqual(int.from_bytes(blob[14:16], "little"), 256)
+        self.assertEqual(blob[16], 24)
+        self.assertEqual(blob[17], 0x20)                 # top-left origin
+        # BGR pixel order in the TGA body
+        self.assertEqual(blob[18:21], bytes((0x60, 0x60, 0x60)))
+
+    def test_thumb_shim_resample_nearest(self):
+        # 2x2 RGB with distinct corners -> 4x4 nearest-neighbour.
+        red, green, blue, white = (255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 255)
+        src = bytes(red + green + blue + white)
+        out = thumb_shim.resample_nearest(src, 2, 2, 3, 4, 4)
+        self.assertEqual(len(out), 4 * 4 * 3)
+
+        def px(x, y):
+            i = (y * 4 + x) * 3
+            return tuple(out[i:i + 3])
+
+        self.assertEqual(px(0, 0), red)
+        self.assertEqual(px(3, 0), green)
+        self.assertEqual(px(0, 3), blue)
+        self.assertEqual(px(3, 3), white)
+
+    def test_thumb_shim_rejects_short_source(self):
+        with self.assertRaises(thumb_shim.ThumbShimError):
+            thumb_shim.resample_nearest(b"\x00" * 5, 2, 2, 3, 4, 4)
+        with self.assertRaises(thumb_shim.ThumbShimError):
+            thumb_shim.resample_nearest(b"", 0, 2, 3, 4, 4)
 
 
 if __name__ == "__main__":

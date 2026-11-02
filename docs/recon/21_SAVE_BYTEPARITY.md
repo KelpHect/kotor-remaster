@@ -180,8 +180,8 @@ from-scratch variant and diff per file).
 
 ## 5. Tests
 
-`python tools/tests/run_all.py` (with `KOTOR_GAME_DIR` set): **107 tests run,
-106 pass, 0 fail, 0 errors, 1 skip** — the skip is the pre-existing
+`python tools/tests/run_all.py` (with `KOTOR_GAME_DIR` set): **110 tests run,
+109 pass, 0 fail, 0 errors, 1 skip** — the skip is the pre-existing
 `test_save…test_real_save_if_present` (no save in the reference install; the
 retail slot is covered from the lane-06 profile by `test_save_parity.py`).
 Lane modules standalone: `test_save_parity.py` **12/12 pass**,

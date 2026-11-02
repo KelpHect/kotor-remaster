@@ -171,7 +171,7 @@ install is untouched; only the new quicksave slot was added.
 ## Tests
 
 The original lane run of `python tools/tests/run_all.py` recorded **33 tests, 32 pass, 1 skip,
-0 failures**. The current suite records **107 tests, 106 pass, 1 skip, 0 failures/errors** (skip:
+0 failures**. The current suite records **110 tests, 109 pass, 1 skip, 0 failures/errors** (skip:
 no real save in the reference install; the downloaded slots are checked separately below).
 Generated fixtures live in `artifacts/tests/`.
 
