@@ -110,7 +110,10 @@ def main(argv=None) -> int:
         np = nss_dir / f"{name}.nss"
         struct_mode = bool(args.struct_nss) and name in struct_names
         if struct_mode:
-            np = Path(args.struct_nss) / name / f"{name}.nss"
+            candidate = Path(args.struct_nss) / name / f"{name}.nss"
+            struct_mode = candidate.exists()
+            if struct_mode:
+                np = candidate
         if not op.exists() or not np.exists():
             rows.append({"name": name, "status": "other",
                          "error": "missing input"})
@@ -211,8 +214,8 @@ def main(argv=None) -> int:
         "gate": {
             "all_files_present": len(rows) == EXPECTED,
             "no_unexpected": not other,
-            "raw_exact_at_least_8459": counts.get("raw_exact", 0) >= (
-                8459 if args.struct_nss else 8452),
+            "raw_exact_at_least": counts.get("raw_exact", 0) >= (
+                8646 if args.struct_nss else 8452),
             "classified_total": (counts.get("raw_exact", 0)
                                  + counts.get("compiler_limited", 0)
                                  + counts.get("header_limited", 0)
@@ -237,7 +240,7 @@ def main(argv=None) -> int:
         "| class | files | meaning |",
         "|---|---:|---|",
         f"| raw_exact | {report['raw_exact']} | recompiled bytes equal the shipped NCS |",
-        f"| compiler_limited | {report['compiler_limited']} | the 199 cleanup-only struct + 3 body-order cases |",
+        f"| compiler_limited | {report['compiler_limited']} | the 12 different-cleanup struct + 3 body-order cases |",
         f"| header_limited | {report['header_limited']} | the 5 anomalous-action prototype cases |",
         f"| reachable_only | {report['reachable_only']} | the 5 unreachable-code cases |",
         f"| other | {len(other)} | unexpected (gate failure) |",
@@ -250,9 +253,10 @@ def main(argv=None) -> int:
         "compared byte-for-byte. Files without such calls use the full header.",
         "",
         "The raw_exact count includes the 24 default-argument cases "
-        "(`docs/recon/33_HISTORICAL_HEADERS.md`), the 5 header-limited overrides, and the "
-        "2 fully source-level struct recoveries (`docs/recon/36_STRUCT_RECOVERY.md`). The "
-        "199 cleanup-only struct cases and 3 body-order cases remain the ABI group in "
+        "(`docs/recon/33_HISTORICAL_HEADERS.md`), the 5 header-limited overrides, the "
+        "2 pure struct recoveries (`docs/recon/36_STRUCT_RECOVERY.md`), and the 187 "
+        "duplicate-return fixes (`docs/recon/37_RETURN_CLEANUP.md`). The 12 "
+        "different-cleanup struct cases and 3 body-order cases remain the ABI group in "
         "`docs/recon/31_COMPILER_CODEGEN.md`.",
         "",
     ]

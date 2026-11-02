@@ -16,9 +16,9 @@ Baseline: Sprint 2 / gate S2 (`docs/SPRINT2_REPORT.md`): 772 action specs, engin
 | 3 | VM integration | **met** — runtime is optional; Sprint 2 typed-default mode still works; VM tests green | `tools/vm/ncs_vm.py`; 16 VM tests |
 | 4 | Full-corpus run | **met — 8,666/8,666**; 8,185 returned, 472 blocked at `ActionWait`, 9 budget; 0 decode/VM faults, 0 unknown actions, 0 invalid targets | `tools/vm/corpus_run.py --runtime`; `docs/recon/29_FUNCTIONAL_RUNTIME.md`; `artifacts/lanes/s3-03-corpus/functional_corpus.json` |
 | 5 | Reference-trace suite | **met** — 9 runtime tests cover globals, locals, tags/validity, inventory iterator, timers, action queue, `ActionWait`, strings, and a golden NCS set/get trace | `tools/vm/tests/test_action_runtime.py` |
-| 6 | Tests/docs/repo | **met** — `run_all` 144 OK (1 skip), formats 211 OK, scripts 36 OK, VM 30 OK; install untouched; docs and report written | test logs; `git status` |
+| 6 | Tests/docs/repo | **met** — `run_all` 144 OK (1 skip), formats 211 OK, scripts 37 OK, VM 30 OK; install untouched; docs and report written | test logs; `git status` |
 | 7 | Live differential | **met — 28/28 unique programs**; 400 `ExecuteCode` calls and 12,000 ACTION dispatches (hook limits); action id/IP/SP/BP and `sp_after` match with the engine's return cells injected. The `RunCommand` hook (`0x005d45d0`) captured **4,000** queued-command calls; its paired capture replays **30/30** programs exactly | `docs/recon/32_LIVE_DIFFERENTIAL.md`; `tools/vm/live_diff.py`; `artifacts/lanes/s3-live/live_diff7.json`; `live_diff_runcommand.json` |
-| 8 | 228 compiler-limited recompiles | **met — 228/228 byte-identical**: **24/24 source-level** historical headers, **201/201 structs recovered** (2 fully exact, 187 one cleanup block, 12 full ABI), **3 body-order**; raw output hashed per file | `docs/recon/33_HISTORICAL_HEADERS.md`; `docs/recon/36_STRUCT_RECOVERY.md`; `docs/recon/31_COMPILER_CODEGEN.md`; `tools/scripts/historical_headers.py`; `tools/scripts/struct_source.py`; `tools/scripts/codegen_reconcile.py` |
+| 8 | 228 compiler-limited recompiles | **met — 228/228 byte-identical / 213 source-level**: 24/24 historical headers, 201/201 structs recovered (189 fully exact, 12 full ABI), 3 body-order ABI; full 8,666 rerun 8,646 raw exact | `docs/recon/33_HISTORICAL_HEADERS.md`; `docs/recon/36_STRUCT_RECOVERY.md`; `docs/recon/37_RETURN_CLEANUP.md`; `docs/recon/35_FULL_RECOMPILE.md`; `docs/recon/31_COMPILER_CODEGEN.md` |
 | 9 | 306 corpus-unused actions | **met — 306/306** invoked against a prepared world; 42 specific + 264 generic; **0 default**, 0 errors; **82 state-derived value assertions plus 20 SWMG set/get pairs**, with event/queue/mediation assertions for every action | `docs/recon/34_ACTION_BEHAVIOR.md`; `tools/vm/behavior_suite.py`; `artifacts/lanes/s3-02-actions/behavior_suite.json` |
 
 ## Functional corpus result
@@ -83,32 +83,30 @@ decompiler-side open). The 228 residuals split into three groups:
 - **201 struct-group cases recovered at source level.** The shipped scripts use
   `struct tLastRound` (10 fields; `k_inc_generic.nss`). `tools/scripts/struct_source.py`
   restores the struct declaration at the exact global position and rewrites the flattened
-  globals to field accesses; ktool then emits the historical group-slice codegen. Result:
-  **201/201 structs recovered, 2/201 fully raw byte-identical**; the other 199 are exactly one
-  five-instruction compiler cleanup block short (a decompiler-structuring/MOVSP residual). See
-  `docs/recon/36_STRUCT_RECOVERY.md`.
+  globals to field accesses; `tools/scripts/return_cleanup.py` then restores the compiler's
+  duplicate trailing `return vN;`. Result: **201/201 structs recovered, 189/201 raw
+  byte-identical**; the other 12 have a different cleanup shape and use the full struct ABI.
+  See `docs/recon/36_STRUCT_RECOVERY.md`, `docs/recon/37_RETURN_CLEANUP.md`.
 - **3 body-order cases** are pure function-address permutations that the taxonomy proves cannot
   be reproduced by a semantically equivalent source.
 
-The 199 cleanup-only cases and the 3 body-order cases are completed by
-`tools/scripts/codegen_reconcile.py`; 12 struct cases whose source rewrite has a different
-control-flow cleanup still use the full struct-group ABI path. The ledger is:
+The 12 struct cases and the 3 body-order cases are completed by
+`tools/scripts/codegen_reconcile.py`. The ledger is:
 
 | class | files | meaning |
 |---|---:|---|
 | source headers | 24 | historical prototype arity, unchanged source |
-| source struct, fully exact | 2 | struct recovery alone is byte-identical |
-| source struct + cleanup insert | 187 | struct codegen from source, one compiler cleanup block inserted |
+| source struct, exact | 189 | 2 pure struct recovery + 187 duplicate-return cleanup |
 | struct-group ABI | 12 | full struct-group reconciliation for a different cleanup shape |
 | body-order ABI | 3 | historical emitted-JSR function order |
 | **total** | **228** | **228/228 byte-identical** |
 
-The full 8,666-script rerun with the struct-recovered NSS is **8,459/8,666 raw byte-identical**;
-the remaining 202 compiler-limited files are the 199 cleanup-only struct cases + 3 body-order,
-plus 5 reachable-only files. The raw ktool output is recorded and hashed per file; the
-decompiler source is not silently replaced. Evidence:
-`docs/recon/31_COMPILER_CODEGEN.md`, `docs/recon/35_FULL_RECOMPILE.md`,
-`docs/recon/36_STRUCT_RECOVERY.md`, `artifacts/lanes/s3-live/codegen_reconcile.json`.
+The full 8,666-script rerun is **8,646/8,666 raw byte-identical**; the remaining 15
+compiler-limited files are 12 different-cleanup struct + 3 body-order, plus 5 reachable-only
+files. The raw ktool output is recorded and hashed per file; the decompiler source is not
+silently replaced. Evidence: `docs/recon/31_COMPILER_CODEGEN.md`,
+`docs/recon/35_FULL_RECOMPILE.md`, `docs/recon/36_STRUCT_RECOVERY.md`,
+`docs/recon/37_RETURN_CLEANUP.md`, `artifacts/lanes/s3-live/codegen_reconcile.json`.
 
 ## 306 corpus-unused actions
 
@@ -139,18 +137,18 @@ record every mediated engine effect in the world event log. Evidence: `docs/reco
 - P6/P7 content and release work.
 - The live run covers 28 unique programs (including 7 resumed/command bodies); the static
   full-corpus VM covers all 8,666 scripts.
-- The 199 struct cases still need one five-instruction compiler cleanup block inserted, and the
-  3 body-order cases need a function reorder. These are **bytecode-level ABI completion**, not
-  source-level recompilation: the struct codegen itself is source-level (201/201 recovered), and
-  the remaining cleanup is a decompiler-structuring/MOVSP residual. A fully source-level closure
-  requires a decompiler structuring fix plus a compiler-layout fix for the 3 order cases.
+- The 12 struct cases still need the full struct-group ABI path because their cleanup shape
+  differs, and the 3 body-order cases need a function reorder. These are the only remaining
+  bytecode-level ABI items; 213/228 are source-level (24 headers + 189 struct) and the full
+  corpus is 8,646/8,666 raw exact. A fully source-level closure for the last 15 requires the
+  remaining different-cleanup struct analysis plus a compiler-layout fix for the 3 order cases.
 
 ## Test totals
 
 - `python tools/tests/run_all.py` → **144 tests, OK (1 pre-existing skip)**.
 - `python -m unittest discover -s tools/formats -p "test_*.py"` → **211 tests, OK**;
   `validate_all.py` → `all_ok=True`.
-- `python -m unittest discover -s tools/scripts/tests -p "test_*.py"` → **36 tests, OK**
+- `python -m unittest discover -s tools/scripts/tests -p "test_*.py"` → **37 tests, OK**
   (includes the compiler-transform and historical-header samples).
 - `python -m unittest discover -s tools/vm/tests -p "test_*.py"` → **30 tests, OK**
   (16 VM + 9 runtime/state + 2 unused-action + 2 live-diff + 1 behavior).
@@ -201,6 +199,15 @@ python -m tools.scripts.struct_source \
   --out-nss artifacts/lanes/s3-live/struct-nss \
   --out-json artifacts/lanes/s3-live/struct_source.json \
   --out-doc docs/recon/36_STRUCT_RECOVERY.md
+python -m tools.scripts.return_cleanup \
+  --corpus artifacts/lanes/04-ncs/extracted/unique \
+  --struct-nss artifacts/lanes/s3-live/struct-nss \
+  --taxonomy artifacts/lanes/ncs-decompiler/cont2/out/residual-taxonomy.json \
+  --compiler artifacts/lanes/04-ncs/tools/DeNCS/tools/nwnnsscomp_ktool.exe \
+  --header artifacts/lanes/ncs-decompiler/cont2/runs/incwhile-v10/bin/nwscript.nss \
+  --out-nss artifacts/lanes/s3-live/struct-nss-final \
+  --out-json artifacts/lanes/s3-live/return_cleanup.json \
+  --out-doc docs/recon/37_RETURN_CLEANUP.md
 python -m tools.scripts.codegen_reconcile \
   --corpus artifacts/lanes/04-ncs/extracted/unique \
   --recompiled artifacts/lanes/ncs-decompiler/cont2/out/ncs \
@@ -234,10 +241,11 @@ New tracked files: `tools/vm/state.py`, `tools/vm/actions_runtime.py`,
 `tools/vm/unused_actions.py`, `tools/vm/tests/test_action_runtime.py`,
 `tools/vm/tests/test_action_behaviors.py`, `tools/vm/tests/test_unused_actions.py`,
 `tools/scripts/codegen_reconcile.py`, `tools/scripts/historical_headers.py`,
-`tools/scripts/struct_source.py`, `tools/scripts/recompile_all.py`,
-`tools/scripts/tests/test_codegen_reconcile.py`,
+`tools/scripts/struct_source.py`, `tools/scripts/return_cleanup.py`,
+`tools/scripts/recompile_all.py`, `tools/scripts/tests/test_codegen_reconcile.py`,
 `docs/recon/28_ACTION_MODEL.md`, `docs/recon/30_UNUSED_ACTIONS.md`,
 `docs/recon/31_COMPILER_CODEGEN.md`, `docs/recon/32_LIVE_DIFFERENTIAL.md`,
 `docs/recon/33_HISTORICAL_HEADERS.md`, `docs/recon/34_ACTION_BEHAVIOR.md`,
-`docs/recon/35_FULL_RECOMPILE.md`, `docs/recon/36_STRUCT_RECOVERY.md`, this report.
+`docs/recon/35_FULL_RECOMPILE.md`, `docs/recon/36_STRUCT_RECOVERY.md`,
+`docs/recon/37_RETURN_CLEANUP.md`, this report.
 No game assets, save contents, extracted payloads, or decompiled program text are tracked.

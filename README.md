@@ -80,18 +80,17 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   `ExecuteCode`/action-dispatch differential: 28/28 unique programs, 400 executions, 12,000
   ACTION calls, exact id/IP/SP/BP/return-cell match; the `RunCommand` hook (`0x005d45d0`)
   captured 4,000 queued-command calls and its 30 unique programs also replay 30/30.** **228/228
-  compiler-limited recompiles byte-identical: 24/24 source-level historical headers, 201/201
-  structs recovered source-level (2 fully exact, 199 one compiler cleanup block), 3 body-order
-  ABI; full 8,666 rerun 8,459 raw exact, 202 compiler-limited (199 cleanup + 3 body), 5
-  reachable-only.** **306/306 corpus-unused actions** behaviorally tested against a prepared
-  world (42 specific + 264 generic, 0 default, 82 state-derived assertions + 20 SWMG set/get
-  pairs). Tests: 144 OK
-  (1 skip) + 36 script tests. See `docs/recon/28_ACTION_MODEL.md`,
+  compiler-limited recompiles byte-identical / 213 source-level: 24/24 historical headers,
+  201/201 structs recovered (189 fully exact, 12 full struct ABI), 3 body-order ABI; full 8,666
+  rerun 8,646 raw exact, 15 compiler-limited (12 struct + 3 body), 5 reachable-only.** **306/306
+  corpus-unused actions** behaviorally tested against a prepared world (42 specific + 264
+  generic, 0 default, 82 state-derived assertions + 20 SWMG set/get pairs). Tests: 144 OK
+  (1 skip) + 37 script tests. See `docs/recon/28_ACTION_MODEL.md`,
   `docs/recon/29_FUNCTIONAL_RUNTIME.md`, `docs/recon/30_UNUSED_ACTIONS.md`,
   `docs/recon/31_COMPILER_CODEGEN.md`, `docs/recon/32_LIVE_DIFFERENTIAL.md`,
   `docs/recon/33_HISTORICAL_HEADERS.md`, `docs/recon/34_ACTION_BEHAVIOR.md`,
-  `docs/recon/35_FULL_RECOMPILE.md`, `docs/recon/36_STRUCT_RECOVERY.md`, and
-  `docs/SPRINT3_REPORT.md`.
+  `docs/recon/35_FULL_RECOMPILE.md`, `docs/recon/36_STRUCT_RECOVERY.md`,
+  `docs/recon/37_RETURN_CLEANUP.md`, and `docs/SPRINT3_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -139,6 +138,7 @@ Start with:
 - [`docs/recon/34_ACTION_BEHAVIOR.md`](docs/recon/34_ACTION_BEHAVIOR.md) - behavioral conformance for the 306 unused actions
 - [`docs/recon/35_FULL_RECOMPILE.md`](docs/recon/35_FULL_RECOMPILE.md) - full 8,666-script source recompile ledger
 - [`docs/recon/36_STRUCT_RECOVERY.md`](docs/recon/36_STRUCT_RECOVERY.md) - source-level `tLastRound` struct recovery (201 files)
+- [`docs/recon/37_RETURN_CLEANUP.md`](docs/recon/37_RETURN_CLEANUP.md) - duplicate trailing-return cleanup (189/201 source-level)
 - [`docs/SPRINT2_REPORT.md`](docs/SPRINT2_REPORT.md) — Sprint 2 (P2 G2 + P3 VM core) exit report
 - [`docs/SPRINT2.md`](docs/SPRINT2.md) — Sprint 2 plan: exit criteria, lanes, shared-resource rules
 - [`docs/SPRINT1_REPORT.md`](docs/SPRINT1_REPORT.md) — Sprint 1 (P1) exit report and gate G1

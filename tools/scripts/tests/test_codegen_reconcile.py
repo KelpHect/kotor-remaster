@@ -10,7 +10,8 @@ from pathlib import Path
 _TOOLS = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_TOOLS))
 
-from scripts import codegen_reconcile, historical_headers, struct_source  # noqa: E402
+from scripts import (codegen_reconcile, historical_headers, return_cleanup,
+                     struct_source)  # noqa: E402
 
 REPO = _TOOLS.parent
 ORIG = REPO / "artifacts" / "lanes" / "04-ncs" / "extracted" / "unique"
@@ -50,6 +51,14 @@ class StructSourceTests(unittest.TestCase):
         self.assertIn("struct S8 s8;", new)
         self.assertIn("s8.f1 = 1;", new)
         self.assertNotIn("\nint g1;", new)
+
+
+class ReturnCleanupTests(unittest.TestCase):
+    def test_duplicate_last_local_return(self):
+        text = "int f_10() {\n\tint v1;\n\treturn v1;\n}\n"
+        new = return_cleanup.add_duplicate_return(text, "10")
+        self.assertIsNotNone(new)
+        self.assertEqual(new.count("return v1;"), 2)
 
 
 class CodegenReconcileTests(unittest.TestCase):
