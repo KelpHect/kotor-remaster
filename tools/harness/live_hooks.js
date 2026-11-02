@@ -134,12 +134,32 @@ function focusGameWindow() {
 }
 
 let focusResult = null;
+let doPlay = false;
+let playFn = null;
+try {
+  // Chargen "PLAY" path: FUN_006eff80 (male) / FUN_006ef4e0 (female) start the
+  // new game after the UI has collected the character.  Invoke it on the game
+  // thread from the next swap, never from the Frida RPC thread.
+  playFn = new NativeFunction(game.base.add(0x6eff80 - 0x400000), 'void', []);
+  const gl = Process.getModuleByName('opengl32.dll');
+  Interceptor.attach(gl.getExportByName('wglSwapBuffers'), {
+    onEnter() {
+      if (!doPlay) return;
+      doPlay = false;
+      try { playFn(); emit({ f: 'direct_play_called', fn: '0x6eff80', tid: this.threadId }); }
+      catch (e) { emit({ f: 'direct_play_error', e: String(e) }); }
+    }
+  });
+  emit({ f: 'hook', target: 'direct_play_0x6eff80' });
+} catch (e) { emit({ f: 'hookerr', name: 'direct_play', e: String(e) }); }
+
 rpc.exports = {
   stats() { return { seq: seq }; },
   ping() { return 'pong'; },
   hwnd() { return targetWindow(); },
   focusinproc() { focusResult = focusGameWindow(); return focusResult; },
   focusResult() { return focusResult; },
+  play() { doPlay = true; return { ok: true, queued: true }; },
   clickfast(x, y) {
     const f = focusGameWindow();
     if (!f.ok) return f;

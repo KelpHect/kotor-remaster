@@ -466,6 +466,8 @@ def serve_control(sess: Session, run: Path, steps_out: list) -> int:
             return {"ok": True, **sess.rpc("key", int(cmd["vk"]))}
         if op == "text":
             return {"ok": True, **sess.rpc("text", str(cmd.get("s", "")))}
+        if op == "play":
+            return {"ok": True, **sess.rpc("play")}
         if op == "hwkey":
             vk = int(cmd["vk"])
             hold = float(cmd.get("hold", 0.08))

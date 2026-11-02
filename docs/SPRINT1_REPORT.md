@@ -133,7 +133,9 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
    `hw-quickchar-20261102`). The final chargen screen reaches `(1) PORTRAIT / (2) NAME /
    (3) PLAY`, but the `(2) NAME` and `(3) PLAY` controls do not accept posted mouse messages,
    SendInput clicks, keyboard/`WM_CHAR` events, or an Orca computer-use synthetic click
-   (`hw-name*`/`hw-key*`, Orca `unverified (synthetic_input)`); the load path mounts
+   (`hw-name*`/`hw-key*`, Orca `unverified (synthetic_input)`); a direct in-process call to
+   `FUN_006eff80` (`hw-direct-play`) faults at `0x68` because the caller must supply the live
+   name-screen object in ECX, which only exists on the name screen. The load path mounts
    `CURRENTGAME:tar_m02af` + `MODULES:tar_m02af_s` and then terminates in the load transition.
    So the remaining live blocker is the chargen final-control/load transition, not the data
    path. Both data questions are
