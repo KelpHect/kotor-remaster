@@ -19,7 +19,7 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
 | 3 | Map compiler, 117 areas, hard-fail rules, frozen contract | **met** — 117/117 module pairs compiled in 105.5 s with **exit 0** under the retail profile: 4 clean, 113 triaged, 0 hard failures; strict profile still hard-fails every synthetic rule fixture (17/17 tests); 0 inverted faces in 190,865 shipped WOK faces; shipped classes triaged with codes `T_WALKMESH_MULTI/FRAGMENT`, `T_PTH_MULTI_COMPONENT`, `T_LIGHTMAP_UV_WRAP`, `T_DOOR_NO_HOOK`, `T_ANCHOR_DEFAULT`; ADR 0002 contract frozen | `docs/recon/19_MAP_COMPILE.md`; `artifacts/lanes/s1-03-mapcompile/final/` |
 | 4 | Script corpus ledger | **met** — 13,139 NCS occurrences → 8,666 unique, 8,666/8,666 byte-identical re-encode (two independent paths agree, 0/8,666 differ vs lane-04 index); NSS pairing 1,680/8,666 (base layer 1,611/1,637 = 98.41%); decompile classes merged 8,666/8,666 (8,428 exact); 5 bug-parity arity anomalies explicit; per-module action usage (117 modules); the 228 compiler-limited + 306 unused-action residuals are P3 VM-conformance items, not G1 data gaps | `docs/recon/20_SCRIPT_CORPUS.md`; `artifacts/lanes/s1-04-scripts/` |
 | 5 | Save/VFS completion | **met** — **fully byte-identical from-scratch rewrite**: whole retail quicksave 5/5 files + nested 1/1 (`--mode parity`), all real retail slots 100% GFF parity (31/31, 30/30, 24/24, 6/6, 6/6), ERF verbatim 46/46; retail engine accepted the rewritten slot; GFF fidx allocator recovered from `FUN_00411730`/`FUN_00411020`; all inferred VFS items closed synthetically or statically (`_s > _adx > _a > area` from `FUN_004c44d0`) | `docs/recon/21_SAVE_BYTEPARITY.md`; `docs/recon/23_BINARY_P1.md` #23–#25; `artifacts/lanes/s1-05-save-vfs/` |
-| 6 | Dynamic P1 measurements | **met with 2 documented environmental blockers** — loaded-save RIM order verified (`HD0:players → LIPS → MODULES:<m>_s → CURRENTGAME:<m>`; `.mod` misses all passes on retail); boot order re-verified; streamwaves scan+index verified (1,144 files, 978 wavs; zero streamwaves `.wav` opens in menu→module→gameplay, all wav opens were streammusic) and the request path statically closed (`FUN_005dca30` → `HD0:STREAMWAVES\%s` → `FUN_005dbd30`/`AIL_open_stream`, claim #32); camera `+0x38 = 0` from controller `+0xc4 = 0` observed live in-process; rewritten save `000007 - PARITY` accepted by the retail engine via the normal Load Game UI. Remaining blockers are input-only: chargen PLAY and a live dialogue click | `docs/recon/22_DYNAMIC_P1.md`; `docs/recon/23_BINARY_P1.md` §D; `artifacts/lanes/s1-06-dynamic/` |
+| 6 | Dynamic P1 measurements | **met with 2 documented environmental blockers** — loaded-save RIM order verified (`HD0:players → LIPS → MODULES:<m>_s → CURRENTGAME:<m>`; `.mod` misses all passes on retail); boot order re-verified; streamwaves scan+index verified (1,144 files, 978 wavs; zero streamwaves `.wav` opens in menu→module→gameplay, all wav opens were streammusic) and the request path statically closed (`FUN_005dca30` → `HD0:STREAMWAVES\%s` → `FUN_005dbd30`/`AIL_open_stream`, claim #32); camera `+0x38 = 0` from controller `+0xc4 = 0` observed live in-process; rewritten save `000007 - PARITY` accepted by the retail engine via the normal Load Game UI. Elevated Mesa runs proved focus/input work (listing + row selection); the remaining blocker is the module/chargen transition on a monitor-off host, not input | `docs/recon/22_DYNAMIC_P1.md`; `docs/recon/23_BINARY_P1.md` §D; `artifacts/lanes/s1-06-dynamic/` |
 | 7 | Binary P1 verification (hydralysis / Hydra h5) | **met** — 22 evidence-DB claims (#11–#32) on the sealed master, every address quoted with the build SHA-256: N-group mesh loops proven N-group capable; supermodel chain semantics (duplicate/ancestor-only/missing); camera `+0x38` write set proven construction-zero, mode-nonzero branches unreachable; MDX GPU skinning via `program.env[18..68]`, aux4 proven consumer-less; GFF writer append/fidx/section layout (`FUN_00411730`/`FUN_00411020`/`FUN_004113d0`) proving save byte parity; streamwaves voice path `FUN_005dca30`→`FUN_005dbd30`/`AIL_open_stream` | `docs/recon/23_BINARY_P1.md`; `artifacts/lanes/s1-07-binary/` |
 | 8 | First textured tools-side viewer | **met** — `tools/viewer/` renders m01aa (top-down + perspective, 9 TPC textures, 42/42 checks; counts match recon/11) and m09ab (26/26), plus `mainmenu.gui` (9/9) and `maininterface.gui` (31/31) to PNG | `docs/recon/24_VIEWER.md`; `artifacts/lanes/s1-08-viewer/` |
 | 9 | Evidence/repo hygiene | **met** — lanes wrote only their own new files; integrator owns edits to existing tracked files and this report; tests green (see below); no assets/secrets in tracked files | this report; `git status` |
@@ -127,17 +127,16 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
 
 ## Open items carried forward (with owners and blockers)
 
-1. **Chargen PLAY / in-dialogue live runs** — injected input does not reach the chargen 3D screen
-   or dialogue targeting under llvmpipe (DirectInput), logged verbatim across distinct approaches
-   (posted clicks, SendInput absolute, keyboard traversal, GUI-derived coords, orca screenshots,
-   89-click grid). A 2026-11-02 hardware-driver attempt (`profile-hw`, no Mesa DLLs,
-   `SP1_HARDWARE=1`, scenario `b-load-taris`) booted to the menu streams and installed the new
-   resampler shim, then terminated at the render/context transition with
-   `process-terminated`/`crash None` and no render window (run
-   `artifacts/lanes/s1-06-dynamic/runs/hw-b-load-taris-20261102/`). Both items are **statically
-   bounded** (#23–#28: only `_s`-first mounting and camera mode 0 are possible), so the residual
-   is environmental, not a data gap. Owner: P4 vertical slice in an elevated session with the
-   working GL shims of `docs/recon/16` §6.
+1. **Chargen PLAY / in-dialogue live runs** — the earlier llvmpipe runs could not inject input,
+   but the 2026-11-02 **elevated Mesa** runs proved input/focus work: `elev-menu-load` reached the
+   Load Game listing and quit cleanly; `elev-live-taris2` selected the Taris row (changed 1280×720
+   frame) before the module-load transition terminated the process. A hardware-driver profile
+   (`profile-hw`, no Mesa DLLs) booted to the menu streams and then terminated at the
+   render/context transition with no render window. So the remaining live blocker is the
+   chargen/module transition on this monitor-off host, not input. Both data questions are
+   **statically bounded** (#23–#28: only `_s`-first mounting and camera mode 0 are possible;
+   #32: streamwaves voice path). Owner: P4 vertical slice with an active display/context; run
+   artifacts under `artifacts/lanes/s1-06-dynamic/runs/elev-*` and `hw-b-load-taris-20261102`.
 2. **streamwaves per-file audio requests** — **closed statically** (claim #32): voice streams
    build `HD0:STREAMWAVES\%s` / localized `%s\%s\%s`, type 4 opens the `.wav` through
    `FUN_005dbd30`/`AIL_open_stream`; music/effects use `STREAMMUSIC`/`STREAMSOUNDS`. The
