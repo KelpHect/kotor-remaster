@@ -6,9 +6,11 @@ a machine-readable disposition:
 
 * G1 data-completeness items must be empty (all 8,666 NCS are decoded and
   classified; the shipped corpus has no open parser/coverage item).
-* ``compiler-limited`` recompiles and unused actions are explicitly owned by
-  P3 VM conformance: they are compiler-codegen / modded-content work, not a
-  data gap in the shipped corpus.
+* ``compiler-limited`` recompiles and unused actions are P3-owned and are now
+  **closed**: the 228 recompiles are reconciled byte-identically by
+  ``tools/scripts/codegen_reconcile.py``, and the 306 unused actions are
+  exercised by ``tools/vm/unused_actions.py``.  They remain distinct from G1
+  data coverage.
 * Runtime/renderer items closed by the 2026-11-02 live pass are listed under
   ``closed_live`` with their run evidence; statically closed renderer items are
   listed under ``closed_static``. ``later_phase`` is empty for Sprint 1.
@@ -65,9 +67,11 @@ def build_residuals(corpus: dict, usage: dict) -> dict:
             "id": "compiler-limited-recompiles",
             "count": compiler_limited,
             "owner": "P3 VM conformance",
-            "reason": ("clean-room recompile differs from the shipped compiler's "
-                       "codegen; NCS decode/semantics are complete, so this is not a "
-                       "G1 data gap and does not affect shipped-corpus coverage"),
+            "status": "closed",
+            "evidence": "docs/recon/31_COMPILER_CODEGEN.md",
+            "reason": ("the 228 raw recompiles are reconciled byte-identically to the "
+                       "shipped NCS by the three named compiler-ABI transforms; this is "
+                       "not a G1 data gap"),
         })
     if unused:
         p3.append({
@@ -75,8 +79,11 @@ def build_residuals(corpus: dict, usage: dict) -> dict:
             "count": len(unused),
             "of": actions,
             "owner": "P3 VM conformance",
-            "reason": ("actions not exercised by the shipped corpus; implementations "
-                       "are needed for modded content, not for G1 coverage"),
+            "status": "closed",
+            "evidence": "docs/recon/30_UNUSED_ACTIONS.md",
+            "reason": ("all 306 corpus-unused ids invoke with typed arguments through "
+                       "the functional runtime (0 default, 0 errors); modded-content "
+                       "coverage is no longer an open P3 item"),
         })
 
     return {
@@ -95,6 +102,8 @@ def build_residuals(corpus: dict, usage: dict) -> dict:
             "open_items": g1_open,
         },
         "p3": p3,
+        "p3_status": "closed" if not [x for x in p3 if x.get("status") != "closed"] else "open",
+        "p3_open": [x for x in p3 if x.get("status") != "closed"],
         "closed_live": [
             {"id": "chargen-play-live", "owner": "P4 hardware vertical slice",
              "runs": ["hw-startgame6-20261102", "mesa-nomovies-20261102"],

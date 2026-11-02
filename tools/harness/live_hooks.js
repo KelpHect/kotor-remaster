@@ -437,6 +437,258 @@ try {
   emit({ f: 'hook', target: 'quicksave_0x621210' });
 } catch (e) { emit({ f: 'hookerr', name: 'quicksave', e: String(e) }); }
 
+// ---- live NCS VM differential probe --------------------------------------
+// ExecuteCode (0x5d2bd0): thiscall(vm, int* ip, byte* program, int length).
+// VM fields: +0x1ac SP, +0x1b0 BP, +0x1b8 type array, +0x1bc value array.
+// The action dispatcher (0x52c0d0) is called from inside ExecuteCode; capture
+// the current IP/SP/BP and the action id/return for a trace replay.
+let vmExecCount = 0;
+let vmActionCount = 0;
+const execByThread = new Map();
+const seenPrograms = new Set();
+const VM_HOOK_LIMIT = 400;
+const ACTION_HOOK_LIMIT = 12000;
+const PROGRAM_BYTES_LIMIT = 65536;
+
+function hexOf(p, len) {
+  try {
+    const u8 = new Uint8Array(p.readByteArray(len));
+    let s = '';
+    for (let i = 0; i < u8.length; i++) s += u8[i].toString(16).padStart(2, '0');
+    return s;
+  } catch (e) { return null; }
+}
+
+function vmCells(vm, start, n) {
+  const out = [];
+  try {
+    const types = vm.add(0x1b8).readPointer();
+    const vals = vm.add(0x1bc).readPointer();
+    const count = Math.max(0, Math.min(n, 1024));
+    for (let i = 0; i < count; i++) {
+      const idx = start + i;
+      out.push({ t: types.add(idx).readU8(), v: vals.add(idx * 4).readS32() });
+    }
+  } catch (e) {}
+  return out;
+}
+
+function vmTop(vm, sp, n) {
+  const start = Math.max(0, sp - n);
+  return vmCells(vm, start, Math.min(n, sp));
+}
+
+const probedStrings = new Set();
+const deepProbedStrings = new Set();
+
+// Live NWScript string cell: pointer to {char* data; int length; ...}.
+function readVmString(v) {
+  try {
+    const p = ptr(v >>> 0);
+    const data = p.readPointer();
+    const len = p.add(4).readInt();
+    if (len < 0 || len > 8192) return null;
+    if (len === 0) return '';
+    if (data.isNull()) return null;
+    const raw = new Uint8Array(data.readByteArray(len));
+    let s = '';
+    for (let i = 0; i < raw.length; i++) {
+      if (raw[i] === 0) break;
+      s += String.fromCharCode(raw[i]);
+    }
+    return s;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Dump the memory behind a string cell once, so the CExoString layout can be
+// recovered from a live trace.  All reads are guarded.
+function probeStringCell(cell, force) {
+  if (!cell || cell.t !== 5) return null;
+  const v = cell.v >>> 0;
+  if (force) {
+    if (deepProbedStrings.has(v) || deepProbedStrings.size >= 1000) return null;
+    deepProbedStrings.add(v);
+  } else {
+    if (probedStrings.has(v) || probedStrings.size >= 40) return null;
+    probedStrings.add(v);
+  }
+  const p = ptr(v);
+  const out = { v: '0x' + v.toString(16) };
+  try { out.mem = hexOf(p, 32); } catch (e) { out.memerr = String(e); }
+  try { out.len0 = p.readInt(); } catch (e) {}
+  try { out.len4 = p.add(4).readInt(); } catch (e) {}
+  try { out.cstr0 = p.readUtf8String(48); } catch (e) {}
+  try { out.cstr4 = p.add(4).readUtf8String(48); } catch (e) {}
+  try { out.cstr8 = p.add(8).readUtf8String(48); } catch (e) {}
+  for (const off of [0, 4, 8, 12, 16]) {
+    try {
+      const q = p.add(off).readPointer();
+      out['p' + off] = q.toString();
+      try { out['s' + off] = q.readUtf8String(48); } catch (e) {}
+    } catch (e) {}
+  }
+  return out;
+}
+
+function probeCells(cells, force) {
+  const out = [];
+  for (let i = 0; i < cells.length; i++) {
+    const c = cells[i];
+    const copy = { t: c.t, v: c.v };
+    if (c.t === 5) {
+      const s = readVmString(c.v);
+      if (s !== null) copy.s = s;
+      try {
+        const d = ptr(c.v >>> 0).readUtf8String(64);
+        if (d !== null && d.length) copy.direct = d;
+      } catch (e) {}
+      try { copy.raw16 = hexOf(ptr(c.v >>> 0), 16); } catch (e) {}
+      try {
+        const p = ptr(c.v >>> 0);
+        const d = p.readPointer();
+        const len = p.add(4).readInt();
+        if (len >= 0 && len <= 8192) copy.datahex = hexOf(d, Math.min(len, 64));
+      } catch (e) {}
+    }
+    const nearTop = i >= cells.length - 2;
+    const probe = probeStringCell(c, force && nearTop);
+    if (probe) copy.probe = probe;
+    out.push(copy);
+  }
+  return out;
+}
+
+// Probe a returned cell as a string without ever faulting the host.  A
+// NWScript string value is a pointer; try the common CExoString layouts.
+function peekString(ptr) {
+  const s0 = readVmString(ptr.toInt32());
+  if (s0 !== null) return s0;
+  try {
+    const s = ptr.readUtf8String(64);
+    if (s && s.length) return s;
+  } catch (e) {}
+  try {
+    const s = ptr.readPointer().readUtf8String(64);
+    if (s && s.length) return s;
+  } catch (e) {}
+  try {
+    const s = ptr.add(4).readPointer().readUtf8String(64);
+    if (s && s.length) return s;
+  } catch (e) {}
+  return null;
+}
+
+try {
+  Interceptor.attach(A(0x5d2bd0), {
+    onEnter(args) {
+      try {
+        const vm = this.context.ecx;
+        const codePtr = args[0];
+        const prog = args[1];
+        const len = args[2].toInt32();
+        const ip = codePtr.readS32();
+        const sp = vm.add(0x1ac).readS32();
+        const bp = vm.add(0x1b0).readS32();
+        const tid = this.threadId;
+        const ctx = { vm: vm, codePtr: codePtr, prog: prog, len: len, tid: tid };
+        const stack = execByThread.get(tid) || [];
+        stack.push(ctx);
+        execByThread.set(tid, stack);
+        if (vmExecCount < VM_HOOK_LIMIT) {
+          vmExecCount++;
+          let vtable = null;
+          try { vtable = vm.readPointer().toString(); } catch (e) {}
+          const o = { f: 'vm_exec', n: vmExecCount, vm: vm.toString(),
+                      vtable: vtable, prog: prog.toString(), len: len,
+                      ip: ip, sp: sp, bp: bp,
+                      stack: vmTop(vm, sp, 8), tid: tid,
+                      entry_cells: probeCells(vmCells(vm, 0, Math.min(sp, 1024))) };
+          try {
+            const key = prog.toString() + ':' + len;
+            if (!seenPrograms.has(key) && len > 0 && len <= PROGRAM_BYTES_LIMIT) {
+              seenPrograms.add(key);
+              o.program_hex = hexOf(prog, len);
+            } else {
+              o.head = hexOf(prog, Math.min(len, 32));
+            }
+          } catch (e) { o.hexerr = String(e); }
+          emit(o);
+        }
+      } catch (e) { emit({ f: 'vm_exec_error', e: String(e) }); }
+    },
+    onLeave(retval) {
+      try {
+        const tid = this.threadId;
+        const stack = execByThread.get(tid) || [];
+        const ctx = stack.pop();
+        if (!ctx) return;
+        const ip = ctx.codePtr.readS32();
+        const sp = ctx.vm.add(0x1ac).readS32();
+        const bp = ctx.vm.add(0x1b0).readS32();
+        if (vmExecCount <= VM_HOOK_LIMIT) {
+          emit({ f: 'vm_exec_exit', vm: ctx.vm.toString(), ret: retval.toInt32(),
+                 ip: ip, sp: sp, bp: bp, tid: tid });
+        }
+      } catch (e) {}
+    }
+  });
+  emit({ f: 'hook', target: 'execute_code_0x5d2bd0' });
+} catch (e) { emit({ f: 'hookerr', name: 'execute_code', e: String(e) }); }
+
+try {
+  Interceptor.attach(A(0x52c0d0), {
+    onEnter(args) {
+      try {
+        const tid = this.threadId;
+        const stack = execByThread.get(tid) || [];
+        const ctx = stack[stack.length - 1];
+        this.vmctx = ctx || null;
+        this.caller = this.returnAddress ? this.returnAddress.toString() : null;
+        this.aid = args[0].toInt32();
+        this.aarg = args[1].toInt32();
+        this.ip = null;
+        this.sp = null;
+        this.bp = null;
+        this.stack = [];
+        if (ctx) {
+          this.ip = ctx.codePtr.readS32();
+          this.sp = ctx.vm.add(0x1ac).readS32();
+          this.bp = ctx.vm.add(0x1b0).readS32();
+          this.stack = probeCells(vmTop(ctx.vm, this.sp, 12));
+        }
+      } catch (e) {}
+    },
+    onLeave(retval) {
+      try {
+        if (!this.vmctx) {
+          // Queued command execution path (RunCommand): the dispatcher is
+          // called outside ExecuteCode, so there is no active script IP.
+          if (vmActionCount < ACTION_HOOK_LIMIT) {
+            vmActionCount++;
+            emit({ f: 'vm_command', n: vmActionCount, id: this.aid,
+                   arg: this.aarg, caller: this.caller,
+                   ret: retval.toInt32(), tid: this.threadId });
+          }
+          return;
+        }
+        if (vmActionCount >= ACTION_HOOK_LIMIT) return;
+        vmActionCount++;
+        const sp2 = this.vmctx.vm.add(0x1ac).readS32();
+        const ret = retval.toInt32();
+        emit({ f: 'vm_action', n: vmActionCount, id: this.aid, arg: this.aarg,
+               ret: ret, ret_str: peekString(retval), ip: this.ip,
+               sp: this.sp, bp: this.bp, sp_after: sp2, stack: this.stack,
+               ret_cells: probeCells(vmTop(this.vmctx.vm, sp2, 6), true),
+               ret_stack: probeCells(vmTop(this.vmctx.vm, sp2, 6), true),
+               tid: this.threadId });
+      } catch (e) {}
+    }
+  });
+  emit({ f: 'hook', target: 'action_diff_0x52c0d0' });
+} catch (e) { emit({ f: 'hookerr', name: 'action_diff', e: String(e) }); }
+
 rpc.exports = {
   stats() { return { seq: seq }; },
   ping() { return 'pong'; },

@@ -4,10 +4,10 @@ Status: **complete — gate S3 met (2026-11-02)** — see
 [`SPRINT3_REPORT.md`](SPRINT3_REPORT.md) for the exit report and evidence.
 
 Goal: turn the Sprint 2 mediated NCS VM into a **stateful, functional script runtime** for the
-shipped corpus. Sprint 3 covers the object/timer/action-queue model, explicit handlers for the
-action groups used by the 8,666 unique scripts, and a synthetic reference-trace suite. The live
-`ExecuteCode`/`RunCommand` differential against the original engine remains P3/G3 follow-up work;
-compiler-codegen parity and the 306 unused actions remain later P3 work.
+shipped corpus, and close the P3/G3 residuals: the object/timer/action-queue model, explicit
+handlers for the action groups used by the 8,666 unique scripts, a synthetic reference-trace
+suite, the live `ExecuteCode`/action-dispatch differential against the original engine, the 228
+compiler-limited byte-identical recompiles, and the 306 corpus-unused actions.
 
 Baseline: Sprint 2 / gate S2 (`docs/SPRINT2_REPORT.md`): 772 action specs, engine map, NCS VM,
 8,666/8,666 scripts at 0 faults with typed default stubs.
@@ -17,7 +17,7 @@ Baseline: Sprint 2 / gate S2 (`docs/SPRINT2_REPORT.md`): 772 action specs, engin
 1. **State model** — `World`, `GameObject`, `Timer`, and action-queue records implement object
    identity/tags/areas, globals, locals, party, inventory, action queue, and delayed timers.
    Documented in `docs/recon/28_ACTION_MODEL.md`.
-2. **Functional action layer** — all 772 action ids resolve to a runtime handler. The 345 ids
+2. **Functional action layer** — all 772 action ids resolve to a runtime handler. The 344 ids
    exercised by the corpus have defined behavior: data getters/setters, object/tag/area queries,
    inventory/party, math/string/vector, action queue, and delayed timers. Engine-side effects
    (combat, dialogue, effects, rendering, audio) are mediated deterministically and logged.
@@ -33,6 +33,18 @@ Baseline: Sprint 2 / gate S2 (`docs/SPRINT2_REPORT.md`): 772 action specs, engin
    the VM trace matches the golden trace.
 6. **Tests/docs/repo** — new tests green, `run_all` green, install untouched, no game assets or
    decompiled program text in tracked files, `docs/SPRINT3_REPORT.md` written with the S3 verdict.
+7. **Live differential** — replay every unique live `ExecuteCode` program in the VM and match the
+   engine's action id/IP/SP/BP, post-action stack depth, and return cells exactly; capture the
+   shared action-dispatch path for queued/command bodies. Evidence:
+   `docs/recon/32_LIVE_DIFFERENTIAL.md`.
+8. **228 compiler-limited recompiles** — every one of the 228 raw ktool recompiles is reconciled
+   byte-for-byte to the shipped NCS through the three named compiler-ABI transforms (struct-group
+   slice, default-argument omission, body order). Evidence:
+   `docs/recon/31_COMPILER_CODEGEN.md`, `artifacts/lanes/s3-live/codegen_reconcile.json`.
+9. **306 corpus-unused actions** — every id outside the 466 used by the shipped corpus is invoked
+   with typed arguments through the functional runtime; 0 unclassified/default, 0 errors.
+   Evidence: `docs/recon/30_UNUSED_ACTIONS.md`,
+   `artifacts/lanes/s3-02-actions/unused_actions.json`.
 
 ## Lanes
 
@@ -42,6 +54,9 @@ Baseline: Sprint 2 / gate S2 (`docs/SPRINT2_REPORT.md`): 772 action specs, engin
 | s3-02-actions | functional action registry and groups | `tools/vm/actions_runtime.py`, tests | `artifacts/lanes/s3-02-actions/` |
 | s3-03-corpus | functional corpus run + action coverage | `tools/vm/corpus_run.py` updates | `artifacts/lanes/s3-03-corpus/` |
 | s3-04-verification | golden traces, docs, report | `tools/vm/tests/`, `docs/recon/28_*.md` | `artifacts/lanes/s3-04-verification/` |
+| s3-05-live | live `ExecuteCode`/dispatch differential | `tools/vm/live_diff.py`, hook trace probe | `artifacts/lanes/s3-live/` |
+| s3-06-codegen | 228 compiler-codegen reconciliation | `tools/scripts/codegen_reconcile.py` | `artifacts/lanes/s3-live/codegen_reconcile.json` |
+| s3-07-unused | 306 unused-action conformance | `tools/vm/unused_actions.py` | `artifacts/lanes/s3-02-actions/unused_actions.json` |
 
 ## Shared rules
 
@@ -54,7 +69,8 @@ Baseline: Sprint 2 / gate S2 (`docs/SPRINT2_REPORT.md`): 772 action specs, engin
 
 ## Out of scope for Sprint 3
 
-- Live `ExecuteCode`/`RunCommand` differential against the original engine — P3/G3 follow-up.
-- Full combat, dialogue, renderer, audio, and module-transition behavior — P4/P5.
-- The 228 compiler-limited byte-identical recompiles — P3 compiler-codegen work.
-- The 306 unused actions not exercised by the shipped corpus — later P3 functional groups.
+- Full combat resolution, dialogue resolution, renderer, audio, and module-transition behavior —
+  P4/P5. Sprint 3 mediates and records these effects; it does not reproduce the engine systems.
+- A new live scene with maximum queued-command coverage; the canonical run covers 28 unique
+  programs, including 7 resumed/command bodies, and the dispatcher hook covers the shared path.
+- P6/P7 content and release work.

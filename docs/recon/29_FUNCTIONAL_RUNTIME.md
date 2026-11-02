@@ -25,11 +25,11 @@ Status: **closed** — 8,666/8,666 unique shipped NCS for build SHA-256 `0290889
 | error | 0 | VM fault |
 | decode_error | 0 | malformed NCS |
 
-Decoded instructions: **4,703,036**; executed: **3,697,229**; ACTION calls: **303,650**; unique action ids used: **344**; maximum stack: **222** cells.
+Decoded instructions: **4,703,036**; executed: **3,697,114**; ACTION calls: **303,616**; unique action ids used: **344**; maximum stack: **221** cells.
 
 ## Functional runtime coverage
 
-- ACTION calls mediated: **303,650**
+- ACTION calls mediated: **303,616**
 - Specific handlers used: **44**
 - Generic state/effect handlers used: **300**
 - Unclassified/default handlers used: **0**
@@ -45,7 +45,7 @@ Decoded instructions: **4,703,036**; executed: **3,697,229**; ACTION calls: **30
 | 7 | DelayCommand | 20,406 |
 | 397 | GetBaseItemType | 15,227 |
 | 155 | GetItemInSlot | 7,734 |
-| 42 | GetIsObjectValid | 3,995 |
+| 42 | GetIsObjectValid | 4,001 |
 | 580 | GetGlobalNumber | 2,283 |
 | 679 | GetLocalBoolean | 2,162 |
 | 6 | AssignCommand | 1,989 |

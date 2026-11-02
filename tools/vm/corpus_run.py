@@ -37,7 +37,10 @@ def run_corpus(corpus: str, specs: dict, budget: int,
                use_runtime: bool = False) -> dict:
     factory = (lambda: ActionRuntime(specs)) if use_runtime else None
     rows = []
-    for path in sorted(glob.glob(os.path.join(corpus, "*.ncs"))):
+    paths = sorted(glob.glob(os.path.join(corpus, "*.ncs")))
+    for idx, path in enumerate(paths):
+        if idx and idx % 500 == 0:
+            print(f"corpus {idx}/{len(paths)}", flush=True)
         result = ncs_vm.run_file(path, specs, budget=budget,
                                  runtime_factory=factory)
         result["file"] = os.path.basename(path)
