@@ -59,6 +59,8 @@ class World:
         self.party: list[int] = []
         self.action_queue: deque[QueuedAction] = deque()
         self.timers: list[Timer] = []
+        self.journal: set[int] = set()
+        self.log: list[tuple[float, str]] = []
         self.time = 0.0
         self.rng = random.Random(seed)
         self._cursors: dict[tuple, int] = defaultdict(int)

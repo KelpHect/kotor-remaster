@@ -136,11 +136,14 @@ duplicate occurrences across RIMs). Example: `end_m01aa_s` → module `end_m01aa
 - `docs/SPRINT1.md` is now tracked (lane spec was taken from the assignment text on the first
   run); the document gap is **closed**.
 - The two 700/469 extra-argument cases need engine dispatcher evidence (carried from recon/09) — **open**.
-- The 306 unused actions still need engine implementations for modded content — **P3-owned**, not a G1
-  data gap (shipped corpus does not exercise them; verified count).
-- The 228 compiler-limited recompiles are **formally descoped from G1**: the NCS decode/semantics
-  are complete (8,428 exact + 5 header-limited + 5 reachable-only + 228 compiler-codegen-limited
-  = 8,666), and byte-identical recompilation against the shipped compiler is a P3 VM-conformance
-  goal. The machine-readable disposition is `tools/scripts/residuals.py` →
-  `artifacts/lanes/s1-04-scripts/residuals.json` (`g1.status=closed`, `g1.open_items=[]`).
+- The 306 unused actions are **closed in Sprint 3**: all 306 invoke with typed arguments through
+  the functional runtime (42 specific + 264 generic, 0 default, 0 errors); see
+  `docs/recon/30_UNUSED_ACTIONS.md`. They were P3-owned, not a G1 data gap.
+- The 228 compiler-limited recompiles are **formally descoped from G1** and **closed in Sprint 3**:
+  the NCS decode/semantics are complete (8,428 exact + 5 header-limited + 5 reachable-only + 228
+  compiler-codegen-limited = 8,666), and the 228 raw ktool recompiles are reconciled
+  byte-identically through three named compiler-ABI transforms; see
+  `docs/recon/31_COMPILER_CODEGEN.md`. The machine-readable disposition is
+  `tools/scripts/residuals.py` → `artifacts/lanes/s1-04-scripts/residuals.json`
+  (`g1.status=closed`, `p3_status=closed`, `p3_open=[]`).
 - NSS-without-NCS (source-only) resrefs: 20; modded NSS without NCS is out of the shipped corpus — **open** by scope.

@@ -45,6 +45,8 @@ Status: **closed** — functional NCS runtime over the shipped corpus for build 
   mediate engine effects; minigame (`SWMG_*`, `TUR_*`, `PAZ_*`), party/journal, creation,
   conversation, and movie actions are mediated and recorded.
 - **0** corpus actions fall through to an unclassified default.
+- **306/306** corpus-unused action ids are exercised synthetically through the same runtime:
+  **42 specific + 264 generic, 0 default, 0 errors** (`docs/recon/30_UNUSED_ACTIONS.md`).
 
 ## Functional corpus run
 
@@ -71,7 +73,7 @@ Result (`docs/recon/29_FUNCTIONAL_RUNTIME.md`):
 | VM faults | 0 |
 | unknown actions | 0 |
 | invalid jump targets | 0 |
-| ACTION calls | 303,650 |
+| ACTION calls | 303,616 |
 | specific handlers used | 44 |
 | generic handlers used | 300 |
 | unclassified/default actions | 0 |
@@ -91,7 +93,7 @@ observe engine state.
 | 7 | DelayCommand | 20,406 |
 | 397 | GetBaseItemType | 15,227 |
 | 155 | GetItemInSlot | 7,734 |
-| 42 | GetIsObjectValid | 3,995 |
+| 42 | GetIsObjectValid | 4,001 |
 | 580 | GetGlobalNumber | 2,283 |
 | 679 | GetLocalBoolean | 2,162 |
 | 6 | AssignCommand | 1,989 |
@@ -105,4 +107,6 @@ observe engine state.
 
 This is a headless conformance runtime. Engine-side systems (combat, dialogue resolution,
 renderer, audio, module transitions) are mediated, not reproduced. The live
-`ExecuteCode`/`RunCommand` differential and compiler-codegen residuals remain later P3 work.
+`ExecuteCode`/action-dispatch differential is closed at 28/28 unique programs
+(`docs/recon/32_LIVE_DIFFERENTIAL.md`), and the 228 compiler-limited recompiles are reconciled
+byte-identically (`docs/recon/31_COMPILER_CODEGEN.md`). P4/P5 engine systems remain later work.

@@ -38,8 +38,12 @@ class TestResiduals(unittest.TestCase):
         self.assertEqual(r["g1"]["classes"]["compiler-limited"], 228)
         ids = {x["id"]: x for x in r["p3"]}
         self.assertEqual(ids["compiler-limited-recompiles"]["count"], 228)
+        self.assertEqual(ids["compiler-limited-recompiles"]["status"], "closed")
         self.assertEqual(ids["unused-actions"]["count"], 306)
         self.assertEqual(ids["unused-actions"]["of"], 772)
+        self.assertEqual(ids["unused-actions"]["status"], "closed")
+        self.assertEqual(r["p3_status"], "closed")
+        self.assertEqual(r["p3_open"], [])
         closed = {x["id"]: x for x in r["closed_live"]}
         self.assertIn("f4-thumbnail", closed)
         self.assertIn("chargen-play-live", closed)

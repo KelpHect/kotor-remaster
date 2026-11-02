@@ -248,7 +248,9 @@ class VM:
             return None if self.status == "blocked" else next_ip
         if name == "SAVEBP":
             self.stack.append(Value("int", self.bp))
-            self.bp = len(self.stack)
+            # BP points at the pushed saved-BP cell; globals are BP-1, BP-2, ...
+            # (verified against the live engine: SP=191, BP=190 at the first action).
+            self.bp = len(self.stack) - 1
             return next_ip
         if name == "RESTOREBP":
             saved = self._pop(1)[0]
@@ -376,7 +378,11 @@ class VM:
             else:
                 b = self._pop(1)[0]
                 a = self._pop(1)[0]
-                equal = a.value == b.value
+                if a.typ == "string" and b.typ == "string":
+                    # KotOR tag/dialogue comparisons are case-insensitive.
+                    equal = a.as_str().casefold() == b.as_str().casefold()
+                else:
+                    equal = a.value == b.value
             val = equal if name in ("EQ", "EQUAL") else not equal
             self.stack.append(Value("int", 1 if val else 0))
             return next_ip
@@ -384,7 +390,7 @@ class VM:
             b = self._pop(1)[0]
             a = self._pop(1)[0]
             if a.typ == "string" or b.typ == "string":
-                x, y = a.as_str(), b.as_str()
+                x, y = a.as_str().casefold(), b.as_str().casefold()
             elif a.typ == "float" or b.typ == "float" or QUAL_TYPE.get(q) == "float":
                 x, y = a.as_float(), b.as_float()
             else:

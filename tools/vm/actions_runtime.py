@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import sys
 from collections import Counter
 
@@ -252,6 +253,195 @@ class ActionRuntime:
         if mag == 0.0:
             return [Value("float", 0.0) for _ in range(3)]
         return [Value("float", x / mag) for x in v]
+
+    # ---- math ----------------------------------------------------------
+    def h_fabs(self, args, vm):
+        return [Value("float", abs(self._f(args, 0)))]
+
+    def h_cos(self, args, vm):
+        return [Value("float", math.cos(self._f(args, 0)))]
+
+    def h_sin(self, args, vm):
+        return [Value("float", math.sin(self._f(args, 0)))]
+
+    def h_tan(self, args, vm):
+        return [Value("float", math.tan(self._f(args, 0)))]
+
+    def h_acos(self, args, vm):
+        try:
+            return [Value("float", math.acos(self._f(args, 0)))]
+        except ValueError:
+            return [Value("float", 0.0)]
+
+    def h_asin(self, args, vm):
+        try:
+            return [Value("float", math.asin(self._f(args, 0)))]
+        except ValueError:
+            return [Value("float", 0.0)]
+
+    def h_atan(self, args, vm):
+        return [Value("float", math.atan(self._f(args, 0)))]
+
+    def h_log(self, args, vm):
+        try:
+            return [Value("float", math.log(self._f(args, 0)))]
+        except ValueError:
+            return [Value("float", 0.0)]
+
+    def h_pow(self, args, vm):
+        return [Value("float", math.pow(self._f(args, 0), self._f(args, 1)))]
+
+    def h_sqrt(self, args, vm):
+        v = self._f(args, 0)
+        return [Value("float", math.sqrt(v) if v >= 0 else 0.0)]
+
+    def h_VectorMagnitude(self, args, vm):
+        v = [x.as_float() for x in self._vec(args, 0)]
+        return [Value("float", math.sqrt(sum(x * x for x in v)))]
+
+    def h_TurnsToSeconds(self, args, vm):
+        return [Value("float", float(self._i(args, 0)) * 6.0)]
+
+    def h_AngleToVector(self, args, vm):
+        a = math.radians(self._f(args, 0))
+        return [Value("float", math.cos(a)), Value("float", math.sin(a)),
+                Value("float", 0.0)]
+
+    def h_VectorToAngle(self, args, vm):
+        v = self._vec(args, 0)
+        x, y = v[0].as_float(), v[1].as_float()
+        return [Value("float", math.degrees(math.atan2(y, x)))]
+
+    def h_FeetToMeters(self, args, vm):
+        return [Value("float", self._f(args, 0) * 0.3048)]
+
+    def h_YardsToMeters(self, args, vm):
+        return [Value("float", self._f(args, 0) * 0.9144)]
+
+    # ---- strings -------------------------------------------------------
+    def h_InsertString(self, args, vm):
+        dest = self._s(args, 0)
+        text = self._s(args, 1)
+        pos = max(0, min(len(dest), self._i(args, 2)))
+        return [Value("string", dest[:pos] + text + dest[pos:])]
+
+    def h_StringToFloat(self, args, vm):
+        try:
+            return [Value("float", float(self._s(args, 0) or "0"))]
+        except ValueError:
+            return [Value("float", 0.0)]
+
+    def h_IntToHexString(self, args, vm):
+        return [Value("string", f"{self._i(args, 0) & 0xFFFFFFFF:x}")]
+
+    def h_TestStringAgainstPattern(self, args, vm):
+        pattern = self._s(args, 0)
+        text = self._s(args, 1)
+        rx = "^" + "".join(".*" if c == "*" else "." if c == "?" else
+                           (re.escape(c)) for c in pattern) + "$"
+        return [Value("int", 1 if re.match(rx, text) else 0)]
+
+    def h_RandomName(self, args, vm):
+        names = ("Carth", "Bastila", "Mission", "Zaalbar", "Jolee", "Juhani",
+                 "Canderous", "T3-M4", "HK-47")
+        return [Value("string", names[self.world.rng.randrange(len(names))])]
+
+    def h_WriteTimestampedLogEntry(self, args, vm):
+        self.world.log.append((self.world.time, self._s(args, 0)))
+        return []
+
+    # ---- effects / journal / UI ---------------------------------------
+    def _effect(self, args, tag):
+        return [Value("engine", tag)]
+
+    def h_MagicalEffect(self, args, vm):
+        return self._effect(args, 112)
+
+    def h_SupernaturalEffect(self, args, vm):
+        return self._effect(args, 113)
+
+    def h_ExtraordinaryEffect(self, args, vm):
+        return self._effect(args, 114)
+
+    def h_VersusAlignmentEffect(self, args, vm):
+        return self._effect(args, 355)
+
+    def h_VersusRacialTypeEffect(self, args, vm):
+        return self._effect(args, 356)
+
+    def h_VersusTrapEffect(self, args, vm):
+        return self._effect(args, 357)
+
+    def h_DeleteJournalWorldAllEntries(self, args, vm):
+        self.world.journal.clear()
+        return []
+
+    def h_DeleteJournalWorldEntry(self, args, vm):
+        self.world.journal.discard(self._i(args, 0))
+        return []
+
+    def h_DeleteJournalWorldEntryStrref(self, args, vm):
+        self.world.journal.discard(self._i(args, 0))
+        return []
+
+    def h_PopUpGUIPanel(self, args, vm):
+        self.world.queue_action(388, args, "PopUpGUIPanel")
+        self.actions_queued += 1
+        return []
+
+    def h_PopUpDeathGUIPanel(self, args, vm):
+        self.world.queue_action(554, args, "PopUpDeathGUIPanel")
+        self.actions_queued += 1
+        return []
+
+    def h_SuppressStatusSummaryEntry(self, args, vm):
+        self.world.queue_action(763, args, "SuppressStatusSummaryEntry")
+        self.actions_queued += 1
+        return []
+
+    def h_FloatingTextStrRefOnCreature(self, args, vm):
+        self.world.queue_action(525, args, "FloatingTextStrRefOnCreature")
+        self.actions_queued += 1
+        return []
+
+    def h_FloatingTextStringOnCreature(self, args, vm):
+        self.world.queue_action(526, args, "FloatingTextStringOnCreature")
+        self.actions_queued += 1
+        return []
+
+    def h_ExploreAreaForPlayer(self, args, vm):
+        self.world.queue_action(403, args, "ExploreAreaForPlayer")
+        self.actions_queued += 1
+        return []
+
+    def h_CutsceneMove(self, args, vm):
+        obj = self.world.get(self._o(args, 0))
+        if obj is not None:
+            v = self._vec(args, 1)
+            obj.position = [x.as_float() for x in v]
+        self.world.queue_action(507, args, "CutsceneMove")
+        self.actions_queued += 1
+        return []
+
+    def h_DoPlaceableObjectAction(self, args, vm):
+        self.world.queue_action(547, args, "DoPlaceableObjectAction")
+        self.actions_queued += 1
+        return []
+
+    def h_ExportAllCharacters(self, args, vm):
+        self.world.queue_action(557, args, "ExportAllCharacters")
+        self.actions_queued += 1
+        return []
+
+    def h_TouchAttackMelee(self, args, vm):
+        target = self.world.get(self._o(args, 0))
+        hit = 1 if target is not None and target.valid else 0
+        return [Value("int", hit)]
+
+    def h_TouchAttackRanged(self, args, vm):
+        target = self.world.get(self._o(args, 0))
+        hit = 1 if target is not None and target.valid else 0
+        return [Value("int", hit)]
 
     def h_GetStringLength(self, args, vm):
         return [Value("int", len(self._s(args, 0)))]

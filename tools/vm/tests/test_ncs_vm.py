@@ -92,6 +92,10 @@ def sub(q: int = 0x20) -> bytes:
     return bytes([0x15, q])
 
 
+def eq(q: int = 0x20) -> bytes:
+    return bytes([0x0B, q])
+
+
 SPECS = {
     "count": 5,
     "actions": [
@@ -118,6 +122,11 @@ class VMTest(unittest.TestCase):
         self.assertEqual(r["status"], "returned")
         self.assertEqual(r["top"], {"type": "int", "value": 3})
 
+    def test_string_equality_is_case_insensitive(self):
+        r = run(cs("carth") + cs("Carth") + eq(0x23) + retn())
+        self.assertEqual(r["status"], "returned")
+        self.assertEqual(r["top"], {"type": "int", "value": 1})
+
     def test_jsr_retn(self):
         # 0: JSR +8 -> 8; 6: RETN; 8: CONST 42; 14: RETN
         r = run(jsr(8) + retn() + ci(42) + retn())
@@ -134,8 +143,8 @@ class VMTest(unittest.TestCase):
 
     def test_savebp_restorebp(self):
         # global = 5; SAVEBP; load global; +1; store; clean; restore
-        body = (ci(5) + savebp() + cptopbp(-8, 4) + ci(1) + add()
-                + cpdownbp(-8, 4) + movsp(-4) + restorebp() + retn())
+        body = (ci(5) + savebp() + cptopbp(-4, 4) + ci(1) + add()
+                + cpdownbp(-4, 4) + movsp(-4) + restorebp() + retn())
         r = run(body)
         self.assertEqual(r["status"], "returned")
         self.assertEqual(r["top"], {"type": "int", "value": 6})
