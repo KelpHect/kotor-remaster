@@ -1,9 +1,10 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 2 (P2 G2 + P3 VM core) complete — gate S2 met (2026-11-02).** There is still no
-playable engine build; P3 functional actions and P4/P5 renderer work continue on the frozen data
-foundation and the executable NCS VM. Sprint plans/reports: `docs/SPRINT1.md` /
-`docs/SPRINT1_REPORT.md` and `docs/SPRINT2.md` / `docs/SPRINT2_REPORT.md`; the P0 gate and
+Status: **Sprint 3 (P3 functional NCS runtime) complete — gate S3 met (2026-11-02).** There is
+still no playable engine build; the live engine differential, compiler-codegen parity, and
+P4/P5 renderer work continue on the frozen data foundation and the executable NCS runtime.
+Sprint plans/reports: `docs/SPRINT1.md` / `docs/SPRINT1_REPORT.md`, `docs/SPRINT2.md` /
+`docs/SPRINT2_REPORT.md`, and `docs/SPRINT3.md` / `docs/SPRINT3_REPORT.md`; the P0 gate and
 handoff remain in `docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
@@ -72,6 +73,12 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   direct typed-dispatch check. Tests: 129 OK (1 skip).
   See `docs/recon/26_ENGINE_MAP.md`, `docs/recon/27_VM_EXECUTION.md`, and
   `docs/SPRINT2_REPORT.md`.
+- Sprint 3 (P3 functional NCS runtime): deterministic object/tag/area, local/global,
+  inventory/party, action-queue, and timer model; **344 corpus action ids** covered by 44
+  specific + 300 generic handlers with **0 unclassified**; full corpus **8,666/8,666** with
+  0 decode/VM faults, 303,650 ACTION calls, 20,406 timers, and 5,401 queued actions. Tests:
+  138 OK (1 skip). See `docs/recon/28_ACTION_MODEL.md`,
+  `docs/recon/29_FUNCTIONAL_RUNTIME.md`, and `docs/SPRINT3_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -110,6 +117,8 @@ Start with:
 
 - [`engine/docs/BUILD.md`](engine/docs/BUILD.md) — build the engine scaffold and run its smoke tests
 - [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) — program lanes, phases, gates, verification
+- [`docs/SPRINT3_REPORT.md`](docs/SPRINT3_REPORT.md) — Sprint 3 (P3 functional runtime) exit report
+- [`docs/SPRINT3.md`](docs/SPRINT3.md) — Sprint 3 plan: exit criteria, lanes, shared-resource rules
 - [`docs/SPRINT2_REPORT.md`](docs/SPRINT2_REPORT.md) — Sprint 2 (P2 G2 + P3 VM core) exit report
 - [`docs/SPRINT2.md`](docs/SPRINT2.md) — Sprint 2 plan: exit criteria, lanes, shared-resource rules
 - [`docs/SPRINT1_REPORT.md`](docs/SPRINT1_REPORT.md) — Sprint 1 (P1) exit report and gate G1

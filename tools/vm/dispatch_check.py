@@ -27,13 +27,17 @@ from scripts import ncs  # noqa: E402
 BLOCKING = {202}
 
 
-def check_specs(specs: dict) -> dict:
+def check_specs(specs: dict, use_runtime: bool = False) -> dict:
     errors = []
+    runtime = None
+    if use_runtime:
+        from vm.actions_runtime import ActionRuntime
+        runtime = ActionRuntime(specs)
     for a in specs["actions"]:
         aid = a["id"]
         params = a["params"]
         total = len(params)
-        vm = ncs_vm.VM([], specs)
+        vm = ncs_vm.VM([], specs, runtime=runtime)
         # Stack order: last parameter deepest, first parameter on top.
         for k in range(total - 1, -1, -1):
             typ = params[k]["type"]
@@ -65,10 +69,12 @@ def check_specs(specs: dict) -> dict:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--specs", required=True)
+    ap.add_argument("--runtime", action="store_true",
+                    help="use the functional action runtime")
     ap.add_argument("--out")
     args = ap.parse_args(argv)
     specs = json.loads(Path(args.specs).read_text(encoding="utf-8"))
-    result = check_specs(specs)
+    result = check_specs(specs, use_runtime=args.runtime)
     text = json.dumps(result, indent=2, sort_keys=True)
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
