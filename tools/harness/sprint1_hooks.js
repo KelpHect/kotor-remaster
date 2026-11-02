@@ -680,34 +680,39 @@ try {
   tga[2] = 2; tga[12] = 0; tga[13] = 1; tga[14] = 0; tga[15] = 1; tga[16] = 24;
   for (let i = 18; i < tga.length; i += 3) { tga[i] = 0x60; tga[i + 1] = 0x60; tga[i + 2] = 0x60; }
   function synthPath(arg) {
+    const candidates = [];
     for (const a of [arg, ptrAt(arg, 0)]) {
-      try { const w = cstrw(a, 260); if (w && /screen\.tga$/i.test(w)) return w; } catch (e) {}
-      try { const c = cstra(a, 260); if (c && /screen\.tga$/i.test(c)) return c; } catch (e) {}
+      try { const w = cstrw(a, 260); if (w) candidates.push(w); } catch (e) {}
+      try { const c = cstra(a, 260); if (c) candidates.push(c); } catch (e) {}
+    }
+    if (candidates.length) emit({ f: 'thumb_path_candidates', candidates: candidates });
+    for (let s of candidates) {
+      if (!/screen(\.tga)?$/i.test(s)) continue;
+      if (!/\.tga$/i.test(s)) s += '.tga';
+      if (/^SAVES:/i.test(s)) s = '.\\saves\\' + s.slice(6);
+      return s;
     }
     return null;
   }
-  const repl = new NativeCallback(function () {
-    // 0-arg default-abi replacement == plain `ret` for this cdecl target (caller cleans).
-    // The single stack arg (dest path) sits at [esp+4] on entry.
-    const arg = Memory.readPointer(this.context.esp.add(4));
+  const repl = new NativeCallback(function (arg) {
     const path = synthPath(arg);
     emit({ f: 'thumb_replace_0x420f20', arg: hs(arg), path: path, tid: this.threadId });
     if (path) {
       try {
         const p = Memory.allocUtf16String(path);
-        const h = createFileW(p, 0x40000000, 0, null, 2, 0, null);
+        const h = createFileW(p, 0x40000000, 0, ptr(0), 2, 0, ptr(0));
         if (h && !h.isNull() && h.toInt32() !== -1) {
           const buf = Memory.alloc(tga.length);
           buf.writeByteArray(tga);
           const written = Memory.alloc(4);
-          writeFile(h, buf, tga.length, written, null);
+          writeFile(h, buf, tga.length, written, ptr(0));
           closeHandle(h);
           emit({ f: 'screen_tga_synth', path: path, bytes: tga.length, written: written.readU32(), tid: this.threadId });
         }
       } catch (e) { emit({ f: 'screen_tga_err', path: path, e: String(e) }); }
     }
     return 0;
-  }, 'int', []);
+  }, 'int', ['pointer']);
   Interceptor.replace(A(0x420f20), repl);
   emit({ f: 'hook', target: 'thumb_replace_0x420f20', addr: '0x420f20' });
 } catch (e) { emit({ f: 'hookerr', name: 'thumb_replace', e: String(e) }); }
@@ -716,6 +721,7 @@ try {
 // Nearest-neighbour is deterministic and avoids the Mesa-faulting box path.
 // This is the JS twin of tools/harness/thumb_shim.py resample_nearest().
 try {
+  const gameNew = new NativeFunction(A(0x2fa7e6), 'pointer', ['uint']);
   const resampleShim = new NativeCallback(function (src, sw, sh, ch, dw, dh) {
     sw = sw | 0; sh = sh | 0; ch = ch | 0; dw = dw | 0; dh = dh | 0;
     if (!src || sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0 ||
@@ -723,7 +729,9 @@ try {
       emit({ f: 'resample_shim_reject', sw, sh, ch, dw, dh, tid: this.threadId });
       return ptr(0);
     }
-    const out = Memory.alloc(dw * dh * ch);
+    let out = null;
+    try { out = gameNew(dw * dh * ch); } catch (e) {}
+    if (!out || out.isNull()) out = Memory.alloc(dw * dh * ch);
     for (let y = 0; y < dh; y++) {
       const sy = Math.min(sh - 1, Math.floor(y * sh / dh));
       for (let x = 0; x < dw; x++) {

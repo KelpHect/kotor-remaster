@@ -149,8 +149,8 @@ module lists; `final.log` is the console transcript.
   `FUN_00508c50` reads `MapResX`, `NorthAxis`, `MapZoom`, `MapPt1/2`, and `WorldPt1/2`,
   loads the `lbl_map%s` minimap control, and calls `FUN_00578c60`; that function takes
   `MapResX` as its first parameter (capped at `0x58`), applies `NorthAxis`/`MapZoom`, then
-  computes `scaleX=(MapPt2X-MapPt1X)/(WorldPt2X-WorldPt1X)`, the matching Y scale, and the
-  offsets. `MapResX` is therefore the minimap resolution hint, not an affine input.
+  computes the per-axis scale and offset from the `MapPt1/2` and `WorldPt1/2` deltas.
+  `MapResX` is therefore the minimap resolution hint, not an affine input.
   `MapResY` is absent from every label table (recon/03 §3). — verified (data + engine)
 - **Minimap texture semantics** — a full scan of `chitin.key` (26 BIFs, 25,836
   resources), the 12 global RIMs, `patch.erf`, and all four `TexturePacks/*.erf` finds
