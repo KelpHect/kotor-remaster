@@ -130,7 +130,7 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
 
 ## Final live closure (2026-11-02) — chargen PLAY and a streamwaves voice request
 
-The two remaining dynamic items are closed live. The visible quick-character panel is
+The remaining dynamic items are closed live. The visible quick-character panel is
 `FUN_006f0390` (0x1360 bytes; step field `+0x135c`), not CUSTPNL; its real PLAY path is
 `0x6efd60` → `FUN_006eb320([panel+0x68])` → `FUN_006dbdf0(manager)`. `live_hooks.js` captures the
 chargen manager in `FUN_006eb420` and calls `FUN_006eb320` on the game thread, so no synthetic
@@ -146,28 +146,31 @@ click is needed.
   `STREAMWAVES\m01aa\tras02\nm01aatras02000_.wav` seq 1479/1480 `ok=true`.
   `summary.json`: `install_ok_after=true`, `new_save_files=[]`, `changed_save_files=[]`,
   `game_processes_after=[]`.
+* `mesa-quicksave7-20261102` (Mesa, direct Quick Save action `0xDA`): `quicksave_called` →
+  `save_writer` (slot 0) → `thumb_replace_0x420f20` → `screen_tga_synth` (196,626 bytes).
+  Slot `000000 - QUICKSAVE` contains `GLOBALVARS.res`, `PARTYTABLE.res`, `SAVEGAME.sav`,
+  `Screen.tga`, `savenfo.res`; the TGA is 256×256, 24 bpp. `summary.json`:
+  `install_ok_after=true`, `new_save_files` includes `Screen.tga`, `changed_save_files=[]`.
 
-Both data questions remain statically bounded (#23–#28, #32). The renderer split is explicit:
-the hardware path renders chargen but crashes in the ATI driver on the module scene; the Mesa
-path is black in this session but runs the module logic and live audio, which is sufficient for
-the dynamic evidence.
+The minimap path is also closed statically: `FUN_00508c50` reads the ARE `Map` fields
+(`MapResX`, `NorthAxis`, `MapZoom`, `MapPt1/2`, `WorldPt1/2`), loads the `lbl_map%s` minimap
+control, and calls `FUN_00578c60`, which computes the world→map scale/offset from the
+`MapPt`/`WorldPt` corners. `MapResX` is the first parameter (capped at `0x58`), so it is a
+resolution hint, not an affine input. The data questions remain statically bounded
+(#23–#28, #32). The renderer split is explicit: the hardware path renders chargen but crashes
+in the ATI driver on the module scene; the Mesa path is black in this session but runs the
+module logic and live audio, which is sufficient for the dynamic evidence.
 
-## Open items carried forward (with owners and blockers)
+## Carried forward to later phases (outside G1)
 
-1. **F4 quicksave thumbnail leg under Mesa** — the shim is now implemented and tested:
-   `tools/harness/thumb_shim.py` (nearest-neighbour resampler + 24-bpp TGA writer) and
-   `sprint1_hooks.js` replace both `0x420f20` and the faulting `FUN_0045dad0`; `test_harness.py`
-   is 7/7. The remaining live part is the non-elevated llvmpipe quicksave stalling upstream of
-   the thumbnail; the elevated session + GL shims of `docs/recon/16` §6 are still needed to
-   observe it in-process. Owner: P4 renderer (save data/reload unaffected).
-2. **228 compiler-limited decompiles + 306 unused actions** — formally descoped from G1 by
-   `tools/scripts/residuals.py` (`g1.status=closed`, `open_items=[]`); owned by P3 VM
-   conformance. The shipped corpus is fully decoded (8,428 exact + 5 header-limited + 5
-   reachable-only; 228 compiler-codegen-limited recompiles), and the 306 unused actions are
-   modded-content implementations, not data gaps.
-3. **Minimap rasterization renderer-side confirmation** — the data-side affine/MapResX/minimap
-   absence is verified (recon/19 §6); the engine pass that rasterizes it is P5 renderer work.
-   The map compiler itself is green under the retail profile.
+The Sprint-1 gate has **no open data, loader, or live-dynamic item**. The only remaining
+ledger entry is P3 VM-conformance work, explicitly outside G1:
+
+- **228 compiler-limited decompiles + 306 unused actions** — formally descoped from G1 by
+  `tools/scripts/residuals.py` (`g1.status=closed`, `open_items=[]`); owned by P3 VM
+  conformance. The shipped corpus is fully decoded (8,428 exact + 5 header-limited + 5
+  reachable-only; 228 compiler-codegen-limited recompiles), and the 306 unused actions are
+  modded-content implementations, not data gaps.
 
 ## Reproduce
 

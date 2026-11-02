@@ -9,7 +9,9 @@ a machine-readable disposition:
 * ``compiler-limited`` recompiles and unused actions are explicitly owned by
   P3 VM conformance: they are compiler-codegen / modded-content work, not a
   data gap in the shipped corpus.
-* Runtime/renderer residuals are listed with their later-phase owner.
+* Runtime/renderer items closed by the 2026-11-02 live pass are listed under
+  ``closed_live`` with their run evidence; statically closed renderer items are
+  listed under ``closed_static``. ``later_phase`` is empty for Sprint 1.
 
 Usage:
     python -m tools.scripts.residuals \
@@ -93,16 +95,27 @@ def build_residuals(corpus: dict, usage: dict) -> dict:
             "open_items": g1_open,
         },
         "p3": p3,
-        "later_phase": [
+        "closed_live": [
             {"id": "chargen-play-live", "owner": "P4 hardware vertical slice",
-             "reason": "llvmpipe/DirectInput input blocker; mount order statically proven"},
+             "runs": ["hw-startgame6-20261102", "mesa-nomovies-20261102"],
+             "reason": ("real handler FUN_006eb320 invoked with the live chargen manager; "
+                        "END_M01AA mounted")},
             {"id": "dialogue-live-click", "owner": "P4 hardware vertical slice",
-             "reason": "same input blocker; camera path statically proven"},
+             "runs": ["mesa-nomovies-20261102"],
+             "reason": ("live STREAMWAVES\\m01aa\\tras02\\nm01aatras02000_.wav open "
+                        "(ok=true)")},
             {"id": "f4-thumbnail", "owner": "P4 renderer",
-             "reason": "shim implemented in tools/harness/thumb_shim.py and sprint1_hooks.js"},
-            {"id": "minimap-raster", "owner": "P5 renderer",
-             "reason": "data-side affine/absence verified; engine raster pass is P5"},
+             "runs": ["mesa-quicksave7-20261102"],
+             "reason": ("Screen.tga 196,626 B written by the 0x420f20 shim into "
+                        "000000 - QUICKSAVE")},
         ],
+        "closed_static": [
+            {"id": "minimap-raster", "owner": "P5 renderer",
+             "evidence": ("FUN_00508c50 reads MapResX/NorthAxis/MapZoom/MapPt/WorldPt, "
+                          "loads lbl_map%s, and calls FUN_00578c60, which computes the "
+                          "world->map scale/offset; no per-area minimap texture is needed")},
+        ],
+        "later_phase": [],
         "status_sources": {
             "corpus": "artifacts/lanes/s1-04-scripts/corpus.json",
             "usage": "artifacts/lanes/s1-04-scripts/action_usage_report.json",

@@ -11,8 +11,9 @@ Target build SHA-256 `0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba67
 lane-06 hook style) driven by `tools/harness/sprint1_dynamic_run.py`; camera-site VAs
 re-verified statically via `tools.mcp_hydralysis.disasm` (output header carries the build
 SHA-256 above). Raw logs: `artifacts/lanes/s1-06-dynamic/runs/<label>/events.jsonl`.
-The 2026-11-02 live closure (direct PLAY, module start, first streamwaves voice) is in §6 and
-`runs/hw-startgame6-20261102/` + `runs/mesa-nomovies-20261102/`.
+The 2026-11-02 live closure (direct PLAY, module start, first streamwaves voice, F4 thumbnail)
+is in §6 and `runs/hw-startgame6-20261102/` + `runs/mesa-nomovies-20261102/` +
+`runs/mesa-quicksave7-20261102/`.
 
 ## 0. Runs
 
@@ -25,6 +26,7 @@ The 2026-11-02 live closure (direct PLAY, module start, first streamwaves voice)
 | `d-parity-dialogue` | Load Game → `000007 - PARITY` (verbatim rewrite) → gameplay → click grid → F4/F5 | **rewritten save accepted and loaded**; slot files unchanged after load |
 | `hw-startgame6` | hardware → quick char → direct `FUN_006eb320` PLAY | `END_M01AA` + `_s` open; ATI `atioglxx.dll` faults on first module draw |
 | `mesa-nomovies` | Mesa → quick char → direct PLAY, movies off | Endar Spire runs; live `STREAMWAVES\m01aa\tras02\nm01aatras02000_.wav` |
+| `mesa-quicksave7` | Mesa gameplay → direct Quick Save (action `0xDA`) | slot `000000 - QUICKSAVE` with `Screen.tga` 196,626 B; thumbnail shim fired |
 
 Every run ended with `install_ok_after: true`, `game_processes_after: []`, no original
 save touched (fresh slots only; `saves-before/after` trees in each `runs/<label>/`).
@@ -330,7 +332,7 @@ used by the name dialog END_BTN and the step-6 handler. `live_hooks.js` captures
   `summary.json`: `install_ok_after=true`, `new_save_files=[]`, `changed_save_files=[]`,
   `game_processes_after=[]`.
 
-### Task 4 (item d) from-scratch parity slot — **VERIFIED (load acceptance); F4/F5 leg OPEN**
+### Task 4 (item d) from-scratch parity slot — **VERIFIED (load acceptance); F4 thumbnail LIVE-VERIFIED (2026-11-02)**
 
 Run `h-paritysrc` loaded `000008 - PARITY-SRC` (s1-05 `kotor_save_parity.py rewrite-parity
 --mode parity` from-scratch output, staged as a fresh slot) via the normal Load Game UI:
@@ -346,20 +348,16 @@ run summary: install_ok_after true, changed_save_files [], detach application-re
 — **verified**: the original engine accepts and boots the from-scratch rewritten save
 (verbatim mode verified in run d, §2d).
 
-F4/F5 leg (follow-up #2, runs `k3-f4f5`/`k4-f4f5`): the thumbnail writer `0x420f20` was
-replaced with a cdecl-safe `Interceptor.replace` (0-arg default-abi NativeCallback reading
-the dest path from `[esp+4]`, writing a synthesized 256x256 24bpp `Screen.tga` via
-kernel32). Hook installed cleanly in run k4 — verbatim: `seq 16 {"f": "hook", "target":
-"thumb_replace_0x420f20", "addr": "0x420f20"}` (an earlier attempt with explicit `'cdecl'`
-abi failed: `hookerr thumb_replace "invalid abi specified"`; this frida 17.24.3 win32
-binding accepts only the default abi). Result: F4 starts the quicksave
-(`gameinprogress` AVAILNPC2.utc write-intent, k4 seq 9165-9166) but the save stalls before
-the thumbnail — `thumb_replace_0x420f20` fired 0 times, `resample_0x45dad0_ENTERED` 0 times,
-no `saves` `000000 - QUICKSAVE` write-intent opens, no slot on disk, and F5 had nothing to
-load (no loaders after F5). — **open**, blocker: the quicksave stalls upstream of the
-thumbnail in this non-elevated llvmpipe harness (lane-06's working F4/F5 acceptance needed
-an elevated session + GL-context shims, docs/recon/16 §6); the replace mechanism is
-installed and will exercise as soon as the save reaches `0x420f20`.
+F4 quicksave thumbnail (2026-11-02, run `mesa-quicksave7`): the direct Quick Save action
+`0xDA` was invoked after 90 s of player control; the engine called the save writer
+(`quicksave_called`, `save_writer` self=`0xfe013c8`, slot 0), then `FUN_00401080` →
+`0x420f20` with the path `.\saves\000000 - QUICKSAVE\Screen`. The live shim fired:
+`thumb_replace_0x420f20` and `screen_tga_synth` with 196,626 bytes written. The slot contains
+`GLOBALVARS.res`, `PARTYTABLE.res`, `SAVEGAME.sav`, `Screen.tga`, `savenfo.res`; `Screen.tga`
+is 256×256, 24 bpp, 196,626 B (same size as the retail TARIS thumbnail). `summary.json`:
+`install_ok_after=true`, `new_save_files` includes `Screen.tga`, `changed_save_files=[]`.
+The earlier k3/k4 runs invoked Quick Save during the intro cutscene, so the save writer was
+never reached; the live path now waits for player control.
 
 ### Tasks 5–6 — see `docs/recon/25_SYNTHETIC_RUNTIME.md` (2-group relocation VERIFIED live;
 supermodel clip chain VERIFIED live with 579 super-recursions).

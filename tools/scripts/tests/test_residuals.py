@@ -40,9 +40,14 @@ class TestResiduals(unittest.TestCase):
         self.assertEqual(ids["compiler-limited-recompiles"]["count"], 228)
         self.assertEqual(ids["unused-actions"]["count"], 306)
         self.assertEqual(ids["unused-actions"]["of"], 772)
-        later = {x["id"] for x in r["later_phase"]}
-        self.assertIn("f4-thumbnail", later)
-        self.assertIn("chargen-play-live", later)
+        closed = {x["id"]: x for x in r["closed_live"]}
+        self.assertIn("f4-thumbnail", closed)
+        self.assertIn("chargen-play-live", closed)
+        self.assertIn("dialogue-live-click", closed)
+        self.assertEqual(closed["f4-thumbnail"]["runs"], ["mesa-quicksave7-20261102"])
+        self.assertEqual({x["id"] for x in r["later_phase"]}, set())
+        static = {x["id"]: x for x in r["closed_static"]}
+        self.assertIn("minimap-raster", static)
 
     def test_missing_status_is_a_g1_item(self):
         corpus = self._corpus()
