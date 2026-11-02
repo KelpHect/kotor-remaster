@@ -38,10 +38,11 @@ Baseline: Sprint 2 / gate S2 (`docs/SPRINT2_REPORT.md`): 772 action specs, engin
    shared action-dispatch path and the queued-command runner (`0x005d45d0`). Evidence:
    `docs/recon/32_LIVE_DIFFERENTIAL.md`.
 8. **228 compiler-limited recompiles** — 24/24 default-argument cases are raw byte-identical
-   with historical prototype headers; 201/201 structs are recovered source-level (2 fully exact,
-   199 one compiler cleanup block); 3 body-order cases are byte-identical through the documented
-   ABI completion. Evidence: `docs/recon/33_HISTORICAL_HEADERS.md`,
-   `docs/recon/36_STRUCT_RECOVERY.md`, `docs/recon/31_COMPILER_CODEGEN.md`,
+   with historical prototype headers; 201/201 structs are recovered source-level (189 fully
+   exact, 12 different-cleanup ABI); 3 body-order cases are byte-identical through the documented
+   ABI completion. Full 8,666 rerun: 8,646 raw exact. Evidence:
+   `docs/recon/33_HISTORICAL_HEADERS.md`, `docs/recon/36_STRUCT_RECOVERY.md`,
+   `docs/recon/37_RETURN_CLEANUP.md`, `docs/recon/31_COMPILER_CODEGEN.md`,
    `artifacts/lanes/s3-live/codegen_reconcile.json`.
 9. **306 corpus-unused actions** — every id outside the 466 used by the shipped corpus is invoked
    against a prepared world; 0 unclassified/default, 0 errors, and state-derived/mediation

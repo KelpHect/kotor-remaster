@@ -6,8 +6,8 @@ Status: **closed** — 8666/8666 clean-room NSS files recompiled with per-file h
 
 | class | files | meaning |
 |---|---:|---|
-| raw_exact | 8459 | recompiled bytes equal the shipped NCS |
-| compiler_limited | 202 | the 199 cleanup-only struct + 3 body-order cases |
+| raw_exact | 8646 | recompiled bytes equal the shipped NCS |
+| compiler_limited | 15 | the 12 different-cleanup struct + 3 body-order cases |
 | header_limited | 0 | the 5 anomalous-action prototype cases |
 | reachable_only | 5 | the 5 unreachable-code cases |
 | other | 0 | unexpected (gate failure) |
@@ -16,4 +16,4 @@ Status: **closed** — 8666/8666 clean-room NSS files recompiled with per-file h
 
 For every script the shipped NCS is scanned for ACTION calls whose arity is smaller than the current prototype. A per-file `nwscript.nss` is generated with the historical arity, the unchanged clean-room NSS is compiled with `nwnnsscomp_ktool`, and the result is compared byte-for-byte. Files without such calls use the full header.
 
-The raw_exact count includes the 24 default-argument cases (`docs/recon/33_HISTORICAL_HEADERS.md`), the 5 header-limited overrides, and the 2 fully source-level struct recoveries (`docs/recon/36_STRUCT_RECOVERY.md`). The 199 cleanup-only struct cases and 3 body-order cases remain the ABI group in `docs/recon/31_COMPILER_CODEGEN.md`.
+The raw_exact count includes the 24 default-argument cases (`docs/recon/33_HISTORICAL_HEADERS.md`), the 5 header-limited overrides, the 2 pure struct recoveries (`docs/recon/36_STRUCT_RECOVERY.md`), and the 187 duplicate-return fixes (`docs/recon/37_RETURN_CLEANUP.md`). The 12 different-cleanup struct cases and 3 body-order cases remain the ABI group in `docs/recon/31_COMPILER_CODEGEN.md`.

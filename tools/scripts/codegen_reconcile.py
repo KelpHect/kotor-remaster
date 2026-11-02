@@ -450,8 +450,8 @@ def main(argv=None) -> int:
         "",
         "| transform | files | meaning |",
         "|---|---:|---|",
-        f"| source-level | {source_count} | historical prototype arity (24) and "
-        "`tLastRound` struct recovery (2 fully exact) |",
+        f"| source-level | {source_count} | historical prototype arity (24), "
+        "`tLastRound` struct recovery (2), duplicate trailing-return cleanup (187) |",
         f"| struct-group | {transforms.get('struct-group', 0)} | restore the historical "
         "`CPTOPBP size=40; DESTRUCT` group slice and the five-instruction cleanup block |",
         f"| body-order | {transforms.get('body-order', 0)} | reorder function bodies to the "
@@ -463,8 +463,8 @@ def main(argv=None) -> int:
         "per-file historical prototype headers (`docs/recon/33_HISTORICAL_HEADERS.md`); "
         "the 201 struct cases are recovered at source level by "
         "`tools/scripts/struct_source.py` (`docs/recon/36_STRUCT_RECOVERY.md`).",
-        "- Of the 199 struct-group rows, 187 are source-level struct recovery with only "
-        "the five-instruction cleanup block inserted; 12 use the full struct-group ABI "
+        "- Of the 201 struct cases, 189 are source-level exact (2 pure struct recovery + "
+        "187 duplicate trailing-return cleanup fixes); 12 use the full struct-group ABI "
         "path because their control-flow cleanup shape differs.",
         "- The raw ktool output is recorded and hashed per file; the reconciler never "
         "replaces it silently.",
