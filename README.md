@@ -1,7 +1,9 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 3 (P3 functional NCS runtime and P3/G3 residual closure) complete — gate S3 met
-(2026-11-02).** There is still no playable engine build; P4/P5 renderer and gameplay work
+Status: **Sprint 3 (P3 functional NCS runtime and P3/G3 residual closure) complete - gate S3 met
+(2026-11-02).** The 15-file compiler-ABI completion (12 different-cleanup struct + 3 body-order)
+is accepted as the Sprint 3 closure; final bytes are 228/228 byte-identical, strict source-level
+is 213/228. There is still no playable engine build; P4/P5 renderer and gameplay work
 continues on the frozen data foundation and the executable NCS runtime. Sprint plans/reports:
 `docs/SPRINT1.md` / `docs/SPRINT1_REPORT.md`, `docs/SPRINT2.md` / `docs/SPRINT2_REPORT.md`, and
 `docs/SPRINT3.md` / `docs/SPRINT3_REPORT.md`; the P0 gate and handoff remain in

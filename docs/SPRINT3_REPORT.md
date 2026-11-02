@@ -7,6 +7,20 @@ the live differential, the 228 compiler-limited recompiles, and the 306 corpus-u
 Baseline: Sprint 2 / gate S2 (`docs/SPRINT2_REPORT.md`): 772 action specs, engine map, NCS VM,
 8,666/8,666 scripts at 0 faults with typed default stubs.
 
+## Closure decision (2026-11-02)
+
+After the final source-level push (213/228 source-level, 8,646/8,666 raw exact), the user
+directed **“Then finish.”** Sprint 3 is therefore finalized with the documented 15-file ABI
+completion:
+
+- **12 struct cases** whose five-instruction cleanup shape differs after full struct recovery;
+- **3 body-order cases** whose function-address assignment is compiler-internal.
+
+The accepted closure is **228/228 final bytes byte-identical**; strict source-level remains
+**213/228**, with the full corpus at **8,646/8,666 raw exact**. The remaining ABI paths are
+exactly the 12 `struct-group` and 3 `body-order` rows in
+`artifacts/lanes/s3-live/codegen_reconcile.json`.
+
 ## Exit criteria (gate S3)
 
 | # | Criterion | Result | Evidence |

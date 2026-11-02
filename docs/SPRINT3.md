@@ -1,7 +1,8 @@
 # Sprint 3 — P3 functional action runtime and object/timer model
 
-Status: **complete — gate S3 met (2026-11-02)** — see
-[`SPRINT3_REPORT.md`](SPRINT3_REPORT.md) for the exit report and evidence.
+Status: **complete — gate S3 met (2026-11-02), with the 15-file compiler-ABI completion
+accepted by the finish directive** — see [`SPRINT3_REPORT.md`](SPRINT3_REPORT.md) for the exit
+report and evidence.
 
 Goal: turn the Sprint 2 mediated NCS VM into a **stateful, functional script runtime** for the
 shipped corpus, and close the P3/G3 residuals: the object/timer/action-queue model, explicit
