@@ -192,6 +192,8 @@ def markdown(report: dict) -> str:
         "- `specific` handlers implement the action directly; `generic` handlers apply a",
         "  documented semantic group (query, state/effect, action queue, UI, journal, audio,",
         "  minigame, math/string). `default` is the unclassified fallback and must be zero.",
+        "- Behavioral conformance (prepared world, state-derived values, queue/mediation",
+        "  records) is in `docs/recon/34_ACTION_BEHAVIOR.md`.",
         "",
         "## Full list",
         "",

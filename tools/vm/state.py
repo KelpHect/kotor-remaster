@@ -30,6 +30,7 @@ class GameObject:
     valid: bool = True
     position: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
     hp: int = 10
+    attrs: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -61,6 +62,44 @@ class World:
         self.timers: list[Timer] = []
         self.journal: set[int] = set()
         self.log: list[tuple[float, str]] = []
+        self.events: list[dict[str, Any]] = []
+        self.attrs: dict[str, Any] = {
+            "module": "end_m01aa",
+            "difficulty": 1,
+            "movie_playing": False,
+            "planets": {"Taris": True, "Dantooine": False},
+            "encounter_spawns_max": 10,
+            "encounter_spawns_current": 0,
+            "encounter_difficulty": 1,
+            "stealth_xp": 0,
+            "stealth_enabled": 1,
+            "stealth_decrement": 5,
+            "max_stealth_xp": 100,
+            "journal_xp": {},
+            "clicking_object": 0,
+            "last_speaker": 0,
+            "last_attacker": 0,
+            "transition_target": 0,
+            "starting_location": 0,
+            "last_item_equipped": 0,
+            "spell_cast_item": 0,
+            "item_activated_target": 0,
+            "item_activated_location": 0,
+            "last_conversation": "",
+            "matched_substring": "",
+            "matched_count": 0,
+            "last_player_dying": 0,
+            "last_respawn_button_presser": 0,
+            "last_trap_detected": 0,
+            "module_item_acquired_from": 0,
+            "module_item_lost": 0,
+            "module_item_lost_by": 0,
+            "last_perception_heard": 0,
+            "last_perception_inaudible": 0,
+            "last_closed_by": 0,
+            "aoe_creator": 0,
+            "last_associate_command": 0,
+        }
         self.time = 0.0
         self.rng = random.Random(seed)
         self._cursors: dict[tuple, int] = defaultdict(int)

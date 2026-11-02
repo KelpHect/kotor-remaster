@@ -23,6 +23,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, ".."))
 sys.path.insert(0, _HERE)
 
+from vm import behaviors  # noqa: E402
 from vm.ncs_vm import OBJECT_INVALID, Value, default_cells  # noqa: E402
 from vm.state import World  # noqa: E402
 
@@ -39,6 +40,7 @@ class ActionRuntime:
         self.default: set[str] = set()
         self.timers_scheduled = 0
         self.actions_queued = 0
+        self.trace_events = False
         self.handlers = {}
         for a in specs["actions"]:
             fn = getattr(self, "h_" + a["name"], None)
@@ -77,18 +79,86 @@ class ActionRuntime:
     # ---- dispatch ------------------------------------------------------
     def call(self, aid: int, args: list, vm) -> list[Value]:
         name = self.name_by_id.get(aid)
+        event = None
+        if self.trace_events:
+            event = {"time": self.world.time, "id": aid, "name": name,
+                     "kind": "unknown"}
+            self.world.events.append(event)
         self.calls[aid] += 1
         if name is None:
             self.default.add(f"#{aid}")
+            if event is not None:
+                event["kind"] = "default"
             return self._ret(aid)
         fn = self.handlers.get(name)
         if fn is not None:
             self.specific.add(name)
+            if event is not None:
+                event["kind"] = "specific"
             return fn(args, vm)
         cells = self._generic(name, args, vm, aid)
+        if event is not None:
+            event["kind"] = "default" if name in self.default else "generic"
         return cells
 
+    def _store_value(self, args):
+        if not args:
+            return 0
+        cells = args[-1]
+        if not cells:
+            return 0
+        if len(cells) >= 3:
+            return [c.as_float() for c in cells[:3]]
+        return cells[-1].value
+
+    def _value_as(self, value, typ: str) -> list[Value]:
+        if typ == "vector":
+            vals = value if isinstance(value, list) else [0.0, 0.0, 0.0]
+            vals = (list(vals) + [0.0, 0.0, 0.0])[:3]
+            return [Value("float", float(v)) for v in vals]
+        if typ == "float":
+            return [Value("float", float(value or 0))]
+        if typ == "string":
+            return [Value("string", str(value or ""))]
+        if typ == "object":
+            return [Value("object", int(value or OBJECT_INVALID))]
+        if typ in ("effect", "event", "location", "talent"):
+            return [Value("engine", int(value or 0))]
+        return [Value("int", int(value or 0))]
+
+    def _swmg(self, name: str, args: list, aid: int) -> list[Value]:
+        store = self.world.attrs.setdefault("swmg", {})
+        if name.startswith("SWMG_Set"):
+            store[name[len("SWMG_Set"):]] = self._store_value(args)
+            self.generic.add(name)
+            return []
+        if name.startswith("SWMG_Get"):
+            key = name[len("SWMG_Get"):]
+            if key in store:
+                self.generic.add(name)
+                return self._value_as(store[key], self.ret_by_id.get(aid, "int"))
+            self.generic.add(name)
+            return self._ret(aid)
+        if name.startswith("SWMG_Is"):
+            key = name[len("SWMG_Is"):]
+            self.generic.add(name)
+            return [Value("int", 1 if store.get(key) else 0)]
+        if name.startswith("SWMG_Adjust"):
+            key = name[len("SWMG_Adjust"):]
+            delta = self._i(args, len(self.specs[aid]["params"]) - 1)
+            store[key] = int(store.get(key, 0)) + delta
+            self.generic.add(name)
+            return []
+        self.generic.add(name)
+        return self._ret(aid)
+
     def _generic(self, name: str, args: list, vm, aid: int) -> list[Value]:
+        resolved = behaviors.resolve(self, name, args, aid)
+        if resolved is not None:
+            self.generic.add(name)
+            return resolved
+        if name.startswith("SWMG_"):
+            return self._swmg(name, args, aid)
         if name.startswith("Action"):
             self.world.queue_action(aid, args, "Action")
             self.actions_queued += 1

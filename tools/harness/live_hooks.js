@@ -592,6 +592,12 @@ try {
         const sp = vm.add(0x1ac).readS32();
         const bp = vm.add(0x1b0).readS32();
         const tid = this.threadId;
+        const caller = this.returnAddress ? this.returnAddress.toString() : null;
+        let bt = [];
+        try {
+          bt = Thread.backtrace(this.context, Backtracer.ACCURATE)
+                     .slice(0, 8).map(function (x) { return x.toString(); });
+        } catch (e) {}
         const ctx = { vm: vm, codePtr: codePtr, prog: prog, len: len, tid: tid };
         const stack = execByThread.get(tid) || [];
         stack.push(ctx);
@@ -602,7 +608,7 @@ try {
           try { vtable = vm.readPointer().toString(); } catch (e) {}
           const o = { f: 'vm_exec', n: vmExecCount, vm: vm.toString(),
                       vtable: vtable, prog: prog.toString(), len: len,
-                      ip: ip, sp: sp, bp: bp,
+                      ip: ip, sp: sp, bp: bp, caller: caller, bt: bt,
                       stack: vmTop(vm, sp, 8), tid: tid,
                       entry_cells: probeCells(vmCells(vm, 0, Math.min(sp, 1024))) };
           try {
@@ -688,6 +694,41 @@ try {
   });
   emit({ f: 'hook', target: 'action_diff_0x52c0d0' });
 } catch (e) { emit({ f: 'hookerr', name: 'action_diff', e: String(e) }); }
+
+// ---- queued command (RunCommand) probe --------------------------------
+// FUN_005d45d0 pushes a script frame, stores the command arguments at
+// situation+0x16c/+0x18c, and calls FUN_005d4270 -> ExecuteCode.  It is the
+// engine's queued-command runner; capture the command object and its slots.
+let runCommandCount = 0;
+try {
+  Interceptor.attach(A(0x5d45d0), {
+    onEnter(args) {
+      try {
+        if (runCommandCount >= 4000) return;
+        runCommandCount++;
+        const cmd = args[0];
+        const sit = this.context.ecx;
+        const o = { f: 'run_command', n: runCommandCount,
+                    cmd: cmd.toString(), sit: sit.toString(),
+                    a2: args[1].toInt32(), a3: args[2].toInt32() };
+        try { o.cmd_id = cmd.readS32(); } catch (e) {}
+        try { o.cmd_4 = cmd.add(4).readS32(); } catch (e) {}
+        try { o.cmd_8 = cmd.add(8).readS32(); } catch (e) {}
+        try { o.cmd_c = cmd.add(0xc).readS32(); } catch (e) {}
+        emit(o);
+      } catch (e) { emit({ f: 'run_command_error', e: String(e) }); }
+    },
+    onLeave(retval) {
+      try {
+        if (runCommandCount <= 4000) {
+          emit({ f: 'run_command_exit', n: runCommandCount,
+                 ret: retval.toInt32() });
+        }
+      } catch (e) {}
+    }
+  });
+  emit({ f: 'hook', target: 'run_command_0x5d45d0' });
+} catch (e) { emit({ f: 'hookerr', name: 'run_command', e: String(e) }); }
 
 rpc.exports = {
   stats() { return { seq: seq }; },

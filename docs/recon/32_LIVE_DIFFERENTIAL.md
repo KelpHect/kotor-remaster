@@ -61,9 +61,30 @@ Results: `artifacts/lanes/s3-live/live_diff7.json`; raw events:
 The seven resumed/command traces include small 55-, 78-, 129-, 213- and 327-byte programs with
 nonzero entry IPs or a pre-existing stack/BP; they replay exactly with the captured entry stack.
 The remaining 21 are fresh 55–11,643-byte script bodies (including the 6,174-, 8,213-, 8,293-,
-11,603-, 11,623- and 11,643-byte scripts). The action dispatch hook is the shared entry point for
-both paths; no dispatcher call was observed outside an active `ExecuteCode` context in this scene,
-so the recorded command bodies are the queued-command evidence for this run.
+11,603-, 11,623- and 11,643-byte scripts).
+
+## RunCommand (queued execution)
+
+`FUN_005d45d0` (`0x005d45d0`) is the engine's queued-command runner: it pushes a script frame,
+stores the command arguments, and calls `FUN_005d4270` (`0x005d4270`), which calls
+`ExecuteCode` (`0x005d2bd0`).  A dedicated hook on `FUN_005d45d0` recorded:
+
+| metric | value |
+|---|---:|
+| `run_command` calls captured | 4,000 (hook limit) |
+| `run_command` exits | 4,408 |
+| paired `ExecuteCode` programs | 400 |
+| unique programs replayed | 30 |
+| matched exactly | **30 / 30** |
+
+The run-command capture (`mesa-runcommand-20261102`) replays the same 30 unique programs,
+including the small command bodies, with exact action id/IP/SP/BP/`sp_after` agreement:
+`artifacts/lanes/s3-live/live_diff_runcommand.json`.
+
+The `run_command` hook records the command/situation pointers and the two argument slots; the
+paired `vm_exec` events carry the program bytes and entry state.  The dispatcher hook remains the
+shared action entry point, so both the direct script bodies and the queued-command bodies are
+covered by the same differential.
 
 ## Two VM fixes proved by the differential
 
