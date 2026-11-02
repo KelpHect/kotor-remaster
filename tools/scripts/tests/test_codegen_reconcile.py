@@ -69,10 +69,15 @@ class BodyOrderTests(unittest.TestCase):
 
 
 class UnreachableTests(unittest.TestCase):
-    def test_four_restored_statements(self):
-        self.assertEqual(len(unreachable.RESTORATIONS), 4)
-        for text in unreachable.RESTORATIONS.values():
+    def test_five_restored_statements(self):
+        self.assertEqual(len(unreachable.RESTORATIONS), 5)
+        news = [v for k, v in unreachable.RESTORATIONS.items() if "news" in k]
+        self.assertEqual(len(news), 4)
+        for text in news:
             self.assertIn('SetGlobalNumber("tat_LinesChecked", 0);', text)
+        self.assertIn("GetPartyMemberCount()",
+                      unreachable.RESTORATIONS[
+                          "k_plev_space_hb__a2b5e977f40bbbce"])
 
 
 class CodegenReconcileTests(unittest.TestCase):

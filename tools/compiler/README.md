@@ -36,7 +36,7 @@ git -C C:\dev-overflow\nwntools apply <repo>\tools\compiler\nwnnsscomp-historica
 
 The result is `C:\dev-overflow\nwntools\nwnnsscomp\Release\nwnnsscomp.exe`
 (SHA-256 of the build used for Sprint 3:
-`3c96c1ae61a3f8e265f769ee8ef7f9832a4dae3f0a5fd89292c2281c97a99a3b`).
+`676e56379609ce19a2b76781b402654df2b521bc938766760d3a322c530e7424`).
 
 ## Use
 
@@ -47,6 +47,7 @@ include directory:
 nwnnsscomp.exe -c -i . -v129 script.nss
 ```
 
-This compiler is used only for the three body-order scripts. The other 8,663 scripts use
+This compiler is used only for the three body-order scripts and the restored dead block of
+`k_plev_space_hb`. The other 8,662 scripts use
 `nwnnsscomp_ktool.exe`, whose KotOR group-slice struct codegen is not present in the stock
 nwntools sources.

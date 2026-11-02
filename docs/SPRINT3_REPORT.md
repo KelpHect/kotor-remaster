@@ -20,8 +20,9 @@ unchanged clean-room source with **no bytecode transform**:
 
 `artifacts/lanes/s3-live/codegen_reconcile.json` reports `source_level 228`, `reconciled 0`,
 `transforms {}`; every row is verified against the shipped NCS bytes. The full 8,666-script
-rerun is **8,665 raw exact + 1 reachable-only** (`k_plev_space_hb`), with 0 compiler-limited
-and 0 unexpected files.
+rerun is **8,666/8,666 raw exact**, with 0 compiler-limited, 0 reachable-only, and
+0 unexpected files; the five unreachable-statement restorations are in
+`docs/recon/39_UNREACHABLE.md`.
 
 ## Exit criteria (gate S3)
 
@@ -34,7 +35,7 @@ and 0 unexpected files.
 | 5 | Reference-trace suite | **met** — 9 runtime tests cover globals, locals, tags/validity, inventory iterator, timers, action queue, `ActionWait`, strings, and a golden NCS set/get trace | `tools/vm/tests/test_action_runtime.py` |
 | 6 | Tests/docs/repo | **met** — `run_all` 144 OK (1 skip), formats 211 OK, scripts 39 OK, VM 30 OK; install untouched; docs and report written | test logs; `git status` |
 | 7 | Live differential | **met — 28/28 unique programs**; 400 `ExecuteCode` calls and 12,000 ACTION dispatches (hook limits); action id/IP/SP/BP and `sp_after` match with the engine's return cells injected. The `RunCommand` hook (`0x005d45d0`) captured **4,000** queued-command calls; its paired capture replays **30/30** programs exactly | `docs/recon/32_LIVE_DIFFERENTIAL.md`; `tools/vm/live_diff.py`; `artifacts/lanes/s3-live/live_diff7.json`; `live_diff_runcommand.json` |
-| 8 | 228 compiler-limited recompiles | **met — 228/228 source-level, 0 ABI**: 24 historical headers, 201/201 structs (189 duplicate-return + 12 historical prototypes), 3 body-order via the historical compiler; full 8,666 rerun 8,665 raw exact + 1 reachable-only | `docs/recon/33_HISTORICAL_HEADERS.md`; `docs/recon/36_STRUCT_RECOVERY.md`; `docs/recon/37_RETURN_CLEANUP.md`; `docs/recon/38_BODY_ORDER.md`; `docs/recon/39_UNREACHABLE.md`; `docs/recon/35_FULL_RECOMPILE.md`; `docs/recon/31_COMPILER_CODEGEN.md` |
+| 8 | 228 compiler-limited recompiles | **met — 228/228 source-level, 0 ABI**: 24 historical headers, 201/201 structs (189 duplicate-return + 12 historical prototypes), 3 body-order via the historical compiler; full 8,666 rerun **8,666/8,666 raw exact** | `docs/recon/33_HISTORICAL_HEADERS.md`; `docs/recon/36_STRUCT_RECOVERY.md`; `docs/recon/37_RETURN_CLEANUP.md`; `docs/recon/38_BODY_ORDER.md`; `docs/recon/39_UNREACHABLE.md`; `docs/recon/35_FULL_RECOMPILE.md`; `docs/recon/31_COMPILER_CODEGEN.md` |
 | 9 | 306 corpus-unused actions | **met — 306/306** invoked against a prepared world; 42 specific + 264 generic; **0 default**, 0 errors; **82 state-derived value assertions plus 20 SWMG set/get pairs**, with event/queue/mediation assertions for every action | `docs/recon/34_ACTION_BEHAVIOR.md`; `tools/vm/behavior_suite.py`; `artifacts/lanes/s3-02-actions/behavior_suite.json` |
 
 ## Functional corpus result
@@ -119,10 +120,10 @@ The ledger is:
 | ABI | 0 | no bytecode transform remains |
 | **total** | **228** | **228/228 source-level byte-identical** |
 
-The full 8,666-script rerun is **8,665/8,666 raw byte-identical**, with **0 compiler-limited**
-and **0 unexpected** files. The single remaining file is `k_plev_space_hb`: its discarded block
-reuses one stack slot as an `int` in the loop condition and an `object` in the loop body, which
-NWScript's type checker rejects (`docs/recon/39_UNREACHABLE.md`). The raw compiler output is
+The full 8,666-script rerun is **8,666/8,666 raw byte-identical**, with **0 compiler-limited**,
+**0 reachable-only**, and **0 unexpected** files. Five scripts needed their decompiler-dropped
+unreachable statements restored (`docs/recon/39_UNREACHABLE.md`); four are a single
+`SetGlobalNumber`, and `k_plev_space_hb` is a party-damage loop. The raw compiler output is
 recorded and hashed per file. Evidence: `docs/recon/31_COMPILER_CODEGEN.md`,
 `docs/recon/35_FULL_RECOMPILE.md`, `artifacts/lanes/s3-live/codegen_reconcile.json`.
 
@@ -155,10 +156,9 @@ record every mediated engine effect in the world event log. Evidence: `docs/reco
 - P6/P7 content and release work.
 - The live run covers 28 unique programs (including 7 resumed/command bodies); the static
   full-corpus VM covers all 8,666 scripts.
-- One shipped script (`k_plev_space_hb`) contains unreachable code that the decompiler dropped
-  and that cannot be expressed in NWScript: the discarded block reuses one stack slot as an
-  `int` and an `object`. It is the single `reachable_only` row; the other 8,665 scripts,
-  including all 228 compiler-limited files, recompile byte-identically from source.
+- Every shipped script recompiles byte-identically from source. The 228 compiler-limited files
+  use no bytecode transform, and the five unreachable-statement scripts are restored at source
+  level (`docs/recon/39_UNREACHABLE.md`).
 
 ## Test totals
 
