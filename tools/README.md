@@ -132,15 +132,18 @@ Upgrade target: Ghidra 12.2 once verified (CVE-2026-100503 affects ≤12.1.4).
 
 ## Hydralysis + Hydra Engine (shared warm analysis engine)
 
-Set up 2026-11-01 from the now-public repos, latest releases:
+Updated 2026-11-02 to the latest releases (`docs/recon/40_HYDRA_UPGRADE.md` records the
+before/after and the Sprint 0–3 impact check):
 
-- **Hydralysis v0.7.0** (`github.com/RusticStack/Hydralysis`, tag `v0.7.0`, MIT): checkout at
-  `tools/hydralysis/` (gitignored), editable-installed into `tools/.venv/` (gitignored).
-  CLI/MCP: `tools/.venv/Scripts/hydralysis.exe` (20 tools; `rusticre` alias also installed).
-- **Hydra Engine 12.3-hydra.5** (`github.com/RusticStack/hydra-engine`, tag `v12.3-hydra.5`,
+- **Hydralysis v0.8.0** (`github.com/RusticStack/Hydralysis`, tag `v0.8.0`, commit `838c9bf`,
+  MIT): checkout at `tools/hydralysis/` (gitignored), editable-installed into `tools/.venv/`
+  (gitignored). CLI/MCP: `tools/.venv/Scripts/hydralysis.exe` (**21 tools**, including the new
+  semantic `trace` tool; `rusticre` alias also installed). MCP catalog epoch **5** — restart
+  the MCP harness once to load the new catalog.
+- **Hydra Engine 12.3-hydra.6** (`github.com/RusticStack/hydra-engine`, tag `v12.3-hydra.6`,
   Apache-2.0, Ghidra 12.3 DEV fork, headless only): installed by `hydralysis backend install`
-  into `tools/hydra-root/backends/hydra-12.3-hydra.5` (engine) and
-  `.../hydra-client-12.3-hydra.5` (Python client), SHA-256-verified against the release
+  into `tools/hydra-root/backends/hydra-12.3-hydra.6` (engine) and
+  `.../hydra-client-12.3-hydra.6` (Python client), SHA-256-verified against the release
   `SHA256SUMS` before extraction. JDK: Eclipse Adoptium `jdk-25.0.4.101-hotspot` (found by
   `backend install`; JDK 25+ required).
 - Data root (engines, daemon state, jobs, evidence): `tools/hydra-root/` (gitignored), pinned in
@@ -153,13 +156,16 @@ Set up 2026-11-01 from the now-public repos, latest releases:
 Verify:
 
 ```bash
-tools/.venv/Scripts/hydralysis.exe backend inspect        # ready: true, engine 12.3-hydra.5 pinned
+tools/.venv/Scripts/hydralysis.exe backend inspect        # ready: true, engine 12.3-hydra.6 pinned
 tools/.venv/Scripts/hydralysis.exe backend status         # daemon running, protocol 3
 tools/.venv/Scripts/hydralysis.exe call backend --args '{"action":"status"}'
 ```
 
 Notes: Hydralysis runs Hydra Engine only; the ambient `GHIDRA_INSTALL_DIR` (stock Ghidra 12.1.4)
-is ignored and reported under `ignored` by `backend inspect`. The stock-Ghidra project of record
+is ignored and reported under `ignored` by `backend inspect`. The new semantic trace tool is
+`hydralysis call trace --args '{"action":"status"}'` on the CLI (MCP tool `trace`); it needs a
+build-bound trace profile and a runtime capture or an imported TRACE-1 JSONL, and it reports
+coverage gaps rather than treating absence as proof. The stock-Ghidra project of record
 remains `artifacts/ghidra/kotor.gpr`; adopt it in place with
 `hydralysis prepare --adopt artifacts/ghidra --exe <install>/swkotor.exe --target kotor` when a
 warm target is needed (a Hydra-saved project cannot be reopened by Ghidra ≤12.2). The data root is

@@ -93,7 +93,8 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   `docs/recon/33_HISTORICAL_HEADERS.md`, `docs/recon/34_ACTION_BEHAVIOR.md`,
   `docs/recon/35_FULL_RECOMPILE.md`, `docs/recon/36_STRUCT_RECOVERY.md`,
   `docs/recon/37_RETURN_CLEANUP.md`, `docs/recon/38_BODY_ORDER.md`,
-  `docs/recon/39_UNREACHABLE.md`, and `docs/SPRINT3_REPORT.md`.
+  `docs/recon/39_UNREACHABLE.md`, `docs/recon/40_HYDRA_UPGRADE.md`, and
+  `docs/SPRINT3_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -143,7 +144,8 @@ Start with:
 - [`docs/recon/36_STRUCT_RECOVERY.md`](docs/recon/36_STRUCT_RECOVERY.md) - source-level `tLastRound` struct recovery (201 files)
 - [`docs/recon/37_RETURN_CLEANUP.md`](docs/recon/37_RETURN_CLEANUP.md) - duplicate trailing-return cleanup and 12 historical prototypes (201/201 source-level)
 - [`docs/recon/38_BODY_ORDER.md`](docs/recon/38_BODY_ORDER.md) - historical function-address assignment (3 scripts)
-- [`docs/recon/39_UNREACHABLE.md`](docs/recon/39_UNREACHABLE.md) - restored unreachable statements (4 scripts, 1 residual)
+- [`docs/recon/39_UNREACHABLE.md`](docs/recon/39_UNREACHABLE.md) - restored unreachable statements (5 scripts, 0 residual)
+- [`docs/recon/40_HYDRA_UPGRADE.md`](docs/recon/40_HYDRA_UPGRADE.md) - Hydralysis 0.8.0 / Hydra 12.3-hydra.6 upgrade and Sprint 0-3 impact check
 - [`docs/SPRINT2_REPORT.md`](docs/SPRINT2_REPORT.md) — Sprint 2 (P2 G2 + P3 VM core) exit report
 - [`docs/SPRINT2.md`](docs/SPRINT2.md) — Sprint 2 plan: exit criteria, lanes, shared-resource rules
 - [`docs/SPRINT1_REPORT.md`](docs/SPRINT1_REPORT.md) — Sprint 1 (P1) exit report and gate G1
