@@ -1,9 +1,10 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 1 (P1 data completeness) complete — gate G1 met (2026-11-01).** There is still no
-playable engine build; P2/P3 binary+VM work and P4/P5 renderer work continue on the frozen data
-foundation. The Sprint 1 plan and exit report are in `docs/SPRINT1.md` / `docs/SPRINT1_REPORT.md`;
-the P0 gate and handoff remain in `docs/P0_REPORT.md`.
+Status: **Sprint 2 (P2 G2 + P3 VM core) complete — gate S2 met (2026-11-02).** There is still no
+playable engine build; P3 functional actions and P4/P5 renderer work continue on the frozen data
+foundation and the executable NCS VM. Sprint plans/reports: `docs/SPRINT1.md` /
+`docs/SPRINT1_REPORT.md` and `docs/SPRINT2.md` / `docs/SPRINT2_REPORT.md`; the P0 gate and
+handoff remain in `docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
 does not ship, download, extract, or redistribute game assets, and it does not require or execute
@@ -63,6 +64,13 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   textured area/GUI viewer.
   See `docs/recon/17`–`25`
   and `docs/SPRINT1_REPORT.md`.
+- Sprint 2 (P2 G2 + P3 VM core): **772/772 action specs** with return types and typed stubs;
+  engine map with 10,302 engine functions, 0 unknown, 0 unexplained `.text`, dispatcher
+  `0x0052c0d0`, 565/565 handler targets; an independent NCS VM executed **8,666/8,666** unique
+  shipped scripts with 0 decode errors, 0 VM faults, 0 unknown actions, and 0 invalid jump
+  targets (8,184 returned, 472 blocked at `ActionWait`, 10 budget). Tests: 128 OK (1 skip).
+  See `docs/recon/26_ENGINE_MAP.md`, `docs/recon/27_VM_EXECUTION.md`, and
+  `docs/SPRINT2_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -101,6 +109,8 @@ Start with:
 
 - [`engine/docs/BUILD.md`](engine/docs/BUILD.md) — build the engine scaffold and run its smoke tests
 - [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) — program lanes, phases, gates, verification
+- [`docs/SPRINT2_REPORT.md`](docs/SPRINT2_REPORT.md) — Sprint 2 (P2 G2 + P3 VM core) exit report
+- [`docs/SPRINT2.md`](docs/SPRINT2.md) — Sprint 2 plan: exit criteria, lanes, shared-resource rules
 - [`docs/SPRINT1_REPORT.md`](docs/SPRINT1_REPORT.md) — Sprint 1 (P1) exit report and gate G1
 - [`docs/SPRINT1.md`](docs/SPRINT1.md) — Sprint 1 plan: exit criteria, lanes, shared-resource rules
 - [`docs/SPRINT0_REPORT.md`](docs/SPRINT0_REPORT.md) — Sprint 0 exit report, lane results, and gaps
