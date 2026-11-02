@@ -10,6 +10,7 @@ _TOOLS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, _TOOLS)
 
 from analysis import action_specs, engine_map  # noqa: E402
+from vm import dispatch_check  # noqa: E402
 
 
 class ActionSpecTests(unittest.TestCase):
@@ -57,6 +58,22 @@ class EngineMapTests(unittest.TestCase):
         doc = engine_map.markdown(m)
         self.assertIn("0x7450e4", doc)
         self.assertNotIn("0x0x7450e4", doc)
+
+
+class DispatchCheckTests(unittest.TestCase):
+    def test_typed_return_cells(self):
+        specs = {"actions": [
+            {"id": 0, "name": "Int", "return": "int", "params": [{"type": "int"}]},
+            {"id": 1, "name": "Void", "return": "void", "params": [{"type": "string"}]},
+            {"id": 2, "name": "Vec", "return": "vector", "params": []},
+            {"id": 3, "name": "Delay", "return": "void",
+             "params": [{"type": "float"}, {"type": "action"}]},
+            {"id": 202, "name": "Wait", "return": "void", "params": [{"type": "float"}]},
+        ]}
+        result = dispatch_check.check_specs(specs)
+        self.assertEqual(result["count"], 5)
+        self.assertEqual(result["dispatched"], 5)
+        self.assertEqual(result["errors"], [])
 
 
 if __name__ == "__main__":

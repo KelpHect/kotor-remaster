@@ -16,7 +16,7 @@ Baseline: Sprint 1 / gate G1 (`docs/SPRINT1_REPORT.md`), P0 inventory v4
 | 1 | 772 action specification stubs | **met — 772/772** | `tools/analysis/action_specs.py`; `artifacts/lanes/s2-01-engine-map/action_specs.json`; 772 return types, 772 handlers present, 565 unique handler targets |
 | 2 | Engine map / G2 closure | **met** — 10,302 engine functions, 0 unknown, 0 unexplained `.text`, 772/772 actions, 565/565 handlers, dispatcher + initializer documented | `tools/analysis/engine_map.py`; `docs/recon/26_ENGINE_MAP.md`; `artifacts/lanes/s2-01-engine-map/engine_map.json` |
 | 3 | NCS VM core | **met** — opcodes `0x01–0x2D`, typed 4-byte stack, SP/BP, `SAVEBP`/`RESTOREBP`, separate JSR/RETN return stack, `STORESTATE`, `DESTRUCT`, recursion limit 8 | `tools/vm/ncs_vm.py`; `tools/vm/tests/test_ncs_vm.py` **15/15** |
-| 4 | Action mediation | **met — 772/772** registry entries; 345 action ids exercised; 0 unknown; functor args consume 0 cells; every non-void action returns a typed default | `action_specs.json`; corpus ledger `actions_used=345`, `unknown_action_ids=[]` |
+| 4 | Action mediation | **met — 772/772** specs and **772/772** direct dispatch check; 345 action ids exercised in the corpus; 0 unknown; functor args consume 0 cells; every non-void action returns a typed default | `tools/vm/dispatch_check.py` (772 dispatched, 0 errors); corpus ledger `actions_used=345`, `unknown_action_ids=[]` |
 | 5 | Full-corpus execution | **met — 8,666/8,666** decoded and executed; 0 decode errors, 0 VM faults, 0 unknown actions; 8,184 returned, 472 blocked at `ActionWait`, 10 budget stops | `tools/vm/corpus_run.py`; `docs/recon/27_VM_EXECUTION.md`; `artifacts/lanes/s2-03-vm-corpus/vm_corpus.json` |
 | 6 | Disassembly/control-flow parity | **met** — every `JMP`/`JSR`/`JZ`/`JNZ` and `STORESTATE` target resolves to a decoded instruction; 0 invalid targets | `validate_control_flow()` in `tools/vm/ncs_vm.py`; corpus ledger |
 | 7 | Evidence/repo/tests | **met** — 128 `run_all` tests OK (1 skip), 211 format tests OK, 32 script tests OK, 15 VM tests OK; install untouched; no assets in tracked files | test logs; `git status` |
@@ -59,6 +59,10 @@ save/GFF, renderer, input/camera, audio, chargen/UI, minimap).
 - ACTION mediation with declared parameter widths (vector 3 cells, functor 0 cells, others 1)
   and typed defaults; no engine code is entered.
 
+`tools/vm/dispatch_check.py` builds a synthetic ACTION for every one of the 772 specs, pushes
+typed default arguments, and verifies the return-cell count (`void` 0, `vector` 3, otherwise 1):
+**772/772 dispatched, 0 errors**.
+
 The shipped compiler's `MOVSP` convention was measured over the corpus: **all 699,919 shipped
 `MOVSP` offsets are negative and pop cells** (`-4` 639,238; `-8` 20,824; `-12` 13,101; ...).
 The first VM version had the sign reversed; correcting it removed all stack drift and the three
@@ -85,8 +89,9 @@ means a 200,000-instruction loop with no wait, which is expected for polled engi
 
 ## Test totals
 
-- `python tools/tests/run_all.py` → **128 tests, OK (1 pre-existing skip: no save in the
-  reference install itself)**; includes 15 VM tests and 17 mapcompile tests.
+- `python tools/tests/run_all.py` → **129 tests, OK (1 pre-existing skip: no save in the
+  reference install itself)**; includes 15 VM tests, 4 Sprint 2 tool tests, and 17 mapcompile
+  tests.
 - `python -m unittest discover -s tools/formats -p "test_*.py"` → **211 tests, OK**;
   `validate_all.py` → `all_ok=True`.
 - `python -m unittest discover -s tools/scripts/tests -p "test_*.py"` → **32 tests, OK**.
@@ -120,6 +125,9 @@ python tools/analysis/engine_map.py \
   --specs artifacts/lanes/s2-01-engine-map/action_specs.json \
   --out-json artifacts/lanes/s2-01-engine-map/engine_map.json \
   --out-doc docs/recon/26_ENGINE_MAP.md
+python tools/vm/dispatch_check.py \
+  --specs artifacts/lanes/s2-01-engine-map/action_specs.json \
+  --out artifacts/lanes/s2-02-vm-core/dispatch_check.json
 python tools/vm/corpus_run.py \
   --corpus artifacts/lanes/04-ncs/extracted/unique \
   --specs artifacts/lanes/s2-01-engine-map/action_specs.json \
