@@ -1,27 +1,20 @@
 #!/usr/bin/env python3
-"""Reconcile the 228 compiler-limited NCS recompiles byte-for-byte.
+"""Verify the 228 compiler-limited NCS recompiles byte-for-byte.
 
-The clean-room NCS->NSS decompiler (`artifacts/lanes/ncs-decompiler`) produces
-source that, recompiled with the shipped ``nwnnsscomp_ktool``, is byte-identical
-for 8,428 of the 8,666 shipped scripts.  The remaining 228 differ only in
-compiler ABI conventions:
+All 228 are now source-level: unchanged clean-room NSS compiles to the shipped
+bytes with no bytecode transform.
 
-* 201 files: the historical compiler copies a 40-byte global struct group and
-  slices one field (`CPTOPBP size=40; DESTRUCT(40,field,4)`); ktool emits the
-  equivalent scalar copy, and 199 of them also drop one five-instruction
-  compiler cleanup block (``CPTOPSP; CPDOWNSP; MOVSP; JMP; MOVSP``).
-* 24 files: ktool materializes trailing default arguments; the historical
-  compiler omitted them at these call sites.
-* 3 files: the historical compiler assigned body addresses in emitted-JSR
-  order; ktool uses parse order.  Every body and every JSR callee is identical.
+* 24 files: per-file historical prototype headers (default-argument arity).
+* 201 files: struct recovery, the duplicate trailing-return cleanup, and a
+  per-file historical `ActionStartConversation` prototype.
+* 3 files: the historical nwnnsscomp rebuild (`tools/compiler`), which
+  discovers call arguments right-to-left.
 
-This tool applies those three named, deterministic ABI transforms to the raw
-ktool output and verifies that the result is byte-identical to the shipped
-NCS.  It does not change the clean-room source or the decompiler; the source
-recovery remains independently verified by the lane's 8,666-row status ledger.
-
-The transform is *reconciliation*, not source compilation: the raw ktool
-output is always recorded and hashed, and every transform is reported per file.
+This tool reads a ledger of the 228 names, copies/points at the final NSS
+outputs, and compares every recompiled NCS with the shipped file.  The
+historical ABI transform helpers remain for regression tests of the retired
+paths, but the report expects zero transforms.  The raw output is hashed per
+file; the clean-room source is never silently replaced.
 
 Usage:
     python -m tools.scripts.codegen_reconcile \
@@ -369,17 +362,35 @@ def main(argv=None) -> int:
     for row in ledger["scripts"]:
         if (row.get("decompile") or {}).get("class") == "compiler-limited":
             names.append(row["decompile"]["name"])
-    names = sorted(n for n in names if n not in source_exact)
+    names = sorted(names)
 
     rows = []
     transforms = Counter()
     failures = []
+    verified_source = 0
     for name in names:
         op = corpus / f"{name}.ncs"
         np = recompiled / f"{name}.ncs"
         if not op.exists() or not np.exists():
             failures.append({"name": name, "error": "missing input"})
             rows.append({"name": name, "equal": False, "error": "missing input"})
+            continue
+        if name in source_exact:
+            ob = op.read_bytes()
+            nb = np.read_bytes()
+            equal = nb == ob
+            rows.append({
+                "name": name,
+                "source_level": True,
+                "equal": equal,
+                "input_sha256": _sha(ob),
+                "recompiled_sha256": _sha(nb),
+            })
+            if equal:
+                verified_source += 1
+            else:
+                failures.append({"name": name,
+                                 "error": "source-level output differs"})
             continue
         ob = op.read_bytes()
         nb = np.read_bytes()
@@ -398,32 +409,38 @@ def main(argv=None) -> int:
             failures.append(rec)
 
     source_count = len(source_exact)
+    abi_names = [n for n in names if n not in source_exact]
     abi_expected = EXPECTED - source_count
-    total_ok = source_count + len(names) - len(failures)
+    abi_ok = sum(1 for r in rows
+                 if not r.get("source_level") and r.get("equal"))
+    total_ok = verified_source + abi_ok
     report = {
-        "schema": "kotor-s3-codegen-reconcile/1",
+        "schema": "kotor-s3-codegen-reconcile/2",
         "build_sha256": ledger.get("build_sha256"),
         "expected": EXPECTED,
         "files": len(names),
         "source_level": {
             "count": source_count,
+            "verified": verified_source,
             "files": sorted(source_exact),
             "ledger": args.source_exact,
         },
-        "reconciled": len(names) - len(failures),
+        "abi_files": abi_names,
+        "reconciled": abi_ok,
         "total_byte_identical": total_ok,
         "transforms": dict(sorted(transforms.items())),
         "failures": failures,
         "gate": {
-            "all_228_present": source_count + len(names) == EXPECTED,
+            "all_228_present": source_count + len(abi_names) == EXPECTED,
             "all_228_byte_identical": total_ok == EXPECTED and not failures,
             "zero_failures": not failures,
         },
         "rows": rows,
     }
     if args.source_exact:
+        report["gate"]["source_level_verified"] = verified_source == source_count
         report["gate"]["source_level_at_least_24"] = source_count >= 24
-        report["gate"]["abi_expected"] = abi_expected
+        report["gate"]["abi_expected_zero"] = abi_expected == 0
     out_json = Path(args.out_json)
     out_json.parent.mkdir(parents=True, exist_ok=True)
     out_json.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n",
@@ -441,8 +458,8 @@ def main(argv=None) -> int:
         "",
         "| check | result |",
         "|---|---|",
-        f"| Source-level byte-identical (headers + struct recovery) | **{source_count}** |",
-        f"| ABI-reconciled byte-identical | **{report['reconciled']}/{abi_expected}** |",
+        f"| Source-level byte-identical (verified bytes) | **{verified_source}/{source_count}** |",
+        f"| ABI-reconciled byte-identical | **{report['reconciled']}** (retired) |",
         f"| Total byte-identical | **{report['total_byte_identical']}/{EXPECTED}** |",
         f"| Failures | **{len(failures)}** |",
         "",
@@ -450,12 +467,10 @@ def main(argv=None) -> int:
         "",
         "| transform | files | meaning |",
         "|---|---:|---|",
-        f"| source-level | {source_count} | historical prototype arity (24), "
-        "`tLastRound` struct recovery (2), duplicate trailing-return cleanup (187) |",
-        f"| struct-group | {transforms.get('struct-group', 0)} | restore the historical "
-        "`CPTOPBP size=40; DESTRUCT` group slice and the five-instruction cleanup block |",
-        f"| body-order | {transforms.get('body-order', 0)} | reorder function bodies to the "
-        "historical emitted-JSR address order |",
+        f"| source-level | {source_count} | all 228 compile from unchanged clean-room source; "
+        "no bytecode transform is needed |",
+        f"| struct-group | {transforms.get('struct-group', 0)} | retired (was 12) |",
+        f"| body-order | {transforms.get('body-order', 0)} | retired (was 3) |",
         "",
         "## Method",
         "",
@@ -463,10 +478,13 @@ def main(argv=None) -> int:
         "per-file historical prototype headers (`docs/recon/33_HISTORICAL_HEADERS.md`); "
         "the 201 struct cases are recovered at source level by "
         "`tools/scripts/struct_source.py` (`docs/recon/36_STRUCT_RECOVERY.md`).",
-        "- Of the 201 struct cases, 189 are source-level exact (2 pure struct recovery + "
-        "187 duplicate trailing-return cleanup fixes); 12 use the full struct-group ABI "
-        "path because their control-flow cleanup shape differs.",
-        "- The raw ktool output is recorded and hashed per file; the reconciler never "
+        "- All 201 struct cases are now source-level exact: 2 pure struct recovery, 187 "
+        "duplicate trailing-return fixes, and 12 historical `ActionStartConversation` "
+        "prototypes (`docs/recon/37_RETURN_CLEANUP.md`).",
+        "- The 3 body-order cases compile with the historical nwnnsscomp rebuild "
+        "(`tools/compiler`), which discovers call arguments right-to-left "
+        "(`docs/recon/38_BODY_ORDER.md`).",
+        "- The raw compiler output is recorded and hashed per file; the reconciler never "
         "replaces it silently.",
         "- The clean-room decompiler's source recovery is unchanged. The lane's 8,666-row "
         "`status.jsonl` remains the source-recovery ledger (8,428 exact, 0 decompiler-side "

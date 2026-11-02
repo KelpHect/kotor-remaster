@@ -9,15 +9,21 @@ compiler-limited ledger.
 
 Classification:
   raw_exact        - recompiled bytes equal the shipped NCS
-  compiler_limited - in the 228 class; still needs the documented ABI transforms
+  compiler_limited - in the 228 class; still needs a compiler fix
   header_limited   - one of the 5 anomalous-action files (needs a lane-local prototype)
-  reachable_only   - one of the 5 unreachable-code files
+  reachable_only   - one of the unreachable-code files
   other            - unexpected (a gate failure)
+
+Per-file NSS overrides (`--struct-nss`) supply struct-recovered and
+reachable-statement-restored source.  The three function-layout files compile
+with the historical nwnnsscomp rebuild (`--patched-compiler`, tools/compiler).
 
 Usage:
     python -m tools.scripts.recompile_all \
         --corpus artifacts/lanes/04-ncs/extracted/unique \
         --nss artifacts/lanes/ncs-decompiler/cont2/out/nss \
+        --struct-nss artifacts/lanes/s3-live/struct-nss-final \
+        --patched-compiler artifacts/lanes/s3-live/tools/nwnnsscomp_hist.exe \
         --header artifacts/lanes/ncs-decompiler/cont2/runs/incwhile-v10/bin/nwscript.nss \
         --compiler artifacts/lanes/04-ncs/tools/DeNCS/tools/nwnnsscomp_ktool.exe \
         --specs artifacts/lanes/s2-01-engine-map/action_specs.json \
@@ -41,7 +47,7 @@ from pathlib import Path
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, ".."))
-from scripts import historical_headers  # noqa: E402
+from scripts import body_order, historical_headers  # noqa: E402
 from scripts import ncs  # noqa: E402
 
 EXPECTED = 8666
@@ -61,7 +67,11 @@ def main(argv=None) -> int:
     ap.add_argument("--corpus-json", required=True)
     ap.add_argument("--taxonomy", required=True)
     ap.add_argument("--struct-nss",
-                    help="struct-nss directory from tools/scripts/struct_source.py")
+                    help="per-file NSS override directory (struct recovery and "
+                         "reachable-code fixes)")
+    ap.add_argument("--patched-compiler",
+                    help="historical nwnnsscomp rebuild (tools/compiler) used "
+                         "for the function-layout class")
     ap.add_argument("--out-json", required=True)
     ap.add_argument("--out-doc", required=True)
     ap.add_argument("--work", default="artifacts/lanes/s3-live/recompile-work")
@@ -89,10 +99,10 @@ def main(argv=None) -> int:
         elif cls["class"].startswith("function layout"):
             for name in cls["files"]:
                 classes[name] = "compiler_limited"
-    struct_names = set()
+    body_order_names = set()
     for cls in taxonomy["taxonomy"]["compiler_limited"]["classes"]:
-        if cls["class"].startswith("CPTOPBP"):
-            struct_names.update(cls["files"])
+        if cls["class"].startswith("function layout"):
+            body_order_names.update(cls["files"])
     header_overrides = {}
     for entry in taxonomy["taxonomy"]["header_limited"]["files"]:
         classes[entry["file"]] = "header_limited"
@@ -108,20 +118,19 @@ def main(argv=None) -> int:
     for name in names:
         op = corpus / f"{name}.ncs"
         np = nss_dir / f"{name}.nss"
-        struct_mode = bool(args.struct_nss) and name in struct_names
-        if struct_mode:
+        body_mode = bool(args.patched_compiler) and name in body_order_names
+        if not body_mode and args.struct_nss:
             candidate = Path(args.struct_nss) / name / f"{name}.nss"
-            struct_mode = candidate.exists()
-            if struct_mode:
+            if candidate.exists():
                 np = candidate
         if not op.exists() or not np.exists():
             rows.append({"name": name, "status": "other",
                          "error": "missing input"})
             continue
         orig = op.read_bytes()
-        if struct_mode:
-            header_text = full_header_text
-            applied = [{"struct_source": True}]
+        if body_mode:
+            header_text = body_order._compiler_header(full_header_text)
+            applied = [{"body_order": True}]
         else:
             trims = historical_headers._trims(orig, spec_by_id)
             header_text, applied = historical_headers._header_for(
@@ -145,17 +154,21 @@ def main(argv=None) -> int:
             "trims": applied,
             "input_sha256": _sha(orig),
             "nss": np,
+            "body_mode": body_mode,
         })
 
     grouped = defaultdict(list)
     for e in entries:
-        grouped[e["header"]].append(e)
+        grouped[(e["header"], e["body_mode"])].append(e)
     batches = []
-    for h, group in grouped.items():
-        for i in range(0, len(group), 100):
-            batches.append((h, group[i:i + 100]))
+    for (h, body_mode), group in grouped.items():
+        step = 1 if body_mode else 100
+        for i in range(0, len(group), step):
+            batches.append((h, body_mode, group[i:i + step]))
+    patched = (str(Path(args.patched_compiler).resolve())
+               if args.patched_compiler else None)
 
-    for bi, (h, chunk) in enumerate(batches):
+    for bi, (h, body_mode, chunk) in enumerate(batches):
         print(f"recompile batch {bi}/{len(batches)}", flush=True)
         d = work / f"batch-{bi:04d}"
         d.mkdir(parents=True, exist_ok=True)
@@ -166,10 +179,14 @@ def main(argv=None) -> int:
         for e in chunk:
             shutil.copy2(e["nss"], d / f"{e['name']}.nss")
         try:
+            if body_mode:
+                cmd = ([patched, "-c", "-i", ".", "-v129"] +
+                       [f"{e['name']}.nss" for e in chunk])
+            else:
+                cmd = ([compiler, "-c", "-g", "1", "--outputdir", "."] +
+                       [f"{e['name']}.nss" for e in chunk])
             r = subprocess.run(
-                [compiler, "-c", "-g", "1", "--outputdir", "."] +
-                [f"{e['name']}.nss" for e in chunk],
-                cwd=d, capture_output=True, text=True, timeout=600)
+                cmd, cwd=d, capture_output=True, text=True, timeout=600)
             log = (r.stdout or "") + (r.stderr or "")
             rc = r.returncode
         except subprocess.TimeoutExpired:
@@ -191,6 +208,7 @@ def main(argv=None) -> int:
                 "name": name,
                 "status": status,
                 "trims": e["trims"],
+                "compiler": "historical" if body_mode else "ktool",
                 "byte_equal": equal,
                 "input_sha256": e["input_sha256"],
                 "compiled_sha256": _sha(out.read_bytes()) if out.exists() else None,
@@ -215,7 +233,8 @@ def main(argv=None) -> int:
             "all_files_present": len(rows) == EXPECTED,
             "no_unexpected": not other,
             "raw_exact_at_least": counts.get("raw_exact", 0) >= (
-                8646 if args.struct_nss else 8452),
+                8665 if (args.struct_nss and args.patched_compiler)
+                else 8646 if args.struct_nss else 8452),
             "classified_total": (counts.get("raw_exact", 0)
                                  + counts.get("compiler_limited", 0)
                                  + counts.get("header_limited", 0)
@@ -240,9 +259,9 @@ def main(argv=None) -> int:
         "| class | files | meaning |",
         "|---|---:|---|",
         f"| raw_exact | {report['raw_exact']} | recompiled bytes equal the shipped NCS |",
-        f"| compiler_limited | {report['compiler_limited']} | the 12 different-cleanup struct + 3 body-order cases |",
+        f"| compiler_limited | {report['compiler_limited']} | still needing a compiler change |",
         f"| header_limited | {report['header_limited']} | the 5 anomalous-action prototype cases |",
-        f"| reachable_only | {report['reachable_only']} | the 5 unreachable-code cases |",
+        f"| reachable_only | {report['reachable_only']} | unreachable code that cannot be expressed in source |",
         f"| other | {len(other)} | unexpected (gate failure) |",
         "",
         "## Method",
@@ -250,14 +269,18 @@ def main(argv=None) -> int:
         "For every script the shipped NCS is scanned for ACTION calls whose arity is smaller than "
         "the current prototype. A per-file `nwscript.nss` is generated with the historical arity, "
         "the unchanged clean-room NSS is compiled with `nwnnsscomp_ktool`, and the result is "
-        "compared byte-for-byte. Files without such calls use the full header.",
+        "compared byte-for-byte. Struct-recovered source uses the same per-file header rule. The "
+        "three function-layout scripts are compiled with the historical nwnnsscomp rebuild "
+        "(`tools/compiler`) at `-v129`, which discovers call arguments right-to-left as the "
+        "shipped compiler did. Files without such calls use the full header.",
         "",
         "The raw_exact count includes the 24 default-argument cases "
-        "(`docs/recon/33_HISTORICAL_HEADERS.md`), the 5 header-limited overrides, the "
-        "2 pure struct recoveries (`docs/recon/36_STRUCT_RECOVERY.md`), and the 187 "
-        "duplicate-return fixes (`docs/recon/37_RETURN_CLEANUP.md`). The 12 "
-        "different-cleanup struct cases and 3 body-order cases remain the ABI group in "
-        "`docs/recon/31_COMPILER_CODEGEN.md`.",
+        "(`docs/recon/33_HISTORICAL_HEADERS.md`), the 5 header-limited overrides, all "
+        "201 struct recoveries (`docs/recon/36_STRUCT_RECOVERY.md`), the duplicate-return "
+        "fixes (`docs/recon/37_RETURN_CLEANUP.md`), and the 3 body-order scripts "
+        "(`docs/recon/38_BODY_ORDER.md`). No compiler-limited or ABI-completed file "
+        "remains; only the 5 unreachable-code scripts are outside source-level "
+        "recompilation.",
         "",
     ]
     out_doc = Path(args.out_doc)

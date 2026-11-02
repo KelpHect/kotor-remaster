@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Restore the compiler's duplicate trailing return in the struct-recovered NSS.
+"""Close the struct-recovered scripts at source level.
 
-After `struct_source.py` recovers the struct, 187 of the 199 remaining files are
-short one five-instruction cleanup block.  The shipped compiler emits two
-identical cleanup blocks for a trailing local `return vN;`; the decompiler kept
-one.  This tool finds the function whose cleanup-block count is one short,
-duplicates that function's last return in the unchanged clean-room NSS, and
-recompiles.  No bytecode is edited.
+After `struct_source.py` recovers the struct, most files are short one
+five-instruction cleanup block.  The shipped compiler emits two identical
+cleanup blocks for a trailing local `return vN;`; the decompiler kept one.  This
+tool finds the function whose cleanup-block count is one short, duplicates that
+function's last return in the unchanged clean-room NSS, and recompiles.
 
-The 12 files whose cleanup shape differs remain for the full struct-group ABI
-path in `codegen_reconcile.py`.
+A subset of the same files also needs the historical prototype arity: the
+shipped scripts call some actions with fewer trailing default arguments than the
+KotOR header declares.  The per-file header is trimmed to the shipped arity with
+the same logic as `historical_headers.py`.
+
+No bytecode is edited.
 
 Usage:
     python -m tools.scripts.return_cleanup \
@@ -18,6 +21,7 @@ Usage:
         --taxonomy artifacts/lanes/ncs-decompiler/cont2/out/residual-taxonomy.json \
         --compiler artifacts/lanes/04-ncs/tools/DeNCS/tools/nwnnsscomp_ktool.exe \
         --header artifacts/lanes/ncs-decompiler/cont2/runs/incwhile-v10/bin/nwscript.nss \
+        --specs artifacts/lanes/s2-01-engine-map/action_specs.json \
         --out-nss artifacts/lanes/s3-live/struct-nss-final \
         --out-json artifacts/lanes/s3-live/return_cleanup.json \
         --out-doc docs/recon/37_RETURN_CLEANUP.md
@@ -37,6 +41,7 @@ from pathlib import Path
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, ".."))
+from scripts import historical_headers  # noqa: E402
 from scripts import ncs as codec  # noqa: E402
 
 CLEAN = ["CPTOPSP", "CPDOWNSP", "MOVSP", "JMP", "MOVSP"]
@@ -100,6 +105,7 @@ def main(argv=None) -> int:
     ap.add_argument("--taxonomy", required=True)
     ap.add_argument("--compiler", required=True)
     ap.add_argument("--header", required=True)
+    ap.add_argument("--specs", required=True)
     ap.add_argument("--out-nss", required=True)
     ap.add_argument("--out-json", required=True)
     ap.add_argument("--out-doc", required=True)
@@ -120,9 +126,14 @@ def main(argv=None) -> int:
         if cls["class"].startswith("CPTOPBP"):
             names = cls["files"]
 
+    specs = json.loads(Path(args.specs).read_text(encoding="utf-8"))
+    spec_by_id = {a["id"]: a for a in specs["actions"]}
+    full_lines = Path(args.header).read_text(encoding="latin-1").splitlines()
+
     rows = []
     exact = 0
     fallback = 0
+    trimmed = 0
     for name in names:
         src = struct_dir / name / f"{name}.nss"
         ncs = struct_dir / name / f"{name}.ncs"
@@ -132,66 +143,75 @@ def main(argv=None) -> int:
                          "reason": "struct output missing"})
             fallback += 1
             continue
-        if ncs.read_bytes() == orig:
-            dst = out_dir / name
-            dst.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dst / f"{name}.nss")
-            shutil.copy2(ncs, dst / f"{name}.ncs")
-            rows.append({"name": name, "status": "source_exact",
-                         "reason": "struct recovery alone"})
-            exact += 1
-            continue
-        oentries, oc = _cleanup_counts(codec.decode(orig))
-        centries, cc = _cleanup_counts(codec.decode(ncs.read_bytes()))
-        missing = [i for i in oc if oc[i] > cc.get(i, 0)]
-        if len(missing) != 1:
-            rows.append({"name": name, "status": "fallback",
-                         "reason": f"missing indices {missing}"})
-            fallback += 1
-            continue
-        entry = f"{oentries[missing[0]]:X}"
+        trims = historical_headers._trims(orig, spec_by_id)
+        header_text, applied = historical_headers._header_for(
+            full_lines, trims, spec_by_id)
+        if trims:
+            trimmed += 1
         text = src.read_text(encoding="latin-1")
-        new = add_duplicate_return(text, entry)
-        if new is None:
-            rows.append({"name": name, "status": "fallback",
-                         "reason": f"no return in f_{entry}"})
-            fallback += 1
-            continue
         d = work / name
         d.mkdir(parents=True, exist_ok=True)
-        (d / f"{name}.nss").write_text(new, encoding="latin-1", newline="\n")
-        (d / "nwscript.nss").write_text(header, encoding="latin-1", newline="\n")
-        (d / "k1_nwscript.nss").write_text(header, encoding="latin-1", newline="\n")
-        try:
-            r = subprocess.run(
-                [compiler, "-c", "-g", "1", "--outputdir", ".", f"{name}.nss"],
-                cwd=d, capture_output=True, text=True, timeout=300)
-        except subprocess.TimeoutExpired:
-            r = None
-        out = d / f"{name}.ncs"
+        (d / "nwscript.nss").write_text(header_text, encoding="latin-1",
+                                        newline="\n")
+        (d / "k1_nwscript.nss").write_text(header_text, encoding="latin-1",
+                                           newline="\n")
+
+        def compile_text(body: str) -> Path:
+            (d / f"{name}.nss").write_text(body, encoding="latin-1",
+                                           newline="\n")
+            try:
+                subprocess.run(
+                    [compiler, "-c", "-g", "1", "--outputdir", ".",
+                     f"{name}.nss"],
+                    cwd=d, capture_output=True, text=True, timeout=300)
+            except subprocess.TimeoutExpired:
+                pass
+            return d / f"{name}.ncs"
+
+        out = compile_text(text)
+        reason = "struct recovery + historical prototype"
+        if not (out.exists() and out.read_bytes() == orig):
+            oentries, oc = _cleanup_counts(codec.decode(orig))
+            _, cc = _cleanup_counts(codec.decode(out.read_bytes()))
+            missing = [i for i in oc if oc[i] > cc.get(i, 0)]
+            if len(missing) == 1:
+                entry = f"{oentries[missing[0]]:X}"
+                new = add_duplicate_return(text, entry)
+                if new is not None:
+                    text = new
+                    out = compile_text(text)
+                    reason = (f"duplicate return in f_{entry} + "
+                              "historical prototype")
         ok = out.exists() and out.read_bytes() == orig
         if ok:
             dst = out_dir / name
             dst.mkdir(parents=True, exist_ok=True)
             shutil.copy2(d / f"{name}.nss", dst / f"{name}.nss")
             shutil.copy2(out, dst / f"{name}.ncs")
+            (dst / "nwscript.nss").write_text(header_text, encoding="latin-1",
+                                              newline="\n")
             rows.append({"name": name, "status": "source_exact",
-                         "reason": f"duplicate return in f_{entry}"})
+                         "reason": reason,
+                         "trims": applied,
+                         "header_sha256": _sha(
+                             header_text.encode("latin-1"))})
             exact += 1
         else:
             rows.append({"name": name, "status": "fallback",
-                         "reason": "different cleanup shape"})
+                         "reason": "still not byte-identical",
+                         "trims": applied})
             fallback += 1
 
     report = {
-        "schema": "kotor-s3-return-cleanup/1",
+        "schema": "kotor-s3-return-cleanup/2",
         "files": len(names),
         "source_exact": exact,
         "fallback": fallback,
+        "historical_prototypes": trimmed,
         "gate": {
             "all_201_present": len(names) == 201,
             "source_exact_plus_fallback": exact + fallback == 201,
-            "fallback_is_12": fallback == 12,
+            "zero_fallback": fallback == 0,
         },
         "rows": rows,
     }
@@ -202,19 +222,22 @@ def main(argv=None) -> int:
     lines = [
         "# 37 — Source-level duplicate trailing-return cleanup",
         "",
-        f"Status: **closed for {exact}/201** — {exact} struct files are raw "
-        "byte-identical after restoring the compiler's duplicate trailing return; "
-        f"{fallback} use the full struct-group ABI path because their cleanup shape differs.",
+        f"Status: **closed** - {exact}/201 struct files are raw byte-identical "
+        "from unchanged clean-room source.",
         "",
         "| check | result |",
         "|---|---|",
         f"| Struct files processed | **{len(names)}/201** |",
         f"| Source-level exact | **{exact}/201** |",
-        f"| Full struct ABI fallback | **{fallback}** |",
+        f"| Historical prototype files | **{trimmed}** |",
+        f"| Fallback | **{fallback}** |",
         "",
-        "The fix duplicates the last local `return vN;` in the function whose "
-        "cleanup-block count is one short. The shipped compiler emits two identical "
-        "cleanup blocks; the decompiler kept one. No bytecode is edited.",
+        "Two source-level fixes are applied. First, a per-file header trims a "
+        "prototype to the call-site arity when the shipped script omitted trailing "
+        "default arguments (12 files call `ActionStartConversation` with 11 arguments "
+        "while the KotOR header declares 12). Second, the compiler's duplicate "
+        "trailing `return vN;` is restored: the shipped compiler emits two identical "
+        "cleanup blocks and the decompiler kept one. No bytecode is edited.",
         "",
     ]
     doc = Path(args.out_doc)

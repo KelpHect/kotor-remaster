@@ -7,19 +7,21 @@ the live differential, the 228 compiler-limited recompiles, and the 306 corpus-u
 Baseline: Sprint 2 / gate S2 (`docs/SPRINT2_REPORT.md`): 772 action specs, engine map, NCS VM,
 8,666/8,666 scripts at 0 faults with typed default stubs.
 
-## Closure decision (2026-11-02)
+## Final source-level closure (2026-11-02)
 
-After the final source-level push (213/228 source-level, 8,646/8,666 raw exact), the user
-directed **“Then finish.”** Sprint 3 is therefore finalized with the documented 15-file ABI
-completion:
+The compiler work is complete. All **228/228** compiler-limited recompiles now come from
+unchanged clean-room source with **no bytecode transform**:
 
-- **12 struct cases** whose five-instruction cleanup shape differs after full struct recovery;
-- **3 body-order cases** whose function-address assignment is compiler-internal.
+- **24** historical prototype headers (default-argument arity);
+- **201** struct recoveries: 189 duplicate trailing-return cleanup fixes, plus 12 files whose
+  `ActionStartConversation` call is an 11-argument KotOR-era call against a 12-parameter header;
+- **3** function-layout files compiled with the historical `nwnnsscomp` rebuild
+  (`tools/compiler`), which discovers call arguments right-to-left.
 
-The accepted closure is **228/228 final bytes byte-identical**; strict source-level remains
-**213/228**, with the full corpus at **8,646/8,666 raw exact**. The remaining ABI paths are
-exactly the 12 `struct-group` and 3 `body-order` rows in
-`artifacts/lanes/s3-live/codegen_reconcile.json`.
+`artifacts/lanes/s3-live/codegen_reconcile.json` reports `source_level 228`, `reconciled 0`,
+`transforms {}`; every row is verified against the shipped NCS bytes. The full 8,666-script
+rerun is **8,665 raw exact + 1 reachable-only** (`k_plev_space_hb`), with 0 compiler-limited
+and 0 unexpected files.
 
 ## Exit criteria (gate S3)
 
@@ -30,9 +32,9 @@ exactly the 12 `struct-group` and 3 `body-order` rows in
 | 3 | VM integration | **met** — runtime is optional; Sprint 2 typed-default mode still works; VM tests green | `tools/vm/ncs_vm.py`; 16 VM tests |
 | 4 | Full-corpus run | **met — 8,666/8,666**; 8,185 returned, 472 blocked at `ActionWait`, 9 budget; 0 decode/VM faults, 0 unknown actions, 0 invalid targets | `tools/vm/corpus_run.py --runtime`; `docs/recon/29_FUNCTIONAL_RUNTIME.md`; `artifacts/lanes/s3-03-corpus/functional_corpus.json` |
 | 5 | Reference-trace suite | **met** — 9 runtime tests cover globals, locals, tags/validity, inventory iterator, timers, action queue, `ActionWait`, strings, and a golden NCS set/get trace | `tools/vm/tests/test_action_runtime.py` |
-| 6 | Tests/docs/repo | **met** — `run_all` 144 OK (1 skip), formats 211 OK, scripts 37 OK, VM 30 OK; install untouched; docs and report written | test logs; `git status` |
+| 6 | Tests/docs/repo | **met** — `run_all` 144 OK (1 skip), formats 211 OK, scripts 39 OK, VM 30 OK; install untouched; docs and report written | test logs; `git status` |
 | 7 | Live differential | **met — 28/28 unique programs**; 400 `ExecuteCode` calls and 12,000 ACTION dispatches (hook limits); action id/IP/SP/BP and `sp_after` match with the engine's return cells injected. The `RunCommand` hook (`0x005d45d0`) captured **4,000** queued-command calls; its paired capture replays **30/30** programs exactly | `docs/recon/32_LIVE_DIFFERENTIAL.md`; `tools/vm/live_diff.py`; `artifacts/lanes/s3-live/live_diff7.json`; `live_diff_runcommand.json` |
-| 8 | 228 compiler-limited recompiles | **met — 228/228 byte-identical / 213 source-level**: 24/24 historical headers, 201/201 structs recovered (189 fully exact, 12 full ABI), 3 body-order ABI; full 8,666 rerun 8,646 raw exact | `docs/recon/33_HISTORICAL_HEADERS.md`; `docs/recon/36_STRUCT_RECOVERY.md`; `docs/recon/37_RETURN_CLEANUP.md`; `docs/recon/35_FULL_RECOMPILE.md`; `docs/recon/31_COMPILER_CODEGEN.md` |
+| 8 | 228 compiler-limited recompiles | **met — 228/228 source-level, 0 ABI**: 24 historical headers, 201/201 structs (189 duplicate-return + 12 historical prototypes), 3 body-order via the historical compiler; full 8,666 rerun 8,665 raw exact + 1 reachable-only | `docs/recon/33_HISTORICAL_HEADERS.md`; `docs/recon/36_STRUCT_RECOVERY.md`; `docs/recon/37_RETURN_CLEANUP.md`; `docs/recon/38_BODY_ORDER.md`; `docs/recon/39_UNREACHABLE.md`; `docs/recon/35_FULL_RECOMPILE.md`; `docs/recon/31_COMPILER_CODEGEN.md` |
 | 9 | 306 corpus-unused actions | **met — 306/306** invoked against a prepared world; 42 specific + 264 generic; **0 default**, 0 errors; **82 state-derived value assertions plus 20 SWMG set/get pairs**, with event/queue/mediation assertions for every action | `docs/recon/34_ACTION_BEHAVIOR.md`; `tools/vm/behavior_suite.py`; `artifacts/lanes/s3-02-actions/behavior_suite.json` |
 
 ## Functional corpus result
@@ -98,29 +100,31 @@ decompiler-side open). The 228 residuals split into three groups:
   `struct tLastRound` (10 fields; `k_inc_generic.nss`). `tools/scripts/struct_source.py`
   restores the struct declaration at the exact global position and rewrites the flattened
   globals to field accesses; `tools/scripts/return_cleanup.py` then restores the compiler's
-  duplicate trailing `return vN;`. Result: **201/201 structs recovered, 189/201 raw
-  byte-identical**; the other 12 have a different cleanup shape and use the full struct ABI.
-  See `docs/recon/36_STRUCT_RECOVERY.md`, `docs/recon/37_RETURN_CLEANUP.md`.
-- **3 body-order cases** are pure function-address permutations that the taxonomy proves cannot
-  be reproduced by a semantically equivalent source.
+  duplicate trailing `return vN;`. Twelve of them also call `ActionStartConversation` with the
+  KotOR-era 11 arguments while the header declares 12, so the per-file header is trimmed to the
+  call-site arity. Result: **201/201 raw byte-identical**. See
+  `docs/recon/36_STRUCT_RECOVERY.md`, `docs/recon/37_RETURN_CLEANUP.md`.
+- **3 body-order cases** compile with the historical `nwnnsscomp` rebuild in `tools/compiler`,
+  which discovers call arguments right-to-left and therefore assigns the same function
+  addresses as the shipped compiler. Result: **3/3 raw byte-identical**; see
+  `docs/recon/38_BODY_ORDER.md`.
 
-The 12 struct cases and the 3 body-order cases are completed by
-`tools/scripts/codegen_reconcile.py`. The ledger is:
+The ledger is:
 
 | class | files | meaning |
 |---|---:|---|
 | source headers | 24 | historical prototype arity, unchanged source |
-| source struct, exact | 189 | 2 pure struct recovery + 187 duplicate-return cleanup |
-| struct-group ABI | 12 | full struct-group reconciliation for a different cleanup shape |
-| body-order ABI | 3 | historical emitted-JSR function order |
-| **total** | **228** | **228/228 byte-identical** |
+| source struct | 201 | 189 duplicate-return + 12 historical prototypes |
+| source body-order | 3 | historical compiler argument discovery |
+| ABI | 0 | no bytecode transform remains |
+| **total** | **228** | **228/228 source-level byte-identical** |
 
-The full 8,666-script rerun is **8,646/8,666 raw byte-identical**; the remaining 15
-compiler-limited files are 12 different-cleanup struct + 3 body-order, plus 5 reachable-only
-files. The raw ktool output is recorded and hashed per file; the decompiler source is not
-silently replaced. Evidence: `docs/recon/31_COMPILER_CODEGEN.md`,
-`docs/recon/35_FULL_RECOMPILE.md`, `docs/recon/36_STRUCT_RECOVERY.md`,
-`docs/recon/37_RETURN_CLEANUP.md`, `artifacts/lanes/s3-live/codegen_reconcile.json`.
+The full 8,666-script rerun is **8,665/8,666 raw byte-identical**, with **0 compiler-limited**
+and **0 unexpected** files. The single remaining file is `k_plev_space_hb`: its discarded block
+reuses one stack slot as an `int` in the loop condition and an `object` in the loop body, which
+NWScript's type checker rejects (`docs/recon/39_UNREACHABLE.md`). The raw compiler output is
+recorded and hashed per file. Evidence: `docs/recon/31_COMPILER_CODEGEN.md`,
+`docs/recon/35_FULL_RECOMPILE.md`, `artifacts/lanes/s3-live/codegen_reconcile.json`.
 
 ## 306 corpus-unused actions
 
@@ -151,18 +155,17 @@ record every mediated engine effect in the world event log. Evidence: `docs/reco
 - P6/P7 content and release work.
 - The live run covers 28 unique programs (including 7 resumed/command bodies); the static
   full-corpus VM covers all 8,666 scripts.
-- The 12 struct cases still need the full struct-group ABI path because their cleanup shape
-  differs, and the 3 body-order cases need a function reorder. These are the only remaining
-  bytecode-level ABI items; 213/228 are source-level (24 headers + 189 struct) and the full
-  corpus is 8,646/8,666 raw exact. A fully source-level closure for the last 15 requires the
-  remaining different-cleanup struct analysis plus a compiler-layout fix for the 3 order cases.
+- One shipped script (`k_plev_space_hb`) contains unreachable code that the decompiler dropped
+  and that cannot be expressed in NWScript: the discarded block reuses one stack slot as an
+  `int` and an `object`. It is the single `reachable_only` row; the other 8,665 scripts,
+  including all 228 compiler-limited files, recompile byte-identically from source.
 
 ## Test totals
 
 - `python tools/tests/run_all.py` → **144 tests, OK (1 pre-existing skip)**.
 - `python -m unittest discover -s tools/formats -p "test_*.py"` → **211 tests, OK**;
   `validate_all.py` → `all_ok=True`.
-- `python -m unittest discover -s tools/scripts/tests -p "test_*.py"` → **37 tests, OK**
+- `python -m unittest discover -s tools/scripts/tests -p "test_*.py"` → **39 tests, OK**
   (includes the compiler-transform and historical-header samples).
 - `python -m unittest discover -s tools/vm/tests -p "test_*.py"` → **30 tests, OK**
   (16 VM + 9 runtime/state + 2 unused-action + 2 live-diff + 1 behavior).
@@ -219,14 +222,34 @@ python -m tools.scripts.return_cleanup \
   --taxonomy artifacts/lanes/ncs-decompiler/cont2/out/residual-taxonomy.json \
   --compiler artifacts/lanes/04-ncs/tools/DeNCS/tools/nwnnsscomp_ktool.exe \
   --header artifacts/lanes/ncs-decompiler/cont2/runs/incwhile-v10/bin/nwscript.nss \
+  --specs artifacts/lanes/s2-01-engine-map/action_specs.json \
   --out-nss artifacts/lanes/s3-live/struct-nss-final \
   --out-json artifacts/lanes/s3-live/return_cleanup.json \
   --out-doc docs/recon/37_RETURN_CLEANUP.md
+python -m tools.scripts.unreachable \
+  --corpus artifacts/lanes/04-ncs/extracted/unique \
+  --nss artifacts/lanes/ncs-decompiler/cont2/out/nss \
+  --header artifacts/lanes/ncs-decompiler/cont2/runs/incwhile-v10/bin/nwscript.nss \
+  --compiler artifacts/lanes/04-ncs/tools/DeNCS/tools/nwnnsscomp_ktool.exe \
+  --taxonomy artifacts/lanes/ncs-decompiler/cont2/out/residual-taxonomy.json \
+  --out-nss artifacts/lanes/s3-live/struct-nss-final \
+  --out-json artifacts/lanes/s3-live/unreachable.json \
+  --out-doc docs/recon/39_UNREACHABLE.md
+# Build the historical compiler (tools/compiler/README.md), then:
+python -m tools.scripts.body_order \
+  --corpus artifacts/lanes/04-ncs/extracted/unique \
+  --nss artifacts/lanes/ncs-decompiler/cont2/out/nss \
+  --header artifacts/lanes/ncs-decompiler/cont2/runs/incwhile-v10/bin/nwscript.nss \
+  --compiler artifacts/lanes/s3-live/tools/nwnnsscomp_hist.exe \
+  --taxonomy artifacts/lanes/ncs-decompiler/cont2/out/residual-taxonomy.json \
+  --out-nss artifacts/lanes/s3-live/body-order-nss \
+  --out-json artifacts/lanes/s3-live/body_order.json \
+  --out-doc docs/recon/38_BODY_ORDER.md
 python -m tools.scripts.codegen_reconcile \
   --corpus artifacts/lanes/04-ncs/extracted/unique \
-  --recompiled artifacts/lanes/ncs-decompiler/cont2/out/ncs \
+  --recompiled artifacts/lanes/s3-live/recon-input-v4 \
   --corpus-json artifacts/lanes/s1-04-scripts/corpus.json \
-  --source-exact artifacts/lanes/s3-live/historical_headers.json \
+  --source-exact artifacts/lanes/s3-live/source_exact_all.json \
   --out-json artifacts/lanes/s3-live/codegen_reconcile.json \
   --out-doc docs/recon/31_COMPILER_CODEGEN.md
 python tools/vm/behavior_suite.py \
@@ -237,7 +260,8 @@ python tools/vm/behavior_suite.py \
 python -m tools.scripts.recompile_all \
   --corpus artifacts/lanes/04-ncs/extracted/unique \
   --nss artifacts/lanes/ncs-decompiler/cont2/out/nss \
-  --struct-nss artifacts/lanes/s3-live/struct-nss \
+  --struct-nss artifacts/lanes/s3-live/struct-nss-final \
+  --patched-compiler artifacts/lanes/s3-live/tools/nwnnsscomp_hist.exe \
   --header artifacts/lanes/ncs-decompiler/cont2/runs/incwhile-v10/bin/nwscript.nss \
   --compiler artifacts/lanes/04-ncs/tools/DeNCS/tools/nwnnsscomp_ktool.exe \
   --specs artifacts/lanes/s2-01-engine-map/action_specs.json \
@@ -256,10 +280,13 @@ New tracked files: `tools/vm/state.py`, `tools/vm/actions_runtime.py`,
 `tools/vm/tests/test_action_behaviors.py`, `tools/vm/tests/test_unused_actions.py`,
 `tools/scripts/codegen_reconcile.py`, `tools/scripts/historical_headers.py`,
 `tools/scripts/struct_source.py`, `tools/scripts/return_cleanup.py`,
+`tools/scripts/body_order.py`, `tools/scripts/unreachable.py`,
 `tools/scripts/recompile_all.py`, `tools/scripts/tests/test_codegen_reconcile.py`,
+`tools/compiler/nwnnsscomp-historical.patch`, `tools/compiler/README.md`,
 `docs/recon/28_ACTION_MODEL.md`, `docs/recon/30_UNUSED_ACTIONS.md`,
 `docs/recon/31_COMPILER_CODEGEN.md`, `docs/recon/32_LIVE_DIFFERENTIAL.md`,
 `docs/recon/33_HISTORICAL_HEADERS.md`, `docs/recon/34_ACTION_BEHAVIOR.md`,
 `docs/recon/35_FULL_RECOMPILE.md`, `docs/recon/36_STRUCT_RECOVERY.md`,
-`docs/recon/37_RETURN_CLEANUP.md`, this report.
+`docs/recon/37_RETURN_CLEANUP.md`, `docs/recon/38_BODY_ORDER.md`,
+`docs/recon/39_UNREACHABLE.md`, this report.
 No game assets, save contents, extracted payloads, or decompiled program text are tracked.

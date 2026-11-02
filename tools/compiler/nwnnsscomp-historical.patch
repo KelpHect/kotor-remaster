@@ -1,0 +1,126 @@
+diff --git a/_NscLib/NscCodeGenerator.cpp b/_NscLib/NscCodeGenerator.cpp
+index f00a05b..ef8faac 100644
+--- a/_NscLib/NscCodeGenerator.cpp
++++ b/_NscLib/NscCodeGenerator.cpp
+@@ -804,6 +804,31 @@ void CNscCodeGenerator::GatherUsed (NscSymbol *pSymbol)
+ //
+ //-----------------------------------------------------------------------------
+ 
++void CNscCodeGenerator::GatherUsedArguments (unsigned char *pauchData,
++                                            size_t nDataSize)
++{
++    //
++    // The historical compiler discovered callees in call arguments from
++    // right to left.  Reproduce that order so function address assignment
++    // matches the shipped scripts.  Code generation itself is unchanged.
++    //
++
++    CNwnArray <size_t> anOffsets;
++    CNwnArray <size_t> anSizes;
++    size_t nOffset = 0;
++    while (nOffset < nDataSize)
++    {
++        NscPCodeHeader *pHeader = (NscPCodeHeader *) &pauchData [nOffset];
++        anOffsets .Add (nOffset);
++        anSizes .Add (pHeader ->nOpSize);
++        nOffset += pHeader ->nOpSize;
++    }
++    for (size_t i = anOffsets .GetCount (); i > 0; i--)
++    {
++        GatherUsed (&pauchData [anOffsets [i - 1]], anSizes [i - 1]);
++    }
++}
++
+ void CNscCodeGenerator::GatherUsed (unsigned char *pauchData, size_t nDataSize)
+ {
+ 
+@@ -965,8 +990,8 @@ void CNscCodeGenerator::GatherUsed (unsigned char *pauchData, size_t nDataSize)
+             // Run the buffer for the arguments
+             //
+ 
+-            GatherUsed (&pauchData [pCall ->nDataOffset],
+-                        pCall ->nDataSize);
++            GatherUsedArguments (&pauchData [pCall ->nDataOffset],
++                                 pCall ->nDataSize);
+ 
+             //
+             // Add this function as being used
+diff --git a/_NscLib/NscCodeGenerator.h b/_NscLib/NscCodeGenerator.h
+index ee7639e..d51ca82 100644
+--- a/_NscLib/NscCodeGenerator.h
++++ b/_NscLib/NscCodeGenerator.h
+@@ -193,6 +193,7 @@ class CNscCodeGenerator
+     // @cmember Gather used elements
+ 
+     void GatherUsed (unsigned char *pauchData, size_t nDataSize);
++    void GatherUsedArguments (unsigned char *pauchData, size_t nDataSize);
+ 
+     // @cmember Write INT32 reversed...
+ 
+diff --git a/_NwnLib/NwnStdLoader.cpp b/_NwnLib/NwnStdLoader.cpp
+index 270f1d2..0c442bd 100644
+--- a/_NwnLib/NwnStdLoader.cpp
++++ b/_NwnLib/NwnStdLoader.cpp
+@@ -43,7 +43,8 @@
+ #include "NwnModuleFile.h"
+ #include "NwnHierarchy.h"
+ #ifdef _WIN32
+-#include <atlbase.h>
++#include <windows.h>
++#pragma comment(lib, "advapi32.lib")
+ #endif
+ 
+ //-----------------------------------------------------------------------------
+@@ -131,7 +132,11 @@ bool CNwnStdLoader::Initialize (const char *pszNwnDir)
+ 
+     std::string str = m_strRoot + "chitin.key";
+     if (!m_asKeyFiles [0] .Open (str .c_str ()))
+-        return false;
++    {
++        // Compile-only operation may not have a Neverwinter Nights install.
++        // The include path is supplied with -i instead.
++        return true;
++    }
+ 
+     //
+     // Open the patch file
+@@ -210,10 +215,10 @@ const char *CNwnStdLoader::GetNwnDirectory ()
+     // Open the NWN registry key
+     //
+ 
+-    CRegKey rkParent;
+-    LONG lRet = rkParent .Open (HKEY_LOCAL_MACHINE, 
+-                                _T ("SOFTWARE\\BioWare\\NWN\\Neverwinter"),
+-                                KEY_READ);
++    HKEY hKey = NULL;
++    LONG lRet = RegOpenKeyExA (HKEY_LOCAL_MACHINE, 
++                               "SOFTWARE\\BioWare\\NWN\\Neverwinter",
++                               0, KEY_READ, &hKey);
+     if (lRet != ERROR_SUCCESS)
+         return NULL;
+ 
+@@ -223,7 +228,10 @@ const char *CNwnStdLoader::GetNwnDirectory ()
+ 
+     static char szText [_MAX_PATH];
+     DWORD dwLen = _MAX_PATH;
+-    lRet = rkParent .QueryStringValue (_T ("Location"), szText, &dwLen);
++    DWORD dwType = REG_SZ;
++    lRet = RegQueryValueExA (hKey, "Location", NULL, &dwType,
++                             (LPBYTE) szText, &dwLen);
++    RegCloseKey (hKey);
+     if (lRet != ERROR_SUCCESS)
+         return NULL;
+     strcat (szText, "\\");
+diff --git a/nwnnsscomp/nwnnsscomp.cpp b/nwnnsscomp/nwnnsscomp.cpp
+index f05c328..d04358a 100644
+--- a/nwnnsscomp/nwnnsscomp.cpp
++++ b/nwnnsscomp/nwnnsscomp.cpp
+@@ -44,7 +44,7 @@
+ #include "../_NwnLib/NwnStdLoader.h"
+ 
+ #ifdef _WIN32
+-#include <atlbase.h>
++#include <windows.h>
+ #include <io.h>
+ #endif
+ #ifdef HAVE_LIBIBERTY_H

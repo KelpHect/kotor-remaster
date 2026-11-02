@@ -1,9 +1,9 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
 Status: **Sprint 3 (P3 functional NCS runtime and P3/G3 residual closure) complete - gate S3 met
-(2026-11-02).** The 15-file compiler-ABI completion (12 different-cleanup struct + 3 body-order)
-is accepted as the Sprint 3 closure; final bytes are 228/228 byte-identical, strict source-level
-is 213/228. There is still no playable engine build; P4/P5 renderer and gameplay work
+(2026-11-02).** All 228 compiler-limited recompiles are now source-level byte-identical with
+zero bytecode transforms; the full corpus is 8,665/8,666 raw exact with one documented
+reachability residual. There is still no playable engine build; P4/P5 renderer and gameplay work
 continues on the frozen data foundation and the executable NCS runtime. Sprint plans/reports:
 `docs/SPRINT1.md` / `docs/SPRINT1_REPORT.md`, `docs/SPRINT2.md` / `docs/SPRINT2_REPORT.md`, and
 `docs/SPRINT3.md` / `docs/SPRINT3_REPORT.md`; the P0 gate and handoff remain in
@@ -82,17 +82,18 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   `ExecuteCode`/action-dispatch differential: 28/28 unique programs, 400 executions, 12,000
   ACTION calls, exact id/IP/SP/BP/return-cell match; the `RunCommand` hook (`0x005d45d0`)
   captured 4,000 queued-command calls and its 30 unique programs also replay 30/30.** **228/228
-  compiler-limited recompiles byte-identical / 213 source-level: 24/24 historical headers,
-  201/201 structs recovered (189 fully exact, 12 full struct ABI), 3 body-order ABI; full 8,666
-  rerun 8,646 raw exact, 15 compiler-limited (12 struct + 3 body), 5 reachable-only.** **306/306
+  compiler-limited recompiles source-level byte-identical, 0 ABI: 24 historical headers, 201/201
+  structs (189 duplicate-return + 12 historical prototypes), 3 body-order via the historical
+  compiler; full 8,666 rerun 8,665 raw exact, 1 reachable-only residual.** **306/306
   corpus-unused actions** behaviorally tested against a prepared world (42 specific + 264
   generic, 0 default, 82 state-derived assertions + 20 SWMG set/get pairs). Tests: 144 OK
-  (1 skip) + 37 script tests. See `docs/recon/28_ACTION_MODEL.md`,
+  (1 skip) + 39 script tests. See `docs/recon/28_ACTION_MODEL.md`,
   `docs/recon/29_FUNCTIONAL_RUNTIME.md`, `docs/recon/30_UNUSED_ACTIONS.md`,
   `docs/recon/31_COMPILER_CODEGEN.md`, `docs/recon/32_LIVE_DIFFERENTIAL.md`,
   `docs/recon/33_HISTORICAL_HEADERS.md`, `docs/recon/34_ACTION_BEHAVIOR.md`,
   `docs/recon/35_FULL_RECOMPILE.md`, `docs/recon/36_STRUCT_RECOVERY.md`,
-  `docs/recon/37_RETURN_CLEANUP.md`, and `docs/SPRINT3_REPORT.md`.
+  `docs/recon/37_RETURN_CLEANUP.md`, `docs/recon/38_BODY_ORDER.md`,
+  `docs/recon/39_UNREACHABLE.md`, and `docs/SPRINT3_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -140,7 +141,9 @@ Start with:
 - [`docs/recon/34_ACTION_BEHAVIOR.md`](docs/recon/34_ACTION_BEHAVIOR.md) - behavioral conformance for the 306 unused actions
 - [`docs/recon/35_FULL_RECOMPILE.md`](docs/recon/35_FULL_RECOMPILE.md) - full 8,666-script source recompile ledger
 - [`docs/recon/36_STRUCT_RECOVERY.md`](docs/recon/36_STRUCT_RECOVERY.md) - source-level `tLastRound` struct recovery (201 files)
-- [`docs/recon/37_RETURN_CLEANUP.md`](docs/recon/37_RETURN_CLEANUP.md) - duplicate trailing-return cleanup (189/201 source-level)
+- [`docs/recon/37_RETURN_CLEANUP.md`](docs/recon/37_RETURN_CLEANUP.md) - duplicate trailing-return cleanup and 12 historical prototypes (201/201 source-level)
+- [`docs/recon/38_BODY_ORDER.md`](docs/recon/38_BODY_ORDER.md) - historical function-address assignment (3 scripts)
+- [`docs/recon/39_UNREACHABLE.md`](docs/recon/39_UNREACHABLE.md) - restored unreachable statements (4 scripts, 1 residual)
 - [`docs/SPRINT2_REPORT.md`](docs/SPRINT2_REPORT.md) — Sprint 2 (P2 G2 + P3 VM core) exit report
 - [`docs/SPRINT2.md`](docs/SPRINT2.md) — Sprint 2 plan: exit criteria, lanes, shared-resource rules
 - [`docs/SPRINT1_REPORT.md`](docs/SPRINT1_REPORT.md) — Sprint 1 (P1) exit report and gate G1
