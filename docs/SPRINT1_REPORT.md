@@ -132,8 +132,11 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
    Load Game listing and quit cleanly; `elev-live-taris2` selected the Taris row (changed 1280×720
    frame) before the module-load transition terminated the process. A hardware-driver profile
    (`profile-hw`, no Mesa DLLs) booted to the menu streams and then terminated at the
-   render/context transition with no render window. So the remaining live blocker is the
-   chargen/module transition on this monitor-off host, not input. Both data questions are
+   render/context transition with no render window. A private Win32 desktop (`SP1_DESKTOP=1`,
+   `CreateDesktopW` + suspended `CreateProcessW` + Frida + `ResumeThread`) reached `status-0` at
+   15 s then terminated before 45 s with no render window: a private desktop also lacks the
+   GL surface. So the remaining live blocker is the chargen/module transition on this
+   monitor-off host, not input. Both data questions are
    **statically bounded** (#23–#28: only `_s`-first mounting and camera mode 0 are possible;
    #32: streamwaves voice path). Owner: P4 vertical slice with an active display/context; run
    artifacts under `artifacts/lanes/s1-06-dynamic/runs/elev-*` and `hw-b-load-taris-20261102`.
