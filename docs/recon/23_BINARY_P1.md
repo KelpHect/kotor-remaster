@@ -258,6 +258,26 @@ The save-sidecar byte-parity residual was closed by decompiling the shipped GFF 
   fidx table while re-encoding values. The from-scratch rewrite is 5/5 files + nested 1/1
   byte-identical on the quicksave and 100% GFF parity on every real retail slot. Claims #29–#31.
 
+## D. Streamwaves voice request path — VERIFIED statically
+
+The per-file audio-request residual is now bounded in the shipped code (same build, agent
+`s1_finish`, read-only on the sealed master):
+
+* `FUN_005dca30` (`[5dca30,5dcd4a]`) is the stream start path. For a voice stream
+  (`param_5 == 0`, `param_4 != 0`) it builds `HD0:STREAMWAVES\%s`, or the localized
+  `HD0:STREAMWAVES\%s\%s\%s` (speaker/language/resref) when the resref matches the `n…_`
+  localization convention; music uses `HD0:STREAMMUSIC\%s`, effects use
+  `HD0:STREAMSOUNDS\%s`. The res type is passed to `FUN_005e68a0` and then to
+  `FUN_005dbd30`.
+* `FUN_005dbd30` (`[5dbd30,5dc2fc]`) opens the resolved file (`FUN_006fad9d` = fopen
+  wrapper), reads RIFF for type 4 (`.wav`) or skips the 0x1d6-byte prefix for type 8
+  (`.mp3`), and starts it with `AIL_open_stream`. `FUN_005a4010` (`[5a4010,5a4853]`) uses
+  the same `HD0:STREAMWAVES` paths and probes file existence before playback.
+* **Conclusion:** streamwaves is not a generic audio fallback; it is the voice/dialogue
+  stream source (`HD0:STREAMWAVES\<resref>.wav`, type 4), with music/effects on separate
+  `STREAMMUSIC`/`STREAMSOUNDS` paths. The dynamic lane's zero streamwaves opens mean no
+  voice line was triggered, not that the path is missing. Claim #32.
+
 ## Closure evidence index (build 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6)
 
 | claim | evidence_id | item |
@@ -271,3 +291,4 @@ The save-sidecar byte-parity residual was closed by decompiling the shipped GFF 
 | #29 | claim 46 | C: FUN_00411730 field append + FUN_00411020 in-place/orphan fidx growth |
 | #30 | claim 44 | C: FUN_004113d0 six-section layout + FUN_00413030/00412db0 write/compact |
 | #31 | claim 45 | C: gff_bytes_retail 5/5 + nested 1/1 byte-identical; 100% GFF parity on retail slots |
+| #32 | claim 47 | D: FUN_005dca30 voice → HD0:STREAMWAVES; FUN_005dbd30 opens type-4 .wav via AIL_open_stream |

@@ -19,8 +19,8 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
 | 3 | Map compiler, 117 areas, hard-fail rules, frozen contract | **met** — 117/117 module pairs compiled in 105.5 s with **exit 0** under the retail profile: 4 clean, 113 triaged, 0 hard failures; strict profile still hard-fails every synthetic rule fixture (17/17 tests); 0 inverted faces in 190,865 shipped WOK faces; shipped classes triaged with codes `T_WALKMESH_MULTI/FRAGMENT`, `T_PTH_MULTI_COMPONENT`, `T_LIGHTMAP_UV_WRAP`, `T_DOOR_NO_HOOK`, `T_ANCHOR_DEFAULT`; ADR 0002 contract frozen | `docs/recon/19_MAP_COMPILE.md`; `artifacts/lanes/s1-03-mapcompile/final/` |
 | 4 | Script corpus ledger | **met** — 13,139 NCS occurrences → 8,666 unique, 8,666/8,666 byte-identical re-encode (two independent paths agree, 0/8,666 differ vs lane-04 index); NSS pairing 1,680/8,666 (base layer 1,611/1,637 = 98.41%); decompile classes merged 8,666/8,666 (8,428 exact); 5 bug-parity arity anomalies explicit; per-module action usage (117 modules); the 228 compiler-limited + 306 unused-action residuals are P3 VM-conformance items, not G1 data gaps | `docs/recon/20_SCRIPT_CORPUS.md`; `artifacts/lanes/s1-04-scripts/` |
 | 5 | Save/VFS completion | **met** — **fully byte-identical from-scratch rewrite**: whole retail quicksave 5/5 files + nested 1/1 (`--mode parity`), all real retail slots 100% GFF parity (31/31, 30/30, 24/24, 6/6, 6/6), ERF verbatim 46/46; retail engine accepted the rewritten slot; GFF fidx allocator recovered from `FUN_00411730`/`FUN_00411020`; all inferred VFS items closed synthetically or statically (`_s > _adx > _a > area` from `FUN_004c44d0`) | `docs/recon/21_SAVE_BYTEPARITY.md`; `docs/recon/23_BINARY_P1.md` #23–#25; `artifacts/lanes/s1-05-save-vfs/` |
-| 6 | Dynamic P1 measurements | **met with 4 documented blockers** — loaded-save RIM order verified (`HD0:players → LIPS → MODULES:<m>_s → CURRENTGAME:<m>`; `.mod` misses all passes on retail); boot order re-verified; streamwaves scan+index verified (1,144 files, 978 wavs; zero streamwaves `.wav` opens in menu→module→gameplay, all wav opens were streammusic); camera `+0x38 = 0` from controller `+0xc4 = 0` observed live in-process; rewritten save `000007 - PARITY` accepted by the retail engine via the normal Load Game UI | `docs/recon/22_DYNAMIC_P1.md`; `artifacts/lanes/s1-06-dynamic/` |
-| 7 | Binary P1 verification (hydralysis / Hydra h5) | **met** — 21 evidence-DB claims (#11–#31) on the sealed master, every address quoted with the build SHA-256: N-group mesh loops proven N-group capable; supermodel chain semantics (duplicate/ancestor-only/missing); camera `+0x38` write set proven construction-zero, mode-nonzero branches unreachable; MDX GPU skinning via `program.env[18..68]`, aux4 proven consumer-less; GFF writer append/fidx/section layout (`FUN_00411730`/`FUN_00411020`/`FUN_004113d0`) proving save byte parity | `docs/recon/23_BINARY_P1.md`; `artifacts/lanes/s1-07-binary/` |
+| 6 | Dynamic P1 measurements | **met with 2 documented environmental blockers** — loaded-save RIM order verified (`HD0:players → LIPS → MODULES:<m>_s → CURRENTGAME:<m>`; `.mod` misses all passes on retail); boot order re-verified; streamwaves scan+index verified (1,144 files, 978 wavs; zero streamwaves `.wav` opens in menu→module→gameplay, all wav opens were streammusic) and the request path statically closed (`FUN_005dca30` → `HD0:STREAMWAVES\%s` → `FUN_005dbd30`/`AIL_open_stream`, claim #32); camera `+0x38 = 0` from controller `+0xc4 = 0` observed live in-process; rewritten save `000007 - PARITY` accepted by the retail engine via the normal Load Game UI. Remaining blockers are input-only: chargen PLAY and a live dialogue click | `docs/recon/22_DYNAMIC_P1.md`; `docs/recon/23_BINARY_P1.md` §D; `artifacts/lanes/s1-06-dynamic/` |
+| 7 | Binary P1 verification (hydralysis / Hydra h5) | **met** — 22 evidence-DB claims (#11–#32) on the sealed master, every address quoted with the build SHA-256: N-group mesh loops proven N-group capable; supermodel chain semantics (duplicate/ancestor-only/missing); camera `+0x38` write set proven construction-zero, mode-nonzero branches unreachable; MDX GPU skinning via `program.env[18..68]`, aux4 proven consumer-less; GFF writer append/fidx/section layout (`FUN_00411730`/`FUN_00411020`/`FUN_004113d0`) proving save byte parity; streamwaves voice path `FUN_005dca30`→`FUN_005dbd30`/`AIL_open_stream` | `docs/recon/23_BINARY_P1.md`; `artifacts/lanes/s1-07-binary/` |
 | 8 | First textured tools-side viewer | **met** — `tools/viewer/` renders m01aa (top-down + perspective, 9 TPC textures, 42/42 checks; counts match recon/11) and m09ab (26/26), plus `mainmenu.gui` (9/9) and `maininterface.gui` (31/31) to PNG | `docs/recon/24_VIEWER.md`; `artifacts/lanes/s1-08-viewer/` |
 | 9 | Evidence/repo hygiene | **met** — lanes wrote only their own new files; integrator owns edits to existing tracked files and this report; tests green (see below); no assets/secrets in tracked files | this report; `git status` |
 
@@ -64,8 +64,8 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
   lines; streamwaves is scan+indexed but issues no `.wav` file opens before gameplay voice; camera
   `+0x38 = 0` observed live; the byte-parity rewritten save loads in the retail engine.
 - **Binary (Hydra h5):** all four P0-handoff binary items proved with line-cited queries on the
-  sealed master; evidence DB claims #11–#31 (the final three recover the GFF writer's
-  append/fidx/section layout and close save byte parity).
+  sealed master; evidence DB claims #11–#32 (the final four recover the GFF writer's
+  append/fidx/section layout and the streamwaves voice request path).
 
 ## Closure pass (2026-11-01, after the initial commit) — what changed
 
@@ -121,9 +121,11 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
    89-click grid). Both items are now **statically bounded** (#23–#28: only `_s`-first mounting and
    camera mode 0 are possible), so the residual is environmental, not a data gap. Owner: P4
    vertical slice on hardware (the P0 elevated 1280×720 session already proved F4/F5 saves work).
-2. **streamwaves per-file audio requests** — scan + pass-1 index measured; no voice line could be
-   triggered under the input blocker above; zero streamwaves `.wav` opens observed in
-   menu→module→gameplay. Owner: P5 audio lane on hardware.
+2. **streamwaves per-file audio requests** — **closed statically** (claim #32): voice streams
+   build `HD0:STREAMWAVES\%s` / localized `%s\%s\%s`, type 4 opens the `.wav` through
+   `FUN_005dbd30`/`AIL_open_stream`; music/effects use `STREAMMUSIC`/`STREAMSOUNDS`. The
+   dynamic lane's zero opens mean no voice line fired under the input blocker, not a missing
+   path. A hardware run can repeat the observation; no data gap remains.
 3. **F4 quicksave thumbnail leg under Mesa** — `Interceptor.replace` on `0x420f20` is in place
    (runs k3/k4) but the quicksave stalls upstream of the thumbnail in the non-elevated llvmpipe
    harness; needs the elevated session + GL shims of `docs/recon/16` §6. Owner: P4 renderer

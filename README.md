@@ -59,7 +59,8 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   ledger (8,666 unique NCS, 8,666/8,666 lossless re-encode, 8,428 exact decompiles, NSS pairing,
   per-module action usage); retail save rewrite accepted by the original engine; live measurements
   of module mount order, streamwaves scan/index, and camera `+0x38 = 0`; Hydra h5 evidence claims
-  #11–#31 for the P0 binary handoff and GFF writer layout; tools-side textured area/GUI viewer.
+  #11–#32 for the P0 binary handoff, GFF writer layout, and streamwaves voice path; tools-side
+  textured area/GUI viewer.
   See `docs/recon/17`–`25`
   and `docs/SPRINT1_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
