@@ -4,10 +4,12 @@ still marked inferred/open in docs/recon/10_SAVE_VFS.md.
 Each test builds a synthetic discriminating tree with ``kotor_archive``
 writers and asserts the resolver rule.  Rules already measured in-process on
 2026-10-24 (docs/recon/08_VFS_DYNAMIC.md, ``artifacts/lanes/06-dynamic/
-vfs-precedence/runs2/``) are pinned here synthetically; items a synthetic
-fixture cannot decide (engine mount order of fresh-module area RIMs, real
-streamwaves audio requests) are listed in ``OPEN_FOR_S1_06`` and stay with
-lane s1-06 dynamic measurement.
+vfs-precedence/runs2/``) are pinned here synthetically.  The fresh-module
+area-RIM mount order is no longer open: the shipped mounter at
+``FUN_004c44d0`` probes ``.mod`` first, then mounts ``MODULES:<mod>_s`` before
+LIPS and the optional ``_a``/``_adx`` RIMs (docs/recon/23 #23-#25).  Only real
+streamwaves audio requests still need lane s1-06 dynamic measurement; that item
+is listed in ``OPEN_FOR_S1_06``.
 
 The two resolver defaults that contradicted the 2026-10-24 measurements
 (flat/OS-order directory scan; measured pass-4 order) were fixed in
@@ -32,11 +34,10 @@ import kotor_archive as ka
 from kotor_vfs import (Vfs, DirectoryTable, ArchiveTable, KeyTable, Pass,
                        normalize_resref)
 
-# Items a synthetic fixture cannot decide -> lane s1-06 dynamic measurement.
+# Items that still need lane s1-06 dynamic measurement.  The fresh-module
+# area-RIM order was closed statically (docs/recon/23 #23-#25), so only the
+# per-file streamwaves audio request remains.
 OPEN_FOR_S1_06 = [
-    "fresh-module area-RIM intra-order (_a/_adx/.rim/_s) and .mod vs area RIM "
-    "on the New Game path (character-generation PLAY input blocker, "
-    "docs/recon/08_VFS_DYNAMIC.md 'Remaining inferred / open')",
     "streamwaves audio requests before gameplay (directory and pass-1 index "
     "measured; actual audio lookups unobserved)",
 ]
@@ -257,17 +258,22 @@ class LooseDirTests(VfsP1Fixture, unittest.TestCase):
 
 class OpenItemsTests(VfsP1Fixture, unittest.TestCase):
     def test_s1_06_open_items_are_explicit(self):
-        # items a synthetic fixture cannot decide stay with lane s1-06
-        self.assertEqual(len(OPEN_FOR_S1_06), 2)
-        self.assertTrue(any("area-RIM intra-order" in s for s in OPEN_FOR_S1_06))
+        # only the real streamwaves audio-request observation still needs
+        # lane s1-06; the fresh-module area-RIM order is statically closed.
+        self.assertEqual(len(OPEN_FOR_S1_06), 1)
         self.assertTrue(any("streamwaves audio" in s for s in OPEN_FOR_S1_06))
+        self.assertFalse(any("area-RIM" in s for s in OPEN_FOR_S1_06))
         # the resolver still mounts all four area RIMs for an active module;
-        # their intra-order remains the inferred part
+        # the static mounter proves the search order _s > _adx > _a > area.
         v = self.vfs(active_module="active")
         names = [t.name for t in v.passes[2].tables]
         for suffix in ("active_s.rim", "active_adx.rim", "active_a.rim", "active.rim"):
             self.assertIn(suffix, names)
-        self.assertTrue(any("inferred" in n for n in v.passes[2].notes))
+        self.assertLess(names.index("active_s.rim"), names.index("active_adx.rim"))
+        self.assertLess(names.index("active_adx.rim"), names.index("active_a.rim"))
+        self.assertLess(names.index("active_a.rim"), names.index("active.rim"))
+        self.assertTrue(any("proven" in n for n in v.passes[2].notes))
+        self.assertFalse(any("inferred" in n for n in v.passes[2].notes))
 
 
 if __name__ == "__main__":

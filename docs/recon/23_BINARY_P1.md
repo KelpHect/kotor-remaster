@@ -121,8 +121,12 @@ docs/recon/15). Closed. Evidence #21, #22.
 
 ## Open items carried
 
-* Live in-process observation of the dialogue camera object's `+0x38` in a dialogue/cutscene scene
-  and the synthetic multi-group mesh load → lane s1-06 (runtime attach/spawn is s1-06 only).
+* **Closed 2026-11-02:** fresh-module area-RIM order (closure addendum §A, claims #23–#25) and the
+  dialogue-start camera path (§B, claims #26–#28). The synthetic 2-group mesh and supermodel chain
+  were verified live in lane s1-06 (docs/recon/25); the only live residue is the chargen/dialogue
+  input path, not a binary ambiguity.
+* Live in-process observation of a *dialogue scene* (the camera object itself) remains with lane
+  s1-06 on hardware; the shipped path is bounded to `+0x38 = 0`.
 * Scan coverage limit: aliased-pointer stores to `+0x38`/`+0xc4`/`+0x1d0` would not appear in the
   `writes` scans (stated by the tool itself).
 
@@ -235,6 +239,25 @@ chargen-input blocker, not by any binary ambiguity. Claims #23, #24, #25.
   remaining live-only piece is observing it inside an actual conversation, which stays with
   lane s1-06 (input blocker), but the binary leaves no room for a nonzero mode.
 
+## C. GFF writer layout — VERIFIED statically (save byte parity)
+
+The save-sidecar byte-parity residual was closed by decompiling the shipped GFF writer
+(same build, agent `s1_finish`, read-only on the sealed master):
+
+* **Field append / fidx growth** — `FUN_00411730` (`[411730,411870]`) appends the field row,
+  and for a multi-field struct calls `FUN_00411020` with `(old_off, old_size, old_size+4)`.
+  `FUN_00411020` (`[411020,4110ef]`) reuses the old array in place when
+  `fidx_len == old_off + old_size`; otherwise it copies the grown array to the buffer end and
+  leaves the old copy orphaned. This is exactly PARTYTABLE's 56 extra slots (224 B, final root
+  array at slot 397) and GLOBALVARS' root-row split.
+* **Section serialization** — `FUN_004113d0` (`[4113d0,41153e]`) computes the six section
+  offsets from the 0x38-byte header (struct 0x38, field, label, field_data, field_index,
+  list_index); `FUN_00413030` (`[413030,4130fb]`) opens/writes the file and calls it;
+  `FUN_00412db0` (`[412db0,412e68]`) performs append-time compaction.
+* **Result** — `gff_bytes_retail` preserves the parsed struct slots/global field-row order and
+  fidx table while re-encoding values. The from-scratch rewrite is 5/5 files + nested 1/1
+  byte-identical on the quicksave and 100% GFF parity on every real retail slot. Claims #29–#31.
+
 ## Closure evidence index (build 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6)
 
 | claim | evidence_id | item |
@@ -245,3 +268,6 @@ chargen-input blocker, not by any binary ambiguity. Claims #23, #24, #25.
 | #26 | ev_618dec026831a095531fde1d6b74faaf2ecb1afbbb1b502c42d7b5987197b9cf | B: FUN_0062bf30 dialogue camera creation from +0xc4 |
 | #27 | ev_16304624dda5cbaa6121ea534498ecebef8d2b0064830201b4fd0cae61211dbd | B: CameraAnimation → camerahook model + cutNNN clip (0x62bf70→0x641010→0x6288f0) |
 | #28 | ev_bb7dea8a9e8b5d786d6ab34fcee6b0e2ca99a4e23f9cf966a2ed5eb37a5bd519 | B: +0x38 construction-zero on the dialogue path |
+| #29 | claim 46 | C: FUN_00411730 field append + FUN_00411020 in-place/orphan fidx growth |
+| #30 | claim 44 | C: FUN_004113d0 six-section layout + FUN_00413030/00412db0 write/compact |
+| #31 | claim 45 | C: gff_bytes_retail 5/5 + nested 1/1 byte-identical; 100% GFF parity on retail slots |

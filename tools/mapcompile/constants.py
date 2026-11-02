@@ -65,6 +65,11 @@ T_UV_SENTINEL = "T_UV_SENTINEL"             # 0xFEFFEEEE lightmap-UV sentinel (r
 T_PTH_MULTI_COMPONENT = "T_PTH_MULTI_COMPONENT"  # >1 PTH component (triaged if shipped)
 T_WINDING_DEGENERATE = "T_WINDING_DEGENERATE"   # zero-area WOK faces (shipped: 123 corpus-wide)
 T_PTH_OFF_WALKMESH = "T_PTH_OFF_WALKMESH"       # PTH node >0.5 m off the walkmesh
+T_WALKMESH_MULTI = "T_WALKMESH_MULTI"           # shipped multi-level/seam-split walkmesh
+T_WALKMESH_FRAGMENT = "T_WALKMESH_FRAGMENT"     # shipped tiny isolated walkable fragment
+T_LIGHTMAP_UV_WRAP = "T_LIGHTMAP_UV_WRAP"       # shipped lightmap uv1 outside [0,1] (wrap sampling)
+T_DOOR_NO_HOOK = "T_DOOR_NO_HOOK"               # static/non-transition door has no LYT hook
+T_ANCHOR_DEFAULT = "T_ANCHOR_DEFAULT"           # zero/default camera anchor (unused placeholder)
 
 UV_SENTINEL_BITS = 0xFEFFEEEE
 

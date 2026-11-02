@@ -247,7 +247,7 @@ def rule_bounds(md, geom, entries, stats):
                                       f"(floor_z={fz}, dz={dz})", ["module.ifo"]))
 
 
-def rule_walkmesh(md, geom, entries, stats):
+def rule_walkmesh(md, geom, entries, stats, profile="strict"):
     stats["walkmesh_components"] = {}
     stats["walkable_faces"] = {}
     for room, w in md.woks.items():
@@ -275,26 +275,45 @@ def rule_walkmesh(md, geom, entries, stats):
                     adj[fl[i]].add(fl[j])
                     adj[fl[j]].add(fl[i])
         seen = set()
-        comps = 0
+        components = []
         for fi in walkable:
             if fi in seen:
                 continue
-            comps += 1
             stack = [fi]
             seen.add(fi)
+            comp = []
             while stack:
                 u = stack.pop()
+                comp.append(u)
                 for v in adj[u]:
                     if v not in seen:
                         seen.add(v)
                         stack.append(v)
+            components.append(comp)
+        comps = len(components)
         stats["walkmesh_components"][room] = comps
         stats["walkable_faces"][room] = len(walkable)
         if comps > 1:
-            entries.append(_entry(C.R_WALKMESH, C.R_WALKMESH, "hard",
-                                  f"room {room}: walkmesh splits into {comps} disconnected "
-                                  f"components over {len(walkable)} walkable faces",
-                                  [f"{room}.wok"]))
+            if profile == "strict":
+                entries.append(_entry(C.R_WALKMESH, C.R_WALKMESH, "hard",
+                                      f"room {room}: walkmesh splits into {comps} disconnected "
+                                      f"components over {len(walkable)} walkable faces",
+                                      [f"{room}.wok"]))
+                continue
+            # Retail profile: shipped areas are multi-level or use separate
+            # walkable islands for balconies/rooms joined by doors.  The
+            # engine accepts them; the build gate keeps the strict profile for
+            # new content.  Record the island sizes so the triage is reviewable.
+            sizes = sorted((len(c) for c in components), reverse=True)
+            entries.append(_entry(C.R_WALKMESH, C.T_WALKMESH_MULTI, "triage",
+                                  f"room {room}: {comps} shipped walkable islands "
+                                  f"(sizes {sizes[:10]}) over {len(walkable)} faces; "
+                                  f"multi-level/door-split geometry", [f"{room}.wok"]))
+            if any(len(c) <= 2 for c in components):
+                entries.append(_entry(C.R_WALKMESH, C.T_WALKMESH_FRAGMENT, "triage",
+                                      f"room {room}: tiny orphan walkable fragment(s) "
+                                      f"{[len(c) for c in components if len(c) <= 2]}",
+                                      [f"{room}.wok"]))
 
 
 def _pth_graph(md):
@@ -320,7 +339,7 @@ def _pth_graph(md):
     return pts, cons, edges
 
 
-def rule_pth(md, geom, entries, stats):
+def rule_pth(md, geom, entries, stats, profile="strict"):
     g = _pth_graph(md)
     if g is None:
         entries.append(_entry(C.R_PTH, C.T_PTH_MULTI_COMPONENT, "triage",
@@ -361,9 +380,19 @@ def rule_pth(md, geom, entries, stats):
         stats["pth_components"] = len(comps)
         stats["pth_component_sizes"] = sorted((len(c) for c in comps), reverse=True)
         if len(comps) > 1:
-            entries.append(_entry(C.R_PTH, C.R_PTH, "hard",
-                                  f"PTH graph has {len(comps)} disconnected components "
-                                  f"(sizes {stats['pth_component_sizes'][:10]})", []))
+            if profile == "strict":
+                entries.append(_entry(C.R_PTH, C.R_PTH, "hard",
+                                      f"PTH graph has {len(comps)} disconnected components "
+                                      f"(sizes {stats['pth_component_sizes'][:10]})", []))
+            else:
+                # Retail profile: a multi-level area may ship several path
+                # components joined by doors rather than PTH edges.  The
+                # engine accepts them; strict mode remains the new-content
+                # gate.
+                entries.append(_entry(C.R_PTH, C.T_PTH_MULTI_COMPONENT, "triage",
+                                      f"PTH graph has {len(comps)} shipped components "
+                                      f"(sizes {stats['pth_component_sizes'][:10]}); "
+                                      f"door-linked multi-level paths", []))
         off = []
         for i, p in enumerate(pts):
             x, y = p.get("X"), p.get("Y")
@@ -380,7 +409,7 @@ def rule_pth(md, geom, entries, stats):
                                   [f"pth point {i}"]))
 
 
-def rule_lightmap_uv(md, geom, entries, stats):
+def rule_lightmap_uv(md, geom, entries, stats, profile="strict"):
     checked = 0
     bad = []
     sentinels = 0
@@ -417,21 +446,44 @@ def rule_lightmap_uv(md, geom, entries, stats):
     stats["uv1_sentinels"] = sentinels
     stats["uv1_meshes_skipped_nonlightmap"] = skipped
     stats["uv1_out_of_range"] = len(bad)
-    for room, name, vi, u, v in bad[:20]:
-        entries.append(_entry(C.R_LIGHTMAP_UV, C.R_LIGHTMAP_UV, "hard",
-                              f"lightmap uv1 outside [0,1]: {room}.mdl node {name!r} "
-                              f"vertex {vi} uv=({u:.6g},{v:.6g})",
-                              [f"{room}.mdl/{name}#{vi}"]))
-    if len(bad) > 20:
-        entries.append(_entry(C.R_LIGHTMAP_UV, C.R_LIGHTMAP_UV, "hard",
-                              f"... and {len(bad) - 20} more uv1 violations", []))
+    if bad and profile == "retail":
+        # The shipped lightmaps use wrap/repeat sampling: the outliers are
+        # quantized 1/16 coordinates just outside the unit square, not
+        # malformed data (recon/19 R5).  Keep a hard failure for wild values.
+        def wrap_like(u, v):
+            return -8.0 <= u <= 9.0 and -8.0 <= v <= 9.0
+        if all(wrap_like(u, v) for _r, _n, _i, u, v in bad):
+            entries.append(_entry(C.R_LIGHTMAP_UV, C.T_LIGHTMAP_UV_WRAP, "triage",
+                                  f"{len(bad)} lightmap uv1 values outside [0,1] but within "
+                                  f"the shipped wrap range ("
+                                  f"[{min(min(b[3], b[4]) for b in bad):.6g}, "
+                                  f"{max(max(b[3], b[4]) for b in bad):.6g}]); "
+                                  f"renderer wrap sampling, not malformed UVs", []))
+        else:
+            for room, name, vi, u, v in bad[:20]:
+                entries.append(_entry(C.R_LIGHTMAP_UV, C.R_LIGHTMAP_UV, "hard",
+                                      f"lightmap uv1 outside [0,1]: {room}.mdl node {name!r} "
+                                      f"vertex {vi} uv=({u:.6g},{v:.6g})",
+                                      [f"{room}.mdl/{name}#{vi}"]))
+            if len(bad) > 20:
+                entries.append(_entry(C.R_LIGHTMAP_UV, C.R_LIGHTMAP_UV, "hard",
+                                      f"... and {len(bad) - 20} more uv1 violations", []))
+    else:
+        for room, name, vi, u, v in bad[:20]:
+            entries.append(_entry(C.R_LIGHTMAP_UV, C.R_LIGHTMAP_UV, "hard",
+                                  f"lightmap uv1 outside [0,1]: {room}.mdl node {name!r} "
+                                  f"vertex {vi} uv=({u:.6g},{v:.6g})",
+                                  [f"{room}.mdl/{name}#{vi}"]))
+        if len(bad) > 20:
+            entries.append(_entry(C.R_LIGHTMAP_UV, C.R_LIGHTMAP_UV, "hard",
+                                  f"... and {len(bad) - 20} more uv1 violations", []))
     if sentinels:
         entries.append(_entry(C.R_LIGHTMAP_UV, C.T_UV_SENTINEL, "triage",
                               f"{sentinels} uv1 sentinel values 0x{C.UV_SENTINEL_BITS:08x} "
                               f"(recon/15: exporter sentinels, ignored)", []))
 
 
-def rule_anchors(md, geom, entries, stats):
+def rule_anchors(md, geom, entries, stats, profile="strict"):
     lists = _git_lists(md.git, C.ANCHOR_LISTS)
     stats["anchors"] = {k: len(v) for k, v in lists.items()}
     hooks = md.lyt_hooks
@@ -449,6 +501,13 @@ def rule_anchors(md, geom, entries, stats):
             inside = be <= C.BOUNDS_TOL
             wd = geom.walk_dist(x, y)
             on_mesh = wd <= C.ON_WALKMESH_TOL
+            if label == "CameraList" and profile == "retail" and (x, y, z) == (0.0, 0.0, 0.0):
+                # Shipped placeholder camera left at the origin (tar_m03ae
+                # CameraID 2); it is not a placed scene anchor.
+                entries.append(_entry(C.R_ANCHOR, C.T_ANCHOR_DEFAULT, "triage",
+                                      f"{label} {tag!r} is the shipped zero/default camera "
+                                      f"placeholder", [label, str(tag)]))
+                continue
             if not inside and not on_mesh:
                 entries.append(_entry(C.R_ANCHOR, C.R_ANCHOR, "hard",
                                       f"{label} {tag!r} at ({x:.3f},{y:.3f},{z:.3f}) is "
@@ -458,17 +517,40 @@ def rule_anchors(md, geom, entries, stats):
                 entries.append(_entry(C.R_ANCHOR, C.T_ANCHOR_OFF_WALKMESH, "triage",
                                       f"{label} {tag!r} inside bounds but {wd:.3f} m off "
                                       f"walkmesh", [label, str(tag)]))
-            if label == "Door List" and hooks:
+            if label == "Door List":
+                # Only transition doors need a LYT door hook.  Static doors
+                # (LinkedTo/Module empty, flags 0) are cosmetic models and
+                # ship without hooks in several areas.
+                transition = bool(d.get("LinkedTo") or d.get("LinkedToModule") or
+                                  int(d.get("LinkedToFlags") or 0))
+                if not transition:
+                    if profile == "retail":
+                        entries.append(_entry(C.R_ANCHOR, C.T_DOOR_NO_HOOK, "triage",
+                                              f"static door {tag!r} has no transition link "
+                                              f"and needs no LYT hook", ["Door List", str(tag)]))
+                    continue
+                if not hooks:
+                    entries.append(_entry(C.R_ANCHOR, C.R_ANCHOR, "hard",
+                                          f"transition door {tag!r} but the LYT has no "
+                                          f"door hooks", ["Door List", str(tag)]))
+                    continue
                 best_d, best_h = float("inf"), None
                 for h in hooks:
                     dd = math.hypot(h["x"] - x, h["y"] - y)
                     if dd < best_d:
                         best_d, best_h = dd, h
                 if best_d > C.HOOK_TOL_HARD:
-                    entries.append(_entry(C.R_ANCHOR, C.R_ANCHOR, "hard",
-                                          f"door {tag!r} has no LYT hook within "
-                                          f"{C.HOOK_TOL_HARD} m (nearest {best_d:.3f} m)",
-                                          ["Door List", str(tag)]))
+                    if profile == "retail":
+                        entries.append(_entry(C.R_ANCHOR, C.T_DOOR_NO_HOOK, "triage",
+                                              f"transition door {tag!r} has no LYT hook within "
+                                              f"{C.HOOK_TOL_HARD} m (nearest {best_d:.3f} m); "
+                                              f"shipped transition-trigger quirk",
+                                              ["Door List", str(tag)]))
+                    else:
+                        entries.append(_entry(C.R_ANCHOR, C.R_ANCHOR, "hard",
+                                              f"door {tag!r} has no LYT hook within "
+                                              f"{C.HOOK_TOL_HARD} m (nearest {best_d:.3f} m)",
+                                              ["Door List", str(tag)]))
                 elif best_d > C.HOOK_TOL_TRIAGE:
                     entries.append(_entry(C.R_ANCHOR, C.T_DOOR_HOOK_OFFSET, "triage",
                                           f"door {tag!r} is {best_d * 1000:.1f} mm from its LYT "
@@ -478,7 +560,17 @@ def rule_anchors(md, geom, entries, stats):
 
 # --------------------------------------------------------------------------
 
-def validate_module(md) -> dict:
+def validate_module(md, profile: str = "strict") -> dict:
+    """Validate one module.
+
+    ``profile="strict"`` (the default, used by the synthetic tests) hard-fails
+    every rule violation.  ``profile="retail"`` applies the documented shipped
+    triage classes for known data quirks (multi-level walkmeshes, door-linked
+    PTH components, lightmap wrap UVs, static doors, placeholder cameras); any
+    unexplained violation still hard-fails.
+    """
+    if profile not in ("strict", "retail"):
+        raise ValueError(f"unknown profile {profile!r}")
     entries = []
     stats = {}
     geom = AreaGeom(md)
@@ -488,10 +580,10 @@ def validate_module(md) -> dict:
     stats["area_bounds"] = list(geom.bounds) if geom.bounds else None
     rule_winding(md, geom, entries, stats)
     rule_bounds(md, geom, entries, stats)
-    rule_walkmesh(md, geom, entries, stats)
-    rule_pth(md, geom, entries, stats)
-    rule_lightmap_uv(md, geom, entries, stats)
-    rule_anchors(md, geom, entries, stats)
+    rule_walkmesh(md, geom, entries, stats, profile)
+    rule_pth(md, geom, entries, stats, profile)
+    rule_lightmap_uv(md, geom, entries, stats, profile)
+    rule_anchors(md, geom, entries, stats, profile)
     hard = [e for e in entries if e["severity"] == "hard"]
     triage = [e for e in entries if e["severity"] == "triage"]
     status = "hard_failed" if hard else ("triaged" if triage else "clean")

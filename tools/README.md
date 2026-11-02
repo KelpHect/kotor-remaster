@@ -23,7 +23,7 @@ Nothing here redistributes game assets or decompiled code. Generated data goes u
 | `resources/kotor_save.py` | Save-folder parser/validator and structural writer; refuses writes inside an install | `python tools/resources/kotor_save.py validate "<slot>"` |
 | `resources/kotor_vfs.py` | Five-pass VFS resolver with traces and shadowed hits | `python tools/resources/kotor_vfs.py resolve <install> <resref> <type>` |
 | `resources/build_dynamic_probes.py`, `resources/vfs_measure.py` | Build expected-lookup manifests and compare Frida hook logs | see `docs/recon/08_VFS_DYNAMIC.md` |
-| `tests/run_all.py` | 47 archive/save/GFF-writer/VFS/harness tests (1 real-save test skipped when absent) | `KOTOR_GAME_DIR=<install> python tools/tests/run_all.py` |
+| `tests/run_all.py` | 107 archive/save/GFF-writer/VFS/harness/viewer tests (1 real-save test skipped when absent) | `KOTOR_GAME_DIR=<install> python tools/tests/run_all.py` |
 | `mod/kotor_windowed_1280.py` | Clean-room 1280×720 windowed patch for a user-owned 1.0.3.0 `swkotor.exe`: resolution validation, tooltip and HUD 720 branches; apply/revert/check with hash guard | `python tools/mod/kotor_windowed_1280.py --exe <swkotor.exe> --check` |
 | `geometry/probe.py` | Parse m01aa LYT/WOK/MDL/PTH/IFO/GIT and print check values | `KOTOR_AREA_DIR=<flat-area-dir> python tools/geometry/probe.py` |
 | `geometry/preview.py` | Top-down SVG/JSON/Markdown preview with 45 self-checks | `KOTOR_AREA_DIR=<dir> KOTOR_PREVIEW_OUT=<out> python tools/geometry/preview.py` |
@@ -37,7 +37,7 @@ Nothing here redistributes game assets or decompiled code. Generated data goes u
 | `formats/lyt.py`, `wok.py`, `bwm.py`, `pth.py`, `vis.py`, `mdl.py` | LYT/WOK/BWM/PTH/VIS/MDL-MDX readers (wire layouts per `docs/recon/15`, `19`) | imported; see `docs/recon/18_FORMAT_MATRIX.md` |
 | `formats/tpc.py`, `txi.py`, `dds.py`, `tga.py`, `ssf.py`, `lip.py`, `gui.py`, `bik.py`, `wav.py`, `mp3.py` | Texture/audio/movie/GUI container readers + validators | same |
 | `formats/two_da_ascii.py`, `formats/tlk_write.py` | 2DA V2.b (incl. NUL variant) byte-identical writer + ASCII V2.0 writer; TLK V3.0 writer | `docs/recon/18_FORMAT_MATRIX.md` |
-| `mapcompile/` | Sprint 1 map compiler: 117-area loader + hard-fail validator (R1–R6) + frozen coordinate contract | `python -m tools.mapcompile.compile --game-dir <install>`; `docs/recon/19_MAP_COMPILE.md` |
+| `mapcompile/` | Sprint 1 map compiler: 117-area loader + hard-fail validator (R1–R6) + frozen coordinate contract; `--profile retail` for shipped triage, `--profile strict` as the new-content gate | `python -m tools.mapcompile.compile --profile retail --game-dir <install>`; `docs/recon/19_MAP_COMPILE.md` |
 | `scripts/` | NCS codec, action table/usage, decompile status, NSS pairing corpus ledger | `docs/recon/20_SCRIPT_CORPUS.md` |
 | `resources/kotor_save_parity.py` | Retail save byte-parity layer: verbatim re-encode + from-scratch faithful writer | `docs/recon/21_SAVE_BYTEPARITY.md` |
 | `harness/sprint1_probes.py`, `sprint1_dynamic_run.py`, `sprint1_hooks.js` | Consent-gated dynamic probe harness (one owned game instance; install sentinels) | `docs/recon/22_DYNAMIC_P1.md` |

@@ -119,10 +119,12 @@ PROBE_PLAN = {
             },
             "targets": ["end_m01aa", "module"],
             "expected_static_model": ("kotor_vfs pass 3 order: <root>_s.rim, <root>_adx.rim, "
-                                      "<root>_a.rim, <root>.rim before menu/global (inferred); "
-                                      ".mod mounted instead of _s when present (verified for "
+                                      "<root>_a.rim, <root>.rim before menu/global "
+                                      "(statically proven, docs/recon/23 #23-#25); .mod "
+                                      "mounted instead of _s when present (verified for "
                                       "loaded saves)"),
-            "status": "open (display consent withheld; chargen PLAY input blocker in lane 06)",
+            "status": ("statically closed (docs/recon/23 #23-#25); live observation of "
+                       "_s firing remains blocked by the chargen PLAY input path"),
         },
         "b_streamwaves": {
             "description": ("streamwaves/ directory scan + pass-1 index + any (resref, WAV/4) "

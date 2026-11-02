@@ -133,7 +133,8 @@ duplicate occurrences across RIMs). Example: `end_m01aa_s` → module `end_m01aa
 
 ## Open items
 
-- `docs/SPRINT1.md` missing at this commit (lane spec taken from the assignment text) — **open**.
+- `docs/SPRINT1.md` is now tracked (lane spec was taken from the assignment text on the first
+  run); the document gap is **closed**.
 - The two 700/469 extra-argument cases need engine dispatcher evidence (carried from recon/09) — **open**.
 - The 306 unused actions still need engine implementations for modded content — **open** (shipped corpus does not exercise them; verified count).
 - NSS-without-NCS (source-only) resrefs: 20; modded NSS without NCS is out of the shipped corpus — **open** by scope.

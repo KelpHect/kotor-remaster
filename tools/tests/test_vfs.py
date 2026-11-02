@@ -147,7 +147,8 @@ class VfsFixtureTests(unittest.TestCase):
         self.assertEqual(mounts["passes"][4]["name"], "key-and-bifs")
         self.assertEqual(mounts["passes"][3]["tables"][0]["name"],
                          "SAVEGAME.sav#active")
-        self.assertTrue(any("inferred" in n for n in mounts["notes"]))
+        self.assertTrue(any("proven statically" in n for n in mounts["notes"]))
+        self.assertFalse(any("inferred" in n for n in mounts["notes"]))
 
 
 class VfsRealInstallTests(unittest.TestCase):

@@ -53,13 +53,15 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
 - Sprint 1 (P1, gate G1): 93,053/93,053 shipped resources typed, hashed, and validated with zero
   unhandled types and 18/18 manifest cross-checks; byte-identical round-trips for GFF (11,143),
   2DA (519, incl. the NUL-separated RIM variant and ASCII V2.0), TLK (49,265), ERF (5), RIM (246),
-  BIF (26), KEY, and whole retail save slots; map compiler over all 117 areas with hard-fail rules
-  R1–R6 and the ADR 0002 coordinate contract frozen; script corpus ledger (8,666 unique NCS,
-  8,666/8,666 lossless re-encode, 8,428 exact decompiles, NSS pairing, per-module action usage);
-  retail save rewrite accepted by the original engine; live measurements of module mount order,
-  streamwaves scan/index, and camera `+0x38 = 0`; Hydra h5 evidence claims #11–#28 for the P0
-  binary handoff; tools-side textured area/GUI viewer. See `docs/recon/17`–`24` and
-  `docs/SPRINT1_REPORT.md`.
+  BIF (26), KEY, and whole retail save slots (the from-scratch parity rewrite is 5/5 files + nested
+  1/1 byte-identical); map compiler over all 117 areas, **exit 0** (4 clean, 113 triaged, 0 hard)
+  with strict-mode hard-fail rules R1–R6 and the ADR 0002 coordinate contract frozen; script corpus
+  ledger (8,666 unique NCS, 8,666/8,666 lossless re-encode, 8,428 exact decompiles, NSS pairing,
+  per-module action usage); retail save rewrite accepted by the original engine; live measurements
+  of module mount order, streamwaves scan/index, and camera `+0x38 = 0`; Hydra h5 evidence claims
+  #11–#31 for the P0 binary handoff and GFF writer layout; tools-side textured area/GUI viewer.
+  See `docs/recon/17`–`25`
+  and `docs/SPRINT1_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,

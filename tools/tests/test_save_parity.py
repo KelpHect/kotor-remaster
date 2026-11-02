@@ -13,6 +13,7 @@ import unittest
 from pathlib import Path
 
 import support
+import gff
 import kotor_archive as ka
 import kotor_gff_write as gw
 import kotor_save as ks
@@ -168,6 +169,18 @@ class GffParitySyntheticTests(unittest.TestCase):
             fdata_align=1), "synth2")
         self.assertTrue(rep2["byte_identical"])
 
+    def test_retail_layout_writer_roundtrips_parsed_fixture(self):
+        # The parsed-layout writer preserves the original struct slots, field
+        # row order and fidx bytes exactly, even for a synthetic tree.
+        data = gw.gff_bytes(b"IFO ", self._nested())  # canonical align-4 fdata
+        g = ks.gff_from_bytes(data, "synth3")
+        self.assertEqual(kp.gff_bytes_retail(g, fdata_align=4), data)
+        # deterministic rebuild is still semantically valid for new content
+        rebuilt = kp.gff_bytes_retail(g, preserve_fidx=False)
+        g2 = ks.gff_from_bytes(rebuilt, "synth4")
+        self.assertEqual(gw.semantic(g), gw.semantic(g2))
+        self.assertEqual(list(gff.check(g2)), [])
+
 
 class RetailSaveParityTests(unittest.TestCase):
     @classmethod
@@ -193,9 +206,13 @@ class RetailSaveParityTests(unittest.TestCase):
         self.assertEqual(s["gff_verbatim_identical"], s["gff_total"])
         self.assertTrue(s["gff_semantic_equal_all"])
         self.assertEqual(s["gff_check_errors_total"], 0)
-        # the flat savenfo.res re-encodes byte-identically from scratch
-        self.assertGreaterEqual(s["gff_parity_identical"], 1)
-        self.assertTrue(rep["files"]["savenfo.res"]["gff"]["parity_align1"]["byte_identical"])
+        # the retail-layout writer reproduces every GFF section from parsed
+        # values, including the engine's append-only fidx layout: all flat
+        # sidecars and all nested module GFFs are byte-identical.
+        self.assertEqual(s["gff_parity_identical"], s["gff_total"])
+        for name in ("savenfo.res", "PARTYTABLE.res", "GLOBALVARS.res"):
+            self.assertTrue(rep["files"][name]["gff"]["parity_align1"]["byte_identical"],
+                            msg=name)
         self.assertEqual(rep["validation"], {"errors": 0, "warnings": 0})
         # every ERF layout fully accounted (no unexplained bytes)
         def walk(files):
@@ -224,27 +241,22 @@ class RetailSaveParityTests(unittest.TestCase):
             self.assertEqual((self.slot / name).read_bytes(), (dst / name).read_bytes(),
                              msg=name)
 
-    def test_retail_slot_parity_rewrite_classified(self):
+    def test_retail_slot_from_scratch_rewrite_is_byte_identical(self):
         tmp = support.clean_tmp("save-parity-rewrite2")
         dst = tmp / "000000 - QUICKSAVE"
         rep = kp.rewrite_save_parity(self.slot, dst, overwrite=True, mode="parity")
         self.assertEqual(rep["rewrite_validation"]["errors"], 0)
-        # Screen.tga (blob copy) and flat savenfo.res are byte-identical
-        self.assertTrue(rep["files"]["Screen.tga"]["rewritten_byte_identical"])
-        self.assertTrue(rep["files"]["savenfo.res"]["rewritten_byte_identical"])
-        # SAVEGAME.sav differs only inside the nested module's GFF payloads:
-        # its own header/keys/resource records are re-encoded identically
-        sav = rep["files"]["SAVEGAME.sav"]
-        self.assertFalse(sav["rewritten_byte_identical"])
-        lay = kp.erf_layout((self.slot / "SAVEGAME.sav").read_bytes(), "SAVEGAME.sav")
-        d = sav["diff"]
-        self.assertIsNotNone(d)
-        # first diff lies inside the nested module payload region, not in the
-        # outer header/keys/resource tables
-        nested = next(r for r in lay["regions"]
-                      if r.get("entry") is not None and r["kind"] == "payload"
-                      and lay["keys"][r["entry"]]["res_type"] == 2057)
-        self.assertGreaterEqual(d["first_diff_offset"], nested["start"])
+        # Fully from-scratch encoders (ERF align=1 repack + retail-layout GFF)
+        # now reproduce the complete retail slot, including the nested module
+        # and the PARTYTABLE orphaned fidx copies.
+        self.assertEqual(rep["summary"]["files_byte_identical"],
+                         rep["summary"]["files_total"])
+        self.assertEqual(rep["summary"]["nested_byte_identical"], 1)
+        for name in ("SAVEGAME.sav", "savenfo.res", "PARTYTABLE.res",
+                     "GLOBALVARS.res", "Screen.tga"):
+            self.assertTrue(rep["files"][name]["rewritten_byte_identical"], msg=name)
+            self.assertEqual((self.slot / name).read_bytes(), (dst / name).read_bytes(),
+                             msg=name)
 
     def test_writer_refuses_game_install(self):
         if not (support.REAL_GAME / "chitin.key").exists():

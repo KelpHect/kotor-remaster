@@ -177,12 +177,14 @@ are unchanged and the saves/patch/ini were restored. A second elevated pass on 2
   gone) and `CURRENTGAME:m12ab` (AddKey seq 475) saw only those 3. The converter is not
   instruction-traced; the drop is proven before the `CURRENTGAME` table is built.
 
-## Remaining inferred / open
+## Remaining open (after the 2026-11-02 static closure)
 
-* Fresh-module area-RIM intra-order (`_a`, `_adx`, `.rim`, `_s`) and `.mod` vs area RIM remain
-  unmeasured: controlled New Game runs reach `RIMS:CHARGEN`, but the character-generation `PLAY`
-  control did not activate under posted or hardware mouse input, arrow keys, Enter, or the
-  number hotkeys (the sheet stayed on `PORTRAIT`). This is an input blocker, not a loader stall.
+* Fresh-module area-RIM intra-order (`_a`, `_adx`, `.rim`, `_s`) and `.mod` vs area RIM are
+  **statically closed** on `FUN_004c44d0`: `.mod` probe first (absent in retail), then
+  `MODULES:<mod>_s`, then LIPS, then optional `_a`/`_adx`, then players (docs/recon/23 #23–#25).
+  Controlled New Game runs still cannot repeat this live because the character-generation `PLAY`
+  control does not activate under posted/hardware mouse input, arrow keys, Enter, or number
+  hotkeys (the sheet stays on `PORTRAIT`); that is an input blocker, not a loader ambiguity.
   `_s` > `global` and `MAINMENU` > `GLOBAL` are measured; the loaded-save path mounts only `_s` or
   `.mod` instead.
 * `streamwaves` *audio* requests before gameplay remain unobserved; the directory itself, its

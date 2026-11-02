@@ -186,7 +186,7 @@ every run (`ok`, 0 drift, 0 leftover processes). Harness: `tools/harness/sprint1
 + `sprint1_hooks.js` (Frida), fixture builder `sprint1_fixture_2group.py`; scenarios under
 `scenarios/`; interactive driving via the control socket + orca-computer screenshots.
 
-### Task 1 (item a) fresh New Game → `end_m01aa` — **OPEN (stop rule reached)**
+### Task 1 (item a) fresh New Game → `end_m01aa` — **STATICALLY CLOSED; live repeat blocked**
 
 Runs `j2-newgame`/`j3-newgame`: `RIMS:CHARGEN` mounted (seq 7758) but the first module never
 loaded. Approaches tried (all distinct, logged in `chargen-drive*.jsonl`): posted
@@ -200,7 +200,10 @@ seq 7963) — injected input does not reach the chargen 3D screen in this enviro
 (DirectInput under llvmpipe), reproducing lane-06's PLAY blocker. Verbatim loader tail:
 `[HD0:CHITIN, OVERRIDE:textures, HD0:patch, RIMS:GLOBAL, TEXTUREPACKS:swpc_tex_tpa,
 TEXTUREPACKS:swpc_tex_gui, RIMS:MAINMENU, RIMS:CHARGEN]` — no `end_m01aa*` loader.
-Loaded-save path remains as measured in §2a.
+Loaded-save path remains as measured in §2a. The fresh path's mount order is now **statically
+closed** on `FUN_004c44d0` (docs/recon/23 #23–#25): `.mod` probe first, then
+`MODULES:<mod>_s`, LIPS, optional `_a`/`_adx`, players. Only a live repeat is blocked by the
+chargen `PLAY` input path, not by loader ambiguity.
 
 ### Task 2 (item b) streamwaves voice requests + Task 3 (item c) dialogue — **OPEN (stop rule reached)**
 
