@@ -260,6 +260,21 @@ def send_key(vk: int, up: bool, hold: float = 0.06) -> None:
         time.sleep(hold)
 
 
+KEYEVENTF_SCANCODE = 0x0008
+
+
+def send_scancode(scan: int, up: bool, hold: float = 0.06) -> None:
+    """Send a DirectInput-style scan-code key event (no virtual-key)."""
+    inp = INPUT()
+    inp.type = INPUT_KEYBOARD
+    inp.union.ki.wVk = 0
+    inp.union.ki.wScan = scan
+    inp.union.ki.dwFlags = KEYEVENTF_SCANCODE | (KEYEVENTF_KEYUP if up else 0)
+    u32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+    if not up and hold:
+        time.sleep(hold)
+
+
 MOUSEEVENTF_ABSOLUTE = 0x8000
 
 
@@ -458,6 +473,13 @@ def serve_control(sess: Session, run: Path, steps_out: list) -> int:
             send_key(vk, True, 0.0)
             time.sleep(0.2)
             return {"ok": True, "vk": vk, "method": "SendInput"}
+        if op == "hwscan":
+            scan = int(cmd["scan"], 0) if isinstance(cmd["scan"], str) else int(cmd["scan"])
+            hold = float(cmd.get("hold", 0.08))
+            send_scancode(scan, False, hold)
+            send_scancode(scan, True, 0.0)
+            time.sleep(0.2)
+            return {"ok": True, "scan": scan, "method": "SendInput-scan"}
         if op == "hwclick":
             return hw_click(sess.pid, int(cmd["x"]), int(cmd["y"]))
         if op == "frame":
