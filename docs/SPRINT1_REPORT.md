@@ -19,7 +19,7 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
 | 3 | Map compiler, 117 areas, hard-fail rules, frozen contract | **met** — 117/117 module pairs compiled in 105.5 s with **exit 0** under the retail profile: 4 clean, 113 triaged, 0 hard failures; strict profile still hard-fails every synthetic rule fixture (17/17 tests); 0 inverted faces in 190,865 shipped WOK faces; shipped classes triaged with codes `T_WALKMESH_MULTI/FRAGMENT`, `T_PTH_MULTI_COMPONENT`, `T_LIGHTMAP_UV_WRAP`, `T_DOOR_NO_HOOK`, `T_ANCHOR_DEFAULT`; ADR 0002 contract frozen | `docs/recon/19_MAP_COMPILE.md`; `artifacts/lanes/s1-03-mapcompile/final/` |
 | 4 | Script corpus ledger | **met** — 13,139 NCS occurrences → 8,666 unique, 8,666/8,666 byte-identical re-encode (two independent paths agree, 0/8,666 differ vs lane-04 index); NSS pairing 1,680/8,666 (base layer 1,611/1,637 = 98.41%); decompile classes merged 8,666/8,666 (8,428 exact); 5 bug-parity arity anomalies explicit; per-module action usage (117 modules); the 228 compiler-limited + 306 unused-action residuals are P3 VM-conformance items, not G1 data gaps | `docs/recon/20_SCRIPT_CORPUS.md`; `artifacts/lanes/s1-04-scripts/` |
 | 5 | Save/VFS completion | **met** — **fully byte-identical from-scratch rewrite**: whole retail quicksave 5/5 files + nested 1/1 (`--mode parity`), all real retail slots 100% GFF parity (31/31, 30/30, 24/24, 6/6, 6/6), ERF verbatim 46/46; retail engine accepted the rewritten slot; GFF fidx allocator recovered from `FUN_00411730`/`FUN_00411020`; all inferred VFS items closed synthetically or statically (`_s > _adx > _a > area` from `FUN_004c44d0`) | `docs/recon/21_SAVE_BYTEPARITY.md`; `docs/recon/23_BINARY_P1.md` #23–#25; `artifacts/lanes/s1-05-save-vfs/` |
-| 6 | Dynamic P1 measurements | **met with 2 documented environmental blockers** — loaded-save RIM order verified (`HD0:players → LIPS → MODULES:<m>_s → CURRENTGAME:<m>`; `.mod` misses all passes on retail); boot order re-verified; streamwaves scan+index verified (1,144 files, 978 wavs; zero streamwaves `.wav` opens in menu→module→gameplay, all wav opens were streammusic) and the request path statically closed (`FUN_005dca30` → `HD0:STREAMWAVES\%s` → `FUN_005dbd30`/`AIL_open_stream`, claim #32); camera `+0x38 = 0` from controller `+0xc4 = 0` observed live in-process; rewritten save `000007 - PARITY` accepted by the retail engine via the normal Load Game UI. Elevated Mesa runs proved focus/input work (listing + row selection); the remaining blocker is the module/chargen transition on a monitor-off host, not input | `docs/recon/22_DYNAMIC_P1.md`; `docs/recon/23_BINARY_P1.md` §D; `artifacts/lanes/s1-06-dynamic/` |
+| 6 | Dynamic P1 measurements | **met (live closure 2026-11-02)** — loaded-save RIM order verified (`HD0:players → LIPS → MODULES:<m>_s → CURRENTGAME:<m>`; `.mod` misses all passes on retail); boot order re-verified; streamwaves scan+index verified (1,144 files, 978 wavs) and a live dialogue voice request captured (`STREAMWAVES\m01aa\tras02\nm01aatras02000_.wav`, ok=true, `mesa-nomovies-20261102`); the request path is statically closed (`FUN_005dca30` → `HD0:STREAMWAVES\%s` → `FUN_005dbd30`/`AIL_open_stream`, claim #32); camera `+0x38 = 0` from controller `+0xc4 = 0` observed live in-process; rewritten save `000007 - PARITY` accepted by the retail engine via the normal Load Game UI. The chargen PLAY handler is invoked in-process with the live chargen manager captured from `FUN_006eb420` (`FUN_006eb320` → `END_M01AA`), so no synthetic click is needed; the ATI driver faults on the first module draw (`atioglxx.dll`, `hw-startgame6`), while the Mesa llvmpipe profile survives the transition and plays the first voice line | `docs/recon/22_DYNAMIC_P1.md`; `docs/recon/23_BINARY_P1.md` §D; `artifacts/lanes/s1-06-dynamic/` |
 | 7 | Binary P1 verification (hydralysis / Hydra h5) | **met** — 22 evidence-DB claims (#11–#32) on the sealed master, every address quoted with the build SHA-256: N-group mesh loops proven N-group capable; supermodel chain semantics (duplicate/ancestor-only/missing); camera `+0x38` write set proven construction-zero, mode-nonzero branches unreachable; MDX GPU skinning via `program.env[18..68]`, aux4 proven consumer-less; GFF writer append/fidx/section layout (`FUN_00411730`/`FUN_00411020`/`FUN_004113d0`) proving save byte parity; streamwaves voice path `FUN_005dca30`→`FUN_005dbd30`/`AIL_open_stream` | `docs/recon/23_BINARY_P1.md`; `artifacts/lanes/s1-07-binary/` |
 | 8 | First textured tools-side viewer | **met** — `tools/viewer/` renders m01aa (top-down + perspective, 9 TPC textures, 42/42 checks; counts match recon/11) and m09ab (26/26), plus `mainmenu.gui` (9/9) and `maininterface.gui` (31/31) to PNG | `docs/recon/24_VIEWER.md`; `artifacts/lanes/s1-08-viewer/` |
 | 9 | Evidence/repo hygiene | **met** — lanes wrote only their own new files; integrator owns edits to existing tracked files and this report; tests green (see below); no assets/secrets in tracked files | this report; `git status` |
@@ -61,8 +61,11 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
 - **Scripts:** pairing 19.39% overall (98.41% in the base layer; module scripts ship without
   sources); 466/772 actions used; the 5 arity-anomaly scripts are pinned as bug-parity items.
 - **Dynamic:** loaded-save module mount order and boot pass order measured with verbatim hook
-  lines; streamwaves is scan+indexed but issues no `.wav` file opens before gameplay voice; camera
-  `+0x38 = 0` observed live; the byte-parity rewritten save loads in the retail engine.
+  lines; chargen PLAY was activated in-process by calling the real handler `FUN_006eb320` with the
+  live chargen manager captured from `FUN_006eb420`, which opened `END_M01AA.rim` /
+  `END_M01AA_s.rim`; the first live dialogue voice request was then captured:
+  `STREAMWAVES\m01aa\tras02\nm01aatras02000_.wav` (ok=true) under the Mesa llvmpipe profile;
+  camera `+0x38 = 0` observed live; the byte-parity rewritten save loads in the retail engine.
 - **Binary (Hydra h5):** all four P0-handoff binary items proved with line-cited queries on the
   sealed master; evidence DB claims #11–#32 (the final four recover the GFF writer's
   append/fidx/section layout and the streamwaves voice request path).
@@ -125,40 +128,44 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
   `test_vfs_p1.py` **12/12**, `tools/scripts/tests` **32/32**. README/recon status lines
   updated to remove stale open items.
 
+## Final live closure (2026-11-02) — chargen PLAY and a streamwaves voice request
+
+The two remaining dynamic items are closed live. The visible quick-character panel is
+`FUN_006f0390` (0x1360 bytes; step field `+0x135c`), not CUSTPNL; its real PLAY path is
+`0x6efd60` → `FUN_006eb320([panel+0x68])` → `FUN_006dbdf0(manager)`. `live_hooks.js` captures the
+chargen manager in `FUN_006eb420` and calls `FUN_006eb320` on the game thread, so no synthetic
+click is needed.
+
+* `hw-startgame6-20261102` (hardware profile): `startgame_called` is followed by
+  `modules\END_M01AA.rim` and `modules\END_M01AA_s.rim`; the ATI OpenGL driver then faults at
+  `atioglxx.dll+0xAE71E7` in the first indexed draw (the `glDrawElements` path
+  `FUN_00425ab0`/`FUN_0046f900`). This is a driver fault, not a data/loader failure.
+* `mesa-nomovies-20261102` (Mesa llvmpipe, `Disable Movies=1`): the transition survives and
+  reaches the Endar Spire. Verbatim event lines: `startgame_called` seq 358,
+  `modules\END_M01AA.rim` seq 361, `modules\END_M01AA_s.rim` seq 377, and
+  `STREAMWAVES\m01aa\tras02\nm01aatras02000_.wav` seq 1479/1480 `ok=true`.
+  `summary.json`: `install_ok_after=true`, `new_save_files=[]`, `changed_save_files=[]`,
+  `game_processes_after=[]`.
+
+Both data questions remain statically bounded (#23–#28, #32). The renderer split is explicit:
+the hardware path renders chargen but crashes in the ATI driver on the module scene; the Mesa
+path is black in this session but runs the module logic and live audio, which is sufficient for
+the dynamic evidence.
+
 ## Open items carried forward (with owners and blockers)
 
-1. **Chargen PLAY / in-dialogue live runs** — the monitor-on hardware profile now renders at
-   1280×720 and accepts input through the menu, Load Game listing, class selection and the
-   `Quick Character` screen (`hw-live-taris-20261102`, `hw-newgame-20261102`,
-   `hw-quickchar-20261102`). The final chargen screen reaches `(1) PORTRAIT / (2) NAME /
-   (3) PLAY`, but the `(2) NAME` and `(3) PLAY` controls do not accept posted mouse messages,
-   SendInput clicks, keyboard/`WM_CHAR` events, or an Orca computer-use synthetic click
-   (`hw-name*`/`hw-key*`, Orca `unverified (synthetic_input)`); a direct in-process call to
-   `FUN_006eff80` (`hw-direct-play`) faults at `0x68` because the caller must supply the live
-   name-screen object in ECX, which only exists on the name screen. The load path mounts
-   `CURRENTGAME:tar_m02af` + `MODULES:tar_m02af_s` and then terminates in the load transition.
-   So the remaining live blocker is the chargen final-control/load transition, not the data
-   path. Both data questions are
-   **statically bounded** (#23–#28: only `_s`-first mounting and camera mode 0 are possible;
-   #32: streamwaves voice path). Owner: P4 vertical slice with an active display/context; run
-   artifacts under `artifacts/lanes/s1-06-dynamic/runs/elev-*` and `hw-b-load-taris-20261102`.
-2. **streamwaves per-file audio requests** — **closed statically** (claim #32): voice streams
-   build `HD0:STREAMWAVES\%s` / localized `%s\%s\%s`, type 4 opens the `.wav` through
-   `FUN_005dbd30`/`AIL_open_stream`; music/effects use `STREAMMUSIC`/`STREAMSOUNDS`. The
-   dynamic lane's zero opens mean no voice line fired under the input blocker, not a missing
-   path. A hardware run can repeat the observation; no data gap remains.
-3. **F4 quicksave thumbnail leg under Mesa** — the shim is now implemented and tested:
+1. **F4 quicksave thumbnail leg under Mesa** — the shim is now implemented and tested:
    `tools/harness/thumb_shim.py` (nearest-neighbour resampler + 24-bpp TGA writer) and
    `sprint1_hooks.js` replace both `0x420f20` and the faulting `FUN_0045dad0`; `test_harness.py`
    is 7/7. The remaining live part is the non-elevated llvmpipe quicksave stalling upstream of
    the thumbnail; the elevated session + GL shims of `docs/recon/16` §6 are still needed to
    observe it in-process. Owner: P4 renderer (save data/reload unaffected).
-4. **228 compiler-limited decompiles + 306 unused actions** — formally descoped from G1 by
+2. **228 compiler-limited decompiles + 306 unused actions** — formally descoped from G1 by
    `tools/scripts/residuals.py` (`g1.status=closed`, `open_items=[]`); owned by P3 VM
    conformance. The shipped corpus is fully decoded (8,428 exact + 5 header-limited + 5
    reachable-only; 228 compiler-codegen-limited recompiles), and the 306 unused actions are
    modded-content implementations, not data gaps.
-5. **Minimap rasterization renderer-side confirmation** — the data-side affine/MapResX/minimap
+3. **Minimap rasterization renderer-side confirmation** — the data-side affine/MapResX/minimap
    absence is verified (recon/19 §6); the engine pass that rasterizes it is P5 renderer work.
    The map compiler itself is green under the retail profile.
 

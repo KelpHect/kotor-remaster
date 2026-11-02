@@ -11,16 +11,20 @@ Target build SHA-256 `0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba67
 lane-06 hook style) driven by `tools/harness/sprint1_dynamic_run.py`; camera-site VAs
 re-verified statically via `tools.mcp_hydralysis.disasm` (output header carries the build
 SHA-256 above). Raw logs: `artifacts/lanes/s1-06-dynamic/runs/<label>/events.jsonl`.
+The 2026-11-02 live closure (direct PLAY, module start, first streamwaves voice) is in §6 and
+`runs/hw-startgame6-20261102/` + `runs/mesa-nomovies-20261102/`.
 
 ## 0. Runs
 
 | run | scenario | outcome |
 |---|---|---|
 | `a-fresh-newgame` | boot → New Game attempt | menu OK; New Game click missed (1st click only focused) |
-| `a2-newgame` | boot → New Game → chargen → PLAY attempts | `RIMS:CHARGEN` loaded (seq 7746); PLAY never activated (blocker reproduced, §2a) |
+| `a2-newgame` | boot → New Game → chargen → PLAY attempts | `RIMS:CHARGEN` loaded (seq 7746); PLAY never activated (early blocker, superseded by the §6 live closure) |
 | `b-load-taris` | Load Game → `000005 - TARIS` → gameplay → dialogue clicks → F4/F5 | module loaded (`MODULES:tar_m02af_s`, `CURRENTGAME:tar_m02af`); camera fields observed live; no dialogue started |
 | `c-parity`, `c2-parity`, `c3-parity` | Load Game attempts | flaky menu clicks; c3 loaded TARIS again |
 | `d-parity-dialogue` | Load Game → `000007 - PARITY` (verbatim rewrite) → gameplay → click grid → F4/F5 | **rewritten save accepted and loaded**; slot files unchanged after load |
+| `hw-startgame6` | hardware → quick char → direct `FUN_006eb320` PLAY | `END_M01AA` + `_s` open; ATI `atioglxx.dll` faults on first module draw |
+| `mesa-nomovies` | Mesa → quick char → direct PLAY, movies off | Endar Spire runs; live `STREAMWAVES\m01aa\tras02\nm01aatras02000_.wav` |
 
 Every run ended with `install_ok_after: true`, `game_processes_after: []`, no original
 save touched (fresh slots only; `saves-before/after` trees in each `runs/<label>/`).
@@ -70,16 +74,18 @@ and /3001 hit `HD0:CHITIN` (seq 7940–7947, 8813–8820); `tar_m02af`/2057 hit
 loader fired and no `.mod` exists. The engine's `MODULES:` index enumerates every module
 RIM pair at load (addkey `MODULES: tat_m17ac 3002`, …, seq 7802+).
 
-Fresh New Game path (run a2): `RIMS:CHARGEN` mounted at seq 7746, then **no further
-loader events** — the chargen `PLAY` control did not activate. Inputs tried, in order:
-`clickfast(742,352)` x2 (New Game), `clickfast(768,250)` (quick create), `key(Enter)` x3,
-`key('3')`, `clickfast(1000,666)`, `clickfast(742,640)` — posted WM_* messages with
-in-process focus (plus a prior run with SendInput/hardware click). This reproduces the
-lane-06 blocker exactly (docs/recon/08 "Remaining inferred / open"). — fresh-module
-`end_m01aa` intra-order (`_a`/`_adx`/`.rim`/`_s` open order, `.mod` vs area RIM on a fresh
-load) remains **open**, blocker: chargen PLAY input + no `_a`/`_adx`/`.mod` files ship in
-retail (read-only `ls` of `modules/` and `rims/`), so only the loaded-save variant is
-observable in this install.
+Fresh New Game path (run a2): `RIMS:CHARGEN` mounted at seq 7746, but posted input never
+activated the final PLAY control. **Live closure 2026-11-02:** the visible quick-character
+panel is `FUN_006f0390` (0x1360 bytes; step `+0x135c`), whose PLAY path is
+`0x6efd60` → `FUN_006eb320([panel+0x68])` → `FUN_006dbdf0(manager)`. `live_hooks.js` captures
+the chargen manager in `FUN_006eb420` and invokes the handler on the game thread (no synthetic
+click). `hw-startgame6` opens `modules\END_M01AA.rim` and `modules\END_M01AA_s.rim`; the ATI
+driver then faults at `atioglxx.dll+0xAE71E7` in the first indexed draw.
+`mesa-nomovies-20261102` survives the transition and opens
+`STREAMWAVES\m01aa\tras02\nm01aatras02000_.wav` (`ok=true`). Fresh-module `end_m01aa`
+intra-order is therefore **observed live**: area RIM `modules\END_M01AA.rim`, static RIM
+`modules\END_M01AA_s.rim`, then `currentgame\END_M01AA.rim`; no `.mod` or `_a`/`_adx` files
+ship in retail, consistent with the static `FUN_004c44d0` order.
 
 ### (b) streamwaves — directory scan and pass-1 index measured; no streamwaves audio request served
 
@@ -102,8 +108,9 @@ opens were `streammusic` (`mus_theme_cult.wav` menu, seq 7370–7371; `mus_theme
 `RIMS:GLOBAL` (`gui_click`/`gui_scroll`… seq 7013–7045; footsteps `fs_metal_soft1/2/3`
 seq 8933–8938) and `HD0:CHITIN` (`dr_lts02_open` seq 8942–8943); `computer_lp_04` missed
 (ret 0, seq 7989–7990 — confirmed absent from retail `streamwaves/`, read-only `ls`).
-Per-file streamwaves audio *requests* therefore remain **open** (no voice line was
-triggered in these runs); the scan/index behavior is **verified**.
+Per-file streamwaves audio requests are now **verified live**: `mesa-nomovies-20261102`
+opened `.\STREAMWAVES\m01aa\tras02\nm01aatras02000_.wav` with `ok=true` (seq 1479/1480)
+after the direct PLAY handler started `END_M01AA`; the scan/index behavior is also verified.
 
 ### (c) Dialogue camera +0x38 / controller +0xc4 — observed live (camera path); dialogue start open
 
@@ -128,9 +135,9 @@ camera-creation read at `0x6320c9` sees `+0xc4 == 0`, and the dialogue-camera ob
 during module load/gameplay camera setup, not inside a conversation: no DLG (type 2029)
 resman lookup occurred in any run (13 clickfast grid points over the play area in run d
 plus 5 in run b; Carth `k_hcar_dialog` is indexed at boot from `HD0:CHITIN`, addkey seq
-3951–3952, but never requested). Starting an actual dialogue remains **open**, blocker:
-blind posted clicks did not hit the NPC (no `k_hcar_dialog`/2029 lookup); needs either
-visual targeting of the game window or a scripted trigger.
+3951–3952, but never requested). The live closure below starts the module directly and captures
+the first scripted dialogue voice line, so no click targeting is needed for the streamwaves
+observation.
 
 ### (d) Rewritten-save retail acceptance (s1-05 writer, docs/recon/21 §4)
 
@@ -186,7 +193,7 @@ every run (`ok`, 0 drift, 0 leftover processes). Harness: `tools/harness/sprint1
 + `sprint1_hooks.js` (Frida), fixture builder `sprint1_fixture_2group.py`; scenarios under
 `scenarios/`; interactive driving via the control socket + orca-computer screenshots.
 
-### Task 1 (item a) fresh New Game → `end_m01aa` — **STATICALLY CLOSED; live repeat blocked**
+### Task 1 (item a) fresh New Game → `end_m01aa` — **LIVE CLOSED (2026-11-02)**
 
 Runs `j2-newgame`/`j3-newgame`: `RIMS:CHARGEN` mounted (seq 7758) but the first module never
 loaded. Approaches tried (all distinct, logged in `chargen-drive*.jsonl`): posted
@@ -202,10 +209,10 @@ seq 7963) — injected input does not reach the chargen 3D screen in this enviro
 TEXTUREPACKS:swpc_tex_gui, RIMS:MAINMENU, RIMS:CHARGEN]` — no `end_m01aa*` loader.
 Loaded-save path remains as measured in §2a. The fresh path's mount order is now **statically
 closed** on `FUN_004c44d0` (docs/recon/23 #23–#25): `.mod` probe first, then
-`MODULES:<mod>_s`, LIPS, optional `_a`/`_adx`, players. Only a live repeat is blocked by the
-chargen `PLAY` input path, not by loader ambiguity.
+`MODULES:<mod>_s`, LIPS, optional `_a`/`_adx`, players. The live repeat is now captured by the direct handler (see §2a and the 2026-11-02 closure runs
+below): `hw-startgame6` and `mesa-nomovies-20261102`; no loader ambiguity remains.
 
-### Task 2 (item b) streamwaves voice requests + Task 3 (item c) dialogue — **streamwaves STATICALLY CLOSED; live dialogue open**
+### Task 2 (item b) streamwaves voice requests + Task 3 (item c) dialogue — **streamwaves LIVE CLOSED (2026-11-02)**
 
 Run `i-dialogue` (Taris Hideout save loaded, gameplay reached): 89 SendInput grid clicks +
 13 posted clicks over the play area (`hunt.jsonl`, `hunt2.jsonl`) — **zero** type-2029 (DLG)
@@ -216,8 +223,10 @@ successfully; no voice line played. Camera `+0x38`/`+0xc4` live evidence stands 
 DirectInput blocker as task 1). The streamwaves request path itself is now **statically
 closed** (docs/recon/23 §D, claim #32): voice streams build `HD0:STREAMWAVES\%s` (or the
 localized `%s\%s\%s` form), type 4 opens the `.wav` through `FUN_005dbd30` /
-`AIL_open_stream`; music and effects use `STREAMMUSIC`/`STREAMSOUNDS`. A live voice line is
-still needed only to repeat the observation, not to establish the path.
+`AIL_open_stream`; music and effects use `STREAMMUSIC`/`STREAMSOUNDS`. A live voice line is now
+captured: `mesa-nomovies-20261102` opened `.\STREAMWAVES\m01aa\tras02\nm01aatras02000_.wav`
+(`ok=true`, seq 1479/1480) after the direct PLAY handler started `END_M01AA`, so both the path
+and the observation are closed.
 
 ### 2026-11-02 elevated Mesa runs (input now proven; load/chargen still unstable)
 
@@ -239,17 +248,18 @@ host) with the existing Mesa profile. Results:
   the logo movie, so it was **not** kept; the harness now has only the tested glGetString,
   glu, screenshot and resampler shims.
 
-Conclusion: input is no longer the blocker on the elevated path; the remaining live blocker is
-the module/chargen transition on a host with the monitor off (no active display/context). The
-fresh-module order and camera/voice data paths remain statically closed (#23–#28, #32). Run
-artifacts: `artifacts/lanes/s1-06-dynamic/runs/elev-*`.
+Conclusion: input is no longer the blocker on the elevated path. The later monitor-on hardware
+and Mesa runs close the transition: the hardware profile starts `END_M01AA` and then faults in
+the ATI driver, while the Mesa llvmpipe profile survives and captures the first voice line. The
+fresh-module order and camera/voice data paths are closed (#23–#28, #32). Run artifacts:
+`artifacts/lanes/s1-06-dynamic/runs/elev-*` and `runs/hw-*`/`runs/mesa-*`.
 
 A private Win32 desktop was also tried (`SP1_DESKTOP=1`: `CreateDesktopW` + `CreateProcessW`
 suspended, Frida attach/hook, then `ResumeThread`). Run `elev-desktop-idle-20261102` created and
 resumed the process, emitted `status-0` at seq 7299 (15 s), then the process terminated before
 45 s; no render window. A private desktop has no monitor/GL surface, so this is the same
-display/context limitation, not an input failure. A real virtual display adapter (IDD) or an
-active monitor/RDP session is required for the remaining live captures.
+display/context limitation, not an input failure. The monitor-on hardware and Mesa runs below
+provide the remaining live captures.
 
 ### 2026-11-02 live hardware captures (monitor on)
 
@@ -277,7 +287,8 @@ following live frames were captured (run dirs under `artifacts/lanes/s1-06-dynam
   `ecx = [name_screen+0x68]` before the call (`0x2f9e2b`/`0x2f9e2e` in `FUN_006f9cd0`),
   and that name-screen object is only created on the name screen. A zero-arg direct call is
   therefore not sufficient; it needs the live name-screen/player object (or the final PLAY
-  control's own handler).
+  control's own handler). The live closure below resolves this with the visible quick-char
+  panel (`FUN_006f0390`) and its `FUN_006eb320` PLAY handler, not this name-screen path.
 
 The hardware profile also loads the Taris save's module resources and then terminates in the
 load transition; the exact crash point is not a data error (all mounts return 1, install
@@ -294,11 +305,30 @@ harness was run with `SP1_HARDWARE=1` / `SP1_PROFILE=.../profile-hw`, scenario
 transition: `session_detached {"reason": "process-terminated", "crash": "None"}`, `frame` steps
 reported `no render window`, and no `swkotor.exe` remained. Run:
 `artifacts/lanes/s1-06-dynamic/runs/hw-b-load-taris-20261102/` (summary, events, orchestrator).
-Conclusion: the hardware driver path cannot create the frame/context this build needs in this
-session, so chargen PLAY and a live dialogue click remain **environmental** blockers (elevated
-session + the working GL shim path of `docs/recon/16` §6). The fresh-module mount order and
-dialogue camera path remain statically closed (#23–#28), and the stream voice path is static
-(#32); no data/loader ambiguity remains.
+Conclusion: the hardware driver path renders chargen but the ATI OpenGL driver faults on the
+first module draw (`atioglxx.dll`, see the live closure below); the Mesa llvmpipe profile
+survives the transition and provides the live module/dialogue evidence. The fresh-module mount
+order and dialogue camera path are closed (#23–#28), and the stream voice path (#32) is now
+also observed live.
+
+### 2026-11-02 live closure — direct PLAY, module start, and streamwaves voice
+
+The visible quick-character panel is `FUN_006f0390` (allocated 0x1360 bytes in `FUN_006eb420`),
+with its step counter at `+0x135c`; `[panel+0x68]` is the chargen manager. Its PLAY path is
+`0x6efd60` → `FUN_006eb320([panel+0x68])` → `FUN_006dbdf0(manager)`, the same `FUN_006eb320`
+used by the name dialog END_BTN and the step-6 handler. `live_hooks.js` captures the manager in
+`FUN_006eb420` and calls `FUN_006eb320` on the game thread, so no synthetic click is required.
+
+* `hw-startgame6-20261102` (hardware): `startgame_called` then `modules\END_M01AA.rim` /
+  `modules\END_M01AA_s.rim`; the ATI OpenGL driver faults at `atioglxx.dll+0xAE71E7` in the
+  first indexed draw (`glDrawElements` via `FUN_00425ab0`/`FUN_0046f900`). The transition itself
+  is proven; the crash is driver-side.
+* `mesa-nomovies-20261102` (Mesa llvmpipe, `Disable Movies=1`): survives the transition and runs
+  the Endar Spire. Verbatim: `startgame_called` seq 358, `modules\END_M01AA.rim` seq 361,
+  `modules\END_M01AA_s.rim` seq 377,
+  `STREAMWAVES\m01aa\tras02\nm01aatras02000_.wav` seq 1479/1480 `ok=true`.
+  `summary.json`: `install_ok_after=true`, `new_save_files=[]`, `changed_save_files=[]`,
+  `game_processes_after=[]`.
 
 ### Task 4 (item d) from-scratch parity slot — **VERIFIED (load acceptance); F4/F5 leg OPEN**
 
