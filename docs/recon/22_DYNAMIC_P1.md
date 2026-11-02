@@ -271,6 +271,13 @@ following live frames were captured (run dirs under `artifacts/lanes/s1-06-dynam
   contains only the top-level window; a synthetic coordinate click at the PLAY row
   `(780,373)` is reported `unverified (synthetic_input)` and the screenshot stays on the
   PORTRAIT/NAME/PLAY screen. The final control ignores accessibility/synthetic input too.
+* Direct in-process attempt (`hw-direct-play-20261102`): the harness queued the chargen PLAY
+  starter `FUN_006eff80` on the next `wglSwapBuffers`, avoiding the Frida RPC thread. The call
+  threw `access violation accessing 0x68`; disassembly shows the caller must load
+  `ecx = [name_screen+0x68]` before the call (`0x2f9e2b`/`0x2f9e2e` in `FUN_006f9cd0`),
+  and that name-screen object is only created on the name screen. A zero-arg direct call is
+  therefore not sufficient; it needs the live name-screen/player object (or the final PLAY
+  control's own handler).
 
 The hardware profile also loads the Taris save's module resources and then terminates in the
 load transition; the exact crash point is not a data error (all mounts return 1, install
