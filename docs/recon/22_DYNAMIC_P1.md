@@ -205,7 +205,7 @@ closed** on `FUN_004c44d0` (docs/recon/23 #23–#25): `.mod` probe first, then
 `MODULES:<mod>_s`, LIPS, optional `_a`/`_adx`, players. Only a live repeat is blocked by the
 chargen `PLAY` input path, not by loader ambiguity.
 
-### Task 2 (item b) streamwaves voice requests + Task 3 (item c) dialogue — **OPEN (stop rule reached)**
+### Task 2 (item b) streamwaves voice requests + Task 3 (item c) dialogue — **streamwaves STATICALLY CLOSED; live dialogue open**
 
 Run `i-dialogue` (Taris Hideout save loaded, gameplay reached): 89 SendInput grid clicks +
 13 posted clicks over the play area (`hunt.jsonl`, `hunt2.jsonl`) — **zero** type-2029 (DLG)
@@ -213,7 +213,11 @@ lookups, **zero** `streamwaves\*.wav` file opens, no new camera events. Carth
 (`k_hcar_dialog`, indexed at boot from `HD0:CHITIN` addkey seq 3951) was never clicked
 successfully; no voice line played. Camera `+0x38`/`+0xc4` live evidence stands from run b
 (§2c). Blocker: injected mouse input does not drive the in-game world cursor here (same
-DirectInput blocker as task 1).
+DirectInput blocker as task 1). The streamwaves request path itself is now **statically
+closed** (docs/recon/23 §D, claim #32): voice streams build `HD0:STREAMWAVES\%s` (or the
+localized `%s\%s\%s` form), type 4 opens the `.wav` through `FUN_005dbd30` /
+`AIL_open_stream`; music and effects use `STREAMMUSIC`/`STREAMSOUNDS`. A live voice line is
+still needed only to repeat the observation, not to establish the path.
 
 ### Task 4 (item d) from-scratch parity slot — **VERIFIED (load acceptance); F4/F5 leg OPEN**
 
