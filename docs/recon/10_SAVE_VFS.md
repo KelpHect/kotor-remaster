@@ -1,15 +1,17 @@
 # Save containers and VFS (lane 05)
 
 Status: **structural parsing verified; retail save load, save-write, and reload verified at
-1280×720 (2026-10-24); Sprint 1 (2026-11-01) added byte-parity rewriting of retail slots and
-closed every inferred VFS item — see `docs/recon/21_SAVE_BYTEPARITY.md` and
-`docs/recon/22_DYNAMIC_P1.md`.** The `kotor_vfs.py` resolver defaults were corrected to the
-measured rules (flat one-level OS-order directory scan; pass-1 last-added-first; measured pass-4
-order save > `.mod` > `LIPS:localization` > players > gui pack > quality tier) and are pinned by
-`tools/tests/test_vfs_p1.py`. Fresh-module area-RIM order and streamwaves audio requests are the
-only items still with the dynamic lane. Archive I/O and the five-pass resolver have synthetic tests
-and the bounded dynamic measurements in `docs/recon/08_VFS_DYNAMIC.md`. Downloaded manual/autosave
-slots now exist in the test profile; the original reference install remains separate.
+1280×720 (2026-10-24); Sprint 1 closure (2026-11-02) added fully byte-identical from-scratch save
+rewrites and closed every inferred VFS item — see `docs/recon/21_SAVE_BYTEPARITY.md`,
+`docs/recon/23_BINARY_P1.md` #23–#25, and `docs/recon/22_DYNAMIC_P1.md`.** The `kotor_vfs.py`
+resolver defaults follow the measured rules (flat one-level OS-order directory scan; pass-1
+last-added-first; measured pass-4 order save > `.mod` > `LIPS:localization` > players > gui pack >
+quality tier) and the statically proven pass-3 order `_s > _adx > _a > area > menu > global`
+(`FUN_004c44d0`); both are pinned by `tools/tests/test_vfs_p1.py`. Only real streamwaves audio
+requests still need the dynamic lane (directory scan and pass-1 index are measured). Archive I/O
+and the five-pass resolver have synthetic tests and the bounded dynamic measurements in
+`docs/recon/08_VFS_DYNAMIC.md`. Downloaded manual/autosave slots now exist in the test profile;
+the original reference install remains separate.
 
 ## Save container
 
@@ -169,7 +171,7 @@ install is untouched; only the new quicksave slot was added.
 ## Tests
 
 The original lane run of `python tools/tests/run_all.py` recorded **33 tests, 32 pass, 1 skip,
-0 failures**. The current suite records **47 tests, 46 pass, 1 skip, 0 failures/errors** (skip:
+0 failures**. The current suite records **107 tests, 106 pass, 1 skip, 0 failures/errors** (skip:
 no real save in the reference install; the downloaded slots are checked separately below).
 Generated fixtures live in `artifacts/tests/`.
 
@@ -203,8 +205,10 @@ new-save creation and reload are separate verification gates.
   in-game saves require either a Mesa-compatible resampler shim or a clean-room screenshot
   replacement. The acceptance run skipped the screenshot and synthesized `Screen.tga`; the save
   data itself is unaffected.
-* The writer is not byte-compatible; the retail engine accepted a synthetic `patch.erf` at boot,
-  which is structural acceptance, not a save round-trip guarantee.
+* The writer is **byte-compatible on a parsed retail slot**: the 2026-11-02 closure re-encode
+  reproduces `SAVEGAME.sav` and all five files byte-for-byte, including the nested module and
+  PARTYTABLE's orphaned field-index copies (`docs/recon/21` §2, `FUN_00411020` fidx allocator).
+  The retail engine also accepted the from-scratch rewritten slot by the normal Load Game UI.
 * Duplicate-in-archive, `.mod` vs RIM, save-vs-module, pass-3 `_s`-vs-global, pass-4
   save > `.mod` > `LIPS:localization` > `players` > texture-pack order, KEY duplicates, and flat
   loose directories were measured on 2026-10-24. First entry/record wins; a mounted global RIM
@@ -219,9 +223,10 @@ new-save creation and reload are separate verification gates.
 * Directory enumeration order is the OS order (`FindFirstFile` returns NTFS name order) and the
   engine does not sort; loose directories are flat and pass-1 tables are searched last-added-first
   (`runs2/enum-dirs-1`).
-* Fresh-module area-RIM intra-order and `.mod` vs area RIM remain unmeasured: the
-  character-generation `PLAY` control did not activate under posted/hardware mouse, arrows, Enter,
-  or number hotkeys. This is an input blocker, not a loader stall. `streamwaves` audio requests
-  before gameplay also remain unobserved; its directory and pass-1 index are measured.
+* Fresh-module area-RIM intra-order and `.mod` vs area RIM are **statically closed** on the shipped
+  mounter `FUN_004c44d0`: the `.mod` probe runs first, then `MODULES:<mod>_s`, then LIPS, then the
+  optional `_a`/`_adx` RIMs (docs/recon/23 #23–#25). The character-generation `PLAY` input
+  blocker only withholds a live repeat, not the order. `streamwaves` audio requests before gameplay
+  also remain unobserved; its directory and pass-1 index are measured.
 * The earlier `lane06dup` null-name hook records remain invalid as duplicate evidence; the new
   synthetic AddKey/resman and conversion-output records supersede that gate.

@@ -24,6 +24,11 @@ and adds the byte-parity layer:
   pre-order, single-field structs using the direct field-row rule, and field
   data packed **without** 4-byte alignment (the stock ``kotor_gff_write`` pads
   each field-data entry to 4 bytes; retail does not).
+* ``gff_bytes_retail`` is the byte-parity re-encoder for a parsed file: it
+  preserves the engine's struct slots, global field-row order and field-index
+  table (including the append-only orphaned copies at ``FUN_00411020``), while
+  re-encoding every value. With ``fdata_align=1`` it reproduces retail GFFs
+  byte-for-byte.
 * ``analyze_save_folder`` measures byte-identical percentage per file of a
   save slot (SAVEGAME.sav + nested module ERFs + GFF sidecars + Screen.tga)
   and classifies every diff by region.
@@ -530,6 +535,231 @@ def gff_bytes_parity(file_type: str | bytes, root: gw.GffStruct,
         bytes(fdata) + bytes(fidx) + bytes(lidx)
 
 
+def gff_bytes_retail(g: "gff.Gff", fdata_align: int = 1,
+                     preserve_fidx: bool = True) -> bytes:
+    """Re-serialize a parsed GFF with the engine's original row layout.
+
+    This is the byte-parity writer for *parsed* files: it preserves the retail
+    struct-table order and the global field-row order instead of re-deriving a
+    canonical pre-order.  That row order is what the engine's append-only
+    builder actually used, so it reproduces the two layout features a semantic
+    tree cannot recover by itself:
+
+    * field rows are emitted in their original global order (root list fields
+      first, child rows next, later root fields after them), and
+    * the field-index table is rebuilt with the engine allocator at
+      ``FUN_00411020``: an array at the end of the buffer grows in place,
+      otherwise the grown array is appended, leaving the old copy orphaned.
+
+    With ``fdata_align=1`` this is byte-identical for every shipped GFF
+    payload (flat sidecars and nested save modules).  The function still
+    encodes values from the parsed semantic fields, so it is not a raw copy:
+    scalar edits are honoured; unchanged byte strings preserve their original
+    padding/NUL bytes.
+    """
+    if not isinstance(g, gff.Gff):
+        raise gw.GffWriteError("g must be a parsed gff.Gff")
+    if len(g.magic) != 4 or len(g.version) != 4:
+        raise gw.GffWriteError("GFF file type/version must be exactly 4 bytes")
+
+    labels: list[bytes] = []
+    label_index: dict[str, int] = {}
+
+    def label_id(label: str) -> int:
+        if label not in label_index:
+            label_index[label] = len(labels)
+            labels.append(gw._encode_label(label))
+        return label_index[label]
+
+    fdata = bytearray()
+    lidx = bytearray()
+
+    def fdata_add(payload: bytes) -> int:
+        while len(fdata) % fdata_align:
+            fdata.append(0)
+        off = len(fdata)
+        fdata.extend(payload)
+        return off
+
+    def original_string(ftype: int, f) -> bytes | None:
+        """Original byte payload for a CExoString/ResRef when value unchanged."""
+        try:
+            if ftype == 10:
+                n = struct.unpack_from("<I", g.fdata, f.data)[0]
+                return g.fdata[f.data + 4:f.data + 4 + n]
+            if ftype == 11:
+                n = g.fdata[f.data]
+                return g.fdata[f.data + 1:f.data + 1 + n]
+        except (IndexError, struct.error):
+            return None
+        return None
+
+    def encode(f) -> int:
+        ftype, value, field = f.type, g.value(f), f.label
+        if ftype in gw.INLINE_TYPES:
+            if ftype in (0, 2, 4, 18):
+                v = int(value)
+                if not 0 <= v <= 0xFFFFFFFF:
+                    raise gw.GffWriteError(f"{field}: inline value out of u32 range")
+                return v
+            if ftype in (1, 3):
+                # Retail stores the sign-extended u32 (e.g. -4 -> 0xfffffffc)
+                # for the signed small-int types.  Preserve the original
+                # representation when the low bits still match the value;
+                # a real edit falls through to the re-encoded value.
+                bits = 8 if ftype == 1 else 16
+                candidate = int(value) & 0xFFFFFFFF
+                mask = (1 << bits) - 1
+                if (f.data & mask) == (candidate & mask):
+                    return f.data
+                return candidate
+            if ftype == 5:
+                return int(value) & 0xFFFFFFFF
+            if ftype == 8:
+                return struct.unpack("<I", struct.pack("<f", float(value)))[0]
+        if ftype == 6:
+            return fdata_add(struct.pack("<Q", int(value) & 0xFFFFFFFFFFFFFFFF))
+        if ftype == 7:
+            return fdata_add(struct.pack("<q", int(value)))
+        if ftype == 9:
+            return fdata_add(struct.pack("<d", float(value)))
+        if ftype == 10:
+            raw = gw._text(value, field)
+            orig = original_string(ftype, f)
+            if orig is not None and orig.split(b"\0")[0] == raw:
+                raw = orig
+            return fdata_add(struct.pack("<I", len(raw)) + raw)
+        if ftype == 11:
+            raw = gw._resref(value, field)
+            orig = original_string(ftype, f)
+            if orig is not None and orig.split(b"\0")[0] == raw:
+                raw = orig
+            return fdata_add(bytes([len(raw)]) + raw)
+        if ftype == 12:
+            if not isinstance(value, dict):
+                raise gw.GffWriteError(f"{field}: locstring needs a dict")
+            strref = int(value.get("strref", 0xFFFFFFFF)) & 0xFFFFFFFF
+            subs = value.get("substrings", [])
+            payload = bytearray(struct.pack("<3I", 0, strref, len(subs)))
+            sub_bytes = 0
+            for item in subs:
+                lang, text = item
+                raw = gw._text(text, f"{field} substring")
+                payload += struct.pack("<2I", int(lang) & 0xFFFFFFFF, len(raw))
+                payload += raw
+                sub_bytes += 8 + len(raw)
+            struct.pack_into("<I", payload, 0, 8 + sub_bytes)
+            return fdata_add(bytes(payload))
+        if ftype == 13:
+            if not isinstance(value, (bytes, bytearray)):
+                raise gw.GffWriteError(f"{field}: binary field needs bytes")
+            return fdata_add(struct.pack("<I", len(value)) + bytes(value))
+        if ftype == 14:
+            if not isinstance(value, dict) or "__struct__" not in value:
+                raise gw.GffWriteError(f"{field}: struct field needs a struct index")
+            return int(value["__struct__"])
+        if ftype == 15:
+            _n, indices = g.list_of(f)
+            off = len(lidx)
+            lidx.extend(struct.pack("<I", len(indices)))
+            for child in indices:
+                lidx.extend(struct.pack("<I", int(child)))
+            return off
+        if ftype == 16:
+            vals = [float(x) for x in value]
+            if len(vals) != 4:
+                raise gw.GffWriteError(f"{field}: vector4 needs 4 floats")
+            return fdata_add(struct.pack("<4f", *vals))
+        if ftype == 17:
+            vals = [float(x) for x in value]
+            if len(vals) != 3:
+                raise gw.GffWriteError(f"{field}: vector3 needs 3 floats")
+            return fdata_add(struct.pack("<3f", *vals))
+        raise gw.GffWriteError(f"{field}: unsupported GFF type {ftype}")
+
+    # Field rows are encoded in the original global order.  Labels therefore
+    # follow retail first-use order, not a canonical tree walk.
+    field_rows: list[tuple[int, int, int]] = []
+    for r in range(len(g.fields)):
+        f = g.fields[r]
+        field_rows.append((f.type, label_id(f.label), encode(f)))
+
+    # The retail fidx table is preserved byte-for-byte by default.  It is not
+    # a canonical function of the semantic tree: the engine allocates each
+    # struct's array in creation order, then grows it later when list contents
+    # or save-time fields are appended, leaving orphaned copies (PARTYTABLE's
+    # 56 stale slots, GLOBALVARS' root rows split around child rows).  For a
+    # parsed file the original slots are the only exact answer.
+    #
+    # preserve_fidx=False keeps a deterministic rebuild for synthetic trees:
+    # append each field row in order and emulate FUN_00411020 (grow in place
+    # when the array ends the buffer, otherwise append a new array).
+    struct_rows: list[tuple[int, int, int]] = []
+    if preserve_fidx:
+        fidx = list(g.field_rows)
+        for si, s in enumerate(g.structs):
+            if s.count == 0:
+                # Retail writes 0xffffffff for an empty struct's field-index
+                # offset (the parsed node has slot=None); synthetic canonical
+                # writers use 0.  Preserve the file's actual value.
+                off = struct.unpack_from("<I", g.buf, g.struct_off + si * 12 + 4)[0]
+                struct_rows.append((s.type_id, off, 0))
+            elif s.count == 1:
+                struct_rows.append((s.type_id, s.rows[0], 1))
+            else:
+                struct_rows.append((s.type_id, s.slot * 4, s.count))
+    else:
+        owner: dict[int, int] = {}
+        for si, s in enumerate(g.structs):
+            for r in s.rows:
+                owner[r] = si
+        fidx = []
+        state: dict[int, tuple[str, list[int], int | None]] = {}
+        for r in range(len(g.fields)):
+            si = owner[r]
+            _mode, rows, slot = state.get(si, ("direct", [], None))
+            rows = rows + [r]
+            if len(rows) == 1:
+                state[si] = ("direct", rows, None)
+            elif len(rows) == 2:
+                slot = len(fidx)
+                fidx.extend(rows)
+                state[si] = ("array", rows, slot)
+            else:
+                if (slot is not None and
+                        slot * 4 + (len(rows) - 1) * 4 == len(fidx) * 4):
+                    fidx.append(r)
+                    state[si] = ("array", rows, slot)
+                else:
+                    slot = len(fidx)
+                    fidx.extend(rows)
+                    state[si] = ("array", rows, slot)
+        for si, s in enumerate(g.structs):
+            _mode, rows, slot = state.get(si, ("direct", [], None))
+            if len(rows) == 0:
+                struct_rows.append((s.type_id, 0, 0))
+            elif len(rows) == 1:
+                struct_rows.append((s.type_id, rows[0], 1))
+            else:
+                struct_rows.append((s.type_id, slot * 4, len(rows)))
+
+    label_bytes = b"".join(labels)
+    struct_bytes = b"".join(struct.pack("<3I", *r) for r in struct_rows)
+    field_bytes = b"".join(struct.pack("<3I", *r) for r in field_rows)
+    struct_off = GFF_HEADER_SIZE
+    field_off = struct_off + len(struct_bytes)
+    label_off = field_off + len(field_bytes)
+    fdata_off = label_off + len(label_bytes)
+    fidx_off = fdata_off + len(fdata)
+    lidx_off = fidx_off + len(fidx) * 4
+    header = struct.pack("<12I", struct_off, len(struct_rows), field_off,
+                         len(field_rows), label_off, len(labels), fdata_off,
+                         len(fdata), fidx_off, len(fidx) * 4, lidx_off, len(lidx))
+    return (g.magic + g.version + header + struct_bytes + field_bytes +
+            label_bytes + bytes(fdata) + struct.pack("<%dI" % len(fidx), *fidx) +
+            bytes(lidx))
+
+
 def _gff_region_of(lay: dict, offset: int) -> str:
     if offset < GFF_HEADER_SIZE:
         return "header"
@@ -543,8 +773,14 @@ def analyze_gff_bytes(data: bytes, name: str) -> dict:
     lay = gff_layout(data, name)
     g = ks.gff_from_bytes(data, name)
     verbatim, vrep = gff_bytes_verbatim(data, name)
-    parity = gff_bytes_parity(g.magic, gw.from_gff(g), g.version, fdata_align=1)
-    prep = diff_report(data, parity, name + " [parity align=1]")
+    # Retail-layout writer: preserves the parsed global field-row order and
+    # emulates the engine's append-only field-index allocator (FUN_00411020).
+    parity = gff_bytes_retail(g, fdata_align=1)
+    prep = diff_report(data, parity, name + " [retail layout align=1]")
+    semantic_parity = gff_bytes_parity(g.magic, gw.from_gff(g), g.version,
+                                       fdata_align=1)
+    spre = diff_report(data, semantic_parity,
+                       name + " [canonical parity align=1]")
     # per-section diff classification for the parity re-encode
     section_diffs: dict[str, int] = {}
     n = min(len(data), len(parity))
@@ -572,6 +808,11 @@ def analyze_gff_bytes(data: bytes, name: str) -> dict:
                           "diff_byte_count": prep["diff_byte_count_in_overlap"],
                           "length_delta": prep["length_delta"],
                           "diff_bytes_by_section": section_diffs},
+        "semantic_parity_align1": {
+            "byte_identical": spre["byte_identical"],
+            "first_diff_offset": spre["first_diff_offset"],
+            "diff_byte_count": spre["diff_byte_count_in_overlap"],
+            "length_delta": spre["length_delta"]},
         "canonical_gw_gff_bytes": {"byte_identical": crep["byte_identical"],
                                    "first_diff_offset": crep["first_diff_offset"],
                                    "diff_byte_count": crep["diff_byte_count_in_overlap"],
@@ -676,7 +917,10 @@ def rewrite_save_parity(src: str | os.PathLike, dst: str | os.PathLike,
 
     ``mode="parity"`` uses the from-scratch retail-faithful encoders: ERF
     containers repacked with ``erf_bytes_repack(align=1)`` (retail layout) and
-    GFF payloads with ``gff_bytes_parity`` (no fdata alignment).
+    GFF payloads with ``gff_bytes_retail`` (original row order, engine fidx
+    allocator, no fdata alignment).  On a parsed retail slot this now preserves
+    the sidecar and nested-module GFF bytes exactly, including PARTYTABLE's
+    orphaned field-index copies.
     ``mode="verbatim"`` uses the layout-preserving re-encoders
     (``erf_bytes_verbatim`` / ``gff_bytes_verbatim``): an *unmodified*
     re-encode, which must be byte-identical and proves full byte accounting.
@@ -704,7 +948,7 @@ def rewrite_save_parity(src: str | os.PathLike, dst: str | os.PathLike,
         if mode == "verbatim":
             return gff_bytes_verbatim(data, name)
         g = ks.gff_from_bytes(data, name)
-        blob = gff_bytes_parity(g.magic, gw.from_gff(g), g.version, fdata_align=1)
+        blob = gff_bytes_retail(g, fdata_align=1)
         return blob, diff_report(data, blob, name)
 
     for p in sorted(sf.files.values(), key=lambda x: x.name.lower()):

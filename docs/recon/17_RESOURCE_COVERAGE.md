@@ -4,9 +4,9 @@ Date: 2026-11-01. Target: user-owned KotOR 1.0.3.0 install, executable SHA-256
 `0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6` (verified at run start;
 run aborts on drift). All access read-only; no game bytes copied into tracked files.
 
-Note: `docs/SPRINT1.md` does not exist at this branch head (only `SPRINT0.md` /
-`SPRINT0_REPORT.md`); this lane followed the s1-01-coverage assignment text and the
-Sprint 0 shared-resource rules. **Open** for the integrator: add `SPRINT1.md`.
+Plan of record: `docs/SPRINT1.md` (published after this lane's first run). The lane followed the
+s1-01-coverage assignment text and the Sprint 0 shared-resource rules; the SPRINT1 doc is now
+tracked, closing the earlier document gap.
 
 Tooling: `tools/inventory/resource_coverage.py` (enumerators + header validators +
 ledger + gate check), tests `tools/inventory/test_resource_coverage.py`. Reuses
@@ -161,17 +161,17 @@ texture entries / 1 dialog.tlk / 13,799 streamwaves / 970 streamsounds /
 - Extensionless loose files in `streamwaves/` are sniffed by RIFF probe → WAV.
   Verified.
 
-## 5. Gaps triaged as open
+## 5. Gaps and disposition
 
 | item | status | reason |
 |---|---|---|
 | BTI/BTC semantics | closed (verified) | GFF V3.2 payloads; see §4 |
-| 26 NUL-variant 2DAs | handled (header-validated), parser update open | strict `two_da.py` rejects the NUL-separated variant; ledger fallback passes all 26 |
-| MDX block-level decode in the ledger | open by design | MDX has no file header; block strides come from the paired MDL (recon 15). Ledger checks u32 alignment; full decode is lane 10's `mdx2` |
+| 26 NUL-variant 2DAs | **closed** | `tools/formats/two_da_ascii.parse_2da_any` parses and re-encodes the NUL-separated RIM variant; round-trip 519/519 |
+| MDX block-level decode in the ledger | open by design | MDX has no file header; block strides come from the paired MDL (recon 15). Ledger checks u32 alignment; full decode is recon/15 |
 | TGA exact size | open by design | shipped TGA carries trailing bytes (observed +26 on `chrome1.tga`); only header + lower bound enforced |
-| texture-pack quality mapping (tpa/tpb/tpc) | open | selection rule not measurable read-only; recon 08 |
-| WAV ~470-byte prefix frequency | open | validator tolerates it; exact prefix layout not decoded here |
-| `docs/SPRINT1.md` missing | open | integrator to add the Sprint 1 doc |
+| texture-pack quality mapping (tpa/tpb/tpc) | **closed** | measured in-process: quality 2/1/0 -> tpa/tpb/tpc, gui pack always loaded (recon 08/10) |
+| WAV ~470-byte prefix frequency | open by design | validator tolerates it; exact prefix layout not decoded here |
+| `docs/SPRINT1.md` missing | **closed** | plan published at `docs/SPRINT1.md` |
 
 ## 6. Tests
 

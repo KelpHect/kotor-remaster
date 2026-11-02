@@ -45,11 +45,12 @@ def verify_install(game_dir: str) -> str:
     return digest
 
 
-def compile_one(store, module):
+def compile_one(store, module, profile="retail"):
     md = load_module(store, module)
-    report = validate_module(md)
+    report = validate_module(md, profile=profile)
     report["build_sha256"] = BUILD_SHA256
     report["compiler_version"] = PACKAGE_VERSION
+    report["profile"] = profile
     report["sources"] = md.sources
     return report
 
@@ -61,6 +62,9 @@ def main(argv=None) -> int:
         _ROOT, "artifacts", "lanes", "s1-03-mapcompile"))
     ap.add_argument("--module", action="append", default=None,
                     help="restrict to these module names (repeatable)")
+    ap.add_argument("--profile", choices=["retail", "strict"], default="retail",
+                    help="retail applies documented shipped-data triage; strict "
+                         "hard-fails every rule violation")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args(argv)
 
@@ -80,7 +84,7 @@ def main(argv=None) -> int:
     t0 = time.time()
     for i, module in enumerate(modules):
         try:
-            rep = compile_one(store, module)
+            rep = compile_one(store, module, args.profile)
         except Exception as exc:  # load/parse failure is a hard report entry
             rep = {"module": module, "area": None, "status": "hard_failed",
                    "hard_failures": 1, "triage": 0,
@@ -108,6 +112,7 @@ def main(argv=None) -> int:
     summary = {
         "build_sha256": BUILD_SHA256,
         "compiler_version": PACKAGE_VERSION,
+        "profile": args.profile,
         "game_dir": args.game_dir,
         "modules_total": len(reports),
         "areas_clean": len(clean),

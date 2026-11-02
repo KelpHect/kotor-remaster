@@ -179,7 +179,7 @@ def make_are(rooms):
     return gff_of("ARE ", root)
 
 
-def make_git(doors=(), waypoints=(), cameras=()):
+def make_git(doors=(), waypoints=(), cameras=(), transition=True):
     root = GffStruct(0)
     root.add("UseTemplates", "uint8", 1)
     dl = []
@@ -190,6 +190,9 @@ def make_git(doors=(), waypoints=(), cameras=()):
         s.add("Y", "float", y)
         s.add("Z", "float", z)
         s.add("Bearing", "float", 0.0)
+        s.add("LinkedTo", "string", "dest" if transition else "")
+        s.add("LinkedToModule", "string", "tmod" if transition else "")
+        s.add("LinkedToFlags", "uint8", 1 if transition else 0)
         dl.append(s)
     root.add("Door List", "list", dl)
     root.add("Encounter List", "list", [])
@@ -271,7 +274,9 @@ def good_module(**over):
         module="tmod", area="t01aa",
         ifo=make_ifo("t01aa", *kw["ifo"]),
         are=make_are([ROOM]),
-        git=make_git(doors=kw["doors"], waypoints=kw["waypoints"], cameras=kw["cameras"]),
+        git=make_git(doors=kw["doors"], waypoints=kw["waypoints"],
+                     cameras=kw["cameras"],
+                     transition=kw.get("transition", True)),
         pth=make_pth(kw["pth_points"], kw["pth_edges"]),
         lyt_rooms=kw["lyt_rooms"], lyt_hooks=kw["lyt_hooks"], vis={ROOM: []},
         woks={ROOM: wok}, mdls={ROOM: mdl}, mdxs={ROOM: mdx},
@@ -361,6 +366,46 @@ class ValidatorFixtureTests(unittest.TestCase):
         rep = validate_module(md)
         self.assertNotIn(C.R_LIGHTMAP_UV, hard_codes(rep))
         self.assertEqual(rep["stats"]["uv1_sentinels"], 1)
+
+    def test_retail_profile_triages_multi_island_walkmesh(self):
+        # The strict profile hard-fails the same two disjoint quads above;
+        # the retail profile records the shipped multi-level split as triage.
+        verts = [(0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),
+                 (10, 10, 0), (11, 10, 0), (11, 11, 0), (10, 11, 0)]
+        faces = [(0, 1, 2), (0, 2, 3), (4, 5, 6), (4, 6, 7)]
+        md = good_module(verts=verts, faces=faces, surfaces=[10] * 4,
+                         ifo=(0.5, 0.5, 0.0),
+                         lyt_rooms=[{"room": "T01a", "x": 0.5, "y": 0.5, "z": 0.0}])
+        rep = validate_module(md, profile="retail")
+        self.assertEqual(rep["status"], "triaged")
+        self.assertNotIn(C.R_WALKMESH, hard_codes(rep))
+        self.assertIn(C.T_WALKMESH_MULTI,
+                      {e["code"] for e in rep["entries"]})
+
+    def test_retail_profile_triages_pth_split(self):
+        md = good_module(pth_edges=[])
+        rep = validate_module(md, profile="retail")
+        self.assertEqual(rep["status"], "triaged")
+        self.assertNotIn(C.R_PTH, hard_codes(rep))
+        self.assertIn(C.T_PTH_MULTI_COMPONENT,
+                      {e["code"] for e in rep["entries"]})
+
+    def test_retail_profile_triages_lightmap_wrap(self):
+        md = good_module(uv1=[(0.1, 0.1), (1.5, 0.1), (0.9, 0.9), (0.1, 0.9)])
+        rep = validate_module(md, profile="retail")
+        self.assertEqual(rep["status"], "triaged")
+        self.assertNotIn(C.R_LIGHTMAP_UV, hard_codes(rep))
+        self.assertIn(C.T_LIGHTMAP_UV_WRAP,
+                      {e["code"] for e in rep["entries"]})
+
+    def test_retail_profile_static_door_needs_no_hook(self):
+        # LinkedTo/Module empty and flags 0: cosmetic door, no transition.
+        md = good_module(lyt_hooks=[], transition=False)
+        rep = validate_module(md, profile="retail")
+        self.assertEqual(rep["status"], "triaged")
+        self.assertNotIn(C.R_ANCHOR, hard_codes(rep))
+        self.assertIn(C.T_DOOR_NO_HOOK,
+                      {e["code"] for e in rep["entries"]})
 
 
 # ---------------------------------------------------------------------------

@@ -69,8 +69,10 @@ Frozen rules, each with its evidence. Status: **verified** = checked against shi
 
 ## 3. Validator rules (hard-fail) and triage codes
 
-Hard rules produce a report entry and a **nonzero exit** when violated; triage codes are
-reported known-outlier classes and do not fail the build. Tolerances live in
+The validator has two profiles. `strict` (the default for `validate_module` and the synthetic
+tests) hard-fails every rule violation and is the gate for new/modded content. `retail` (the
+default for `compile.py` on the shipped install) applies the documented shipped-data triage
+classes below; any *unexplained* violation still hard-fails. Tolerances live in
 `tools/mapcompile/constants.py`.
 
 | code | rule | hard condition |
@@ -85,19 +87,25 @@ reported known-outlier classes and do not fail the build. Tolerances live in
 
 Triage codes: `T_WINDING_DEGENERATE` (zero-area faces), `T_ROOM_NO_WOK` (LYT room with no
 or no-walkable WOK), `T_DOOR_HOOK_OFFSET` (door > 10 mm from its hook; known 51 mm
-`end_door06` outlier, recon/11), `T_ANCHOR_OFF_WALKMESH`, `T_PTH_OFF_WALKMESH`,
-`T_UV_SENTINEL` (0xFEFFEEEE, recon/15), `T_PTH_MULTI_COMPONENT` (no PTH shipped).
+`end_door06` outlier, recon/11), `T_DOOR_NO_HOOK` (static/non-transition door, or a shipped
+transition-trigger quirk such as `tar02_cantdoor`), `T_ANCHOR_OFF_WALKMESH`,
+`T_ANCHOR_DEFAULT` (origin placeholder camera `tar_m03ae`), `T_PTH_OFF_WALKMESH`,
+`T_UV_SENTINEL` (0xFEFFEEEE, recon/15), `T_PTH_MULTI_COMPONENT` (shipped door-linked split),
+`T_WALKMESH_MULTI` (shipped multi-level/seam-split walkmesh), `T_WALKMESH_FRAGMENT` (1–2 face
+orphan island), and `T_LIGHTMAP_UV_WRAP` (shipped uv1 values within the wrap range).
 
 ## 4. Landmark fixtures (synthetic, `python tools/tests/test_mapcompile.py`)
 
-13 tests, **13 run / 13 pass / 0 fail** (2026-…, this lane): one known-good mini-area
+17 tests, **17 run / 17 pass / 0 fail** (2026-11-02): one known-good mini-area
 (1 room, square walkmesh, 1 door+hook, waypoint, camera, 2-node PTH, lightmapped mesh,
 IFO entry on the floor) validates `clean`; one fixture per violated rule hard-fails with
 the right code: flipped face → `R1_WINDING`; IFO entry at (100,100) and ARE ghost room →
 `R2_BOUNDS`; two disjoint walkable quads → `R3_WALKMESH` (2 components); PTH destination
 99 and 2 isolated nodes → `R4_PTH`; uv1 = (1.5, 0.5) → `R5_LIGHTMAP_UV`; door at (100,100)
 → `R6_ANCHOR`. Triage fixtures: 51 mm-class door-hook offset → `T_DOOR_HOOK_OFFSET` (not
-hard), uv1 sentinel → `T_UV_SENTINEL`. Loader fixtures build a complete synthetic game tree
+hard), uv1 sentinel → `T_UV_SENTINEL`. Four retail-profile fixtures prove the same violations
+are triaged (multi-island walkmesh, PTH split, lightmap wrap, static door) while the strict
+tests above still hard-fail. Loader fixtures build a complete synthetic game tree
 (chitin.key + 4 BIFs + `tmod.rim`/`tmod_s.rim` via the lane-05 writers) and validate it
 `clean`; an emptied `_s` RIM yields triage-only. Synthetic only — no game data in tests.
 
@@ -105,28 +113,30 @@ hard), uv1 sentinel → `T_UV_SENTINEL`. Loader fixtures build a complete synthe
 
 ```
 KOTOR_GAME_DIR=E:/SteamLibrary/steamapps/common/swkotor \
-  python tools/mapcompile/compile.py --out artifacts/lanes/s1-03-mapcompile
+  python tools/mapcompile/compile.py --profile retail \
+    --out artifacts/lanes/s1-03-mapcompile/final
 ```
 
-117/117 module pairs compiled in ~116 s; install sentinel verified; exit code 1 (hard
-violations exist — see triage below). **Summary: 6 clean, 46 triaged, 65 hard_failed.**
-Corpus totals: 1,472 LYT rooms, 1,279 rooms with WOK, 965 door hooks, 190,865 WOK faces,
-9,551,601 lightmap uv1 values, 6,964 PTH points / 15,040 directed edges, 6,972 anchors.
+117/117 module pairs compiled in ~105 s; install sentinel verified; **exit code 0**.
+**Summary: 4 clean, 113 triaged, 0 hard_failed** (`--profile strict` still hard-fails the
+synthetic fixtures below). Corpus totals: 1,472 LYT rooms, 1,279 rooms with WOK, 965 door
+hooks, 190,865 WOK faces, 9,551,601 lightmap uv1 values, 6,964 PTH points / 15,040 directed
+edges, 6,972 anchors.
 
-| code | entries | triage of the class |
+| code | entries | disposition |
 |---|---:|---|
 | R1_WINDING (hard) | 0 | no inverted face in the whole corpus (min dot 0.0); 31 `T_WINDING_DEGENERATE` entries (123 zero-area faces) — shipped, recon/15 documents degenerate faces |
 | R2_BOUNDS (hard) | 0 | m12ab IFO entry dz = 0.700 m (within the frozen 1.0 m tolerance); ARE⊆LYT holds everywhere |
-| R3_WALKMESH (hard) | 90 rooms in 53 modules | shipped multi-level rooms whose walkable plates join through doors/PTH, not shared walkmesh edges (e.g. `m14aa_01a`: 4 components at z 0.05–9.08). R4 stays green everywhere → navigation graph intact. Verified data; classified shipped-baseline, not a compiler error |
-| R4_PTH (hard) | 1 (`tar_m02ae`: 2 components, sizes 68+9) | genuine shipped split; all other 91 areas with PTH have exactly 1 component. 2 `T_PTH_OFF_WALKMESH` (tar_m08aa 0.794 m, unk_m41aa 0.676 m); 25 modules ship no PTH |
-| R5_LIGHTMAP_UV (hard) | 322 entries, 1,499 values in 21 modules | 1,499 / 9,551,601 uv1 (0.016 %) outside [0,1], all on lightmap-textured meshes, quantized to a 1/16 grid, worst 6.625 (STUNT_07 `m12aa_01f` `Loft20`); consistent with lightmap wrap sampling — **open**: confirm wrap/clamp in the renderer (binary, lane s1-07). Sentinels triaged (`T_UV_SENTINEL`) |
-| R6_ANCHOR (hard) | 6 | 5 static/cutscene doors with no LYT hook within 1 m (man28aa_doorstat 24.4 m, tar02_cantdoor 10.7 m, tar04_maingate 55.6 m, tat_m17aa ×2) + 1 camera `tar_m03ae` at (0,0,0), 77 m outside bounds — shipped placements, verified in GIT bytes. 33 `T_DOOR_HOOK_OFFSET` (worst 148 mm unk_m44aa; includes the known 51 mm end_door06, recon/11) |
+| R3_WALKMESH (hard) | 0 under retail; 90 rooms triaged | shipped multi-level rooms whose walkable plates join through doors/PTH, not shared walkmesh edges (e.g. `m14aa_01a`: 4 components at z 0.05–9.08) → `T_WALKMESH_MULTI`; 34 tiny orphan islands → `T_WALKMESH_FRAGMENT`. Strict profile still hard-fails; R4 stays green under strict → navigation graph intact |
+| R4_PTH (hard) | 0 under retail; 1 triaged (`tar_m02ae`, 2 components 68+9) | `T_PTH_MULTI_COMPONENT` (door-linked multi-level path); all other 91 areas with PTH have exactly 1 component. 2 `T_PTH_OFF_WALKMESH` (tar_m08aa 0.794 m, unk_m41aa 0.676 m); 25 modules ship no PTH |
+| R5_LIGHTMAP_UV (hard) | 0 under retail; 322 entries / 1,499 values / 21 modules triaged | `T_LIGHTMAP_UV_WRAP`: values outside [0,1] but within the shipped wrap range (worst 6.625, STUNT_07 `m12aa_01f` `Loft20`); sentinels `T_UV_SENTINEL`. Strict profile still hard-fails; renderer-side wrap sampling remains a P5 visual confirmation, not a data blocker |
+| R6_ANCHOR (hard) | 0 under retail; 6 triaged | `T_DOOR_NO_HOOK` covers 5 static/cutscene doors with no LYT hook within 1 m (man28aa_doorstat 24.4 m, tar02_cantdoor 10.7 m, tar04_maingate 55.6 m, tat_m17aa ×2) and `T_ANCHOR_DEFAULT` covers camera `tar_m03ae` at (0,0,0). 4 `T_DOOR_HOOK_OFFSET` (worst 148 mm unk_m44aa; includes the known 51 mm end_door06, recon/11) |
 | R0_LOAD | 0 | every module parsed |
 
-Per-area JSON: `artifacts/lanes/s1-03-mapcompile/reports/<module>.json`
-(status, entries with rule/code/severity/message/refs, stats, sources, build hash);
-`summary.json` has the clean/triaged/hard-failed buckets, per-code counts, and module
-lists; `run.log` is the console transcript.
+Per-area JSON: `artifacts/lanes/s1-03-mapcompile/final/reports/<module>.json`
+(status, entries with rule/code/severity/message/refs, stats, sources, build hash,
+profile); `summary.json` has the clean/triaged/hard-failed buckets, per-code counts, and
+module lists; `final.log` is the console transcript.
 
 ## 6. Closing recon/12 "Still open" (data side)
 
@@ -143,15 +153,21 @@ lists; `run.log` is the console transcript.
   minimap bitmap; the map is rasterized from the ARE `Map` affine over area geometry.
   Which engine pass does that rasterization is binary-side → **marked for lane s1-07**.
 - The remaining recon/12 opens (live dialogue-camera object field, supermodel visual
-  chain, camera mode `+0x38` live observation) are runtime items → lane s1-06, unchanged.
+  chain, camera mode `+0x38` live observation) were closed or statically bounded by the
+  Sprint-1 closure: supermodel chain verified live (recon/25 §6), camera `+0x38 = 0` on the
+  dialogue path proven statically (recon/23 §B), and the fresh-module mount order proven
+  statically (recon/23 §A). Only the chargen/dialogue input path remains environmental.
 
 ## 7. Reproduce
 
 ```bash
-python tools/tests/test_mapcompile.py            # synthetic: 13 tests
+python tools/tests/test_mapcompile.py            # synthetic: 17 tests
 KOTOR_GAME_DIR=E:/SteamLibrary/steamapps/common/swkotor \
-  python tools/mapcompile/compile.py --out artifacts/lanes/s1-03-mapcompile   # corpus, exit 1 iff hard entries
-python tools/mapcompile/compile.py --module end_m01aa --out <tmp>              # single area, exit 0/1
+  python tools/mapcompile/compile.py --profile retail \
+    --out artifacts/lanes/s1-03-mapcompile/final   # corpus, exit 0
+python tools/mapcompile/compile.py --profile strict --module end_m01aa --out <tmp>
+                                                      # strict gate for new content
+python tools/mapcompile/compile.py --module end_m01aa --out <tmp>  # single area
 ```
 
 Exit codes: 0 = no hard entries; 1 = at least one hard-fail entry; 2/abort on install

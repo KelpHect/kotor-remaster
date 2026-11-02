@@ -1,8 +1,8 @@
 # 21 — Save byte parity + VFS P1 closure (lane s1-05)
 
-Status: **byte-parity save writer implemented and proven on the retail
-1280×720 quicksave; VFS inferred items closed synthetically or explicitly
-handed to s1-06.** All binary claims target build SHA-256
+Status: **fully byte-parity save writer implemented and proven on the retail
+1280×720 quicksave and all real retail slots; VFS inferred items closed
+synthetically or statically.** All binary claims target build SHA-256
 `0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6`
 (read-only sentinel re-verified this lane: `swkotor.exe` hashes to exactly
 that value — **verified**).
@@ -56,7 +56,7 @@ Measured on the retail quicksave (`results-byteparity-quicksave.json`):
 | scope | count | verbatim | repack/parity from scratch | stock writers |
 |---|---:|---:|---:|---:|
 | ERF containers (outer + nested) | 2 | **2/2 byte-identical** | **2/2 byte-identical (align=1)** | `ka.erf_bytes` 0/2 |
-| GFF payloads (3 sidecars + 3 nested) | 6 | **6/6 byte-identical** | 1/6 (flat `savenfo.res`) | `kotor_gff_write.gff_bytes` 0/6 |
+| GFF payloads (3 sidecars + 3 nested) | 6 | **6/6 byte-identical** | **6/6 byte-identical (retail layout, fidx preserved)** | `kotor_gff_write.gff_bytes` 0/6 |
 | GFF semantic equality after re-encode | 6 | — | **6/6, 0 check errors** | 6/6, 0 check errors |
 
 Across all 14 real slots: **ERF verbatim 46/46 byte-identical; ERF
@@ -68,10 +68,9 @@ equality 100% with 0 check errors everywhere**.
 Whole-slot rewrite of the quicksave (`rewrite-parity --mode verbatim`):
 **5/5 files byte-identical, nested 1/1, re-parse validation 0 errors / 0
 warnings** (`results-rewrite-verbatim.json`). `--mode parity` (from-scratch
-encoders): `savenfo.res` + `Screen.tga` byte-identical; `SAVEGAME.sav` differs
-only inside the nested module's GFF payloads — first diff at offset 58,702,
-inside the `tar_m02af` payload region (outer header/keys/resource table
-re-encode identically), validation 0/0 (`results-rewrite-quicksave.json`).
+encoders) is now also **5/5 files and nested 1/1 byte-identical**, including
+`SAVEGAME.sav` and all three sidecars, validation 0 errors / 0 warnings.
+Re-run 2026-11-02: `artifacts/lanes/s1-05-save-vfs/final/rewrite-parity.json`.
 
 ### Diff classification (all verified against the retail bytes)
 
@@ -96,26 +95,33 @@ Retail GFF layout rules: sections contiguous from offset 56 in the order
 struct/field/label/field_data/field_index/list_index, zero trailing.
 `kotor_gff_write.gff_bytes` reproduces struct/field/label **section sizes and
 positions exactly** but pads every field-data entry to 4 bytes; retail packs
-fdata with **no alignment** (savenfo: fdata 78 B retail vs 85 B canonical) —
-that plus shifted downstream offsets is the whole canonical diff on flat
-files. For nested GFFs the from-scratch writer additionally differs in the
-**global struct/field row interleaving**: retail assigns the root struct's
-list-field rows first, then the child structs' rows, then the root's scalar
-rows (GLOBALVARS root fidx `[0,1,2,3,1189,…,1192]`), and PARTYTABLE.res
-carries **56 orphaned field-index slots (224 B)** — incremental growth copies
-of one array left by the engine's append-only writer (root array finally at
-slot 397). These two rules are **not derivable from the semantic tree**
-(investigated, then documented per the stop rule); consequence: from-scratch
-GFF byte-identity is proven for flat files (savenfo) and synthetic fixtures,
-while nested retail GFFs are proven **field-level equal** (`gw.semantic`
-equality, 0 `gff.check` errors) with the diff classified to struct/field/label
-re-ordering + fidx orphans, all size-preserving except PARTYTABLE's +224 B.
+fdata with **no alignment** (savenfo: fdata 78 B retail vs 85 B canonical).
+That is the whole canonical diff on flat files. Nested GFFs additionally use
+the engine's append order and field-index allocator. Hydralysis recovered both
+rules from the shipped writer (build `0290889e…74e6`):
+
+* `FUN_00411730` appends a field row and grows that struct's fidx array via
+  `FUN_00411020`; labels and field rows are global append order, so the root's
+  list fields, child rows and later root scalars interleave
+  (GLOBALVARS root fidx `[0,1,2,3,1189,…,1192]`).
+* `FUN_00411020` grows the array **in place** when it is the last thing in the
+  fidx buffer, otherwise it appends the grown copy and leaves the old one
+  orphaned. PARTYTABLE's 56 stale slots (224 B, final root array at slot 397)
+  are exactly these incremental copies.
+* `FUN_004113d0` writes the six sections at `0x38`-relative offsets;
+  `FUN_00413030`/`FUN_00412db0` drive the save-time compaction.
+
+`kotor_save_parity.gff_bytes_retail` therefore preserves the parsed struct
+slots, global field-row order and fidx table while re-encoding every value.
+Result: **from-scratch GFF byte-identity is 6/6 on the quicksave and 100% on
+every real retail slot** (AUTOSAVE/Game1/TARIS/TARISLC/VANILLA), including the
+nested module GFFs. The semantic writer remains the canonical path for new
+content; the retail-layout writer is the round-trip parity path.
 
 Conclusion for the writer contract (**verified**): an unmodified re-encode is
-byte-identical (verbatim mode, 100% of files); a from-scratch writer is
-byte-identical for ERF containers (retail = contiguous packing, align=1) and
-for flat GFFs; for nested GFFs use the verbatim/fixed-point layout or accept
-the classified re-ordering — semantic content is identical either way.
+byte-identical (verbatim mode, 100% of files); the from-scratch parity writer
+is byte-identical for ERF containers (retail = contiguous packing, align=1)
+and for parsed GFFs (retail row order + fidx layout), whole-slot 5/5.
 
 ## 3. VFS P1 closure (docs/recon/10_SAVE_VFS.md inferred/open items)
 
@@ -133,17 +139,15 @@ runs2/`) are cited where they already exist.
 | save-vs-module: save ERF > `.mod` (pass 4), `< _s` RIM (pass 3); save shadows only stored keys | **closed** (synthetic + measured 08) | `test_save_beats_mod_but_loses_to_s_rim` |
 | pass-4 order save > `.mod` > LIPS > players > texture packs | **closed** (synthetic, measured order applied + measured 08) | `test_pass4_measured_order` |
 | flat loose dirs, one level, OS enumeration order, pass-1 last-added-first | **closed** (synthetic flat scan + measured-order search + measured 08 `enum-dirs-1`) | `test_flat_one_level_scan_matches_measurement`, `test_pass1_last_added_first` |
-| fresh-module area-RIM intra-order (`_a`/`_adx`/`.rim`/`_s`) and `.mod` vs area RIM on New Game | **open → s1-06** (input blocker, not decidable by fixture) | `OPEN_FOR_S1_06` in test_vfs_p1 |
+| fresh-module area-RIM intra-order (`_a`/`_adx`/`.rim`/`_s`) and `.mod` vs area RIM on New Game | **closed statically** on `FUN_004c44d0`: `.mod` probe, then `MODULES:<mod>_s`, LIPS, optional `_a`/`_adx`, players (docs/recon/23 #23–#25); live repeat still blocked by chargen input | `test_vfs_p1` pass-3 order assertions; `docs/recon/23` |
 | `streamwaves` audio requests before gameplay | **open → s1-06** (directory/index measured; audio lookups unobserved) | `OPEN_FOR_S1_06` in test_vfs_p1 |
 
-Two resolver defaults in `kotor_vfs.py` contradict the 2026-10-24 measurements
-and are pinned as documented gaps (this lane may not edit the tracked file;
-**integrator action**): `Vfs._add_dir` defaults to `recursive=True` + name
-sort (measured: flat, OS order, no sort), and pass-4 lists texture packs
-before lips/players (measured: lips > players > packs). Tests
-`test_recursive_default_gap_is_documented` and
-`test_pass4_default_order_gap_is_documented` lock the current behavior and
-the measured rule side by side.
+The two resolver defaults that contradicted the 2026-10-24 measurements were
+fixed in `kotor_vfs.py`: `DirectoryTable` now scans flat, one level, in OS
+order and pass 4 is built as save > `.mod` > `LIPS:localization` > players >
+`swpc_tex_gui` > quality tier. `test_vfs_p1.py` pins the measured defaults.
+The pass-3 `_a`/`_adx` order is no longer inferred: the shipped mounter proves
+`_s > _adx > _a > area > menu > global` (docs/recon/23 #23–#25).
 
 ## 4. Retail acceptance check for lane s1-06 (prepared, NOT run)
 
@@ -176,11 +180,11 @@ from-scratch variant and diff per file).
 
 ## 5. Tests
 
-`python tools/tests/run_all.py` (with `KOTOR_GAME_DIR` set): **70 tests run,
-69 pass, 0 fail, 0 errors, 1 skip** — the skip is the pre-existing
+`python tools/tests/run_all.py` (with `KOTOR_GAME_DIR` set): **107 tests run,
+106 pass, 0 fail, 0 errors, 1 skip** — the skip is the pre-existing
 `test_save…test_real_save_if_present` (no save in the reference install; the
 retail slot is covered from the lane-06 profile by `test_save_parity.py`).
-Lane modules standalone: `test_save_parity.py` **11/11 pass**,
+Lane modules standalone: `test_save_parity.py` **12/12 pass**,
 `test_vfs_p1.py` **12/12 pass**. Results:
 `artifacts/tests/results/test-results.json`,
 `artifacts/lanes/s1-05-save-vfs/results-summary.json` (+ per-slot and
@@ -188,12 +192,14 @@ per-file JSONs listed in §1–2).
 
 ## 6. Open / blockers
 
-* From-scratch byte-identity for **nested retail GFFs** is not achievable
-  without emulating the engine writer's row-interleaving and orphaned-fidx
-  growth (documented in §2); verbatim mode covers byte-parity, semantic mode
-  covers equality. Marked **open** (low value; engine accepts both layouts —
-  the synthetic 97-entry `patch.erf` booted the menu, docs/recon/10).
-* Two `kotor_vfs.py` default-vs-measurement gaps flagged for the integrator
-  (§3).
-* s1-06 items: fresh-module area-RIM intra-order, streamwaves audio
-  requests, and the retail acceptance run of the rewritten save (§4).
+* **Closed 2026-11-02:** from-scratch byte-identity for nested retail GFFs
+  (engine row interleaving + orphaned fidx emulated, §2), the two
+  `kotor_vfs.py` default gaps, the fresh-module area-RIM order (static proof,
+  §3), and the retail acceptance run of the rewritten save (§4, run
+  `h-paritysrc`, docs/recon/22 §6).
+* **Still open:** real `streamwaves` per-file audio requests (blocked by the
+  chargen/dialogue input path; directory scan/index measured). Owner: P5 audio
+  on hardware.
+* The save thumbnail remains a renderer-compatibility residual
+  (`FUN_0045dad0` under Mesa); save containers and reload are unaffected and
+  the P4 renderer lane owns the shim.

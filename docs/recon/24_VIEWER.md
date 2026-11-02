@@ -79,10 +79,10 @@ python tools/tests/run_all.py                   # full suite incl. this lane
   `TEXT.FONT`, type-specific structs. **Verified** on `mainmenu`/`maininterface`
   (gui.bif via KEY).
 - Texture lookup order used by the viewer: module RIMs → `patch.erf` →
-  `swpc_tex_gui.erf` → `swpc_tex_tpa.erf` → KEY/BIF TGA. **Inferred** from the
-  documented five-pass VFS (`docs/recon/08`); texture-pack quality→archive
-  mapping remains open there (not needed here: tpa + gui pack cover the
-  sampled resrefs).
+  `swpc_tex_gui.erf` → `swpc_tex_tpa.erf` → KEY/BIF TGA. **Verified** against the
+  documented five-pass VFS and the measured quality mapping
+  (`docs/recon/08`/`10`: quality 2/1/0 → tpa/tpb/tpc; gui pack always loaded).
+  The viewer pins tpa + gui, which cover the sampled resrefs.
 
 ## Sample outputs (this run, all checks green)
 
@@ -146,7 +146,7 @@ are this lane's).
 - verified: install sentinel hash; RIM/KEY/BIF/ERF placement of every
   resource type used; TPC/TGA/MDL/WOK/LYT/GUI layouts and all counts quoted
   above; all self-check counts (stored in the JSONs).
-- inferred: VFS-lite lookup order (subset of the verified five-pass model);
-  synthetic top-down UVs; perspective camera placement from IFO entry.
-- open: texture-pack quality→archive mapping (owned by s1-05/s1-06 recon);
-  font rasterization; cubemap rendering; shading/lightmap parity (P4/P5).
+- inferred: synthetic top-down UVs; perspective camera placement from IFO entry.
+- open: font rasterization; cubemap rendering; shading/lightmap parity (P4/P5).
+  Texture-pack quality→archive mapping is now measured (quality 2/1/0 → tpa/tpb/tpc;
+  docs/recon/08/10), so the viewer's gui+tpa pin is a deliberate subset, not a gap.

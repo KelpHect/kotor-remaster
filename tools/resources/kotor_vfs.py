@@ -21,8 +21,10 @@ Rules implemented:
 
 Intra-pass orders and the texture-quality mapping were measured in-process on
 2026-10-24/2026-11-01 (docs/recon/08, 10, 22); the pass-3 ``_a``/``_adx`` positions
-remain inferred (no such files ship in retail).  ``mounts`` and every Resolution
-carry notes.  The resolver never writes to the game directory.
+are proven from the shipped mount code at ``FUN_004c44d0`` (docs/recon/23
+#23-#25; no such files ship in retail, so the order is static evidence).
+``mounts`` and every Resolution carry notes.  The resolver never writes to the
+game directory.
 """
 from __future__ import annotations
 
@@ -398,7 +400,8 @@ class Vfs:
         self.notes: list[str] = [
             "five-pass precedence follows docs/recon/02_TECHNICAL_NOTES.md section 7",
             "intra-pass orders measured in-process 2026-10-24/2026-11-01 "
-            "(docs/recon/08, 10, 22); pass-3 _a/_adx positions inferred (no retail files)",
+            "(docs/recon/08, 10, 22); pass-3 _a/_adx order proven statically "
+            "(docs/recon/23 #23-#25; no retail files)",
             "texture quality 2/1/0 -> tpa/tpb/tpc verified, swpc_tex_gui always loaded; "
             "quality=auto assumes tpa",
         ]
@@ -500,9 +503,9 @@ class Vfs:
                     if t.name == name and t not in ordered:
                         ordered.append(t)
             p3.tables = ordered + [t for t in p3.tables if t not in ordered]
-        p3.notes.append("search order measured 2026-10-24/2026-11-01: _s > _adx/_a/area > "
-                        "menu > global (docs/recon/08, 10, 22); _a/_adx positions inferred "
-                        "(no retail files)")
+        p3.notes.append("search order measured 2026-10-24/2026-11-01 and statically "
+                        "proven: _s > _adx > _a > area > menu > global "
+                        "(docs/recon/08, 10, 22, 23 #23-#25; no retail _a/_adx files)")
         self.passes.append(p3)
 
         # Pass 4: ERFs tagged 2.  Measured search order (docs/recon/08, 10, 22):
