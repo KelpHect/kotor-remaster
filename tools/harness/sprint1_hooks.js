@@ -27,6 +27,7 @@ const IMAGE_BASE = 0x400000;
 function A(abs) { return BASE.add(abs - IMAGE_BASE); }
 let seq = 0;
 let modelN = 0;
+let glGetStringCb = null;  // keep the NativeCallback alive for the IAT patch
 function emit(o) { o.seq = ++seq; o.t = Date.now(); send(o); }
 function cstra(p, max) { try { return p.readAnsiString(max || 256); } catch (e) { return null; } }
 function cstrw(p) { try { return p.readUtf16String(1024); } catch (e) { return null; } }
@@ -56,6 +57,38 @@ function slotResref(p) {
   } catch (e) { return null; }
 }
 function wantResref(rr) { return rr !== null && CFG.targets.indexOf(rr) >= 0; }
+
+// ---- Mesa GL shim: glGetString(0x8874) must never return NULL -------------
+// The engine dereferences the result at 0x47a2ce without a null check; Mesa
+// returns NULL for GL_PROGRAM_ERROR_STRING_NV (0x8874).  Intercept the
+// opengl32 export (the engine's IAT points at it) and replace just that
+// enum's return with an empty string; all other enums pass through.
+try {
+  const gl = Process.getModuleByName('opengl32.dll');
+  const realGetString = new NativeFunction(gl.getExportByName('glGetString'),
+                                           'pointer', ['uint'], 'stdcall');
+  const emptyString = Memory.allocUtf8String('');
+  glGetStringCb = new NativeCallback(function (which) {
+    if ((which >>> 0) === 0x8874) {
+      emit({ f: 'glGetString_shim', which: '0x8874', tid: this.threadId });
+      return emptyString;
+    }
+    try { return realGetString(which); } catch (e) { return ptr(0); }
+  }, 'pointer', ['uint'], 'stdcall');
+  const cbPtr = ptr(glGetStringCb.toString());
+  const iat = BASE.add(0x33d290);  // IAT RVA, not an absolute VA
+  const page = ptr(iat.toUInt32() & 0xfffff000);
+  const range = Process.findRangeByAddress(iat);
+  const prot = range ? range.protection : 'r--';
+  Memory.protect(page, 0x1000, 'rw-');
+  const old = iat.readPointer();
+  iat.writePointer(cbPtr);
+  Memory.protect(page, 0x1000, prot);
+  emit({ f: 'iat_patch', tag: 'glGetString_0x8874', at: hs(iat),
+         old: hs(old), newv: cbPtr.toString(), prot: prot });
+} catch (e) {
+  emit({ f: 'hookerr', name: 'glGetString_shim', e: String(e) });
+}
 
 // ---- archive loaders ------------------------------------------------------
 function hookLoader(off, name) {

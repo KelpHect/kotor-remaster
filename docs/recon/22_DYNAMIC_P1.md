@@ -219,6 +219,31 @@ localized `%s\%s\%s` form), type 4 opens the `.wav` through `FUN_005dbd30` /
 `AIL_open_stream`; music and effects use `STREAMMUSIC`/`STREAMSOUNDS`. A live voice line is
 still needed only to repeat the observation, not to establish the path.
 
+### 2026-11-02 elevated Mesa runs (input now proven; load/chargen still unstable)
+
+A second pair of runs used an elevated `Start-Process -Verb RunAs` wrapper (UAC disabled on this
+host) with the existing Mesa profile. Results:
+
+* `elev-menu-load-20261102`: 45 s boot, `focus`/`clickfast` worked, menu frame captured
+  (1280×720, mean 30.75), Load Game click opened the transition, `status` seq 7339, clean
+  `application-requested` quit (`0xDEADBEEF`). This **replaces the earlier "no input" claim for
+  the elevated path**: input and window focus work.
+* `elev-live-taris2-20261102`: menu → Load Game → row click produced a changed 1280×720 frame
+  (mean 50.96, `02-selected`), proving the listing selection works; the subsequent module-load
+  transition terminated the process (`process-terminated`, crash None) before a gameplay frame
+  (`10-loaded` no render window).
+* `elev-idle-shim4-20261102`: survived 90 s at the menu and quit cleanly (`application-requested`),
+  proving the glGetString shim keeps the menu path alive; `elev-b-load-taris-20261102d` reached
+  the menu and accepted clicks but terminated during the load transition.
+* A later attempt to add a `wglMakeCurrent` restoration shim caused startup termination during
+  the logo movie, so it was **not** kept; the harness now has only the tested glGetString,
+  glu, screenshot and resampler shims.
+
+Conclusion: input is no longer the blocker on the elevated path; the remaining live blocker is
+the module/chargen transition on a host with the monitor off (no active display/context). The
+fresh-module order and camera/voice data paths remain statically closed (#23–#28, #32). Run
+artifacts: `artifacts/lanes/s1-06-dynamic/runs/elev-*`.
+
 ### 2026-11-02 hardware-profile attempt (new)
 
 To separate the llvmpipe input blocker from the game path, a lane-local `profile-hw` copy was
