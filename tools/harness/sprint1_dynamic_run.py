@@ -468,6 +468,8 @@ def serve_control(sess: Session, run: Path, steps_out: list) -> int:
             return {"ok": True, **sess.rpc("text", str(cmd.get("s", "")))}
         if op == "play":
             return {"ok": True, **sess.rpc("play")}
+        if op == "startgame":
+            return {"ok": True, **sess.rpc("startgame")}
         if op == "hwkey":
             vk = int(cmd["vk"])
             hold = float(cmd.get("hold", 0.08))
@@ -484,6 +486,8 @@ def serve_control(sess: Session, run: Path, steps_out: list) -> int:
             return {"ok": True, "scan": scan, "method": "SendInput-scan"}
         if op == "hwclick":
             return hw_click(sess.pid, int(cmd["x"]), int(cmd["y"]))
+        if op == "hwclick2":
+            return {"ok": True, **sess.rpc("hwclick2", int(cmd["x"]), int(cmd["y"]))}
         if op == "frame":
             name = str(cmd.get("name", "frame"))
             return {"ok": True, "frame": capture_frame(sess.pid, run / "frames" / (name + ".bmp"))}
