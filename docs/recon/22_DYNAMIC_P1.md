@@ -267,6 +267,10 @@ following live frames were captured (run dirs under `artifacts/lanes/s1-06-dynam
   messages, SendInput hardware clicks, and keyboard/`WM_CHAR` events. The screen remains on
   `(1) PORTRAIT`; the final PLAY control does not accept any of those input paths. This is the
   original chargen PLAY blocker, now isolated to the final control rather than the whole screen.
+* Orca computer-use on the live window (1296×759 at 0,0, PID 25796): the accessibility tree
+  contains only the top-level window; a synthetic coordinate click at the PLAY row
+  `(780,373)` is reported `unverified (synthetic_input)` and the screenshot stays on the
+  PORTRAIT/NAME/PLAY screen. The final control ignores accessibility/synthetic input too.
 
 The hardware profile also loads the Taris save's module resources and then terminates in the
 load transition; the exact crash point is not a data error (all mounts return 1, install

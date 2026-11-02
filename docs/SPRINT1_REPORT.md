@@ -132,10 +132,11 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
    `Quick Character` screen (`hw-live-taris-20261102`, `hw-newgame-20261102`,
    `hw-quickchar-20261102`). The final chargen screen reaches `(1) PORTRAIT / (2) NAME /
    (3) PLAY`, but the `(2) NAME` and `(3) PLAY` controls do not accept posted mouse messages,
-   SendInput clicks, or keyboard/`WM_CHAR` events (`hw-name*`/`hw-key*` runs); the load path
-   mounts `CURRENTGAME:tar_m02af` + `MODULES:tar_m02af_s` and then terminates in the load
-   transition. So the remaining live blocker is the chargen final-control/load transition, not
-   the data path. Both data questions are
+   SendInput clicks, keyboard/`WM_CHAR` events, or an Orca computer-use synthetic click
+   (`hw-name*`/`hw-key*`, Orca `unverified (synthetic_input)`); the load path mounts
+   `CURRENTGAME:tar_m02af` + `MODULES:tar_m02af_s` and then terminates in the load transition.
+   So the remaining live blocker is the chargen final-control/load transition, not the data
+   path. Both data questions are
    **statically bounded** (#23–#28: only `_s`-first mounting and camera mode 0 are possible;
    #32: streamwaves voice path). Owner: P4 vertical slice with an active display/context; run
    artifacts under `artifacts/lanes/s1-06-dynamic/runs/elev-*` and `hw-b-load-taris-20261102`.
