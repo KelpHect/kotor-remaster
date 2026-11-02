@@ -244,7 +244,14 @@ the module/chargen transition on a host with the monitor off (no active display/
 fresh-module order and camera/voice data paths remain statically closed (#23–#28, #32). Run
 artifacts: `artifacts/lanes/s1-06-dynamic/runs/elev-*`.
 
-### 2026-11-02 hardware-profile attempt (new)
+A private Win32 desktop was also tried (`SP1_DESKTOP=1`: `CreateDesktopW` + `CreateProcessW`
+suspended, Frida attach/hook, then `ResumeThread`). Run `elev-desktop-idle-20261102` created and
+resumed the process, emitted `status-0` at seq 7299 (15 s), then the process terminated before
+45 s; no render window. A private desktop has no monitor/GL surface, so this is the same
+display/context limitation, not an input failure. A real virtual display adapter (IDD) or an
+active monitor/RDP session is required for the remaining live captures.
+
+### 2026-11-02 hardware-profile attempt
 
 To separate the llvmpipe input blocker from the game path, a lane-local `profile-hw` copy was
 made without the Mesa DLLs (`opengl32.dll`, `libgallium_wgl.dll`, `dxil.dll` removed) and the

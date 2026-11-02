@@ -323,6 +323,8 @@ class Session:
         self.dev = None
         self.pid = None
         self.dead = False
+        self.desktop = None
+        self.offscreen = None
 
     def launch(self, mesa_source: Path | None):
         import frida
@@ -335,9 +337,24 @@ class Session:
         env = os.environ.copy()
         env.update(ENV_EXTRA)
         self.dev = frida.get_local_device()
-        self.pid = self.dev.spawn([str(PROFILE / "swkotor.exe")], cwd=str(PROFILE),
-                                  env=env, stdio="pipe")
-        self.session = self.dev.attach(self.pid)
+        use_desktop = os.environ.get("SP1_DESKTOP") == "1"
+        if use_desktop:
+            # SP1_DESKTOP: create the owned process suspended on a private
+            # Win32 desktop, attach/instrument it, then resume.  Input RPCs
+            # (focusinproc/clickfast) are in-process and work on that desktop;
+            # Python-side EnumWindows/frame capture does not.
+            import offscreen
+            self.offscreen = offscreen
+            os.environ.update(ENV_EXTRA)
+            pid, thread_h, process_h, desktop_h = offscreen.launch_suspended(
+                str(PROFILE / "swkotor.exe"), str(PROFILE), [], use_desktop=True)
+            self.pid = pid
+            self.desktop = (thread_h, process_h, desktop_h)
+            self.session = self.dev.attach(pid)
+        else:
+            self.pid = self.dev.spawn([str(PROFILE / "swkotor.exe")], cwd=str(PROFILE),
+                                      env=env, stdio="pipe")
+            self.session = self.dev.attach(self.pid)
         self.detach_info = None
 
         def on_detached(reason, crash):
@@ -359,8 +376,11 @@ class Session:
         self.script = self.session.create_script(HOOK.read_text(encoding="utf-8"))
         self.script.on("message", on_message)
         self.script.load()
-        self.dev.resume(self.pid)
-        return {"pid": self.pid, "resumed": True}
+        if self.desktop:
+            self.offscreen.kernel32.ResumeThread(self.desktop[0])
+        else:
+            self.dev.resume(self.pid)
+        return {"pid": self.pid, "resumed": True, "desktop": bool(self.desktop)}
 
     def rpc(self, fn: str, *a):
         return getattr(self.script.exports_sync, fn)(*a)
@@ -383,6 +403,19 @@ class Session:
             pass
         if self.events_f:
             self.events_f.close()
+        if self.desktop and self.offscreen:
+            thread_h, process_h, desktop_h = self.desktop
+            for h in (thread_h, process_h):
+                try:
+                    self.offscreen.kernel32.CloseHandle(h)
+                except Exception:
+                    pass
+            if desktop_h:
+                try:
+                    self.offscreen.user32.CloseDesktop(desktop_h)
+                except Exception:
+                    pass
+            self.desktop = None
 
 
 def serve_control(sess: Session, run: Path, steps_out: list) -> int:
