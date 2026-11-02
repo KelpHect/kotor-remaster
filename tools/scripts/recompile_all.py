@@ -233,7 +233,7 @@ def main(argv=None) -> int:
             "all_files_present": len(rows) == EXPECTED,
             "no_unexpected": not other,
             "raw_exact_at_least": counts.get("raw_exact", 0) >= (
-                8665 if (args.struct_nss and args.patched_compiler)
+                8666 if (args.struct_nss and args.patched_compiler)
                 else 8646 if args.struct_nss else 8452),
             "classified_total": (counts.get("raw_exact", 0)
                                  + counts.get("compiler_limited", 0)
@@ -277,10 +277,10 @@ def main(argv=None) -> int:
         "The raw_exact count includes the 24 default-argument cases "
         "(`docs/recon/33_HISTORICAL_HEADERS.md`), the 5 header-limited overrides, all "
         "201 struct recoveries (`docs/recon/36_STRUCT_RECOVERY.md`), the duplicate-return "
-        "fixes (`docs/recon/37_RETURN_CLEANUP.md`), and the 3 body-order scripts "
-        "(`docs/recon/38_BODY_ORDER.md`). No compiler-limited or ABI-completed file "
-        "remains; only the 5 unreachable-code scripts are outside source-level "
-        "recompilation.",
+        "fixes (`docs/recon/37_RETURN_CLEANUP.md`), the 3 body-order scripts "
+        "(`docs/recon/38_BODY_ORDER.md`), and the 5 restored unreachable-statement "
+        "scripts (`docs/recon/39_UNREACHABLE.md`). Every file is source-level; no "
+        "compiler-limited or ABI-completed file remains.",
         "",
     ]
     out_doc = Path(args.out_doc)

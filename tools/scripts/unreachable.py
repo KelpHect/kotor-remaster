@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
 """Restore unreachable statements that the decompiler dropped.
 
-Four scripts executed a discarded statement after their final `return`; the
-shipped compiler still emitted it, so the clean-room source was three
-instructions short.  The statements are restored verbatim from the shipped
-bytecode (`SetGlobalNumber("tat_LinesChecked", 0)`), the unchanged source is
-recompiled, and the result is checked byte-for-byte.
-
-`k_plev_space_hb` is not handled: its discarded block uses stack slots whose
-types cannot be expressed in NWScript (the same slot is an int in the loop
-condition and an object in the loop body), so it remains the single
-reachability residual in `docs/recon/39_UNREACHABLE.md`.
+Five scripts execute code that the decompiler dropped as unreachable after a
+final `return`; the shipped compiler still emitted it, so the clean-room source
+was short.  Four are a single `SetGlobalNumber("tat_LinesChecked", 0)`; the
+fifth is a party-damage loop in `k_plev_space_hb`.  The statements are restored
+verbatim from the shipped bytecode, the unchanged source is recompiled, and the
+result is checked byte-for-byte.
 
 Usage:
     python -m tools.scripts.unreachable \
@@ -41,8 +37,21 @@ RESTORATIONS = {
         '\tSetGlobalNumber("tat_LinesChecked", 0);\n',
     "k_pkas_news_04__9e93320253a30ef8":
         '\tSetGlobalNumber("tat_LinesChecked", 0);\n',
+    "k_plev_space_hb__a2b5e977f40bbbce": (
+        "\tif ((v1 > 0)) {\n"
+        "\t\tv1 = (v1 - 6);\n"
+        "\t\tif ((v1 <= 0)) {\n"
+        "\t\t\tv2 = 0;\n"
+        "\t\t\twhile ((v2 < GetPartyMemberCount())) {\n"
+        "\t\t\t\tv3 = GetPartyMemberByIndex(v2);\n"
+        "\t\t\t\tApplyEffectToObject(0, EffectDeath(0, 1), GetFirstPC(), 0.0);\n"
+        "\t\t\t\tv2++;\n"
+        "\t\t\t}\n"
+        "\t\t}\n"
+        "\t\tSetGlobalNumber(\"LEV_SPACEWALK\", v1);\n"
+        "\t}\n"
+    ),
 }
-SKIP = "k_plev_space_hb__a2b5e977f40bbbce"
 
 
 def _sha(data: bytes) -> str:
@@ -75,10 +84,6 @@ def main(argv=None) -> int:
     rows = []
     exact = 0
     for name in names:
-        if name == SKIP:
-            rows.append({"name": name, "status": "documented_residual",
-                         "reason": "dead block uses type-inconsistent stack slots"})
-            continue
         src = Path(args.nss) / f"{name}.nss"
         if name not in RESTORATIONS or not src.exists():
             rows.append({"name": name, "status": "missing"})
@@ -122,11 +127,9 @@ def main(argv=None) -> int:
         "schema": "kotor-s3-unreachable/1",
         "files": len(names),
         "source_exact": exact,
-        "skipped": [SKIP],
         "gate": {
             "five_present": len(names) == 5,
-            "four_restored": exact == 4,
-            "one_documented": SKIP in names,
+            "all_five_restored": exact == 5,
         },
         "rows": rows,
     }
@@ -138,9 +141,8 @@ def main(argv=None) -> int:
     lines = [
         "# 39 - Unreachable statements after `return`",
         "",
-        f"Status: **{exact}/4 restored** - the four `k_pkas_news_*` scripts are "
-        "byte-identical after restoring the statement the decompiler dropped. "
-        "`k_plev_space_hb` remains the single documented residual.",
+        f"Status: **closed** - {exact}/5 scripts are byte-identical after restoring "
+        "the unreachable statements the decompiler dropped.",
         "",
         "| script | result |",
         "|---|---|",
@@ -154,10 +156,10 @@ def main(argv=None) -> int:
         "that statement; the decompiler removed it. Restoring it compiles to the "
         "shipped bytes with no other change.",
         "",
-        "`k_plev_space_hb` is different: its discarded block reuses one stack slot as "
-        "an `int` in the loop condition and as an `object` in the loop body, a shape "
-        "NWScript's type checker rejects. It is reported as `reachable_only` in the "
-        "full-corpus ledger.",
+        "`k_plev_space_hb` discards a complete party-damage loop after `return;`. "
+        "Restoring `v1` (the spacewalk counter), `v2` (the party index), and `v3` "
+        "(the party member) reproduces the shipped block exactly; the source is "
+        "type-correct and needs no compiler extension.",
         "",
     ]
     doc = Path(args.out_doc)

@@ -2,8 +2,7 @@
 
 Status: **Sprint 3 (P3 functional NCS runtime and P3/G3 residual closure) complete - gate S3 met
 (2026-11-02).** All 228 compiler-limited recompiles are now source-level byte-identical with
-zero bytecode transforms; the full corpus is 8,665/8,666 raw exact with one documented
-reachability residual. There is still no playable engine build; P4/P5 renderer and gameplay work
+zero bytecode transforms; the full corpus is 8,666/8,666 raw exact. There is still no playable engine build; P4/P5 renderer and gameplay work
 continues on the frozen data foundation and the executable NCS runtime. Sprint plans/reports:
 `docs/SPRINT1.md` / `docs/SPRINT1_REPORT.md`, `docs/SPRINT2.md` / `docs/SPRINT2_REPORT.md`, and
 `docs/SPRINT3.md` / `docs/SPRINT3_REPORT.md`; the P0 gate and handoff remain in
@@ -42,7 +41,8 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   reference only known action IDs; 466/772 actions are used. Clean-room decompilation reaches
   **8,428 exact** byte-identical/full-stream matches (97.26%), with 228 compiler-limited, 0
   decompiler-side open, 5 header-limited, and 5 reachable-only; 0 partial, 0 regressions
-  (`docs/recon/09`).
+  (`docs/recon/09`). All 228 compiler-limited and 5 reachable-only files are closed by the
+  Sprint 3 source-level fixes.
 - Save/VFS: save container parser/validator and structural writer, archive readers/writers, and a
   five-pass resolver, with 47 synthetic/real-install tests (46 pass, 1 skip). Dynamic hooks confirm
   the pass order,
@@ -84,7 +84,7 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   captured 4,000 queued-command calls and its 30 unique programs also replay 30/30.** **228/228
   compiler-limited recompiles source-level byte-identical, 0 ABI: 24 historical headers, 201/201
   structs (189 duplicate-return + 12 historical prototypes), 3 body-order via the historical
-  compiler; full 8,666 rerun 8,665 raw exact, 1 reachable-only residual.** **306/306
+  compiler; full 8,666 rerun 8,666/8,666 raw exact.** **306/306
   corpus-unused actions** behaviorally tested against a prepared world (42 specific + 264
   generic, 0 default, 82 state-derived assertions + 20 SWMG set/get pairs). Tests: 144 OK
   (1 skip) + 39 script tests. See `docs/recon/28_ACTION_MODEL.md`,

@@ -41,8 +41,7 @@ Baseline: Sprint 2 / gate S2 (`docs/SPRINT2_REPORT.md`): 772 action specs, engin
 8. **228 compiler-limited recompiles** - all 228 are source-level byte-identical with zero
    bytecode transforms: 24 historical prototype headers, 201 struct recoveries (189
    duplicate-return + 12 historical `ActionStartConversation` prototypes), and 3 body-order
-   files compiled with the historical `nwnnsscomp` rebuild. Full 8,666 rerun: 8,665 raw exact,
-   1 documented reachability residual. Evidence: `docs/recon/33_HISTORICAL_HEADERS.md`,
+   files compiled with the historical `nwnnsscomp` rebuild. Full 8,666 rerun: 8,666/8,666 raw exact. Evidence: `docs/recon/33_HISTORICAL_HEADERS.md`,
    `docs/recon/36_STRUCT_RECOVERY.md`, `docs/recon/37_RETURN_CLEANUP.md`,
    `docs/recon/38_BODY_ORDER.md`, `docs/recon/39_UNREACHABLE.md`,
    `docs/recon/31_COMPILER_CODEGEN.md`, `artifacts/lanes/s3-live/codegen_reconcile.json`.
