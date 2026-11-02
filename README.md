@@ -68,7 +68,8 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   engine map with 10,302 engine functions, 0 unknown, 0 unexplained `.text`, dispatcher
   `0x0052c0d0`, 565/565 handler targets; an independent NCS VM executed **8,666/8,666** unique
   shipped scripts with 0 decode errors, 0 VM faults, 0 unknown actions, and 0 invalid jump
-  targets (8,184 returned, 472 blocked at `ActionWait`, 10 budget). Tests: 128 OK (1 skip).
+  targets (8,184 returned, 472 blocked at `ActionWait`, 10 budget), and all 772 actions pass a
+  direct typed-dispatch check. Tests: 129 OK (1 skip).
   See `docs/recon/26_ENGINE_MAP.md`, `docs/recon/27_VM_EXECUTION.md`, and
   `docs/SPRINT2_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
