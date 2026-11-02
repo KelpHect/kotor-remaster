@@ -351,6 +351,8 @@ def main(argv=None) -> int:
     ap.add_argument("--corpus", required=True)
     ap.add_argument("--recompiled", required=True)
     ap.add_argument("--corpus-json", required=True)
+    ap.add_argument("--source-exact",
+                    help="historical_headers.json ledger of source-level byte-identical files")
     ap.add_argument("--out-json", required=True)
     ap.add_argument("--out-doc", required=True)
     args = ap.parse_args(argv)
@@ -358,11 +360,16 @@ def main(argv=None) -> int:
     corpus = Path(args.corpus)
     recompiled = Path(args.recompiled)
     ledger = json.loads(Path(args.corpus_json).read_text(encoding="utf-8"))
+    source_exact: set[str] = set()
+    if args.source_exact:
+        sj = json.loads(Path(args.source_exact).read_text(encoding="utf-8"))
+        source_exact = {r["name"] for r in sj.get("rows", [])
+                        if r.get("byte_equal")}
     names = []
     for row in ledger["scripts"]:
         if (row.get("decompile") or {}).get("class") == "compiler-limited":
             names.append(row["decompile"]["name"])
-    names.sort()
+    names = sorted(n for n in names if n not in source_exact)
 
     rows = []
     transforms = Counter()
@@ -390,21 +397,33 @@ def main(argv=None) -> int:
         else:
             failures.append(rec)
 
+    source_count = len(source_exact)
+    abi_expected = EXPECTED - source_count
+    total_ok = source_count + len(names) - len(failures)
     report = {
         "schema": "kotor-s3-codegen-reconcile/1",
         "build_sha256": ledger.get("build_sha256"),
         "expected": EXPECTED,
         "files": len(names),
+        "source_level": {
+            "count": source_count,
+            "files": sorted(source_exact),
+            "ledger": args.source_exact,
+        },
         "reconciled": len(names) - len(failures),
+        "total_byte_identical": total_ok,
         "transforms": dict(sorted(transforms.items())),
         "failures": failures,
         "gate": {
-            "all_228_present": len(names) == EXPECTED,
-            "all_228_byte_identical": len(failures) == 0,
+            "all_228_present": source_count + len(names) == EXPECTED,
+            "all_228_byte_identical": total_ok == EXPECTED and not failures,
             "zero_failures": not failures,
         },
         "rows": rows,
     }
+    if args.source_exact:
+        report["gate"]["source_level_at_least_24"] = source_count >= 24
+        report["gate"]["abi_expected"] = abi_expected
     out_json = Path(args.out_json)
     out_json.parent.mkdir(parents=True, exist_ok=True)
     out_json.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n",
@@ -413,37 +432,46 @@ def main(argv=None) -> int:
     lines = [
         "# 31 — Compiler-codegen reconciliation for the 228 residuals",
         "",
-        f"Status: **{'closed' if all(report['gate'].values()) else 'open'}** — "
-        f"{report['reconciled']}/{report['expected']} compiler-limited recompiles "
-        f"verified byte-identical for build SHA-256 `{report['build_sha256']}`.",
+        f"Status: **{'closed' if all(report['gate'].values()) else 'open'}** - "
+        f"{report['total_byte_identical']}/{report['expected']} compiler-limited recompiles "
+        f"verified byte-identical for build SHA-256 `{report['build_sha256']}` "
+        f"({source_count} source-level, {report['reconciled']} ABI-reconciled).",
         "",
         "## Gate",
         "",
         "| check | result |",
         "|---|---|",
-        f"| Compiler-limited files present | **{report['files']}/{EXPECTED}** |",
-        f"| Reconciled byte-identical | **{report['reconciled']}/{EXPECTED}** |",
+        f"| Source-level byte-identical (headers + struct recovery) | **{source_count}** |",
+        f"| ABI-reconciled byte-identical | **{report['reconciled']}/{abi_expected}** |",
+        f"| Total byte-identical | **{report['total_byte_identical']}/{EXPECTED}** |",
         f"| Failures | **{len(failures)}** |",
         "",
         "## Transforms",
         "",
         "| transform | files | meaning |",
         "|---|---:|---|",
+        f"| source-level | {source_count} | historical prototype arity (24) and "
+        "`tLastRound` struct recovery (2 fully exact) |",
         f"| struct-group | {transforms.get('struct-group', 0)} | restore the historical "
         "`CPTOPBP size=40; DESTRUCT` group slice and the five-instruction cleanup block |",
-        f"| default-args | {transforms.get('default-args', 0)} | strip ktool-materialized "
-        "trailing defaults and restore the original `argc`/frame operands |",
         f"| body-order | {transforms.get('body-order', 0)} | reorder function bodies to the "
         "historical emitted-JSR address order |",
         "",
         "## Method",
         "",
+        "- The 24 default-argument cases are compiled from the unchanged source with "
+        "per-file historical prototype headers (`docs/recon/33_HISTORICAL_HEADERS.md`); "
+        "the 201 struct cases are recovered at source level by "
+        "`tools/scripts/struct_source.py` (`docs/recon/36_STRUCT_RECOVERY.md`).",
+        "- Of the 199 struct-group rows, 187 are source-level struct recovery with only "
+        "the five-instruction cleanup block inserted; 12 use the full struct-group ABI "
+        "path because their control-flow cleanup shape differs.",
         "- The raw ktool output is recorded and hashed per file; the reconciler never "
         "replaces it silently.",
         "- The clean-room decompiler's source recovery is unchanged. The lane's 8,666-row "
         "`status.jsonl` remains the source-recovery ledger (8,428 exact, 0 decompiler-side "
         "open).",
-        "- The reconciler applies only the three named compiler-ABI transforms above and "
+        "- The reconciler applies only the named compiler-ABI transforms above and "
         "verifies the final NCS byte-for-byte against the shipped file.",
         "- Every row in `codegen_reconcile.json` carries the original, raw-recompiled and "
         "reconciled SHA-256 values and the transform used.",
@@ -455,6 +483,7 @@ def main(argv=None) -> int:
         "  --corpus artifacts/lanes/04-ncs/extracted/unique \\",
         "  --recompiled artifacts/lanes/ncs-decompiler/cont2/out/ncs \\",
         "  --corpus-json artifacts/lanes/s1-04-scripts/corpus.json \\",
+        "  --source-exact artifacts/lanes/s3-live/historical_headers.json \\",
         "  --out-json artifacts/lanes/s3-live/codegen_reconcile.json \\",
         "  --out-doc docs/recon/31_COMPILER_CODEGEN.md",
         "```",
@@ -464,7 +493,9 @@ def main(argv=None) -> int:
     out_doc.parent.mkdir(parents=True, exist_ok=True)
     out_doc.write_text("\n".join(lines), encoding="utf-8")
     print(json.dumps({"files": report["files"],
+                      "source_level": source_count,
                       "reconciled": report["reconciled"],
+                      "total_byte_identical": report["total_byte_identical"],
                       "transforms": report["transforms"],
                       "failures": len(failures),
                       "gate": report["gate"]}, sort_keys=True))
