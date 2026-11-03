@@ -85,6 +85,10 @@
 [INFO] combat force test: jedi_deflect_yes=1
 [INFO] combat force test: jedi_deflect_no=1
 [INFO] combat force test: force_camouflage_stealth=1
+[INFO] combat force test: stealth_enter=1
+[INFO] combat force test: stealth_active=1
+[INFO] combat force test: stealth_no_combat_target=1
+[INFO] combat force test: stealth_broken_by_attack=1
 [INFO] combat force test: jedi_deflect_integration=1
 [INFO] combat force test: power_attack_used=1
 [INFO] combat force test: power_attack_mode=1

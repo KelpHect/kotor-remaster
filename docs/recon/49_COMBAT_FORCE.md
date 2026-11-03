@@ -82,8 +82,9 @@ Save DC is `10 + level/2 + WIS modifier`; the target's `FortSaveThrow`,
   deflected and a result 10 over the attack is returned to the attacker.
   NPC `Equip_ItemList.EquippedRes` is resolved through the UTI template to
   `baseitems.weapontype=4`, so ranged creatures stop at 15 m and fire.
-- **Force Camouflage**: `allowsStealth` is true for the feat; the full stealth
-  AI/perception presentation is outside this sprint.
+- **Force Camouflage**: `allowsStealth` plus `enterStealth`; hostiles do not
+  acquire or attack a stealthed player, and attacking or using a Force power
+  breaks stealth.
 
 Active modes last 30 s and are stored as `CombatMode`; the character panel
 shows the current mode.
@@ -149,6 +150,8 @@ combat force test: ranged_entities_detected=1
 combat force test: jedi_defense_6=1 / jedi_deflect_yes=1 / jedi_deflect_no=1
 combat force test: jedi_deflect_integration=1
 combat force test: force_camouflage_stealth=1
+combat force test: stealth_enter=1 / stealth_active=1
+combat force test: stealth_no_combat_target=1 / stealth_broken_by_attack=1
 combat force test: caution_1/2/3=1 / gear_head_1=1
 combat force test: immunity_blocks_power=1 / breach_removes_immunity=1
 combat force test: shield_effect=1 / breach_removes_buffs=1
@@ -169,9 +172,7 @@ Regression: 35/35 CTest, 117/117 modules, 8,666/8,666 VM, 0.0300 parity,
 - **Battle Meditation is re-scoped out of Sprint 11 by shipped data.** Its
   `feat.2da` TLK description says it is for large fleets/armies and "is not
   applicable to small-scale combat"; there is no small-scale rule to implement.
-- **Force Camouflage** exposes `allowsStealth` (no field required); full
-  stealth perception/presentation is later work.
-- Exact original animations for non-combat feats and content-specific
-  exceptions outside the implemented set.
+- **Force Camouflage** implements stealth entry (`canStealth`/`enterStealth`),
+  hostile acquisition suppression and break-on-attack.
 - Cutscenes, animation/skinning, audio/EAX, Bink/lip sync, full `.gui`,
   minigames, localization, mods/Override, KotOR 2 world loading and P6 content.

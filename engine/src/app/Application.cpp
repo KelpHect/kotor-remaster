@@ -199,6 +199,16 @@ void drawSystemsUi(GameSession& game)
                     sheet.maxHp, sheet.fp, sheet.maxFp, game.gold());
         ImGui::Text("Alignment %d (0 dark .. 100 light)   Combat mode %s   Effects %zu",
                     sheet.alignment, combatModeName(game.combatMode()), sheet.effects.size());
+        if (game.canStealth()) {
+            bool stealth = game.stealthActive();
+            if (ImGui::Checkbox("Stealth (Force Camouflage)", &stealth)) {
+                if (stealth) {
+                    game.enterStealth();
+                } else {
+                    game.leaveStealth();
+                }
+            }
+        }
         ImGui::Separator();
         ImGui::Text("STR %d  DEX %d  CON %d", sheet.str, sheet.dex, sheet.con);
         ImGui::Text("INT %d  WIS %d  CHA %d", sheet.intel, sheet.wis, sheet.cha);
@@ -1599,6 +1609,13 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     check(game.rules().jediDeflects(sheet, 10, 5), "jedi_deflect_yes");
     check(!game.rules().jediDeflects(sheet, 20, 5), "jedi_deflect_no");
     check(game.canStealth(), "force_camouflage_stealth");
+    check(game.enterStealth(), "stealth_enter");
+    check(game.stealthActive(), "stealth_active");
+    InputState stealthInput;
+    game.update(0.1f, stealthInput);
+    check(game.combatTargetName().empty(), "stealth_no_combat_target");
+    game.attackNearestHostile();
+    check(!game.stealthActive(), "stealth_broken_by_attack");
 
     target.ranged = true;
     target.attackBonus = 10;
