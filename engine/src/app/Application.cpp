@@ -1408,6 +1408,12 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     sheet.powers.insert(19); // FORCE_POWER_FORCE_BREACH
     sheet.powers.insert(48); // FORCE_POWER_SUPRESS_FORCE
     sheet.powers.insert(24); // FORCE_POWER_FORCE_SHIELD
+    sheet.feats.insert(101); // FORCE_JUMP
+    sheet.feats.insert(102); // FORCE_JUMP_ADVANCED
+    sheet.feats.insert(103); // FORCE_JUMP_MASTERY
+    InventoryItem saber = game.rules().makeItem("saber", 8);
+    saber.equipped = true;
+    sheet.inventory.push_back(saber);
     game.setCharacterForTest(sheet);
 
     check(game.maxForcePoints() == 400, "jedi_force_points");
@@ -1558,6 +1564,19 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     }
     check(!game.forceSuppressed(), "suppress_expires");
     check(game.useForcePower(35, targetObject), "lightning_after_suppress");
+
+    for (std::size_t i = 0; i < game.scene().entities.size(); ++i) {
+        if (i != hostile && game.scene().entities[i].hostile) {
+            game.scene().entities[i].position.x += 1000.0f;
+        }
+    }
+    target.position = game.position();
+    target.position.x += 12.0f;
+    game.attackNearestHostile();
+    check(game.forceJumpBonus() == 4, "force_jump_bonus");
+    const float jumpDx = game.position().x - target.position.x;
+    const float jumpDy = game.position().y - target.position.y;
+    check(std::sqrt(jumpDx * jumpDx + jumpDy * jumpDy) < 3.0f, "force_jump_closed");
 
     const std::int32_t hpBeforeFeat = game.character().maxHp;
     check(game.useFeat(28, targetObject), "power_attack_used");

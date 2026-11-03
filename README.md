@@ -3,11 +3,13 @@
 Status: **Sprint 11 (combat, Force and alignment core) complete - gate S11 met
 (2026-11-03).** All **44** shipped Force powers and **125** feat rows load; Force points,
 alignment and saves drive damage/heal/stun/fear/buff effects; a shared `ActiveEffect` stack
-implements Force Immunity, Force Breach and Suppress Force; combat feats have active modes
-(Power Attack/Power Blast, Flurry, Critical Strike, Whirlwind) and passive bonuses (Toughness,
-Weapon Focus/Specialization, Dueling, Two-Weapon Fighting tiers); the script bridge covers feats,
-spells, talents, FP, alignment and talent type/id queries; engine and original saves round-trip
-alignment/FP. **35/35 CTest targets** pass.
+implements Force Immunity, Force Breach, Suppress Force and save/load persistence; combat feats
+have active modes (Power Attack/Power Blast, Flurry, Critical Strike, Whirlwind, Force Jump) and
+passive formulas (Toughness/Wookiee DR, Weapon Focus/Specialization, Dueling, Two-Weapon tiers,
+Caution/Empathy/Gear Head, Conditioning, Force Focus, Scoundrel's Luck/Jedi Sense, Sneak Attack,
+armor/weapon proficiency); the script bridge covers feats, spells, talents, FP, alignment and
+talent type/id queries; engine and original saves round-trip alignment/FP/effects. **35/35 CTest
+targets** pass.
 Sprint 10 remains complete (delayed/assigned closures, nested delays, `ActionWait`, `OBJECT_SELF`,
 world-clock timers). Sprint 9 remains complete (KotOR 1/K2 profiles and native original
 `SAVEGAME.sav` read/write with independent Python validation **0 errors / 0 warnings** on
@@ -153,12 +155,14 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   parity 0; scene parity 0.0300; Python 143 tests / 7 skips; install unchanged. See
   `docs/recon/48_FUNCTORS.md` and `docs/SPRINT10_REPORT.md`.
 - Sprint 11 (combat/Force/alignment): 44 Force powers with FP cost/alignment/range and
-  save-based damage/heal/stun/fear/buffs; shared effect stack with Force Immunity, Breach and
-  Suppress Force; 125 feat rows; Power Attack/Power Blast, Flurry, Critical Strike and Whirlwind
-  modes; Toughness, Weapon Focus/Specialization, Dueling and Two-Weapon tiers; script action/
-  talent bridge; alignment and FP round-trip in engine and original saves. CTest **35/35**;
-  117-module sweep 0/0; VM parity 0; scene parity 0.0300; Python 143 tests / 7 skips; install
-  unchanged. See `docs/recon/49_COMBAT_FORCE.md` and `docs/SPRINT11_REPORT.md`.
+  save-based damage/heal/stun/fear/buffs; shared effect stack with Force Immunity, Breach,
+  Suppress Force and save/load persistence; 125 feat rows; Power Attack/Power Blast, Flurry,
+  Critical Strike, Whirlwind and Force Jump; exact skill/conditioning/Force Focus/Sense/
+  Scoundrel's Luck/Sneak Attack/Toughness/Wookiee formulas; armor/weapon proficiency; script
+  action/talent bridge; alignment, FP and effects round-trip in engine and original saves.
+  CTest **35/35**; 117-module sweep 0/0; VM parity 0; scene parity 0.0300; Python 143 tests /
+  7 skips; install unchanged. See `docs/recon/49_COMBAT_FORCE.md` and
+  `docs/SPRINT11_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,

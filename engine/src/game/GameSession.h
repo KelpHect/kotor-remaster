@@ -191,6 +191,7 @@ public:
     std::int32_t forceShield() const;
     bool hasEffect(const std::string& label) const;
     bool forceSuppressed() const { return character_.forceSuppressedTimer > 0.0f; }
+    std::int32_t forceJumpBonus() const { return forceJumpBonus_; }
     // Test hook invocation without moving the player; returns false if the
     // entity or hook is absent.
     bool runHookForTest(const std::string& hook, const std::string& tag,
@@ -279,6 +280,7 @@ private:
     float combatModeTimer_ = 0.0f;
     std::int32_t lastForcePower_ = -1;
     bool lastForcePowerSuccess_ = false;
+    std::int32_t forceJumpBonus_ = 0;
     std::vector<float> npcAttackTimers_;
     std::vector<bool> triggerInside_;
     std::vector<std::string> combatLog_;

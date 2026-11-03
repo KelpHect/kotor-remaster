@@ -468,6 +468,38 @@ std::int32_t Rules::sneakAttackDice(const CharacterSheet& sheet) const
     return 0;
 }
 
+std::int32_t Rules::forceJumpBonus(const CharacterSheet& sheet) const
+{
+    if (hasFeatLabel(sheet, "FORCE_JUMP_MASTERY")) {
+        return 4;
+    }
+    if (hasFeatLabel(sheet, "FORCE_JUMP_ADVANCED")) {
+        return 2;
+    }
+    return 0;
+}
+
+bool Rules::hasLightsaber(const CharacterSheet& sheet) const
+{
+    if (!baseitems_) {
+        return false;
+    }
+    for (const InventoryItem& item : sheet.inventory) {
+        if (!item.equipped) {
+            continue;
+        }
+        const std::string row = std::to_string(item.baseItem);
+        if (baseitems_->rowIndex(row) < 0) {
+            continue;
+        }
+        const std::string label = lower(baseitems_->cell(row, "label"));
+        if (label.find("lightsaber") != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::int32_t Rules::skillBonus(const CharacterSheet& sheet, const std::string& skill) const
 {
     const std::string name = lower(skill);
