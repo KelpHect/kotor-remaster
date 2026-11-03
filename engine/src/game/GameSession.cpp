@@ -691,8 +691,12 @@ bool GameSession::interact()
     const kotor::Entity* door = nearestDoor(2.8f);
     if (door != nullptr) {
         const std::size_t index = static_cast<std::size_t>(door - scene_.entities.data());
-        runHook("OnOpen", index, scriptWorld_.pc);
-        runHook("OnClick", index, scriptWorld_.pc);
+        const auto open = door->scripts.find("OnOpen");
+        if (open != door->scripts.end() && !open->second.empty()) {
+            runHook("OnOpen", index, scriptWorld_.pc);
+        } else {
+            runHook("OnClick", index, scriptWorld_.pc);
+        }
         if (!door->linkedModule.empty()) {
             return loadModule(door->linkedModule, nullptr, door->linkedTo);
         }
