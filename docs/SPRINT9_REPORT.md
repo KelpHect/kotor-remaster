@@ -123,8 +123,9 @@ These are deliberate Sprint 10+ work, not gaps hidden by this gate:
 - Faction reputation simulation: a loaded slot's `REPUTE` payload is preserved
   on round trip, but reputation changes are not modelled and a fresh save writes
   an empty faction scaffold.
-- Multi-module save writing: only the current module's GIT/ARE/IFO is written,
-  not every visited module.
+- Multi-module save writing: the current module is rebuilt from live state;
+  the other visited modules are preserved verbatim as their original saved
+  ERFs, not re-simulated or updated.
 - Full saved-object graph restoration beyond GIT list state (effects, action
   queues, combat-round data, non-GIT per-object locals).
 - Animation/skinning/weapons, cutscene cameras, audio/EAX, Bink/lip sync, full

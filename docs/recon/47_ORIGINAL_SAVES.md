@@ -87,6 +87,9 @@ payloads). `engine/src/kotor/SaveGame.cpp` builds:
   trip (the Taris save keeps 21 factions / 405 relations). A fresh save starts
   with an empty FAC scaffold because faction reputation is not modelled by the
   engine yet.
+- **visited modules** - the current module is rebuilt from live state; the other
+  nested `<module>.sav` ERFs and `AVAILNPC*`/`PC` outer resources are preserved
+  verbatim so revisiting a previously saved module keeps its retail state.
 
 ## 4. Validation
 
@@ -119,8 +122,9 @@ Source hashes are identical before and after the gate
 - Faction reputation (`REPUTE`) is not simulated. A loaded slot's FAC payload
   is preserved on round trip, but reputation changes made in play are not
   modelled, and a fresh save writes an empty faction list.
-- The writer emits the current module only. A multi-module save round trip
-  keeps the current module's state but not every previously visited module.
+- The writer updates the current module from live state and preserves the other
+  visited modules as their original saved ERFs; it does not re-simulate those
+  modules or update their state.
 - Saved effects, action queues, combat round data, per-object locals and
   non-GIT graph state are not restored; the GIT list state above is.
 - Retail-engine acceptance of a slot written by this C++ writer was not re-run
