@@ -12,7 +12,7 @@ buffers from the posed mesh.
 
 ```text
 100% tests passed, 0 tests failed out of 36
-Total Test time (real) = 204.98 sec
+Total Test time (real) = 160.93 sec
 ```
 
 The new target is `kotor_animation`; all Sprint 11 targets still pass.
@@ -121,7 +121,7 @@ textures. A GL capture at frame 10 versus frame 70 differs in **12,937 of
 
 ## 8. Regression
 
-- **CTest: 36/36 passed** (204.98 s).
+- **CTest: 36/36 passed** (160.93 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0300**, PASS.

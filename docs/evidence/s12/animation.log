@@ -42,6 +42,7 @@
 [INFO] animation test: weapon_hand_hook=1
 [INFO] animation test: weapon_models=1
 [INFO] animation test: weapon_vertices=1
+[INFO] animation test: weapon_at_hand=1
 [INFO] animation test: weapon_parent=1
 [INFO] animation test: weapon_follows_animation=1
 [INFO] animation test: camera_catalog=1
