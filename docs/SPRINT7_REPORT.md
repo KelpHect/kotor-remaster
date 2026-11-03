@@ -183,6 +183,10 @@ the earlier retail runs. Sprint 7 changed nothing in the install.
 
 ## 8. Limitations and Sprint 8
 
+Sprint 8 closes the encounter reset/respawn timers, companion formation/leader switching, feat and
+Force-power selection, and the full 117-module loader sweep; see `docs/SPRINT8_REPORT.md`. The
+following are the remaining future systems.
+
 - Original KotOR SAVEGAME.sav compatibility is still open; the engine slot is local.
 - Encounter reset/respawn timers are parsed but not simulated; encounters spawn once at module
   entry.

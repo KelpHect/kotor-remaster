@@ -193,6 +193,8 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                  COMMAND kotor_engine --module tar_m02ac --merchant-test --null --headless)
         add_test(NAME kotor_encounter
                  COMMAND kotor_engine --module tar_m03aa --encounter-test --null --headless)
+        add_test(NAME kotor_encounter_reset
+                 COMMAND kotor_engine --module tar_m03ab --encounter-reset-test --null --headless)
         add_test(NAME kotor_party
                  COMMAND kotor_engine --module end_m01aa --party-test --null --headless)
         add_test(NAME kotor_ui
@@ -206,7 +208,7 @@ if(KOTOR_ENGINE_BUILD_TESTS)
         set_tests_properties(kotor_scene_stats kotor_scene_assert kotor_door_transition
                              kotor_taris_transition kotor_walk_collision kotor_dialogue
                              kotor_combat kotor_script kotor_rules kotor_systems
-                             kotor_merchant kotor_encounter kotor_party kotor_ui
+                             kotor_merchant kotor_encounter kotor_encounter_reset kotor_party kotor_ui
                              kotor_playthrough kotor_landmark kotor_save_load
             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
 
@@ -226,6 +228,15 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                              --functional-oracle "${KOTOR_VM_FUNCTIONAL_ORACLE}"
                              --out "${CMAKE_BINARY_DIR}/s6-vm-parity.json")
             set_tests_properties(kotor_vm_corpus PROPERTIES TIMEOUT 600)
+        endif()
+
+        if(Python3_Interpreter_FOUND)
+            add_test(NAME kotor_all_modules
+                     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/sweep_modules.py
+                             --exe $<TARGET_FILE:kotor_engine>
+                             --install "${KOTOR_TEST_INSTALL}"
+                             --out "${CMAKE_BINARY_DIR}/all-modules.json")
+            set_tests_properties(kotor_all_modules PROPERTIES TIMEOUT 900)
         endif()
     endif()
 endif()

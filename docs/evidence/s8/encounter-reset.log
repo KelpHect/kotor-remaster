@@ -1,0 +1,19 @@
+[INFO] KotOR module tar_m03ab area m03ab from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 15 vertices: 134169 indices: 134169 batches: 21
+[INFO]   textures: 31 collision vertices: 470 facets: 695
+[INFO]   entities: 90 (door 7, placeable 20, creature 15, waypoint 24, store 0, encounter 3)
+[INFO]   encounter volumes: 3
+[INFO]   entry: 112.552, 84.5373, 0
+[INFO]   entity meshes: 42 triggers: 12 warnings: 0
+[INFO]   script hooks: 195 on 38 entities; scene hooks: 4; script runs: 20
+[INFO]   entity mesh 0 ptar_stnddr verts=1452 local=-2.65249,-0.112581,-0.00489092 .. 2.65241,0.112714,2.73775
+[INFO]   entity mesh 1 ptar_lockde verts=1452 local=-2.65249,-0.112581,-0.00489092 .. 2.65241,0.112714,2.73775
+[INFO]   entity mesh 2 ptar_aptddr verts=1452 local=-2.65249,-0.112581,-0.00489092 .. 2.65241,0.112714,2.73775
+[INFO]   creature mesh Calo032 verts=3678 local=-0.526189,-0.155001,-0.00274782 .. 0.525623,0.182205,1.61417
+[INFO]   bounds: 20, 20, -0.224996 .. 149.977, 149.977, 17.25
+[INFO] encounter reset test: volume=2 spawned=2 reset_time=30 respawns=-1
+[INFO] encounter reset test: spawned 2 -> 4 alive=1
+[INFO] encounter reset test: respawned=1
+[INFO] encounter reset test: respawn_alive=1
+[INFO] encounter reset test: PASS

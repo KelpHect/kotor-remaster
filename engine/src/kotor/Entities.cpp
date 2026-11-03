@@ -158,7 +158,9 @@ bool loadModel(Install& install, const std::string& modelName, std::vector<MdlTr
     try {
         Mdl model = Mdl::parse(std::move(*mdl), std::move(*mdx), lower(modelName) + ".mdl");
         triangles = model.triangles({0.0f, 0.0f, 0.0f});
-        return !triangles.empty();
+        // A parsed model may legitimately have no trimesh geometry (smoke,
+        // steam and other emitter placeables). That is not a load failure.
+        return true;
     } catch (const FormatError& exception) {
         error = exception.what();
         return false;
