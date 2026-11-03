@@ -322,6 +322,10 @@ public:
     std::vector<MdlMeshTriangle> meshTriangles() const;
     std::vector<MdlMeshTriangle> posedTriangles(const std::string& animation, float time,
                                                 float danglyTime = -1.0f) const;
+    std::vector<MdlMeshTriangle> blendedTriangles(const std::string& animationA, float timeA,
+                                                  const std::string& animationB, float timeB,
+                                                  float blend, float danglyTime = -1.0f) const;
+    Vec3 rootMotion(const std::string& animation, float time) const;
 
     const std::string& name() const { return name_; }
     const std::string& supermodel() const { return supermodel_; }
@@ -329,8 +333,10 @@ public:
     const std::vector<MdlAnimationInfo>& animations() const { return animations_; }
     int animationIndex(const std::string& name) const;
     float animationDuration(const std::string& name) const;
+    float animationTransition(const std::string& name) const;
     std::size_t skinnedNodeCount() const;
     std::size_t danglyNodeCount() const;
+    bool hasNonPoseControllers() const;
     float skinBindError() const;
     std::optional<Pose> nodePose(const std::string& node, const std::string& animation,
                                  float time) const;
@@ -407,6 +413,8 @@ private:
     Animation parseAnimation(std::uint32_t offset) const;
     std::map<std::uint16_t, const Node*> animationNodes(const Animation& animation) const;
     std::vector<Pose> poseWorld(const Animation* animation, float time) const;
+    std::vector<MdlMeshTriangle> trianglesFromPose(const std::vector<Pose>& world,
+                                                   float danglyTime) const;
 
     std::string name_;
     std::string supermodel_;
@@ -744,6 +752,10 @@ struct EntityMesh {
     std::string animation;
     float animationTime = 0.0f;
     bool animationLoop = true;
+    std::string previousAnimation;
+    float previousAnimationTime = 0.0f;
+    float blendDuration = 0.0f;
+    float blendRemaining = 0.0f;
     float danglyTime = 0.0f;
     std::shared_ptr<Mdl> attachModel;
     std::string attachNode;

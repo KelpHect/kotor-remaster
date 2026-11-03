@@ -84,9 +84,17 @@ animated node transform.
 ## 4. Playback and bridge
 
 `GameSession` stores per-`EntityMesh` `animation`, `animationTime`,
-`animationLoop` and `revision`. Creatures default to the first available of
-`pause1`, `pause`, `cpause1`, `default`. `updateAnimations` advances and loops
-the clip, recomputes the posed triangles and calls `refreshEntityMesh`.
+`animationLoop`, previous/current blend state and `revision`. Creatures default
+to the first available of `pause1`, `pause`, `cpause1`, `default`.
+`updateAnimations` advances and loops the clip, recomputes the posed triangles
+and calls `refreshEntityMesh`.
+
+Clip changes use the target clip's `transition` time. `Mdl::blendedTriangles`
+evaluates both poses, lerps node translations and linearly blends rotation
+matrices, then re-orthonormalizes each basis before skinning. The blend ends
+exactly at the target pose. `Mdl::rootMotion` returns the root-node world
+translation; sampled shipped clips are root-in-place and use only controller
+types 8/20/36/132, so no IK controller data exists to apply.
 
 `animations.2da` supplies the id-to-name map plus `stationary` and `looping`
 flags. `PlayAnimation` / `ActionPlayAnimation` (ids 300/40) resolve the clip
@@ -169,9 +177,12 @@ refreshes only when `GameSession::animationRevision()` changes.
   skin nodes.
 - `CameraAngle` 1/2/3 presets compute finite, unit-forward cameras; all
   `CamVidEffect` values in the Endar Spire DLGs are -1/0.
+- `blendedTriangles` produces finite cross-fade vertices; `rootMotion` is
+  unchanged between sampled frames (root-in-place); `hasNonPoseControllers`
+  is false for the sampled clips (no IK controllers).
 
 ## 10. Limits
 
-Animation blending/transitions, root motion, inverse kinematics, non-default
-`CamVidEffect` semantics, particle/light controllers and audio/cutscenes are
-outside Sprint 12. They consume this pose evaluator but are separate systems.
+Non-default `CamVidEffect` semantics, particle/light controllers and
+audio/cutscenes are outside Sprint 12. They consume this pose evaluator but are
+separate systems.

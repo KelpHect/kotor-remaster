@@ -347,6 +347,17 @@ bool GameSession::playAnimation(std::size_t entityIndex, const std::string& name
     if (mesh == nullptr || !mesh->model || mesh->model->animationIndex(name) < 0) {
         return false;
     }
+    const float transition = mesh->model->animationTransition(name);
+    if (!mesh->animation.empty() && mesh->animation != name && transition > 0.0f) {
+        mesh->previousAnimation = mesh->animation;
+        mesh->previousAnimationTime = mesh->animationTime;
+        mesh->blendDuration = transition;
+        mesh->blendRemaining = transition;
+    } else {
+        mesh->previousAnimation.clear();
+        mesh->blendDuration = 0.0f;
+        mesh->blendRemaining = 0.0f;
+    }
     mesh->animation = name;
     mesh->animationTime = 0.0f;
     mesh->animationLoop = loop;
@@ -402,7 +413,26 @@ void GameSession::updateAnimations(float dt)
         if (dangly) {
             mesh.danglyTime += dt;
         }
+        if (mesh.blendRemaining > 0.0f && !mesh.previousAnimation.empty()) {
+            const float previousDuration = mesh.model->animationDuration(mesh.previousAnimation);
+            if (previousDuration > 0.0f) {
+                mesh.previousAnimationTime += dt;
+                if (mesh.animationLoop) {
+                    mesh.previousAnimationTime = std::fmod(mesh.previousAnimationTime,
+                                                           previousDuration);
+                } else {
+                    mesh.previousAnimationTime = std::min(mesh.previousAnimationTime,
+                                                          previousDuration);
+                }
+            }
+        }
         kotor::refreshEntityMesh(mesh);
+        if (mesh.blendRemaining > 0.0f) {
+            mesh.blendRemaining = std::max(0.0f, mesh.blendRemaining - dt);
+            if (mesh.blendRemaining <= 0.0f) {
+                mesh.previousAnimation.clear();
+            }
+        }
         ++animationRevision_;
     }
     for (kotor::EntityMesh& mesh : scene_.entityMeshes) {
