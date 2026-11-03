@@ -73,6 +73,22 @@ powershell -ExecutionPolicy Bypass -File scripts\smoke.ps1 -SkipGpu   # CI witho
 surface failure under the dummy driver, and 120-frame Vulkan/OpenGL runs. It uses
 per-case timeouts and kills any process that overruns; every run self-terminates.
 
+The CTest suite also includes the Sprint 6 script/rules gates, which need the
+user's read-only install:
+
+```bat
+build\msvc-release\kotor_engine.exe --module end_m01aa --script-test --null --headless
+build\msvc-release\kotor_engine.exe --module end_m01aa --dialogue-test --null --headless
+build\msvc-release\kotor_engine.exe --module end_m01aa --rules-test --null --headless
+build\msvc-release\kotor_engine.exe --module end_m01aa --systems-test --null --headless
+```
+
+`kotor_vm_corpus` runs the native VM over the extracted 8,666-script corpus and
+diffs it against the regenerated Python oracles; it is registered only when the
+research artifacts are present. `scripts/check_vm_corpus.py` writes the parity
+report and `scripts/check_install_readonly.py` proves the install was not
+modified.
+
 ## Dependency pinning / offline notes
 
 `cmake/Dependencies.cmake` contains the exact commit archives and SHA-256 hashes.
@@ -88,8 +104,11 @@ CMakeLists.txt              first-party target, warnings, tests
 CMakePresets.json           Ninja/MSVC and VS 2026 presets
 cmake/Dependencies.cmake    pinned FetchContent inputs
 src/app/                    argument parsing, application loop, UI
+src/game/                   player session, 2DA rules, d20 rounds, save state
+src/kotor/                  archives, GFF, geometry, textures, scene, templates
+src/script/                 NCS decoder/VM, action table/runtime, world, corpus runner
 src/render/                 backend interface + Vulkan/GL/null implementations
 src/core/Log.*              logging helper
-scripts/                    VS env, configure, build, smoke
+scripts/                    VS env, configure, build, smoke, VM/install checkers
 docs/                       versions, build log, summary
 ```

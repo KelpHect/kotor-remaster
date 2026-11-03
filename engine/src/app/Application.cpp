@@ -4,6 +4,7 @@
 #include "game/GameSession.h"
 #include "kotor/Formats.h"
 #include "render/Backend.h"
+#include "script/Corpus.h"
 
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
@@ -293,6 +294,9 @@ int runDialogueTest(GameSession& game)
         ++lines;
     }
     logInfo(concat("dialogue test: lines=", lines));
+    for (const std::string& line : game.scriptLog()) {
+        logInfo(concat("  script: ", line));
+    }
     return lines > 0 ? 0 : 11;
 }
 
@@ -313,11 +317,12 @@ int runCombatTest(GameSession& game)
         ++steps;
     }
     const kotor::Entity& target = game.scene().entities[hostile];
+    const bool roundSeen = hasEvent(game, "round ");
     logInfo(concat("combat test: ", target.tag, " dead=", target.dead ? 1 : 0,
                    " hp=", target.hitPoints, "/", target.maxHitPoints,
                    " player=", game.playerHp(), "/", game.playerMaxHp(),
-                   " steps=", steps));
-    return target.dead ? 0 : 10;
+                   " steps=", steps, " rounds=", roundSeen ? 1 : 0));
+    return target.dead && roundSeen ? 0 : 10;
 }
 
 int runPlaythrough(GameSession& game)
@@ -507,10 +512,315 @@ int runLandmarkTest(GameSession& game)
     return ok ? 0 : 9;
 }
 
+bool scriptLogHas(const GameSession& game, const std::string& needle)
+{
+    for (const std::string& line : game.scriptLog()) {
+        if (line.find(needle) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int runScriptTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("script test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+
+    std::size_t hookCount = 0;
+    std::size_t entitiesWithHooks = 0;
+    for (const kotor::Entity& entity : game.scene().entities) {
+        if (!entity.scripts.empty()) {
+            ++entitiesWithHooks;
+            hookCount += entity.scripts.size();
+        }
+    }
+    logInfo(concat("script test: hooks=", hookCount, " entities=", entitiesWithHooks,
+                   " scene_hooks=", game.scene().scripts.size(),
+                   " runs=", game.scriptLog().size()));
+    check(hookCount > 0 && !game.scene().scripts.empty(), "hooks_loaded");
+    check(scriptLogHas(game, "script k_pdan_trask_9"), "trask_spawn_ran");
+    check(scriptLogHas(game, "script k_pend_area01"), "area_enter_ran");
+    check(scriptLogHas(game, "script k_def_spawn01") || scriptLogHas(game, "script k_hen_spawn01"),
+          "creature_spawn_ran");
+
+    // Trigger enter: teleport into the shipped end_trig02 polygon.
+    const std::size_t triggerEntity = game.findEntity("end_trig02");
+    if (triggerEntity == static_cast<std::size_t>(-1)) {
+        logError("script test: end_trig02 missing");
+        return 9;
+    }
+    kotor::Vec3 centre{};
+    float count = 0.0f;
+    for (const kotor::TriggerVolume& volume : game.scene().triggers) {
+        if (volume.entity != triggerEntity) {
+            continue;
+        }
+        for (const kotor::Vec3& vertex : volume.vertices) {
+            centre = centre + vertex;
+            count += 1.0f;
+        }
+    }
+    if (count > 0.0f) {
+        centre = centre * (1.0f / count);
+    } else {
+        centre = game.scene().entities[triggerEntity].position;
+    }
+    game.setPositionForTest(centre);
+    game.update(1.0f / 60.0f, InputState{});
+    check(scriptLogHas(game, "script k_pend_trig02"), "trigger_script_ran");
+
+    // Heartbeat: the module advances one 6 s beat.
+    for (int tick = 0; tick < 130; ++tick) {
+        game.update(0.05f, InputState{});
+    }
+    check(scriptLogHas(game, "hook ScriptHeartbeat"), "heartbeat_hook_ran");
+
+    // Area enter with a real entering object. GetIsPC must be 1 for the script
+    // to take its player branch.
+    game.runScript("k_pend_area01", game.scriptWorld().pc, game.scriptWorld().pc,
+                   game.scriptWorld().pc, game.scriptWorld().pc);
+    check(scriptLogHas(game, "script k_pend_area01 status=returned"), "pc_branch_ran");
+
+    // Death hook: run the shipped hostile to death and confirm ScriptDeath.
+    const std::size_t hostile = firstHostile(game);
+    if (hostile != static_cast<std::size_t>(-1)) {
+        kotor::Vec3 spawn = game.scene().entities[hostile].position;
+        spawn.x += 1.0f;
+        game.setPositionForTest(spawn);
+        game.attackNearestHostile();
+        int steps = 0;
+        while (steps < 3600 && !game.playerDead() && !game.scene().entities[hostile].dead) {
+            game.update(1.0f / 60.0f, InputState{});
+            ++steps;
+        }
+        check(game.scene().entities[hostile].dead, "hostile_died");
+        check(scriptLogHas(game, "hook ScriptDeath"), "death_hook_ran");
+    }
+
+    // Dialogue conditions: the shipped DLG has 19 StartingList.Active entries.
+    if (!game.startDialogue("end_trask")) {
+        logError("script test: Trask dialogue did not start");
+        return 10;
+    }
+    bool conditionSeen = false;
+    std::string selected;
+    for (const std::string& line : game.scriptLog()) {
+        if (line.find("dialogue condition k_pend_trask00") != std::string::npos) {
+            conditionSeen = true;
+        }
+        if (line.rfind("dialogue start end_trask01", 0) == 0) {
+            selected = line;
+        }
+    }
+    check(conditionSeen, "dialogue_condition_ran");
+    check(selected.find("entry=54") != std::string::npos, "dialogue_selected_54");
+    logInfo(concat("script test: ", selected));
+    game.endDialogue();
+
+    logInfo(ok ? "script test: PASS" : "script test: FAIL");
+    return ok ? 0 : 11;
+}
+
+int runRulesTest(GameSession& game)
+{
+    const Rules& rules = game.rules();
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("rules test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    if (!rules.loaded()) {
+        logError(concat("rules test: ", rules.error()));
+        return 9;
+    }
+    const CharacterSheet soldier = rules.createCharacter(0, 1);
+    logInfo(concat("rules test: level(999)=", rules.levelForXp(999), " level(1000)=",
+                   rules.levelForXp(1000), " xp(2)=", rules.xpForLevel(2)));
+    logInfo(concat("rules test: soldier hp=", soldier.maxHp, " bab=",
+                   rules.baseAttackBonus(0, 1), " fort=", rules.savingThrow(0, 1, 0),
+                   " skills=", soldier.skillPoints, " feats=", soldier.featPoints,
+                   " ac=", rules.armorClass(soldier), " attack=", rules.attackBonus(soldier)));
+    check(rules.className(0) == "Soldier", "class_soldier");
+    check(rules.classHitDie(0) == 10, "hit_die_10");
+    check(rules.baseAttackBonus(0, 1) == 1, "bab_1");
+    check(rules.savingThrow(0, 1, 0) == 2, "fort_2");
+    check(soldier.maxHp == 12, "hp_12");
+    check(soldier.skillPoints == 2, "skill_points_2");
+    check(soldier.featPoints == 1, "feat_points_1");
+    check(rules.levelForXp(0) == 1, "level_0");
+    check(rules.levelForXp(999) == 1, "level_999");
+    check(rules.levelForXp(1000) == 2, "level_1000");
+    check(rules.xpForLevel(2) == 1000, "xp_level_2");
+    check(rules.equipSlotFor(2) == 4, "long_sword_slot_4");
+    check(rules.armorClass(soldier) == 12, "ac_12");
+    check(rules.attackBonus(soldier) == 4, "attack_4");
+    check(!rules.canTakeFeat(soldier, 1), "feat_prereq_refused");
+
+    std::uint32_t rng = 0x12345678u;
+    const AttackResult first = rules.resolveAttack(soldier, 10, rng, 1, 8, 2);
+    const AttackResult second = rules.resolveAttack(soldier, 10, rng, 1, 8, 2);
+    logInfo(concat("rules test: attack1 roll=", first.roll, " total=", first.total,
+                   " hit=", first.hit ? 1 : 0, " crit=", first.critical ? 1 : 0,
+                   " damage=", first.damage));
+    logInfo(concat("rules test: attack2 roll=", second.roll, " total=", second.total,
+                   " hit=", second.hit ? 1 : 0, " damage=", second.damage));
+    check(first.roll >= 1 && first.roll <= 20, "d20_range");
+    check(first.hit && first.damage >= 1, "attack_hits_ac10");
+    check(second.roll >= 1 && second.roll <= 20, "d20_second");
+
+    logInfo(ok ? "rules test: PASS" : "rules test: FAIL");
+    return ok ? 0 : 10;
+}
+
+int runSystemsTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("systems test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    const std::size_t inventoryBefore = game.inventory().size();
+    check(game.addJournalEntry("s6_test", 1), "journal_added");
+    check(game.journalState("s6_test") == 1, "journal_state");
+    check(game.removeJournalEntry("s6_test"), "journal_removed");
+    check(game.journalState("s6_test") == 0, "journal_removed_state");
+
+    const std::size_t journalBefore = game.journalSize();
+    script::Vm dummy({});
+    std::vector<std::vector<script::Value>> journalArgs = {
+        {script::Value::makeString("s6_script_journal")}, {script::Value::makeInt(1)}};
+    game.action(367, journalArgs, game.scriptWorld(), dummy);
+    logInfo(concat("systems test: journal ", journalBefore, " -> ", game.journalSize()));
+    check(game.journalSize() > journalBefore, "script_journal");
+    check(game.journalState("s6_script_journal") == 1, "script_journal_state");
+
+    const std::int32_t xpBeforeScript = game.character().xp;
+    game.runScript("k_act_com31", game.scriptWorld().pc, game.scriptWorld().pc,
+                   game.scriptWorld().pc, game.scriptWorld().pc);
+    check(game.character().xp > xpBeforeScript, "script_xp");
+
+    const std::int32_t goldBefore = game.gold();
+    std::vector<std::vector<script::Value>> goldArgs = {
+        {script::Value::makeObject(game.scriptWorld().pc)}, {script::Value::makeInt(200)}};
+    game.action(322, goldArgs, game.scriptWorld(), dummy);
+    logInfo(concat("systems test: gold ", goldBefore, " -> ", game.gold()));
+    check(game.gold() > goldBefore, "script_gold");
+
+    const std::int32_t levelBefore = game.character().level;
+    game.giveXp(1000);
+    check(game.character().xp >= 1000, "xp_granted");
+    check(game.character().level > levelBefore, "level_up");
+    logInfo(concat("systems test: xp=", game.character().xp, " level=",
+                   game.character().level, " hp=", game.playerHp(), "/", game.playerMaxHp()));
+
+    check(game.addInventoryItem("w_lngswrd_001", 2, 1), "item_added");
+    check(game.inventory().size() == inventoryBefore + 1, "inventory_count");
+    check(game.equipItem("w_lngswrd_001"), "item_equipped");
+    bool equipped = false;
+    for (const InventoryItem& item : game.inventory()) {
+        if (item.resref == "w_lngswrd_001" && item.equipped) {
+            equipped = true;
+        }
+    }
+    check(equipped, "equipped_state");
+    check(game.removeInventoryItem("w_lngswrd_001"), "item_removed");
+    check(game.inventory().size() == inventoryBefore, "inventory_after_remove");
+    check(game.addInventoryItem("w_lngswrd_001", 2, 1), "item_readded");
+
+    check(game.addPartyMember("Carth"), "party_joined");
+    bool partyFound = false;
+    for (const std::string& tag : game.partyTags()) {
+        if (tag == "Carth") {
+            partyFound = true;
+        }
+    }
+    check(partyFound, "party_roster");
+    check(game.removePartyMember("Carth"), "party_left");
+    check(game.addPartyMember("Carth"), "party_rejoined");
+
+    // A shipped action script that creates items and writes a global.
+    game.runScript("k_pend_traskdl50", game.scriptWorld().pc, game.scriptWorld().pc,
+                   game.scriptWorld().pc, game.scriptWorld().pc);
+    check(scriptLogHas(game, "script k_pend_traskdl50 status=returned"), "action_script_ran");
+    const bool globalWritten = !game.scriptWorld().globals.empty();
+    check(globalWritten, "script_global_written");
+
+    const std::filesystem::path savePath =
+        std::filesystem::temp_directory_path() / "kotor_engine_s6_systems.save";
+    game.scriptWorld().setLocal(game.scriptWorld().pc, "s6_local",
+                                script::Value::makeInt(7));
+    check(game.save(savePath), "save_written");
+    GameSession restored(game.installPath(), game.module());
+    check(restored.load(savePath), "save_loaded");
+    check(restored.character().xp == game.character().xp, "xp_roundtrip");
+    check(restored.character().level == game.character().level, "level_roundtrip");
+    check(restored.inventory().size() == game.inventory().size(), "inventory_roundtrip");
+    check(restored.partyTags().size() == game.partyTags().size(), "party_roundtrip");
+    check(restored.module() == game.module(), "module_roundtrip");
+    const script::Value local = restored.scriptWorld().getLocal(
+        restored.scriptWorld().pc, "s6_local", script::ValueType::Int);
+    check(local.integer == 7, "local_roundtrip");
+
+    logInfo(ok ? "systems test: PASS" : "systems test: FAIL");
+    return ok ? 0 : 10;
+}
+
 } // namespace
+
+int runVmCorpus(const Options& options)
+{
+    if (options.vmCorpus.empty()) {
+        logError("vm corpus: no directory");
+        return 92;
+    }
+    const std::filesystem::path directory = options.vmCorpus;
+    if (!std::filesystem::is_directory(directory)) {
+        logError(concat("vm corpus: not a directory: ", directory.string()));
+        return 93;
+    }
+    bool trace = false;
+    {
+#if defined(_WIN32)
+        char* value = nullptr;
+        std::size_t length = 0;
+        if (_dupenv_s(&value, &length, "KE_VM_TRACE") == 0 && value != nullptr) {
+            trace = true;
+            std::free(value);
+        }
+#else
+        trace = std::getenv("KE_VM_TRACE") != nullptr;
+#endif
+    }
+    try {
+        const ke::script::CorpusRun run = ke::script::runNcsCorpus(
+            directory, options.vmFunctional, static_cast<std::uint64_t>(options.vmBudget),
+            static_cast<std::size_t>(options.vmLimit), trace);
+        logInfo(concat("vm corpus: files=", run.files.size(), " returned=", run.returned,
+                       " blocked=", run.blocked, " budget=", run.budget,
+                       " decode_errors=", run.decodeErrors, " vm_errors=", run.vmErrors,
+                       " invalid_jumps=", run.invalidJumpTargets, " steps=", run.totalSteps,
+                       " action_calls=", run.totalActionCalls, " max_sp=", run.maxStack,
+                       " functional=", options.vmFunctional ? 1 : 0));
+        if (!options.vmOut.empty()) {
+            ke::script::writeCorpusJsonl(options.vmOut, run);
+            logInfo(concat("vm corpus: wrote ", options.vmOut));
+        }
+        return (run.decodeErrors == 0 && run.vmErrors == 0 && run.invalidJumpTargets == 0) ? 0 : 94;
+    } catch (const std::exception& error) {
+        logError(concat("vm corpus: ", error.what()));
+        return 95;
+    }
+}
 
 int runApplication(const Options& options)
 {
+    if (!options.vmCorpus.empty()) {
+        return runVmCorpus(options);
+    }
     if (options.selfTest) {
         return runImGuiSelfTest();
     }
@@ -555,6 +865,17 @@ int runApplication(const Options& options)
             logInfo(concat("  entry: ", loaded.entry.x, ", ", loaded.entry.y, ", ", loaded.entry.z));
             logInfo(concat("  entity meshes: ", loaded.entityMeshes.size(), " triggers: ",
                            loaded.triggers.size(), " warnings: ", loaded.warnings.size()));
+            std::size_t hookCount = 0;
+            std::size_t entitiesWithHooks = 0;
+            for (const ke::kotor::Entity& entity : loaded.entities) {
+                if (!entity.scripts.empty()) {
+                    ++entitiesWithHooks;
+                    hookCount += entity.scripts.size();
+                }
+            }
+            logInfo(concat("  script hooks: ", hookCount, " on ", entitiesWithHooks,
+                           " entities; scene hooks: ", loaded.scripts.size(),
+                           "; script runs: ", game->scriptLog().size()));
             for (std::size_t i = 0; i < loaded.entityMeshes.size() && i < 3; ++i) {
                 const ke::kotor::EntityMesh& mesh = loaded.entityMeshes[i];
                 if (mesh.vertices.empty() || mesh.entity >= loaded.entities.size()) {
@@ -638,6 +959,15 @@ int runApplication(const Options& options)
             }
             if (options.dialogueTest) {
                 return runDialogueTest(*game);
+            }
+            if (options.scriptTest) {
+                return runScriptTest(*game);
+            }
+            if (options.rulesTest) {
+                return runRulesTest(*game);
+            }
+            if (options.systemsTest) {
+                return runSystemsTest(*game);
             }
             if (options.combatTest) {
                 return runCombatTest(*game);

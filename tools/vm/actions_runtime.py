@@ -131,7 +131,7 @@ class ActionRuntime:
         if name.startswith("SWMG_Set"):
             store[name[len("SWMG_Set"):]] = self._store_value(args)
             self.generic.add(name)
-            return []
+            return self._ret(aid)
         if name.startswith("SWMG_Get"):
             key = name[len("SWMG_Get"):]
             if key in store:
@@ -148,7 +148,7 @@ class ActionRuntime:
             delta = self._i(args, len(self.specs[aid]["params"]) - 1)
             store[key] = int(store.get(key, 0)) + delta
             self.generic.add(name)
-            return []
+            return self._ret(aid)
         self.generic.add(name)
         return self._ret(aid)
 

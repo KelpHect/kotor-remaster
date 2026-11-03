@@ -85,6 +85,20 @@ target_include_directories(kotor_data PUBLIC src)
 target_link_libraries(kotor_data PUBLIC kotor_engine_options)
 
 # ---------------------------------------------------------------------------
+# Script runtime: native NCS VM, generated action table and action model.
+# ---------------------------------------------------------------------------
+add_library(kotor_script STATIC
+    src/script/ActionTable.cpp
+    src/script/ActionRuntime.cpp
+    src/script/Corpus.cpp
+    src/script/Ncs.cpp
+    src/script/Random.cpp
+    src/script/Vm.cpp
+    src/script/World.cpp)
+target_include_directories(kotor_script PUBLIC src)
+target_link_libraries(kotor_script PUBLIC kotor_engine_options)
+
+# ---------------------------------------------------------------------------
 # Engine executable: both GPU backends are built; selection is runtime.
 # ---------------------------------------------------------------------------
 add_executable(kotor_engine
@@ -93,6 +107,7 @@ add_executable(kotor_engine
     src/app/Args.cpp
     src/core/Log.cpp
     src/game/GameSession.cpp
+    src/game/Rules.cpp
     src/render/BackendFactory.cpp
     src/render/Bmp.cpp
     src/render/NullBackend.cpp
@@ -105,6 +120,7 @@ target_include_directories(kotor_engine PRIVATE src)
 target_link_libraries(kotor_engine PRIVATE
     kotor_engine_options
     kotor_data
+    kotor_script
     kotor_imgui
     SDL3::SDL3-static
     Vulkan::Headers
@@ -135,7 +151,7 @@ add_custom_command(TARGET kotor_engine POST_BUILD
 if(KOTOR_ENGINE_BUILD_TESTS)
     enable_testing()
     add_executable(kotor_tests tests/test_kotor.cpp)
-    target_link_libraries(kotor_tests PRIVATE kotor_engine_options kotor_data)
+    target_link_libraries(kotor_tests PRIVATE kotor_engine_options kotor_data kotor_script)
     add_test(NAME kotor_formats COMMAND kotor_tests)
 
     add_test(NAME smoke_null_headless
@@ -167,6 +183,12 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                  COMMAND kotor_engine --module end_m01aa --dialogue-test --null --headless)
         add_test(NAME kotor_combat
                  COMMAND kotor_engine --module end_m01aa --combat-test --null --headless)
+        add_test(NAME kotor_script
+                 COMMAND kotor_engine --module end_m01aa --script-test --null --headless)
+        add_test(NAME kotor_rules
+                 COMMAND kotor_engine --module end_m01aa --rules-test --null --headless)
+        add_test(NAME kotor_systems
+                 COMMAND kotor_engine --module end_m01aa --systems-test --null --headless)
         add_test(NAME kotor_playthrough
                  COMMAND kotor_engine --module end_m01aa --playthrough --null --headless)
         add_test(NAME kotor_landmark
@@ -175,7 +197,26 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                  COMMAND kotor_engine --module end_m01aa --walk-test --save "${CMAKE_BINARY_DIR}/engine-save.txt" --null --headless)
         set_tests_properties(kotor_scene_stats kotor_scene_assert kotor_door_transition
                              kotor_taris_transition kotor_walk_collision kotor_dialogue
-                             kotor_combat kotor_playthrough kotor_landmark kotor_save_load
+                             kotor_combat kotor_script kotor_rules kotor_systems
+                             kotor_playthrough kotor_landmark kotor_save_load
             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+
+        # Native VM parity against the verified Python oracle. The corpus and
+        # oracles live under artifacts/ (not shipped); skip the test when a
+        # checkout has no research artifacts.
+        find_package(Python3 COMPONENTS Interpreter QUIET)
+        set(KOTOR_VM_CORPUS "${CMAKE_SOURCE_DIR}/../artifacts/lanes/04-ncs/extracted/unique")
+        set(KOTOR_VM_DEFAULT_ORACLE "${CMAKE_SOURCE_DIR}/../artifacts/lanes/s6-01-vm/default_oracle_s6.json")
+        set(KOTOR_VM_FUNCTIONAL_ORACLE "${CMAKE_SOURCE_DIR}/../artifacts/lanes/s6-02-actions/functional_oracle_s6.json")
+        if(Python3_Interpreter_FOUND AND EXISTS "${KOTOR_VM_CORPUS}" AND EXISTS "${KOTOR_VM_DEFAULT_ORACLE}")
+            add_test(NAME kotor_vm_corpus
+                     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/check_vm_corpus.py
+                             --engine $<TARGET_FILE:kotor_engine>
+                             --corpus "${KOTOR_VM_CORPUS}"
+                             --default-oracle "${KOTOR_VM_DEFAULT_ORACLE}"
+                             --functional-oracle "${KOTOR_VM_FUNCTIONAL_ORACLE}"
+                             --out "${CMAKE_BINARY_DIR}/s6-vm-parity.json")
+            set_tests_properties(kotor_vm_corpus PROPERTIES TIMEOUT 600)
+        endif()
     endif()
 endif()

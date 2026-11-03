@@ -1,0 +1,69 @@
+[INFO] KotOR module end_m01aa area m01aa from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 15 vertices: 235038 indices: 235038 batches: 34
+[INFO]   textures: 53 collision vertices: 850 facets: 1365
+[INFO]   entities: 218 (door 15, placeable 60, creature 26, waypoint 58)
+[INFO]   entry: 15.4248, 20.1215, -1.275
+[INFO]   entity meshes: 101 triggers: 13 warnings: 0
+[INFO]   script hooks: 284 on 54 entities; scene hooks: 3; script runs: 25
+[INFO]   entity mesh 0 end_door05 verts=564 local=-3.07263,-0.121998,-0.047403 .. 3.08736,0.123205,3.00955
+[INFO]   entity mesh 1 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   entity mesh 2 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   creature mesh Carth verts=3276 local=-0.606384,-0.151653,-0.00207151 .. 0.610334,0.167699,1.54884
+[INFO]   bounds: -170.51, -32.6442, -204.652 .. 238.793, 471.187, 291.201
+[INFO] dialogue test: end_trask conversation end_trask01
+[INFO]   Trask: We've been ambushed by a Sith battle fleet! The Endar Spire is under attack! Hurry up - we don't have much time!
+[INFO]     1. Who are you? [Left-click this answer to select highlighted response.]
+[INFO]     2. The Endar Spire? [Left-click this answer to select highlighted response.]
+[INFO]   Trask: I'm Trask Ulgo, ensign with the Republic Fleet. I'm your bunk mate here on the Endar Spire. We work opposite shifts; I guess that's why you haven't seen me before.
+[INFO]     1. (Continue)
+[INFO]   Trask: Now hurry up, we have to find Bastila! We have to make sure she makes it off the ship alive!
+[INFO]     1. Who's Bastila? [Left-click this answer to select highlighted response.]
+[INFO]     2. Forget it - I'm looking after my own skin! [Left-click this answer to select highlighted response.]
+[INFO]   Trask: Bastila's the commanding officer on the Endar Spire. Well, not an officer, really. But she's the one in charge of this mission.
+[INFO]     1. (Continue)
+[INFO]   Trask: One of our primary duties is to guarantee her survival in the event of enemy attack! You swore an oath just like everyone else on this mission. Now it's time to make good on that oath!
+[INFO]     1. (Continue)
+[INFO]   Trask: I've heard all about your reputation: elite combat training, tops in your class. It's no wonder you were hand picked for this mission.
+[INFO]     1. (Continue)
+[INFO]   Trask: Word is the officers haven't seen a recruit with your kind of potential in twenty years. But all that potential doesn't mean a thing if you can't deliver when it counts!
+[INFO]     1. (Continue)
+[INFO]   Trask: We're soldiers, we're trained for combat. Bastila's going to need men and women like us at her side during this attack!
+[INFO]     1. Okay, let's go help Bastila!
+[INFO]     2. Oath or no oath - I'm heading to the escape pods!
+[INFO]   Trask: So hurry up and grab your gear. You need to suit up so we can get out of here.
+[INFO]     1. Okay.
+[INFO]     2. Where can I get my equipment?
+[INFO] dialogue test: lines=9
+[INFO]   script: script k_hen_spawn01 status=returned steps=664 actions=0:1,42:1,107:1,168:2,175:1,176:6,197:1,217:1,323:1,377:2,409:1,497:1,679:1,681:1,713:1
+[INFO]   script: script k_pdan_trask_9 status=returned steps=683 actions=0:1,42:1,51:1,107:1,168:2,175:1,176:6,197:1,217:1,220:1,377:2,409:1,497:1,679:1,680:2,681:1,713:1
+[INFO]   script: script k_def_spawn01 status=returned steps=968 actions=0:1,42:4,107:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:1,681:4,713:1
+[INFO]   script: script k_pend_room3_02 status=returned steps=977 actions=0:1,42:4,107:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:2,681:4,713:1
+[INFO]   script: script k_pend_room3_02 status=returned steps=977 actions=0:1,42:4,107:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:2,681:4,713:1
+[INFO]   script: script k_pend_sith_9 status=returned steps=986 actions=0:1,42:4,107:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:3,681:4,713:1
+[INFO]   script: script k_pend_sith_9 status=returned steps=986 actions=0:1,42:4,107:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:3,681:4,713:1
+[INFO]   script: script k_pend_sith_9 status=returned steps=986 actions=0:1,42:4,107:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:3,681:4,713:1
+[INFO]   script: script k_pend_sith_9 status=returned steps=1131 actions=0:5,31:2,42:4,107:1,166:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:3,681:4,713:1
+[INFO]   script: script k_pend_sith_9 status=returned steps=986 actions=0:1,42:4,107:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:3,681:4,713:1
+[INFO]   script: script k_pend_sith_9 status=returned steps=1103 actions=0:5,31:2,42:4,107:1,166:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:3,681:4,713:1
+[INFO]   script: script k_pend_sith_9 status=returned steps=1160 actions=0:6,31:3,42:4,107:1,166:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:3,681:4,713:1
+[INFO]   script: script k_pend_sith_9 status=returned steps=1116 actions=0:6,31:3,42:4,107:1,166:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:3,681:4,713:1
+[INFO]   script: script k_pend_sith_9 status=returned steps=986 actions=0:1,42:4,107:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:3,681:4,713:1
+[INFO]   script: script k_pend_sith_9 status=returned steps=1087 actions=0:5,31:2,42:4,107:1,166:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:3,681:4,713:1
+[INFO]   script: script k_pend_sith_9 status=returned steps=1189 actions=0:7,31:4,42:4,107:1,166:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:3,681:4,713:1
+[INFO]   script: script k_pend_sith_9 status=returned steps=986 actions=0:1,42:4,107:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:3,681:4,713:1
+[INFO]   script: script k_pend_weld02 status=returned steps=6 actions=294:1
+[INFO]   script: script k_pend_weld02 status=returned steps=6 actions=294:1
+[INFO]   script: script k_pend_weld02 status=returned steps=6 actions=294:1
+[INFO]   script: script k_def_spawn01 status=returned steps=968 actions=0:1,42:4,107:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:1,681:4,713:1
+[INFO]   script: script k_def_spawn01 status=returned steps=1118 actions=0:6,31:3,42:4,107:1,166:1,168:4,175:1,176:6,197:4,217:1,335:1,377:2,409:1,497:1,679:8,680:1,681:4,713:1
+[INFO]   script: script k_pend_bridge01 status=returned steps=667 actions=0:1,42:1,107:1,168:2,175:1,176:6,197:1,217:1,377:2,409:1,497:1,679:1,681:1,713:1,716:1
+[INFO]   script: script k_pend_bridge01 status=returned steps=667 actions=0:1,42:1,107:1,168:2,175:1,176:6,197:1,217:1,377:2,409:1,497:1,679:1,681:1,713:1,716:1
+[INFO]   script: script k_pend_area01 status=returned steps=952 actions=7:1,25:1,31:3,42:2,152:1,166:1,200:1,217:1,286:1,341:1,548:4,581:1,716:1,719:1,720:2,733:1
+[INFO]   script: script k_pend_trask00 status=returned steps=15 actions=580:1 top=1
+[INFO]   script: dialogue condition k_pend_trask00 entry=54 = 1
+[INFO]   script: dialogue start end_trask01 entry=54
+[INFO]   script: script k_pend_traskdl40 status=returned steps=22 actions=6:1,22:1,200:2,205:1,206:1
+[INFO]   script: script k_pend_traskinc status=returned steps=9 actions=580:1,581:1
+[INFO]   script: script k_pend_traskdl41 status=returned steps=17 actions=6:1,200:1,324:1
+[INFO]   script: script k_pend_time01 status=returned steps=917 actions=7:1,42:2,166:1,200:2,548:1,679:1,680:1

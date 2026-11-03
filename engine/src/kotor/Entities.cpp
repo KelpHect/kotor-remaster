@@ -19,6 +19,30 @@ std::string lower(std::string text)
     return text;
 }
 
+const std::vector<std::string>& scriptHookLabels()
+{
+    static const std::vector<std::string> labels = {
+        // Creature/UTC
+        "ScriptHeartbeat", "ScriptOnNotice", "ScriptSpellAt", "ScriptAttacked",
+        "ScriptDamaged", "ScriptDisturbed", "ScriptEndRound", "ScriptEndDialogu",
+        "ScriptDialogue", "ScriptSpawn", "ScriptRested", "ScriptDeath",
+        "ScriptUserDefine", "ScriptOnBlocked",
+        // Door/placeable/trigger/store
+        "OnClosed", "OnDamaged", "OnDeath", "OnDisarm", "OnHeartbeat", "OnLock",
+        "OnMeleeAttacked", "OnOpen", "OnSpellCastAt", "OnTrapTriggered", "OnUnlock",
+        "OnUserDefined", "OnClick", "OnFailToOpen", "OnUsed", "OnInvDisturbed",
+        "ScriptOnEnter", "ScriptOnExit", "ScriptUserDefine",
+        // Area (ARE)
+        "OnEnter", "OnExit", "OnUserDefined",
+        // Module (IFO)
+        "Mod_OnHeartbeat", "Mod_OnModLoad", "Mod_OnModStart", "Mod_OnClientEntr",
+        "Mod_OnClientLeav", "Mod_OnActvtItem", "Mod_OnAcquirItem", "Mod_OnUsrDefined",
+        "Mod_OnUnAqreItem", "Mod_OnPlrDeath", "Mod_OnPlrDying", "Mod_OnPlrLvlUp",
+        "Mod_OnSpawnBtnDn", "Mod_OnPlrRest",
+    };
+    return labels;
+}
+
 std::string textField(const Gff& gff, std::uint32_t structure, const char* label)
 {
     const GffField* field = gff.field(structure, label);
@@ -241,6 +265,24 @@ void addTriggerGeometry(Scene& scene, const Gff& git)
 
 } // namespace
 
+void collectScriptHooks(const Gff& gff, std::uint32_t structure,
+                        std::map<std::string, std::string>& scripts)
+{
+    if (structure >= gff.structureCount()) {
+        return;
+    }
+    for (const std::string& label : scriptHookLabels()) {
+        const GffField* field = gff.field(structure, label);
+        if (field == nullptr) {
+            continue;
+        }
+        const std::string resref = gff.text(*field);
+        if (!resref.empty()) {
+            scripts[label] = resref;
+        }
+    }
+}
+
 void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
 {
     const std::optional<Tlk> tlk = loadTlk(install);
@@ -256,6 +298,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
             if (data.has_value()) {
                 try {
                     Gff utc = Gff::parse(std::move(*data), entity.templateResref + ".utc");
+                    collectScriptHooks(utc, utc.rootIndex(), entity.scripts);
                     entity.tag = textField(utc, utc.rootIndex(), "Tag");
                     entity.name = locField(utc, utc.rootIndex(), "FirstName", tlk ? &*tlk : nullptr);
                     entity.conversation = textField(utc, utc.rootIndex(), "Conversation");
@@ -291,6 +334,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
             if (data.has_value()) {
                 try {
                     Gff utd = Gff::parse(std::move(*data), entity.templateResref + ".utd");
+                    collectScriptHooks(utd, utd.rootIndex(), entity.scripts);
                     entity.tag = textField(utd, utd.rootIndex(), "Tag");
                     entity.faction = static_cast<std::uint32_t>(intField(utd, utd.rootIndex(), "Faction", 0));
                     const std::uint32_t genericType = static_cast<std::uint32_t>(
@@ -307,6 +351,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
             if (data.has_value()) {
                 try {
                     Gff utp = Gff::parse(std::move(*data), entity.templateResref + ".utp");
+                    collectScriptHooks(utp, utp.rootIndex(), entity.scripts);
                     entity.tag = textField(utp, utp.rootIndex(), "Tag");
                     entity.conversation = textField(utp, utp.rootIndex(), "Conversation");
                     entity.appearance = static_cast<std::uint32_t>(
@@ -325,6 +370,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
             if (data.has_value()) {
                 try {
                     Gff utt = Gff::parse(std::move(*data), entity.templateResref + ".utt");
+                    collectScriptHooks(utt, utt.rootIndex(), entity.scripts);
                     entity.tag = textField(utt, utt.rootIndex(), "Tag");
                     entity.scriptOnEnter = textField(utt, utt.rootIndex(), "ScriptOnEnter");
                     entity.scriptOnExit = textField(utt, utt.rootIndex(), "ScriptOnExit");
@@ -332,7 +378,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                 }
             }
         }
-        (void)structure;
+        collectScriptHooks(git, structure, entity.scripts);
         if (!entity.model.empty()
             && (entity.kind == EntityKind::Creature || entity.kind == EntityKind::Door
                 || entity.kind == EntityKind::Placeable)) {

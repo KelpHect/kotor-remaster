@@ -22,6 +22,9 @@ struct Options {
     bool playthrough = false;
     bool landmarkTest = false;
     bool sceneAssert = false;
+    bool scriptTest = false;
+    bool rulesTest = false;
+    bool systemsTest = false;
     bool demoDialogue = false;
     bool demoCombat = false;
     int width = 1280;
@@ -34,6 +37,13 @@ struct Options {
     std::string screenshot;
     std::string savePath;
     bool loadSave = false;
+    // Script runtime verification (no game module needed).
+    std::string vmCorpus;
+    std::string vmOut;
+    bool vmFunctional = false;
+    bool vmJsonSummary = false;
+    int vmLimit = 0;
+    int vmBudget = 200000;
 };
 
 enum class ParseAction { Run, Help, Version, Error };

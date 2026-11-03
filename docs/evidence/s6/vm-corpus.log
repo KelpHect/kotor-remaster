@@ -1,0 +1,3 @@
+default: files=8666 oracle=8666 mismatches=0
+functional: files=8666 statuses={'returned': 8185, 'blocked': 472, 'budget': 9} action_calls=303616 mismatches=0
+report: docs\evidence\s6\vm-parity.json
