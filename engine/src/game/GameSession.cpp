@@ -578,64 +578,176 @@ void GameSession::spawnEncounters()
     for (std::size_t encounterIndex = 0; encounterIndex < scene_.encounters.size();
          ++encounterIndex) {
         const kotor::EncounterVolume& volume = scene_.encounters[encounterIndex];
-        const kotor::EncounterTemplate& encounter = volume.templateData;
-        if (!encounter.active || encounter.creatures.empty() || volume.spawnPoints.empty()) {
+        EncounterState& state = encounterStates_[encounterIndex];
+        state.respawnsRemaining = volume.templateData.respawns < 0
+            ? -1
+            : volume.templateData.respawns;
+        state.resetTime = static_cast<float>(std::max(0, volume.templateData.resetTime));
+        const std::int32_t spawned = spawnEncounterCreatures(encounterIndex);
+        if (spawned > 0) {
+            runHook("OnEntered", volume.entity, scriptWorld_.pc);
+            logEvent("encounter " + volume.templateData.resref + " spawned "
+                     + std::to_string(spawned));
+        }
+    }
+}
+
+std::int32_t GameSession::spawnEncounterCreatures(std::size_t encounterIndex)
+{
+    if (encounterIndex >= scene_.encounters.size()
+        || encounterIndex >= encounterStates_.size()) {
+        return 0;
+    }
+    const kotor::EncounterVolume& volume = scene_.encounters[encounterIndex];
+    const kotor::EncounterTemplate& encounter = volume.templateData;
+    EncounterState& state = encounterStates_[encounterIndex];
+    if (!encounter.active || encounter.creatures.empty() || volume.spawnPoints.empty()) {
+        return 0;
+    }
+    std::int32_t count = encounter.recCreatures > 0 ? encounter.recCreatures
+                                                    : encounter.maxCreatures;
+    if (count <= 0) {
+        count = static_cast<std::int32_t>(encounter.creatures.size());
+    }
+    if (encounter.maxCreatures > 0) {
+        count = std::min(count, encounter.maxCreatures);
+    }
+    std::set<std::string> singleSpawnUsed;
+    std::int32_t spawnedCount = 0;
+    for (std::int32_t i = 0; i < count; ++i) {
+        const kotor::EncounterCreature& creature =
+            encounter.creatures[static_cast<std::size_t>(i) % encounter.creatures.size()];
+        if (creature.singleSpawn && singleSpawnUsed.contains(creature.resref)) {
             continue;
         }
-        std::int32_t count = encounter.recCreatures > 0 ? encounter.recCreatures
-                                                        : encounter.maxCreatures;
-        if (count <= 0) {
-            count = static_cast<std::int32_t>(encounter.creatures.size());
+        const kotor::EncounterSpawnPoint& point =
+            volume.spawnPoints[static_cast<std::size_t>(i) % volume.spawnPoints.size()];
+        const std::size_t entityIndex = kotor::spawnCreature(
+            scene_, install_, creature.resref, point.position, point.bearing);
+        if (entityIndex == static_cast<std::size_t>(-1)) {
+            continue;
         }
-        if (encounter.maxCreatures > 0) {
-            count = std::min(count, encounter.maxCreatures);
+        const kotor::Entity& spawned = scene_.entities[entityIndex];
+        scene_.entities[entityIndex].hostile = true;
+        script::GameObject& object =
+            scriptWorld_.addObject(spawned.tag, 100, 0, true);
+        object.position = {spawned.position.x, spawned.position.y, spawned.position.z};
+        object.hp = spawned.hitPoints;
+        object.attrs["ac"] = static_cast<std::int64_t>(spawned.defense);
+        object.attrs["fortitude"] = static_cast<std::int64_t>(0);
+        object.attrs["will"] = static_cast<std::int64_t>(0);
+        object.attrs["reflex"] = static_cast<std::int64_t>(0);
+        object.attrs["challenge_rating"] =
+            static_cast<std::int64_t>(creature.challengeRating);
+        object.attrs["movement_rate"] = static_cast<std::int64_t>(1);
+        object.attrs["good_evil"] = static_cast<std::int64_t>(50);
+        object.attrs["level"] = static_cast<std::int64_t>(
+            std::max(1, static_cast<int>(creature.challengeRating)));
+        object.attrs["class_id"] = static_cast<std::int64_t>(0);
+        object.attrs["xp"] = static_cast<std::int64_t>(0);
+        entityObjects_.push_back(object.id);
+        if (creature.singleSpawn) {
+            singleSpawnUsed.insert(creature.resref);
         }
-        std::set<std::string> singleSpawnUsed;
-        EncounterState& state = encounterStates_[encounterIndex];
-        for (std::int32_t i = 0; i < count; ++i) {
-            const kotor::EncounterCreature& creature =
-                encounter.creatures[static_cast<std::size_t>(i) % encounter.creatures.size()];
-            if (creature.singleSpawn && singleSpawnUsed.contains(creature.resref)) {
-                continue;
+        state.entities.push_back(entityIndex);
+        ++spawnedCount;
+        runHook("ScriptSpawn", entityIndex, scriptWorld_.pc);
+    }
+    state.spawnedCount += spawnedCount;
+    state.spawned = state.spawnedCount > 0;
+    state.resetTimer = 0.0f;
+    if (spawnedCount > 0) {
+        state.exhausted = false;
+    }
+    return spawnedCount;
+}
+
+void GameSession::updateEncounters(float dt)
+{
+    for (std::size_t i = 0; i < encounterStates_.size(); ++i) {
+        EncounterState& state = encounterStates_[i];
+        if (!state.spawned || state.exhausted || state.resetTime <= 0.0f
+            || state.respawnsRemaining == 0) {
+            continue;
+        }
+        bool anyAlive = false;
+        for (const std::size_t entity : state.entities) {
+            if (entity < scene_.entities.size() && !scene_.entities[entity].dead) {
+                anyAlive = true;
+                break;
             }
-            const kotor::EncounterSpawnPoint& point =
-                volume.spawnPoints[static_cast<std::size_t>(i) % volume.spawnPoints.size()];
-            const std::size_t entityIndex = kotor::spawnCreature(
-                scene_, install_, creature.resref, point.position, point.bearing);
-            if (entityIndex == static_cast<std::size_t>(-1)) {
-                continue;
-            }
-            const kotor::Entity& spawned = scene_.entities[entityIndex];
-            scene_.entities[entityIndex].hostile = true;
-            script::GameObject& object =
-                scriptWorld_.addObject(spawned.tag, 100, 0, true);
-            object.position = {spawned.position.x, spawned.position.y, spawned.position.z};
-            object.hp = spawned.hitPoints;
-            object.attrs["ac"] = static_cast<std::int64_t>(spawned.defense);
-            object.attrs["fortitude"] = static_cast<std::int64_t>(0);
-            object.attrs["will"] = static_cast<std::int64_t>(0);
-            object.attrs["reflex"] = static_cast<std::int64_t>(0);
-            object.attrs["challenge_rating"] =
-                static_cast<std::int64_t>(creature.challengeRating);
-            object.attrs["movement_rate"] = static_cast<std::int64_t>(1);
-            object.attrs["good_evil"] = static_cast<std::int64_t>(50);
-            object.attrs["level"] = static_cast<std::int64_t>(std::max(1, static_cast<int>(creature.challengeRating)));
-            object.attrs["class_id"] = static_cast<std::int64_t>(0);
-            object.attrs["xp"] = static_cast<std::int64_t>(0);
-            entityObjects_.push_back(object.id);
-            if (creature.singleSpawn) {
-                singleSpawnUsed.insert(creature.resref);
-            }
-            state.spawnedCount += 1;
-            state.entities.push_back(entityIndex);
-            runHook("ScriptSpawn", entityIndex, scriptWorld_.pc);
         }
-        state.spawned = state.spawnedCount > 0;
-        if (state.spawned) {
-            runHook("OnEntered", volume.entity, scriptWorld_.pc);
-            logEvent("encounter " + encounter.resref + " spawned "
-                     + std::to_string(state.spawnedCount));
+        if (anyAlive) {
+            state.resetTimer = 0.0f;
+            continue;
         }
+        state.resetTimer += dt;
+        if (state.resetTimer < state.resetTime) {
+            continue;
+        }
+        if (state.respawnsRemaining > 0) {
+            --state.respawnsRemaining;
+        }
+        const std::int32_t spawned = spawnEncounterCreatures(i);
+        if (spawned == 0) {
+            state.exhausted = true;
+        } else {
+            runHook("OnEntered", scene_.encounters[i].entity, scriptWorld_.pc);
+            logEvent("encounter " + scene_.encounters[i].templateData.resref
+                     + " respawned " + std::to_string(spawned));
+        }
+    }
+}
+
+void GameSession::updateParty(float dt)
+{
+    if (companions_.empty() || playerDead_) {
+        return;
+    }
+    kotor::Vec3 anchor = position_;
+    float anchorYaw = yaw_;
+    if (leaderTag_ != "PC") {
+        const std::size_t leader = findEntity(leaderTag_);
+        if (leader != static_cast<std::size_t>(-1)) {
+            anchor = scene_.entities[leader].position;
+            anchorYaw = scene_.entities[leader].bearing;
+        }
+    }
+    const kotor::Vec3 forward{std::cos(anchorYaw), std::sin(anchorYaw), 0.0f};
+    const kotor::Vec3 right{-forward.y, forward.x, 0.0f};
+    int slot = 0;
+    for (CompanionState& companion : companions_) {
+        const std::size_t index = findEntity(companion.tag);
+        if (index == static_cast<std::size_t>(-1) || scene_.entities[index].dead) {
+            continue;
+        }
+        if (companion.tag == leaderTag_) {
+            continue;
+        }
+        const float row = static_cast<float>(slot / 2);
+        const float side = (slot % 2 == 0) ? -1.2f : 1.2f;
+        const kotor::Vec3 target = anchor - forward * (1.6f + row * 1.1f) + right * side;
+        kotor::Entity& entity = scene_.entities[index];
+        const float dx = target.x - entity.position.x;
+        const float dy = target.y - entity.position.y;
+        const float distance = std::sqrt(dx * dx + dy * dy);
+        if (distance > 0.35f) {
+            const float step = std::min(distance, 3.2f * dt);
+            kotor::Vec3 next{entity.position.x + dx / distance * step,
+                             entity.position.y + dy / distance * step, entity.position.z};
+            if (!wallBlocked(scene_, entity.position, next, 0.25f)) {
+                entity.position.x = next.x;
+                entity.position.y = next.y;
+                entity.bearing = std::atan2(dy, dx);
+                float ground = entity.position.z;
+                if (floorHeight(scene_, entity.position.x, entity.position.y,
+                                entity.position.z + 2.0f, ground)) {
+                    entity.position.z = ground;
+                }
+                syncEntityToScriptWorld(index);
+            }
+        }
+        ++slot;
     }
 }
 
@@ -820,7 +932,9 @@ void GameSession::update(float dt, const InputState& input)
     syncPlayerToScriptWorld();
     updateTriggers();
     updateCombat(dt);
+    updateParty(dt);
     updateScripts(dt);
+    updateEncounters(dt);
     syncPlayerToScriptWorld();
     if (!pendingModule_.empty()) {
         const std::string next = pendingModule_;
@@ -1626,8 +1740,29 @@ bool GameSession::removePartyMember(const std::string& tag)
     return partyTags_.size() != old;
 }
 
-void GameSession::giveXp(std::int32_t amount)
+bool GameSession::learnFeat(std::int32_t featId)
 {
+    if (character_.featPoints <= 0 || character_.feats.contains(featId)
+        || !rules_.canTakeFeat(character_, featId)) {
+        return false;
+    }
+    character_.feats.insert(featId);
+    --character_.featPoints;
+    logEvent("learn feat " + rules_.featName(featId));
+    return true;
+}
+
+bool GameSession::learnPower(std::int32_t powerId)
+{
+    if (character_.powers.contains(powerId) || !rules_.canTakePower(character_, powerId)) {
+        return false;
+    }
+    character_.powers.insert(powerId);
+    logEvent("learn power " + rules_.powerName(powerId));
+    return true;
+}
+
+void GameSession::giveXp(std::int32_t amount){
     if (amount <= 0) {
         return;
     }
@@ -1969,6 +2104,14 @@ bool GameSession::save(const std::filesystem::path& path) const
     file << "str=" << character_.str << "\ndex=" << character_.dex
          << "\ncon=" << character_.con << "\nint=" << character_.intel
          << "\nwis=" << character_.wis << "\ncha=" << character_.cha << "\n";
+    file << "feat_points=" << character_.featPoints << "\n";
+    file << "skill_points=" << character_.skillPoints << "\n";
+    for (const std::int32_t feat : character_.feats) {
+        file << "feat=" << feat << "\n";
+    }
+    for (const std::int32_t power : character_.powers) {
+        file << "power=" << power << "\n";
+    }
     for (const auto& [plot, state] : journal_) {
         file << "journal=" << plot << ":" << state << "\n";
     }
@@ -1981,6 +2124,7 @@ bool GameSession::save(const std::filesystem::path& path) const
              << companion.sheet.xp << "|" << companion.sheet.hp << "|"
              << companion.sheet.maxHp << "\n";
     }
+    file << "leader=" << leaderTag_ << "\n";
     for (const MerchantState& merchant : merchants_) {
         for (std::size_t i = 0; i < merchant.stock.size(); ++i) {
             const MerchantStockItem& stock = merchant.stock[i];
@@ -2056,6 +2200,7 @@ bool GameSession::load(const std::filesystem::path& path)
         std::int32_t maxHp = 1;
     };
     std::vector<CompanionSave> companionSaves;
+    std::string leaderTag = "PC";
     struct LocalRecord {
         std::string tag;
         std::string name;
@@ -2110,6 +2255,14 @@ bool GameSession::load(const std::filesystem::path& path)
                 sheet.wis = std::stoi(value);
             } else if (key == "cha") {
                 sheet.cha = std::stoi(value);
+            } else if (key == "feat_points") {
+                sheet.featPoints = std::stoi(value);
+            } else if (key == "skill_points") {
+                sheet.skillPoints = std::stoi(value);
+            } else if (key == "feat") {
+                sheet.feats.insert(std::stoi(value));
+            } else if (key == "power") {
+                sheet.powers.insert(std::stoi(value));
             } else if (key == "journal") {
                 const std::size_t colon = value.rfind(':');
                 if (colon != std::string::npos) {
@@ -2117,6 +2270,8 @@ bool GameSession::load(const std::filesystem::path& path)
                 }
             } else if (key == "party") {
                 party.push_back(value);
+            } else if (key == "leader") {
+                leaderTag = value;
             } else if (key == "companion") {
                 std::vector<std::string> parts;
                 std::size_t start = 0;
@@ -2243,6 +2398,7 @@ bool GameSession::load(const std::filesystem::path& path)
                 companion.sheet.maxHp = saved.maxHp;
             }
         }
+        setPartyLeader(leaderTag);
         scriptWorld_.party.clear();
         scriptWorld_.party.push_back(scriptWorld_.pc);
         for (const std::string& tag : partyTags_) {

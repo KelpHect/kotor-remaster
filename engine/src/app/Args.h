@@ -27,6 +27,7 @@ struct Options {
     bool systemsTest = false;
     bool merchantTest = false;
     bool encounterTest = false;
+    bool encounterResetTest = false;
     bool partyTest = false;
     bool uiTest = false;
     std::string panel;

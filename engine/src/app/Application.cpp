@@ -208,8 +208,26 @@ void drawSystemsUi(GameSession& game)
         if (!sheet.feats.empty()) {
             ImGui::TextUnformatted("Feats");
             for (const std::int32_t feat : sheet.feats) {
-                ImGui::Text("#%d", feat);
+                ImGui::Text("#%d %s", feat, game.rules().featName(feat).c_str());
             }
+        }
+        static int featId = 3;
+        ImGui::InputInt("Feat ID", &featId);
+        ImGui::SameLine();
+        if (ImGui::Button("Learn Feat")) {
+            game.learnFeat(featId);
+        }
+        if (!sheet.powers.empty()) {
+            ImGui::TextUnformatted("Force powers");
+            for (const std::int32_t power : sheet.powers) {
+                ImGui::Text("#%d %s", power, game.rules().powerName(power).c_str());
+            }
+        }
+        static int powerId = 6;
+        ImGui::InputInt("Power ID", &powerId);
+        ImGui::SameLine();
+        if (ImGui::Button("Learn Power")) {
+            game.learnPower(powerId);
         }
         break;
     }
@@ -784,6 +802,11 @@ int runRulesTest(GameSession& game)
     check(rules.armorClass(soldier) == 12, "ac_12");
     check(rules.attackBonus(soldier) == 4, "attack_4");
     check(!rules.canTakeFeat(soldier, 1), "feat_prereq_refused");
+    check(game.learnFeat(3), "learn_feat");
+    check(game.character().feats.contains(3), "feat_added");
+    check(!game.learnFeat(3), "duplicate_feat_refused");
+    check(game.learnPower(6), "learn_power");
+    check(game.character().powers.contains(6), "power_added");
 
     std::uint32_t rng = 0x12345678u;
     const AttackResult first = rules.resolveAttack(soldier, 10, rng, 1, 8, 2);
@@ -873,6 +896,8 @@ int runSystemsTest(GameSession& game)
     check(scriptLogHas(game, "script k_pend_traskdl50 status=returned"), "action_script_ran");
     const bool globalWritten = !game.scriptWorld().globals.empty();
     check(globalWritten, "script_global_written");
+    check(game.learnFeat(3), "learn_feat");
+    check(game.learnPower(6), "learn_power");
 
     const std::filesystem::path savePath =
         std::filesystem::temp_directory_path() / "kotor_engine_s6_systems.save";
@@ -883,6 +908,8 @@ int runSystemsTest(GameSession& game)
     check(restored.load(savePath), "save_loaded");
     check(restored.character().xp == game.character().xp, "xp_roundtrip");
     check(restored.character().level == game.character().level, "level_roundtrip");
+    check(restored.character().feats.contains(3), "feat_roundtrip");
+    check(restored.character().powers.contains(6), "power_roundtrip");
     check(restored.inventory().size() == game.inventory().size(), "inventory_roundtrip");
     check(restored.partyTags().size() == game.partyTags().size(), "party_roundtrip");
     check(restored.module() == game.module(), "module_roundtrip");
@@ -1033,6 +1060,52 @@ int runEncounterTest(GameSession& game)
     return ok ? 0 : 11;
 }
 
+int runEncounterResetTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("encounter reset test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    std::size_t target = static_cast<std::size_t>(-1);
+    for (std::size_t i = 0; i < game.encounters().size(); ++i) {
+        const EncounterState& state = game.encounters()[i];
+        if (state.spawned && state.resetTime > 0.0f && state.respawnsRemaining != 0
+            && !state.entities.empty()) {
+            target = i;
+            break;
+        }
+    }
+    if (target == static_cast<std::size_t>(-1)) {
+        logError("encounter reset test: no resettable encounter");
+        return 9;
+    }
+    const EncounterState before = game.encounters()[target];
+    logInfo(concat("encounter reset test: volume=", target, " spawned=", before.spawnedCount,
+                   " reset_time=", before.resetTime, " respawns=", before.respawnsRemaining));
+    for (const std::size_t entity : before.entities) {
+        if (entity < game.scene().entities.size()) {
+            game.scene().entities[entity].dead = true;
+        }
+    }
+    for (int i = 0; i < 600; ++i) {
+        game.update(0.08f, InputState{});
+    }
+    const EncounterState& after = game.encounters()[target];
+    bool alive = false;
+    for (const std::size_t entity : after.entities) {
+        if (entity < game.scene().entities.size() && !game.scene().entities[entity].dead) {
+            alive = true;
+        }
+    }
+    logInfo(concat("encounter reset test: spawned ", before.spawnedCount, " -> ",
+                   after.spawnedCount, " alive=", alive ? 1 : 0));
+    check(after.spawnedCount > before.spawnedCount, "respawned");
+    check(alive, "respawn_alive");
+    logInfo(ok ? "encounter reset test: PASS" : "encounter reset test: FAIL");
+    return ok ? 0 : 10;
+}
+
 int runPartyTest(GameSession& game)
 {
     bool ok = true;
@@ -1064,12 +1137,31 @@ int runPartyTest(GameSession& game)
     }
     game.selectCompanion(0);
     check(game.selectedCompanion() == 0, "selected");
+    check(game.partyLeaderTag() == "Carth", "leader_selected");
+    game.setPartyLeader("PC");
+    check(game.partyLeaderTag() == "PC", "leader_back_to_pc");
+    {
+        const std::size_t carthEntity = game.findEntity("Carth");
+        const kotor::Vec3 start = game.scene().entities[carthEntity].position;
+        game.setPositionForTest({start.x + 8.0f, start.y, start.z});
+        for (int i = 0; i < 120; ++i) {
+            game.update(0.05f, InputState{});
+        }
+        const kotor::Vec3 end = game.scene().entities[carthEntity].position;
+        const float before = std::sqrt((start.x - (start.x + 8.0f)) * (start.x - (start.x + 8.0f)));
+        const float after = std::sqrt((end.x - (start.x + 8.0f)) * (end.x - (start.x + 8.0f))
+                                      + (end.y - start.y) * (end.y - start.y));
+        logInfo(concat("party test: follower distance ", before, " -> ", after));
+        check(after < before, "formation_follow");
+    }
 
     const std::filesystem::path savePath =
         std::filesystem::temp_directory_path() / "kotor_engine_s7_party.save";
+    game.setPartyLeader("Carth");
     check(game.save(savePath), "save_written");
     GameSession restored(game.installPath(), game.module());
     check(restored.load(savePath), "save_loaded");
+    check(restored.partyLeaderTag() == "Carth", "leader_roundtrip");
     check(restored.companions().size() == game.companions().size(), "companion_roundtrip");
     check(restored.partyTags().size() == game.partyTags().size(), "party_roundtrip");
     if (!restored.companions().empty()) {
@@ -1338,6 +1430,9 @@ int runApplication(const Options& options)
             }
             if (options.encounterTest) {
                 return runEncounterTest(*game);
+            }
+            if (options.encounterResetTest) {
+                return runEncounterResetTest(*game);
             }
             if (options.partyTest) {
                 return runPartyTest(*game);

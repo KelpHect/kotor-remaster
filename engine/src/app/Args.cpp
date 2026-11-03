@@ -165,6 +165,10 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.encounterTest = true;
             continue;
         }
+        if (arg == "--encounter-reset-test") {
+            result.options.encounterResetTest = true;
+            continue;
+        }
         if (arg == "--party-test") {
             result.options.partyTest = true;
             continue;
@@ -375,6 +379,7 @@ void printUsage()
         << "  --systems-test        Assert party, inventory, journal and save/load\n"
         << "  --merchant-test       Assert store stock, markup and buy/sell\n"
         << "  --encounter-test      Assert encounter volumes and deterministic spawns\n"
+        << "  --encounter-reset-test  Assert reset/respawn timer behavior\n"
         << "  --party-test          Assert companion sheets and 80% XP sharing\n"
         << "  --ui-test             Assert the systems UI panel state\n"
         << "  --panel <name>        Open character|inventory|party|journal|merchant at startup\n"

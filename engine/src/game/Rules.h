@@ -75,7 +75,11 @@ struct MerchantState {
 
 struct EncounterState {
     bool spawned = false;
+    bool exhausted = false;
     std::int32_t spawnedCount = 0;
+    std::int32_t respawnsRemaining = 0;
+    float resetTime = 0.0f;
+    float resetTimer = 0.0f;
     std::vector<std::size_t> entities;
 };
 
@@ -104,6 +108,9 @@ public:
     std::int32_t skillPointsForLevel(std::int32_t classId, std::int32_t intelligence) const;
     std::int32_t featsForLevel(std::int32_t classId, std::int32_t level) const;
     bool canTakeFeat(const CharacterSheet& sheet, std::int32_t featId) const;
+    bool canTakePower(const CharacterSheet& sheet, std::int32_t powerId) const;
+    std::string featName(std::int32_t featId) const;
+    std::string powerName(std::int32_t powerId) const;
 
     int equipSlotFor(std::int32_t baseItem) const;
     int itemCost(std::int32_t baseItem) const;
@@ -136,6 +143,7 @@ private:
     std::optional<kotor::TwoDa> feat_;
     std::optional<kotor::TwoDa> baseitems_;
     std::optional<kotor::TwoDa> featgain_;
+    std::optional<kotor::TwoDa> spells_;
     std::map<std::string, kotor::TwoDa> attackTables_;
     std::map<std::string, kotor::TwoDa> saveTables_;
     std::map<std::string, kotor::TwoDa> skillTables_;

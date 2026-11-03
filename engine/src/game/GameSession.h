@@ -112,7 +112,9 @@ public:
     const std::vector<std::string>& partyTags() const { return partyTags_; }
     const std::vector<CompanionState>& companions() const { return companions_; }
     int selectedCompanion() const { return selectedCompanion_; }
-    void selectCompanion(int index) { selectedCompanion_ = index; }
+    void selectCompanion(int index) { selectedCompanion_ = index; if (index >= 0 && index < static_cast<int>(companions_.size())) { leaderTag_ = companions_[static_cast<std::size_t>(index)].tag; } }
+    const std::string& partyLeaderTag() const { return leaderTag_; }
+    void setPartyLeader(const std::string& tag) { leaderTag_ = tag; selectedCompanion_ = -1; if (tag != "PC") { for (std::size_t i = 0; i < companions_.size(); ++i) { if (companions_[i].tag == tag) { selectedCompanion_ = static_cast<int>(i); break; } } } }
     UiPanel activePanel() const { return activePanel_; }
     void setUiPanel(UiPanel panel) { activePanel_ = panel; }
     void toggleUiPanel(UiPanel panel) { activePanel_ = activePanel_ == panel ? UiPanel::None : panel; }
@@ -127,6 +129,8 @@ public:
     bool equipItem(const std::string& resref);
     bool addPartyMember(const std::string& tag);
     bool removePartyMember(const std::string& tag);
+    bool learnFeat(std::int32_t featId);
+    bool learnPower(std::int32_t powerId);
     void giveXp(std::int32_t amount);
 
     // Run one shipped script with optional event arguments. Returns the top of
@@ -184,6 +188,9 @@ private:
     void syncScriptWorld();
     void initMerchants();
     void spawnEncounters();
+    std::int32_t spawnEncounterCreatures(std::size_t index);
+    void updateEncounters(float dt);
+    void updateParty(float dt);
     std::uint32_t objectForEntity(std::size_t index) const;
     void runHook(const std::string& hook, std::size_t entityIndex,
                  std::uint32_t entering = 0);
@@ -226,6 +233,7 @@ private:
     std::vector<std::string> partyTags_;
     std::vector<CompanionState> companions_;
     int selectedCompanion_ = -1;
+    std::string leaderTag_ = "PC";
     UiPanel activePanel_ = UiPanel::None;
     std::map<std::string, std::int32_t> journal_;
     std::int32_t gold_ = 0;

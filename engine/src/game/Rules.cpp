@@ -60,6 +60,7 @@ Rules::Rules(kotor::Install& install)
     feat_ = loadTable("feat");
     baseitems_ = loadTable("baseitems");
     featgain_ = loadTable("featgain");
+    spells_ = loadTable("spells");
     if (!classes_ || !exptable_ || !baseitems_) {
         error_ = "missing classes/exptable/baseitems 2DA";
         return;
@@ -237,10 +238,7 @@ bool Rules::canTakeFeat(const CharacterSheet& sheet, std::int32_t featId) const
         return false;
     }
     const std::string row = std::to_string(featId);
-    if (feat_->rowIndex(row) < 0) {
-        return false;
-    }
-    if (cellInt(*feat_, row, "mincharlevel", 0) > sheet.level) {
+    if (feat_->rowIndex(row) < 0 || cellInt(*feat_, row, "mincharlevel", 0) > sheet.level) {
         return false;
     }
     if (cellInt(*feat_, row, "minstr", 0) > sheet.str
@@ -256,6 +254,51 @@ bool Rules::canTakeFeat(const CharacterSheet& sheet, std::int32_t featId) const
         }
     }
     return true;
+}
+
+bool Rules::canTakePower(const CharacterSheet& sheet, std::int32_t powerId) const
+{
+    if (!spells_) {
+        return false;
+    }
+    const std::string row = std::to_string(powerId);
+    if (spells_->rowIndex(row) < 0 || spells_->cell(row, "name").empty()
+        || cellInt(*spells_, row, "usertype", 0) != 1) {
+        return false;
+    }
+    const std::int32_t prerequisite = cellInt(*spells_, row, "prerequisites", -1);
+    if (prerequisite >= 0 && !sheet.powers.contains(prerequisite)) {
+        return false;
+    }
+    const std::int32_t master = cellInt(*spells_, row, "masterspell", -1);
+    if (master >= 0 && !sheet.powers.contains(master)) {
+        return false;
+    }
+    return true;
+}
+
+std::string Rules::featName(std::int32_t featId) const
+{
+    if (!feat_) {
+        return "feat " + std::to_string(featId);
+    }
+    const std::string row = std::to_string(featId);
+    if (feat_->rowIndex(row) < 0) {
+        return "feat " + std::to_string(featId);
+    }
+    return feat_->cell(row, "label");
+}
+
+std::string Rules::powerName(std::int32_t powerId) const
+{
+    if (!spells_) {
+        return "power " + std::to_string(powerId);
+    }
+    const std::string row = std::to_string(powerId);
+    if (spells_->rowIndex(row) < 0) {
+        return "power " + std::to_string(powerId);
+    }
+    return spells_->cell(row, "label");
 }
 
 int Rules::equipSlotFor(std::int32_t baseItem) const
