@@ -1574,6 +1574,24 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
                 && std::isfinite(vertex.position.y) && std::isfinite(vertex.position.z);
         }
         check(weaponFinite, "weapon_vertices");
+        if (weaponMesh->attachModel) {
+            const std::optional<kotor::Mdl::Pose> hand = weaponMesh->attachModel->nodePose(
+                weaponMesh->attachNode, weaponMesh->attachAnimation, weaponMesh->attachTime);
+            if (hand.has_value() && !weaponMesh->vertices.empty()) {
+                kotor::Vec3 centre{};
+                for (const kotor::SceneVertex& vertex : weaponMesh->vertices) {
+                    centre.x += vertex.position.x;
+                    centre.y += vertex.position.y;
+                    centre.z += vertex.position.z;
+                }
+                const float count = static_cast<float>(weaponMesh->vertices.size());
+                centre = {centre.x / count, centre.y / count, centre.z / count};
+                const float dx = centre.x - hand->translation.x;
+                const float dy = centre.y - hand->translation.y;
+                const float dz = centre.z - hand->translation.z;
+                check(std::sqrt(dx * dx + dy * dy + dz * dz) < 2.0f, "weapon_at_hand");
+            }
+        }
         std::vector<kotor::Vec3> weaponBefore;
         weaponBefore.reserve(weaponMesh->vertices.size());
         for (const kotor::SceneVertex& vertex : weaponMesh->vertices) {
