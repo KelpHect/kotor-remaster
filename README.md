@@ -1,18 +1,18 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 8 (open-work closeout) complete - gate S8 met (2026-11-03).** Every one of the
-**117 shipped modules** now loads through the C++ loader with **0 failures and 0 warnings**
-(11,887 entities, 51 encounter volumes). Encounter reset/respawn timers run (a real Taris encounter
-respawns after 30 s), companions follow in formation and the party leader can be switched, and
-feats/Force powers can be learned from the character panel. All **23 CTest targets** pass. Sprint 7
-remains complete: 7 stores/41 `keblastore` entries, 4 encounter volumes/8 spawns, companion 80% XP
-and the character/inventory/party/journal/merchant panels. Sprint 6 remains complete: native script
-VM 8,666/8,666 default and functional parity, 303,616 ACTION calls, real script hooks, dialogue
-entry 54 and d20 rounds. Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255 parity).
-Sprint plans/reports: `docs/SPRINT1.md` through `docs/SPRINT8.md` and their `*_REPORT.md`
-companions; the P0 gate remains in `docs/P0_REPORT.md`. Original-save compatibility, animation/
-skinning, cutscene cameras, audio/movies, minigames, the full `.gui` set, mods and the P6 content
-checklist remain future work.
+Status: **Sprint 8.5 (residual inherited-systems closeout) complete - gate S8.5 met (2026-11-03).**
+The engine now also has container loot (UTP `ItemList` -> Loot panel/Take All), companion melee AI
+(companions assist the player's target with their own sheet/d20), merchant store gold and
+identification pricing, and persistence for store gold/item identification. All **24 CTest
+targets** pass, including the 117/117 module sweep with 0 failures/0 warnings. Sprint 8 remains
+complete (117-module loader sweep, encounter reset/respawn, formation/leader, feat/power selection).
+Sprint 7 remains complete (7 stores/41 `keblastore` entries, 4 encounter volumes/8 spawns, 80%
+companion XP, systems UI). Sprint 6 remains complete (native script VM 8,666/8,666 default and
+functional, 303,616 ACTION calls, dialogue entry 54, d20 rounds). Sprint 5 remains complete
+(playable `end_m01aa` slice, 0.03/255 parity). S9+ remains: original `SAVEGAME.sav` compatibility,
+animation/skinning/weapons, cutscene cameras, audio/EAX, Bink/lip sync, full `.gui`, minigames,
+localization, mods/Override and the P6 content checklist. Plans/reports: `docs/SPRINT1.md` through
+`docs/SPRINT8_5.md` and their `*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
 does not ship, download, extract, or redistribute game assets, and it does not require or execute
@@ -124,6 +124,11 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   `tar_m03ab`); companion formation/leader switching; feat and Force-power selection in the
   character panel. CTest: **23/23 passed**; VM parity still 0; scene parity 0.03/255; install
   15,380 files unchanged. See `docs/recon/45_CLOSEOUT.md` and `docs/SPRINT8_REPORT.md`.
+- Sprint 8.5 (residual inherited systems): UTP `ItemList` container loot with a Loot panel and
+  Take All; companion melee AI that assists the player's target; merchant store gold, identify
+  pricing and their save round-trip. CTest: **24/24**; 117-module sweep still 0/0; VM parity 0;
+  scene parity 0.03/255; install unchanged. See `docs/recon/46_RESIDUAL_SYSTEMS.md` and
+  `docs/SPRINT8_5_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -174,6 +179,9 @@ Start with:
 - [`docs/SPRINT7.md`](docs/SPRINT7.md) - Sprint 7 plan: gate S7, lanes, non-goals
 - [`docs/SPRINT8_REPORT.md`](docs/SPRINT8_REPORT.md) - Sprint 8 (open-work closeout) exit report
 - [`docs/SPRINT8.md`](docs/SPRINT8.md) - Sprint 8 plan: gate S8, lanes, non-goals
+- [`docs/SPRINT8_5_REPORT.md`](docs/SPRINT8_5_REPORT.md) - Sprint 8.5 (residual systems) exit report
+- [`docs/SPRINT8_5.md`](docs/SPRINT8_5.md) - Sprint 8.5 plan: gate S8.5, lanes, non-goals
+- [`docs/recon/46_RESIDUAL_SYSTEMS.md`](docs/recon/46_RESIDUAL_SYSTEMS.md) - loot, companion combat, merchant depth
 - [`docs/recon/45_CLOSEOUT.md`](docs/recon/45_CLOSEOUT.md) - 117-module sweep, encounter reset, formation, feat selection
 - [`docs/recon/44_SYSTEMS_UI.md`](docs/recon/44_SYSTEMS_UI.md) - UTM/UTI stores, UTE encounters, companions and panels
 - [`docs/recon/43_SCRIPT_AND_RULES.md`](docs/recon/43_SCRIPT_AND_RULES.md) - native NCS VM parity, hooks, dialogue conditions, 2DA rules, save state

@@ -177,6 +177,10 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.uiTest = true;
             continue;
         }
+        if (arg == "--loot-test") {
+            result.options.lootTest = true;
+            continue;
+        }
         if (arg == "--panel") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -382,6 +386,7 @@ void printUsage()
         << "  --encounter-reset-test  Assert reset/respawn timer behavior\n"
         << "  --party-test          Assert companion sheets and 80% XP sharing\n"
         << "  --ui-test             Assert the systems UI panel state\n"
+        << "  --loot-test           Assert container loot transfer\n"
         << "  --panel <name>        Open character|inventory|party|journal|merchant at startup\n"
         << "  --add-party <tag>     Add a scene creature to the party at startup\n"
         << "  --demo-dialogue       Position at Trask and open the real dialogue UI\n"

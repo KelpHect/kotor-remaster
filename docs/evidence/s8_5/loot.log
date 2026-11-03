@@ -1,0 +1,20 @@
+[INFO] KotOR module danm13 area m13aa from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 21 vertices: 197868 indices: 197868 batches: 27
+[INFO]   textures: 38 collision vertices: 1311 facets: 2290
+[INFO]   entities: 171 (door 18, placeable 11, creature 22, waypoint 95, store 3, encounter 1)
+[INFO]   encounter volumes: 1
+[INFO]   entry: 187.311, 74.3389, 12.6189
+[INFO]   entity meshes: 51 triggers: 10 warnings: 0
+[INFO]   script hooks: 206 on 35 entities; scene hooks: 6; script runs: 24
+[INFO]   entity mesh 0 dan13_door01 verts=1620 local=-3.60747,-0.28225,-0.0713825 .. 3.63846,0.282253,2.92862
+[INFO]   entity mesh 1 dan13_door01 verts=1620 local=-3.60747,-0.28225,-0.0713825 .. 3.63846,0.282253,2.92862
+[INFO]   entity mesh 2 dan13_door01 verts=1620 local=-3.60747,-0.28225,-0.0713825 .. 3.63846,0.282253,2.92862
+[INFO]   creature mesh dan13_ahlan verts=3246 local=-0.606384,-0.151653,-0.00207151 .. 0.610334,0.167699,1.58298
+[INFO]   bounds: -515.55, -520.642, -405.959 .. 731.597, 726.506, 599.041
+[INFO] loot test: container FootLker items=1
+[INFO] loot test: container_used=1
+[INFO] loot test: loot_opened=1
+[INFO] loot test: loot_taken=1
+[INFO] loot test: inventory_gained=1
+[INFO] loot test: PASS

@@ -539,6 +539,15 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                     entity.faction = static_cast<std::uint32_t>(intField(utp, utp.rootIndex(), "Faction", 0));
                     entity.useable = intField(utp, utp.rootIndex(), "Useable", 0) != 0
                         || !entity.conversation.empty();
+                    if (const GffField* list = utp.field(utp.rootIndex(), "ItemList"); list != nullptr) {
+                        for (const std::uint32_t itemStruct : utp.list(*list)) {
+                            const std::string resref = textField(utp, itemStruct, "InventoryRes");
+                            if (!resref.empty()) {
+                                entity.lootItems.push_back(resref);
+                            }
+                        }
+                    }
+                    entity.useable = entity.useable || !entity.lootItems.empty();
                     if (placeables.has_value()) {
                         entity.model = placeables->cell(std::to_string(entity.appearance), "modelname");
                     }

@@ -553,6 +553,7 @@ struct Entity {
     std::int32_t storeMarkDown = 40;
     std::int32_t storeBuySell = 3;
     std::vector<std::pair<std::string, bool>> storeItems;
+    std::vector<std::string> lootItems;
     // Hook name (ScriptSpawn, OnOpen, ...) to script resref. Template values
     // are loaded first; non-empty GIT instance values override them.
     std::map<std::string, std::string> scripts;

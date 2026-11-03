@@ -43,7 +43,7 @@ struct DialogueView {
     std::uint32_t entry = UINT32_MAX;
 };
 
-enum class UiPanel { None, Character, Inventory, Party, Journal, Merchant };
+enum class UiPanel { None, Character, Inventory, Party, Journal, Merchant, Loot };
 const char* uiPanelName(UiPanel panel);
 
 // One loaded module plus the player state. All KotOR data comes through the
@@ -109,6 +109,12 @@ public:
     std::int32_t sellPrice(std::size_t inventoryIndex) const;
     bool buyMerchantItem(std::size_t stockIndex);
     bool sellInventoryItem(std::size_t inventoryIndex);
+    bool identifyInventoryItem(std::size_t inventoryIndex);
+    bool openLoot(std::size_t entityIndex);
+    const std::vector<InventoryItem>& loot() const { return lootItems_; }
+    bool takeLootItem(std::size_t index);
+    void takeAllLoot();
+    void closeLoot() { lootItems_.clear(); lootEntity_ = -1; }
     const std::vector<std::string>& partyTags() const { return partyTags_; }
     const std::vector<CompanionState>& companions() const { return companions_; }
     int selectedCompanion() const { return selectedCompanion_; }
@@ -240,6 +246,8 @@ private:
     std::vector<MerchantState> merchants_;
     std::vector<EncounterState> encounterStates_;
     int activeMerchant_ = -1;
+    std::vector<InventoryItem> lootItems_;
+    int lootEntity_ = -1;
     std::map<std::string, kotor::ItemTemplate> itemTemplates_;
 
     script::World scriptWorld_;
