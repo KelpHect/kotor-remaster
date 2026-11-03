@@ -63,6 +63,9 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
     if (const GffField* f = gff.field(root, "Skippable"); f != nullptr) {
         dlg.skippable = gff.number(*f) != 0.0f;
     }
+    if (const GffField* f = gff.field(root, "CameraModel"); f != nullptr) {
+        dlg.cameraModel = gff.text(*f);
+    }
     const auto resolve = [&](const GffField& field) -> std::string {
         const std::string value = gff.text(field);
         if (tlk == nullptr || value.empty()) {
@@ -107,13 +110,17 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
         }
     };
     const auto camera = [&](std::uint32_t structure, std::int32_t& cameraId,
-                            std::int32_t& cameraAnimation, std::int32_t& camVidEffect,
-                            float& camHeightOffset, float& tarHeightOffset) {
+                            std::int32_t& cameraAnimation, std::int32_t& cameraAngle,
+                            std::int32_t& camVidEffect, float& camHeightOffset,
+                            float& tarHeightOffset) {
         if (const GffField* f = gff.field(structure, "CameraID")) {
             cameraId = gff.integer(*f);
         }
         if (const GffField* f = gff.field(structure, "CameraAnimation")) {
             cameraAnimation = gff.integer(*f);
+        }
+        if (const GffField* f = gff.field(structure, "CameraAngle")) {
+            cameraAngle = gff.integer(*f);
         }
         if (const GffField* f = gff.field(structure, "CamVidEffect")) {
             camVidEffect = gff.integer(*f);
@@ -149,8 +156,8 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
                     action(*v, &entry.action[i]);
                 }
             }
-            camera(s, entry.cameraId, entry.cameraAnimation, entry.camVidEffect,
-                   entry.camHeightOffset, entry.tarHeightOffset);
+            camera(s, entry.cameraId, entry.cameraAnimation, entry.cameraAngle,
+                   entry.camVidEffect, entry.camHeightOffset, entry.tarHeightOffset);
             if (const GffField* v = gff.field(s, "Comment"); v != nullptr) {
                 entry.comment = gff.text(*v);
             }
@@ -188,8 +195,8 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
                     action(*v, &reply.action[i]);
                 }
             }
-            camera(s, reply.cameraId, reply.cameraAnimation, reply.camVidEffect,
-                   reply.camHeightOffset, reply.tarHeightOffset);
+            camera(s, reply.cameraId, reply.cameraAnimation, reply.cameraAngle,
+                   reply.camVidEffect, reply.camHeightOffset, reply.tarHeightOffset);
             if (const GffField* v = gff.field(s, "Comment"); v != nullptr) {
                 reply.comment = gff.text(*v);
             }

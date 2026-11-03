@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <deque>
 #include <cstdlib>
 #include <fstream>
@@ -1379,6 +1380,9 @@ void GameSession::update(float dt, const InputState& input)
     dt = std::min(dt, 0.08f);
     elapsed_ += dt;
     updateAnimations(dt);
+    if (!dialogueCameraClip_.empty()) {
+        dialogueCameraTime_ = std::min(dialogueCameraTime_ + dt, dialogueCameraDuration_);
+    }
     yaw_ += input.mouseDx * 0.0026f;
     pitch_ = clamp(pitch_ - input.mouseDy * 0.0022f, -1.35f, 1.35f);
 
@@ -1457,6 +1461,23 @@ void GameSession::update(float dt, const InputState& input)
 
 SceneCamera GameSession::camera() const
 {
+    if (dialogueView_.active && dialogueCameraModel_ && !dialogueCameraClip_.empty()) {
+        const float time = std::min(dialogueCameraTime_, dialogueCameraDuration_);
+        const std::optional<kotor::Mdl::Pose> pose = dialogueCameraModel_->nodePose(
+            "camerahook", dialogueCameraClip_, time);
+        if (pose.has_value()) {
+            SceneCamera camera;
+            camera.eye = pose->translation;
+            camera.forward = kotor::normalize(
+                kotor::Vec3{pose->rotation.m[0][1], pose->rotation.m[1][1],
+                            pose->rotation.m[2][1]});
+            camera.up = kotor::normalize(
+                kotor::Vec3{pose->rotation.m[0][2], pose->rotation.m[1][2],
+                            pose->rotation.m[2][2]});
+            camera.fovYDegrees = 60.0f;
+            return camera;
+        }
+    }
     if (dialogueView_.active && dialogueView_.cameraId >= 0) {
         const SceneCamera camera = cinematicCamera(dialogueView_.cameraId);
         if (camera.fovYDegrees > 0.0f) {
@@ -1469,6 +1490,61 @@ SceneCamera GameSession::camera() const
                       std::sin(pitch_)};
     camera.up = {0.0f, 0.0f, 1.0f};
     return camera;
+}
+
+bool GameSession::loadDialogueCameraModel(const std::string& resref)
+{
+    dialogueCameraModel_.reset();
+    if (resref.empty()) {
+        return false;
+    }
+    auto mdl = install_.find(resref, 2002);
+    auto mdx = install_.find(resref, 3008);
+    if (!mdl.has_value() || !mdx.has_value()) {
+        return false;
+    }
+    try {
+        dialogueCameraModel_ = std::make_shared<kotor::Mdl>(
+            kotor::Mdl::parse(std::move(*mdl), std::move(*mdx), resref + ".mdl"));
+        return true;
+    } catch (const kotor::FormatError&) {
+        dialogueCameraModel_.reset();
+        return false;
+    }
+}
+
+void GameSession::setDialogueCameraClip(std::int32_t animation)
+{
+    dialogueCameraClip_.clear();
+    dialogueCameraTime_ = 0.0f;
+    dialogueCameraDuration_ = 0.0f;
+    if (animation < 1200 || !dialogueCameraModel_) {
+        return;
+    }
+    char name[16]{};
+    std::snprintf(name, sizeof(name), "CUT%03dW", animation - 1199);
+    const float duration = dialogueCameraModel_->animationDuration(name);
+    if (duration > 0.0f) {
+        dialogueCameraClip_ = name;
+        dialogueCameraDuration_ = duration;
+    }
+}
+
+bool GameSession::setDialogueCameraAnimationForTest(const std::string& model,
+                                                    const std::string& clip)
+{
+    if (!loadDialogueCameraModel(model)) {
+        return false;
+    }
+    const float duration = dialogueCameraModel_->animationDuration(clip);
+    if (duration <= 0.0f) {
+        return false;
+    }
+    dialogueView_.active = true;
+    dialogueCameraClip_ = clip;
+    dialogueCameraTime_ = 0.0f;
+    dialogueCameraDuration_ = duration;
+    return true;
 }
 
 SceneCamera GameSession::cinematicCamera(std::int32_t cameraId) const
@@ -1725,6 +1801,10 @@ bool GameSession::startDialogue(std::size_t entityIndex)
     active.npcObject = objectForEntity(entityIndex);
     active.dlg = std::move(dlg);
     activeDialogue_ = std::move(active);
+    loadDialogueCameraModel(activeDialogue_->dlg.cameraModel);
+    dialogueCameraClip_.clear();
+    dialogueCameraTime_ = 0.0f;
+    dialogueCameraDuration_ = 0.0f;
     std::uint32_t entry = UINT32_MAX;
     // KotOR 1 carries conditions on StartingList.Active. Run them in order and
     // take the first truthy one; an empty Active is unconditional.
@@ -1814,6 +1894,7 @@ void GameSession::showDialogueEntry(std::uint32_t entryIndex)
     dialogueView_.text = entry.text.empty() ? "(No text)" : entry.text;
     dialogueView_.entry = entryIndex;
     dialogueView_.cameraId = entry.cameraId;
+    setDialogueCameraClip(entry.cameraAnimation);
     dialogueView_.options.clear();
     if (!entry.script.empty() && activeDialogue_->firedEntries.insert(entryIndex).second) {
         runScript(entry.script, activeDialogue_->npcObject, scriptWorld_.pc,
@@ -1868,6 +1949,9 @@ void GameSession::chooseDialogueOption(std::size_t optionIndex)
     if (reply.cameraId >= 0) {
         dialogueView_.cameraId = reply.cameraId;
     }
+    if (reply.cameraAnimation >= 0) {
+        setDialogueCameraClip(reply.cameraAnimation);
+    }
     if (!reply.entries.empty() && reply.entries.front() < activeDialogue_->dlg.entries.size()) {
         showDialogueEntry(reply.entries.front());
     } else {
@@ -1882,6 +1966,10 @@ void GameSession::endDialogue()
 {
     activeDialogue_.reset();
     dialogueView_ = {};
+    dialogueCameraModel_.reset();
+    dialogueCameraClip_.clear();
+    dialogueCameraTime_ = 0.0f;
+    dialogueCameraDuration_ = 0.0f;
 }
 
 void GameSession::attackNearestHostile()

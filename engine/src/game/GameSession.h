@@ -75,6 +75,7 @@ public:
         dialogueView_.active = true;
         dialogueView_.cameraId = cameraId;
     }
+    bool setDialogueCameraAnimationForTest(const std::string& model, const std::string& clip);
     std::string interactionPrompt() const;
     bool interact();
     bool testTransition(std::string& from, std::string& to);
@@ -246,6 +247,8 @@ private:
     const kotor::Entity* nearestConversation(float maxDistance) const;
     bool loadDialogue(const std::string& resref, kotor::Dlg& dlg);
     void showDialogueEntry(std::uint32_t entryIndex);
+    bool loadDialogueCameraModel(const std::string& resref);
+    void setDialogueCameraClip(std::int32_t animation);
     void updateCombat(float dt);
     void updateTriggers();
     void updateScripts(float dt);
@@ -288,6 +291,10 @@ private:
     std::optional<kotor::Tlk> tlk_;
     std::optional<ActiveDialogue> activeDialogue_;
     DialogueView dialogueView_;
+    std::shared_ptr<kotor::Mdl> dialogueCameraModel_;
+    std::string dialogueCameraClip_;
+    float dialogueCameraTime_ = 0.0f;
+    float dialogueCameraDuration_ = 0.0f;
 
     std::int32_t playerHp_ = 100;
     std::int32_t playerMaxHp_ = 100;

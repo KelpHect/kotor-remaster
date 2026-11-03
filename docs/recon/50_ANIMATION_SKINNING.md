@@ -113,9 +113,12 @@ right   = R(orientation) * (1,0,0)
 up      = right x forward
 ```
 
-DLG entry/reply `CameraID` selects a camera; while dialogue is active the
-session returns it from `camera()`. `CameraAnimation`, `CamVidEffect` and
-height offsets are parsed and retained for the later camera-clip work.
+DLG entry/reply `CameraID` selects a static GIT camera. `CameraAnimation`
+values use `value = 1200 + (N-1)` -> clip `CUT{N:03d}W`; `m01aa_c01` names
+`m01aa_c01_cam` and resolves `CUT001W`..`CUT021W`. The camera model's
+`camerahook` node is evaluated with the same pose evaluator; local +Y is
+forward and local +Z is up. `camera()` prefers the animated clip, then the
+static camera id, then first-person.
 
 ## 7. Rendering refresh
 
@@ -142,10 +145,12 @@ refreshes only when `GameSession::animationRevision()` changes.
 - GIT `CameraList` loads; `cinematicCamera` matches the stored eye height and
   unit forward; `dialogue_camera_apply` proves `camera()` uses an active
   dialogue camera; `end_trask01` contains a non-negative `CameraID`.
+- `m01aa_c01` resolves `m01aa_c01_cam` with 18 `CUT###W` clips; `CUT001W`
+  poses `camerahook`, is finite and unit-forward, and advances between frames.
 
 ## 9. Limits
 
 Animation blending/transitions, root motion, inverse kinematics, camera
-animation clips, dangly/saber simulation, particle/light controllers and
-audio/cutscenes are outside Sprint 12. They consume this pose evaluator but are
-separate systems.
+effects/height-offset presets, dangly/saber simulation, particle/light
+controllers and audio/cutscenes are outside Sprint 12. They consume this pose
+evaluator but are separate systems.
