@@ -113,6 +113,78 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.selfTest = true;
             continue;
         }
+        if (arg == "--scene-stats") {
+            result.options.sceneStats = true;
+            continue;
+        }
+        if (arg == "--walk-test") {
+            result.options.walkTest = true;
+            continue;
+        }
+        if (arg == "--door-test") {
+            result.options.doorTest = true;
+            continue;
+        }
+        if (arg == "--dialogue-test") {
+            result.options.dialogueTest = true;
+            continue;
+        }
+        if (arg == "--combat-test") {
+            result.options.combatTest = true;
+            continue;
+        }
+        if (arg == "--playthrough") {
+            result.options.playthrough = true;
+            continue;
+        }
+        if (arg == "--landmark-test") {
+            result.options.landmarkTest = true;
+            continue;
+        }
+        if (arg == "--demo-dialogue") {
+            result.options.demoDialogue = true;
+            continue;
+        }
+        if (arg == "--demo-combat") {
+            result.options.demoCombat = true;
+            continue;
+        }
+        if (arg == "--load") {
+            result.options.loadSave = true;
+            continue;
+        }
+        if (arg == "--module") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--module requires a module stem, such as end_m01aa");
+            }
+            result.options.module = value;
+            continue;
+        }
+        if (arg == "--install") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--install requires the KotOR install directory");
+            }
+            result.options.install = value;
+            continue;
+        }
+        if (arg == "--screenshot") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--screenshot requires a path");
+            }
+            result.options.screenshot = value;
+            continue;
+        }
+        if (arg == "--save") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--save requires a path");
+            }
+            result.options.savePath = value;
+            continue;
+        }
         if (arg.starts_with("--backend=")) {
             const std::string_view value = arg.substr(std::string_view("--backend=").size());
             if (value == "auto") {
@@ -200,6 +272,22 @@ void printUsage()
         << "  --self-test           Run the ImGui headless self-test and exit\n"
         << "  --version             Print version and exit\n"
         << "  --help, -h            Print this help and exit\n"
+        << "\n"
+        << "KotOR module (C++ data layer):\n"
+        << "  --install <dir>       KotOR install (default: KOTOR_INSTALL or the Steam path)\n"
+        << "  --module <stem>       Load one module, e.g. end_m01aa or tar_m02af\n"
+        << "  --scene-stats         Parse the module, print counts, then exit\n"
+        << "  --walk-test           Run the headless player/collision smoke test\n"
+        << "  --door-test           Load a linked door transition and report the target module\n"
+        << "  --dialogue-test       Load a real DLG, start it and follow one branch\n"
+        << "  --combat-test         Resolve a real hostile creature to death\n"
+        << "  --playthrough         Run the deterministic 30-minute scripted gate\n"
+        << "  --landmark-test       Check GIT landmarks/headings against the verified oracle\n"
+        << "  --demo-dialogue       Position at Trask and open the real dialogue UI\n"
+        << "  --demo-combat         Position at a hostile creature and start combat\n"
+        << "  --screenshot <path>   Write a BMP after the requested frames\n"
+        << "  --save <path>         Save slot for the player state (F5 writes, --load reads)\n"
+        << "  --load                Load the save slot at startup\n"
         << "\n"
         << "Examples:\n"
         << "  kotor_engine --vulkan --frames 120 --seconds 5\n"

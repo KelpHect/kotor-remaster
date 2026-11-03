@@ -1,0 +1,39 @@
+{
+ "areas_clean": 0,
+ "areas_hard_failed": 0,
+ "areas_triaged": 4,
+ "build_sha256": "0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6",
+ "clean_modules": [],
+ "code_counts": {
+  "T_ANCHOR_OFF_WALKMESH": 24,
+  "T_DOOR_NO_HOOK": 26,
+  "T_ROOM_NO_WOK": 4
+ },
+ "compiler_version": "1.0.0",
+ "elapsed_s": 3.97,
+ "game_dir": "E:/SteamLibrary/steamapps/common/swkotor",
+ "hard_fail_exit": 0,
+ "hard_failed_modules": {},
+ "modules_total": 4,
+ "profile": "retail",
+ "triaged_modules": {
+  "end_m01aa": [
+   "T_ANCHOR_OFF_WALKMESH",
+   "T_DOOR_NO_HOOK",
+   "T_ROOM_NO_WOK"
+  ],
+  "end_m01ab": [
+   "T_ANCHOR_OFF_WALKMESH",
+   "T_DOOR_NO_HOOK"
+  ],
+  "tar_m02aa": [
+   "T_ANCHOR_OFF_WALKMESH",
+   "T_DOOR_NO_HOOK",
+   "T_ROOM_NO_WOK"
+  ],
+  "tar_m02af": [
+   "T_DOOR_NO_HOOK",
+   "T_ROOM_NO_WOK"
+  ]
+ }
+}

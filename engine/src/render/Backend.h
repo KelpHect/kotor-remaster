@@ -1,9 +1,13 @@
 #pragma once
 
 #include "app/Args.h"
+#include "render/SceneView.h"
+
+#include "kotor/Formats.h"
 
 #include <SDL3/SDL.h>
 
+#include <filesystem>
 #include <memory>
 #include <string>
 
@@ -43,6 +47,12 @@ public:
 
     // Releases GPU resources and the ImGui renderer/platform backends.
     virtual void shutdown() = 0;
+
+    // Scene pass hooks. Backends that cannot draw a scene keep the defaults;
+    // the application still runs its logical loop and HUD.
+    virtual void setScene(const kotor::Scene* scene) { (void)scene; }
+    virtual void setCamera(const SceneCamera& camera) { (void)camera; }
+    virtual bool screenshot(const std::filesystem::path& path) { (void)path; return false; }
 
     virtual const BackendInfo& info() const = 0;
 };

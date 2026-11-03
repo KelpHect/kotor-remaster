@@ -14,11 +14,25 @@ struct Options {
     bool vsync = true;
     bool allowFallback = true;
     bool selfTest = false;
+    bool sceneStats = false;
+    bool walkTest = false;
+    bool doorTest = false;
+    bool dialogueTest = false;
+    bool combatTest = false;
+    bool playthrough = false;
+    bool landmarkTest = false;
+    bool demoDialogue = false;
+    bool demoCombat = false;
     int width = 1280;
     int height = 720;
     int frames = 0;          // 0 = unlimited
     double seconds = 0.0;    // 0 = unlimited
     std::string title = "KotOR Remaster - Engine Scaffold";
+    std::string install;
+    std::string module;
+    std::string screenshot;
+    std::string savePath;
+    bool loadSave = false;
 };
 
 enum class ParseAction { Run, Help, Version, Error };
