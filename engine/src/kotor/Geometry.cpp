@@ -671,6 +671,30 @@ bool Mdl::hasControllerType(std::int32_t type) const
     return false;
 }
 
+std::set<std::int32_t> Mdl::fxControllerTypes() const
+{
+    std::set<std::int32_t> types;
+    for (const Node& node : nodes_) {
+        if (!(node.type & 0x02u) && !(node.type & 0x04u)) {
+            continue;
+        }
+        for (const Controller& controller : node.controllers) {
+            types.insert(controller.type);
+        }
+    }
+    for (const Animation& animation : animationData_) {
+        for (const Node& node : animation.nodes) {
+            if (!(node.type & 0x02u) && !(node.type & 0x04u)) {
+                continue;
+            }
+            for (const Controller& controller : node.controllers) {
+                types.insert(controller.type);
+            }
+        }
+    }
+    return types;
+}
+
 float Mdl::skinBindError() const
 {
     float maxError = 0.0f;

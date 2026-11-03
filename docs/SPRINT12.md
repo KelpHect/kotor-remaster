@@ -42,8 +42,9 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
    clip, then the preset, then the static camera.
 7. **Dangly, saber and FX meshes** - dangly headers and per-vertex constraints
    drive a deterministic damped settle; saber headers expose their static
-   vertex/UV/normal arrays; light and emitter controllers are evaluated and
-   emitted as deterministic billboard quads (room lights and `fx_flame01`).
+   vertex/UV/normal arrays; light and emitter controllers are cataloged and
+   evaluated, emitting deterministic billboard quads (room lights and
+   `fx_flame01`).
 8. **Script bridge** - `animations.2da` names and flags load; `PlayAnimation`
    and `ActionPlayAnimation` map an animation id to a clip and play it on
    `OBJECT_SELF`.

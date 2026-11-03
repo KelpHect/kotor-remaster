@@ -184,9 +184,10 @@ refreshes only when `GameSession::animationRevision()` changes.
 - `CameraAngle` 1/2/3 presets compute finite, unit-forward cameras.
 - Corpus scan of 1,135 DLGs: 45,396 `CamVidEffect=-1`, 39 `CamVidEffect=0`,
   0 non-default.
-- `fx_flame01` exposes controller types 76/80/84/88/380/392 and its FX
-  triangles are finite and animated; `m01aa_01a` room lights produce FX
-  geometry. Non-default `CamVidEffect` is 0 across the 1,135-DLG corpus.
+- `fx_flame01` exposes 30+ controller types (including 80/84/132/144/380/392)
+  and room lights expose 76/88/140; FX triangles are finite and animated, and
+  `m01aa_01a` room lights produce FX geometry. Non-default `CamVidEffect` is 0
+  across the 1,135-DLG corpus.
 - `blendedTriangles` produces finite cross-fade vertices; `rootMotion` is
   unchanged between sampled frames (root-in-place); `hasNonPoseControllers`
   is false for the sampled pose clips (no IK controllers).

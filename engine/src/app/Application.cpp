@@ -1540,6 +1540,12 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
               "fx_controller_types");
         check(fxModel->skinnedNodeCount() == 0, "fx_no_skin");
         check(fxModel->hasFxNodes(), "fx_nodes");
+        const std::set<std::int32_t> fxTypes = fxModel->fxControllerTypes();
+        check(fxTypes.size() >= 30, "fx_controller_catalog");
+        check(fxTypes.contains(80) && fxTypes.contains(84) && fxTypes.contains(132)
+                  && fxTypes.contains(144) && fxTypes.contains(380)
+                  && fxTypes.contains(392),
+              "fx_controller_families");
         const std::vector<kotor::MdlMeshTriangle> fx0 = fxModel->fxTriangles({}, 0.0f);
         const std::vector<kotor::MdlMeshTriangle> fx1 = fxModel->fxTriangles({}, 1.0f);
         check(!fx0.empty() && fx0.size() == fx1.size(), "fx_geometry");
@@ -1564,6 +1570,9 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
     check(roomFx.has_value(), "room_light_loaded");
     if (roomFx.has_value()) {
         check(roomFx->hasFxNodes(), "room_light_nodes");
+        const std::set<std::int32_t> roomTypes = roomFx->fxControllerTypes();
+        check(roomTypes.contains(76) && roomTypes.contains(88) && roomTypes.contains(140),
+              "room_light_controllers");
         check(!roomFx->fxTriangles({}, 0.0f).empty(), "room_light_geometry");
     }
 
