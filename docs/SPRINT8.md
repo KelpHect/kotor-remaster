@@ -36,6 +36,8 @@ companions, systems UI and save schema 3.
 - Original KotOR `SAVEGAME.sav` compatibility (load and write).
 - Creature animation/skinning, weapon attachment, cutscene camera playback.
 - Audio/EAX, Bink movies, lip sync and the full `.gui` screen set.
+- Delayed functor execution (`DelayCommand`/`AssignCommand`) and merchant store-gold/identify/
+  reputation depth.
 - Minigames (pazaak, swoop, turret), encounter content sweeps, all dialogue/quest branches,
   localization, mods/Override runtime precedence and the P6 content checklist.
 

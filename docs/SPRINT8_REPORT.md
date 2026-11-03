@@ -116,6 +116,9 @@ These are new content/system tasks, not unfinished tool work:
 - Original KotOR `SAVEGAME.sav` load/write compatibility.
 - Creature animation/skinning, weapon attachment and cutscene camera playback.
 - Audio/EAX, Bink movies, lip sync and the full `.gui` screen set.
+- Delayed functors (`DelayCommand`/`AssignCommand`) are scheduled and counted but not executed;
+  the functional VM oracle mediates them.
+- Merchant store gold, identify prices, reputation haggling and full store UI depth.
 - Minigames, encounter content sweeps, all dialogue/quest branches, localization and mods/Override
   runtime precedence.
 - The P6 content checklist and all-area gameplay parity.
