@@ -71,6 +71,15 @@ public:
     // Used by the engine's script bridge for event arguments.
     void setContextObject(const std::string& name, std::uint32_t id) { context_[name] = id; }
     std::uint32_t contextObject(const std::string& name) const;
+    void setContext(const std::map<std::string, std::uint32_t>& context) { context_ = context; }
+    const std::map<std::string, std::uint32_t>& contextSnapshot() const { return context_; }
+    // Live engine scripts resolve object id 0 to OBJECT_SELF. The pinned VM
+    // corpus keeps the original oracle behaviour unless this is enabled.
+    void setSelfAware(bool enabled) { selfAware_ = enabled; }
+    bool selfAware() const { return selfAware_; }
+    void setContinuations(bool enabled) { continuations_ = enabled; }
+    bool continuations() const { return continuations_; }
+    std::int64_t registerFunctor(Functor functor) override;
 
 private:
     Value cell(const Args& args, std::size_t index, ParamKind kind = ParamKind::Int) const;
@@ -170,7 +179,7 @@ private:
     std::vector<Value> hGetPosition(const Args&);
     std::vector<Value> hGetDistanceToObject(const Args&);
     std::vector<Value> hGetTime();
-    std::vector<Value> hActionWait(Vm&);
+    std::vector<Value> hActionWait(const Args&, Vm&);
     std::vector<Value> hDelayCommand(const Args&);
     std::vector<Value> hAssignCommand(const Args&);
     std::vector<Value> hSetListenPattern(const Args&);
@@ -186,6 +195,8 @@ private:
     std::uint64_t timersScheduled_ = 0;
     std::uint64_t actionsQueued_ = 0;
     std::map<std::string, std::uint32_t> context_;
+    bool selfAware_ = false;
+    bool continuations_ = false;
 };
 
 } // namespace ke::script

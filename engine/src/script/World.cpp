@@ -73,6 +73,8 @@ void World::reset(std::uint64_t seed)
     party.clear();
     actionQueue.clear();
     timers.clear();
+    functors.clear();
+    nextFunctor = 1;
     journal.clear();
     log.clear();
     events.clear();
@@ -93,6 +95,8 @@ void World::clearObjects()
     cursors_.clear();
     actionQueue.clear();
     timers.clear();
+    functors.clear();
+    nextFunctor = 1;
     events.clear();
     // Keep the PC as object id 1 and the persistent party/globals/journal.
     GameObject& player = objects[1];
@@ -207,13 +211,58 @@ void World::setCursor(const std::string& key, std::int64_t value)
 void World::queueAction(std::int64_t actionId, std::vector<std::vector<Value>> args,
                         const std::string& source)
 {
-    actionQueue.push_back(QueuedAction{actionId, std::move(args), time, source});
+    QueuedAction action;
+    action.actionId = actionId;
+    action.args = std::move(args);
+    action.at = time;
+    action.source = source;
+    actionQueue.push_back(std::move(action));
 }
 
 void World::schedule(double delay, std::int64_t actionId,
                      std::vector<std::vector<Value>> args, const std::string& source)
 {
-    timers.push_back(Timer{time + delay, actionId, std::move(args), source});
+    Timer timer;
+    timer.due = time + delay;
+    timer.actionId = actionId;
+    timer.args = std::move(args);
+    timer.source = source;
+    timers.push_back(std::move(timer));
+}
+
+std::int64_t World::addFunctor(Functor functor)
+{
+    const std::int64_t id = nextFunctor++;
+    functor.id = id;
+    functors[id] = std::make_shared<Functor>(std::move(functor));
+    return id;
+}
+
+std::shared_ptr<Functor> World::functor(std::int64_t id) const
+{
+    const auto it = functors.find(id);
+    return it == functors.end() ? nullptr : it->second;
+}
+
+void World::queueFunctor(std::int64_t id, std::uint32_t target, const std::string& source)
+{
+    QueuedAction action;
+    action.functor = id;
+    action.target = target;
+    action.at = time;
+    action.source = source;
+    actionQueue.push_back(std::move(action));
+}
+
+void World::scheduleFunctor(double delay, std::int64_t id, std::uint32_t target,
+                            const std::string& source)
+{
+    Timer timer;
+    timer.due = time + delay;
+    timer.functor = id;
+    timer.target = target;
+    timer.source = source;
+    timers.push_back(std::move(timer));
 }
 
 std::vector<Timer> World::advance(double seconds)

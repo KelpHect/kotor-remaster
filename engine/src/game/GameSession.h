@@ -148,6 +148,12 @@ public:
     bool learnPower(std::int32_t powerId);
     void giveXp(std::int32_t amount);
 
+    // Run a raw NCS payload (test fixtures and tooling) with the live action
+    // runtime. Returns false when decode or execution fails.
+    bool runScriptNcsForTest(const std::string& label,
+                             const std::vector<std::uint8_t>& bytes,
+                             std::uint32_t self = 0);
+
     // Run one shipped script with optional event arguments. Returns the top of
     // stack (the condition value) when the script returns a value.
     std::optional<script::Value> runScript(const std::string& resref,
@@ -193,6 +199,8 @@ private:
     void updateCombat(float dt);
     void updateTriggers();
     void updateScripts(float dt);
+    void updateTimers(float dt);
+    bool runFunctor(const script::Functor& functor, std::uint32_t target);
     void playerAttack(std::size_t target);
     void npcAttack(std::size_t attacker);
     void logEvent(std::string line);

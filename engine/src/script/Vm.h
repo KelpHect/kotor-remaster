@@ -1,5 +1,6 @@
 #pragma once
 
+#include "script/Functor.h"
 #include "script/Ncs.h"
 #include "script/ScriptTypes.h"
 
@@ -32,6 +33,9 @@ public:
     virtual ~ActionSink() = default;
     virtual std::vector<Value> call(std::uint16_t actionId,
                                     const std::vector<std::vector<Value>>& args, Vm& vm) = 0;
+    // Register a captured action closure. The default sink (typed-default VM)
+    // does not execute closures and returns an invalid id.
+    virtual std::int64_t registerFunctor(Functor /*functor*/) { return -1; }
 };
 
 struct VmResult {
@@ -54,6 +58,8 @@ public:
        bool trace = false);
 
     VmResult run();
+    void setEntry(std::size_t ip, std::vector<Value> stack, std::int64_t bp);
+    Functor captureContinuation(const std::string& source) const;
 
     std::vector<Value>& stack() { return stack_; }
     const std::vector<Value>& stack() const { return stack_; }
@@ -91,6 +97,7 @@ private:
     std::uint64_t steps_ = 0;
     std::size_t maxStack_ = 0;
     bool pendingFunctor_ = false;
+    std::optional<Functor> pendingFunctorData_;
     VmStatus status_ = VmStatus::Running;
     std::string error_;
     std::int32_t errorIp_ = -1;

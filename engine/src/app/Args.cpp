@@ -181,6 +181,14 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.lootTest = true;
             continue;
         }
+        if (arg == "--delayed-test") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--delayed-test requires an .ncs path");
+            }
+            result.options.delayedTest = value;
+            continue;
+        }
         if (arg == "--panel") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -427,6 +435,7 @@ void printUsage()
         << "  --party-test          Assert companion sheets and 80% XP sharing\n"
         << "  --ui-test             Assert the systems UI panel state\n"
         << "  --loot-test           Assert container loot transfer\n"
+        << "  --delayed-test <ncs>  Assert DelayCommand/AssignCommand closure execution\n"
         << "  --panel <name>        Open character|inventory|party|journal|merchant at startup\n"
         << "  --add-party <tag>     Add a scene creature to the party at startup\n"
         << "  --demo-dialogue       Position at Trask and open the real dialogue UI\n"

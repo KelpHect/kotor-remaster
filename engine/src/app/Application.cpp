@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1365,6 +1366,84 @@ std::string resolveInstallPath(const Options& options)
     return "E:/SteamLibrary/steamapps/common/swkotor";
 }
 
+int runDelayedTest(GameSession& game, const std::string& path)
+{
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) {
+        logError(concat("delayed test: cannot open ", path));
+        return 30;
+    }
+    const std::streamoff size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
+    if (!bytes.empty() && !file.read(reinterpret_cast<char*>(bytes.data()), size)) {
+        logError("delayed test: short read");
+        return 31;
+    }
+    const std::uint32_t self = game.scriptWorld().pc;
+    bool ok = game.runScriptNcsForTest("delay_test", bytes, self);
+    const auto local = [&](const char* name) {
+        return game.scriptWorld().getLocal(self, name, script::ValueType::Int).asInt();
+    };
+    ok = ok && local("0") == 1 && local("1") == 0 && local("2") == 0
+        && local("5") == 1 && local("6") == 0;
+    logInfo(concat("delayed test: immediate local0=", local("0"),
+                   " local1=", local("1"), " local2=", local("2"),
+                   " local5=", local("5"), " local6=", local("6")));
+    InputState idle;
+    for (int i = 0; i < 12; ++i) {
+        game.update(0.08f, idle);
+    }
+    const std::uint32_t carth = game.objectForTag("Carth");
+    const auto carthLocal = [&](const char* name) {
+        return carth == script::kObjectInvalid
+            ? -1
+            : static_cast<int>(game.scriptWorld().getLocal(
+                  carth, name, script::ValueType::Int).asInt());
+    };
+    ok = ok && local("1") == 0 && local("2") == 7 && carthLocal("3") == 9
+        && local("4") == 0;
+    logInfo(concat("delayed test: after_1s local1=", local("1"),
+                   " local2=", local("2"), " carth3=", carthLocal("3"),
+                   " local4=", local("4")));
+    for (int i = 0; i < 20; ++i) {
+        game.update(0.08f, idle);
+    }
+    ok = ok && local("1") == 42 && local("4") == 99 && local("6") == 2;
+    logInfo(concat("delayed test: after_2.5s local1=", local("1"),
+                   " local4=", local("4"), " local6=", local("6"),
+                   " timers=", game.scriptWorld().timers.size(),
+                   " queued=", game.scriptWorld().actionQueue.size()));
+
+    // Real shipped script: k_pend_time01 schedules a 10 s user-defined event.
+    game.runScript("k_pend_time01", self);
+    logInfo(concat("delayed test: shipped timers_after_script=",
+                   game.scriptWorld().timers.size(),
+                   " functors_after_script=", game.scriptWorld().functors.size()));
+    for (int i = 0; i < 140; ++i) {
+        game.update(0.08f, idle);
+    }
+    bool shippedFunctor = false;
+    bool shippedRan = false;
+    for (const std::string& line : game.scriptLog()) {
+        if (line.find("k_pend_time01") != std::string::npos) {
+            shippedRan = true;
+            logInfo(concat("delayed test: shipped log ", line));
+        }
+        if (line.find("functor ") != std::string::npos) {
+            logInfo(concat("delayed test: functor log ", line));
+        }
+        if (line.find("functor DelayCommand status=returned") != std::string::npos) {
+            shippedFunctor = true;
+        }
+    }
+    ok = ok && shippedRan && shippedFunctor;
+    logInfo(concat("delayed test: shipped_k_pend_time01 ran=", shippedRan ? 1 : 0,
+                   " functor=", shippedFunctor ? 1 : 0,
+                   " -> ", ok ? "PASS" : "FAIL"));
+    return ok ? 0 : 32;
+}
+
 int runOriginalSaveCreate(const Options& options)
 {
     const std::string installPath = resolveInstallPath(options);
@@ -1736,6 +1815,9 @@ int runApplication(const Options& options)
             }
             if (options.lootTest) {
                 return runLootTest(*game);
+            }
+            if (!options.delayedTest.empty()) {
+                return runDelayedTest(*game, options.delayedTest);
             }
             if (options.combatTest) {
                 return runCombatTest(*game);

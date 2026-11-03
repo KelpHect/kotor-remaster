@@ -1,5 +1,6 @@
 #pragma once
 
+#include "script/Functor.h"
 #include "script/Random.h"
 #include "script/ScriptTypes.h"
 
@@ -7,6 +8,7 @@
 #include <cstdint>
 #include <deque>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <variant>
@@ -33,12 +35,16 @@ struct GameObject {
 struct Timer {
     double due = 0.0;
     std::int64_t actionId = -1;
+    std::int64_t functor = -1;
+    std::uint32_t target = 0;
     std::vector<std::vector<Value>> args;
     std::string source = "DelayCommand";
 };
 
 struct QueuedAction {
     std::int64_t actionId = -1;
+    std::int64_t functor = -1;
+    std::uint32_t target = 0;
     std::vector<std::vector<Value>> args;
     double at = 0.0;
     std::string source = "Action";
@@ -81,6 +87,12 @@ public:
                      const std::string& source = "Action");
     void schedule(double delay, std::int64_t actionId, std::vector<std::vector<Value>> args,
                   const std::string& source = "DelayCommand");
+    std::int64_t addFunctor(Functor functor);
+    std::shared_ptr<Functor> functor(std::int64_t id) const;
+    void queueFunctor(std::int64_t id, std::uint32_t target = 0,
+                      const std::string& source = "AssignCommand");
+    void scheduleFunctor(double delay, std::int64_t id, std::uint32_t target = 0,
+                         const std::string& source = "DelayCommand");
     std::vector<Timer> advance(double seconds);
 
     std::int64_t attrInt(const std::string& name, std::int64_t fallback = 0) const;
@@ -98,6 +110,8 @@ public:
     std::vector<std::uint32_t> party;
     std::deque<QueuedAction> actionQueue;
     std::vector<Timer> timers;
+    std::map<std::int64_t, std::shared_ptr<Functor>> functors;
+    std::int64_t nextFunctor = 1;
     std::set<std::int64_t> journal;
     std::vector<std::pair<double, std::string>> log;
     std::vector<WorldEvent> events;
