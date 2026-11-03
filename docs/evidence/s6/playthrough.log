@@ -1,0 +1,33 @@
+[INFO] KotOR module end_m01aa area m01aa from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 15 vertices: 235038 indices: 235038 batches: 34
+[INFO]   textures: 53 collision vertices: 850 facets: 1365
+[INFO]   entities: 218 (door 15, placeable 60, creature 26, waypoint 58)
+[INFO]   entry: 15.4248, 20.1215, -1.275
+[INFO]   entity meshes: 101 triggers: 13 warnings: 0
+[INFO]   script hooks: 284 on 54 entities; scene hooks: 3; script runs: 25
+[INFO]   entity mesh 0 end_door05 verts=564 local=-3.07263,-0.121998,-0.047403 .. 3.08736,0.123205,3.00955
+[INFO]   entity mesh 1 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   entity mesh 2 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   creature mesh Carth verts=3276 local=-0.606384,-0.151653,-0.00207151 .. 0.610334,0.167699,1.54884
+[INFO]   bounds: -170.51, -32.6442, -204.652 .. 238.793, 471.187, 291.201
+[WARN] playthrough: walk blocked, using scripted spawn
+[INFO]   dialogue: Trask: We've been ambushed by a Sith battle fleet! The Endar Spire is under attack! Hurry up - we don't have much time!
+[INFO]   dialogue: Trask: I'm Trask Ulgo, ensign with the Republic Fleet. I'm your bunk mate here on the Endar Spire. We work opposite shifts; I guess that's why you haven't seen me before.
+[INFO]   dialogue: Trask: Now hurry up, we have to find Bastila! We have to make sure she makes it off the ship alive!
+[INFO]   dialogue: Trask: Bastila's the commanding officer on the Endar Spire. Well, not an officer, really. But she's the one in charge of this mission.
+[INFO]   dialogue: Trask: One of our primary duties is to guarantee her survival in the event of enemy attack! You swore an oath just like everyone else on this mission. Now it's time to make good on that oath!
+[INFO]   dialogue: Trask: I've heard all about your reputation: elite combat training, tops in your class. It's no wonder you were hand picked for this mission.
+[INFO]   dialogue: Trask: Word is the officers haven't seen a recruit with your kind of potential in twenty years. But all that potential doesn't mean a thing if you can't deliver when it counts!
+[INFO]   dialogue: Trask: We're soldiers, we're trained for combat. Bastila's going to need men and women like us at her side during this attack!
+[INFO]   dialogue: Trask: So hurry up and grab your gear. You need to suit up so we can get out of here.
+[INFO] playthrough: dialogue lines=9
+[INFO] playthrough: trigger end_trig02 fired=1
+[INFO] playthrough: placeable end_locker01 used=1 logged=1
+[WARN] playthrough: walk blocked, using scripted spawn
+[WARN] playthrough: walk blocked, using scripted spawn
+[INFO] playthrough: combat target end_darkjedi01 dead=1 playerHp=7/12 steps=361
+[INFO] playthrough: transition end_m01aa -> end_m01ab ok=1
+[INFO] playthrough: save/load module=end_m01ab same=1
+[INFO] playthrough: simulated 1800.01 s, events=32
+[INFO] playthrough: PASS

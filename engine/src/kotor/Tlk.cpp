@@ -118,6 +118,9 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
             if (const GffField* v = gff.field(s, "Script"); v != nullptr) {
                 entry.script = gff.text(*v);
             }
+            if (const GffField* v = gff.field(s, "Active"); v != nullptr) {
+                entry.active = gff.text(*v);
+            }
             if (const GffField* v = gff.field(s, "Quest"); v != nullptr) {
                 entry.quest = gff.text(*v);
             }
@@ -152,6 +155,9 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
             if (const GffField* v = gff.field(s, "Script"); v != nullptr) {
                 reply.script = gff.text(*v);
             }
+            if (const GffField* v = gff.field(s, "Active"); v != nullptr) {
+                reply.active = gff.text(*v);
+            }
             if (const GffField* v = gff.field(s, "Quest"); v != nullptr) {
                 reply.quest = gff.text(*v);
             }
@@ -181,6 +187,11 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
         for (const std::uint32_t s : gff.list(*f)) {
             if (const GffField* idx = gff.field(s, "Index"); idx != nullptr) {
                 dlg.starting.push_back(static_cast<std::uint32_t>(gff.integer(*idx)));
+                std::string active;
+                if (const GffField* a = gff.field(s, "Active"); a != nullptr) {
+                    active = gff.text(*a);
+                }
+                dlg.startingActive.push_back(std::move(active));
             }
         }
     }

@@ -1,4 +1,7 @@
 #include "kotor/Formats.h"
+#include "script/Ncs.h"
+#include "script/Random.h"
+#include "script/Vm.h"
 
 #include <cmath>
 #include <cstdint>
@@ -141,6 +144,53 @@ void testTlk()
     expect(tlk.text(1).empty(), "TLK missing strref is empty");
 }
 
+void putBE32(std::vector<std::uint8_t>& bytes, std::uint32_t value)
+{
+    bytes.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFFu));
+    bytes.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFFu));
+    bytes.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFFu));
+    bytes.push_back(static_cast<std::uint8_t>(value & 0xFFu));
+}
+
+void testNcsVm()
+{
+    // CONST 1; CONST 2; ADD int; RETN
+    std::vector<std::uint8_t> bytes;
+    const char magic[8] = {'N', 'C', 'S', ' ', 'V', '1', '.', '0'};
+    bytes.insert(bytes.end(), magic, magic + 8);
+    bytes.push_back(0x42);
+    putBE32(bytes, 29);
+    bytes.push_back(0x04); bytes.push_back(0x03); putBE32(bytes, 1);
+    bytes.push_back(0x04); bytes.push_back(0x03); putBE32(bytes, 2);
+    bytes.push_back(0x14); bytes.push_back(0x20);
+    bytes.push_back(0x20); bytes.push_back(0x00);
+
+    const std::vector<ke::script::Instruction> instructions = ke::script::decodeNcs(bytes);
+    expect(instructions.size() == 4, "NCS instruction count");
+    expect(ke::script::validateControlFlow(instructions).empty(), "NCS control flow");
+    ke::script::Vm vm(instructions);
+    const ke::script::VmResult result = vm.run();
+    expect(result.status == ke::script::VmStatus::Returned, "NCS VM returned");
+    expect(result.steps == 4, "NCS VM steps");
+    expect(result.top.has_value() && result.top->type == ke::script::ValueType::Int
+               && result.top->integer == 3,
+           "NCS VM add result");
+}
+
+void testPythonRandom()
+{
+    ke::script::PythonRandom rng(0x4B4F544F52ULL);
+    const std::uint32_t expected[5] = {21, 97, 17, 49, 86};
+    for (std::uint32_t value : expected) {
+        expect(rng.randrange(100) == value, "Python MT19937 randrange parity");
+    }
+    ke::script::PythonRandom dice(0x4B4F544F52ULL);
+    const std::int32_t expectedDice[5] = {3, 3, 7, 7, 4};
+    for (std::int32_t value : expectedDice) {
+        expect(dice.randint(1, 8) == value, "Python MT19937 randint parity");
+    }
+}
+
 } // namespace
 
 int main()
@@ -151,6 +201,8 @@ int main()
     testWok();
     testTwoDa();
     testTlk();
+    testNcsVm();
+    testPythonRandom();
     if (failures != 0) {
         std::cerr << failures << " test(s) failed\n";
         return 1;

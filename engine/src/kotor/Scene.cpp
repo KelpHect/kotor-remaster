@@ -136,7 +136,10 @@ Scene loadModule(Install& install, const std::string& moduleStem)
     Scene scene;
     scene.module = moduleStem;
     scene.area = area;
+    scene.areaTag = text(are, are.rootIndex(), "Tag");
     scene.installPath = install.root().string();
+    collectScriptHooks(are, are.rootIndex(), scene.scripts);
+    collectScriptHooks(ifo, ifo.rootIndex(), scene.scripts);
     scene.entry = {number(ifo, ifo.rootIndex(), "Mod_Entry_X", 0.0f),
                    number(ifo, ifo.rootIndex(), "Mod_Entry_Y", 0.0f),
                    number(ifo, ifo.rootIndex(), "Mod_Entry_Z", 0.0f)};

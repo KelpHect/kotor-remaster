@@ -58,10 +58,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="maximum mean absolute channel difference in the scene region")
     args = parser.parse_args(argv)
 
-    exe = Path(args.exe)
+    exe = Path(args.exe).resolve()
     if not exe.is_file():
         raise SystemExit(f"engine not found: {exe}")
-    out = Path(args.out)
+    out = Path(args.out).resolve()
     out.mkdir(parents=True, exist_ok=True)
 
     gl_bmp = capture(exe, args.module, "gl", args.width, args.height, out)

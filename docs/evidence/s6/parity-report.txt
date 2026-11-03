@@ -1,0 +1,9 @@
+module=end_m01aa
+resolution=960x540
+scene_region=(499, 118, 940, 520)
+gl_capture=E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s6-parity\parity-gl.png
+vulkan_capture=E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s6-parity\parity-vk.png
+mean_abs_channel_diff=0.0300
+rms_channel_diff=1.8755
+threshold=1.0000
+verdict=PASS

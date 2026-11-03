@@ -1,18 +1,20 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 5 (playable KotOR P4 vertical slice) complete - gate S5 met (2026-11-03).** The
-engine's own C++23 runtime loads a user-owned KotOR 1.0.3.0 install directly and plays the
-`end_m01aa` slice on Vulkan 1.4 and OpenGL 4.5: room/entity models, textures, collision, doors,
-triggers, dialogue, basic combat, save/load, and a minimal HUD. The deterministic 1800-second gate
-passes, the scene parity check is 0.03/255, and 13/13 CTest targets pass. Sprint 4 remains
-complete: Hydra 12.3-hydra.6 / Hydralysis 0.8.0 record real 32-bit KotOR processes; two independent
-live runs are gap-free and the engine's aligned diff proves the deterministic 351-action prefix
-identical. Sprint 3 remains complete (228/228 source-level recompiles, 0 ABI, 8,666/8,666 raw
-exact). Full P5/P6 systems parity, all 117 areas, animation, and original-save compatibility remain
+Status: **Sprint 6 (P5 script runtime and systems core) complete - gate S6 met (2026-11-03).** The
+engine now runs the shipped NWScript corpus on its own C++ VM (8,666/8,666 exact against the
+regenerated oracle, 303,616 ACTION calls in the functional run), executes the real module script
+hooks, selects dialogue entries from `StartingList.Active`, and owns 2DA-driven character, d20
+combat-round, party, inventory, journal and XP state. Sprint 5 remains complete: the runtime plays
+the `end_m01aa` slice on Vulkan 1.4 and OpenGL 4.5, the deterministic 1800-second gate passes, the
+scene parity check is 0.03/255, and all 17 CTest targets pass. Sprint 4 remains complete (Hydra
+12.3-hydra.6 / Hydralysis 0.8.0, gap-free live runs, identical 351-action prefix). Sprint 3 remains
+complete (228/228 source-level recompiles, 0 ABI, 8,666/8,666 raw exact). Full P5/P6 systems parity,
+all 117 areas, animation, original-save compatibility, merchants, encounters and minigames remain
 open. Sprint plans/reports: `docs/SPRINT1.md` / `docs/SPRINT1_REPORT.md`,
 `docs/SPRINT2.md` / `docs/SPRINT2_REPORT.md`, `docs/SPRINT3.md` / `docs/SPRINT3_REPORT.md`,
-`docs/SPRINT4.md` / `docs/SPRINT4_REPORT.md`, and `docs/SPRINT5.md` / `docs/SPRINT5_REPORT.md`;
-the P0 gate and handoff remain in `docs/P0_REPORT.md`.
+`docs/SPRINT4.md` / `docs/SPRINT4_REPORT.md`, `docs/SPRINT5.md` / `docs/SPRINT5_REPORT.md`, and
+`docs/SPRINT6.md` / `docs/SPRINT6_REPORT.md`; the P0 gate and handoff remain in
+`docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
 does not ship, download, extract, or redistribute game assets, and it does not require or execute
@@ -101,6 +103,16 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   `docs/recon/37_RETURN_CLEANUP.md`, `docs/recon/38_BODY_ORDER.md`,
   `docs/recon/39_UNREACHABLE.md`, `docs/recon/40_HYDRA_UPGRADE.md`, and
   `docs/SPRINT3_REPORT.md`.
+- Sprint 6 (P5 script runtime and systems core): native C++ NCS decoder/VM and a generated 772-row
+  action table; **8,666/8,666 default and functional corpus parity with 0 mismatches** against the
+  regenerated oracles, **303,616 ACTION calls**, 0 decode/VM/unknown-action faults. The engine loads
+  **284 script hooks on 54 entities** plus ARE/IFO hooks, runs spawn/enter/heartbeat/trigger/death/
+  placeable scripts, and resolves dialogue `StartingList.Active` conditions (the real Trask
+  conversation selects entry 54). 2DA-driven character sheet (Soldier hp 12, BAB 1, Fort 2, AC 12,
+  attack +4, level 2 at 1,000 XP), 6-second d20 rounds, party, inventory/equipment, journal, gold,
+  and save/load of the character and script state. `ctest`: **17/17 passed**; Python tools: **143
+  tests, 7 skips**; install sentinel: 15,380 files unchanged.
+  See `docs/recon/43_SCRIPT_AND_RULES.md` and `docs/SPRINT6_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -143,6 +155,11 @@ Start with:
 - [`docs/SPRINT3.md`](docs/SPRINT3.md) - Sprint 3 plan: exit criteria, lanes, shared-resource rules
 - [`docs/SPRINT4_REPORT.md`](docs/SPRINT4_REPORT.md) - Sprint 4 (semantic trace and KotOR profile) exit report
 - [`docs/SPRINT4.md`](docs/SPRINT4.md) - Sprint 4 plan: gate S4, lanes, non-goals
+- [`docs/SPRINT5_REPORT.md`](docs/SPRINT5_REPORT.md) - Sprint 5 (playable P4 slice) exit report
+- [`docs/SPRINT5.md`](docs/SPRINT5.md) - Sprint 5 plan: gate S5, lanes, non-goals
+- [`docs/SPRINT6_REPORT.md`](docs/SPRINT6_REPORT.md) - Sprint 6 (P5 script runtime and systems core) exit report
+- [`docs/SPRINT6.md`](docs/SPRINT6.md) - Sprint 6 plan: gate S6, lanes, non-goals
+- [`docs/recon/43_SCRIPT_AND_RULES.md`](docs/recon/43_SCRIPT_AND_RULES.md) - native NCS VM parity, hooks, dialogue conditions, 2DA rules, save state
 - [`docs/recon/41_SEMANTIC_TRACE.md`](docs/recon/41_SEMANTIC_TRACE.md) - live KotOR trace, hook map, tool fixes and the bounded diff
 - [`docs/recon/30_UNUSED_ACTIONS.md`](docs/recon/30_UNUSED_ACTIONS.md) - 306 corpus-unused action conformance
 - [`docs/recon/31_COMPILER_CODEGEN.md`](docs/recon/31_COMPILER_CODEGEN.md) - 228 compiler-limited recompile reconciliation

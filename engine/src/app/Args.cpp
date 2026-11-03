@@ -145,6 +145,18 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.sceneAssert = true;
             continue;
         }
+        if (arg == "--script-test") {
+            result.options.scriptTest = true;
+            continue;
+        }
+        if (arg == "--rules-test") {
+            result.options.rulesTest = true;
+            continue;
+        }
+        if (arg == "--systems-test") {
+            result.options.systemsTest = true;
+            continue;
+        }
         if (arg == "--demo-dialogue") {
             result.options.demoDialogue = true;
             continue;
@@ -155,6 +167,44 @@ ParseResult parseArguments(int argc, char** argv)
         }
         if (arg == "--load") {
             result.options.loadSave = true;
+            continue;
+        }
+        if (arg == "--vm-corpus") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--vm-corpus requires a directory of .ncs files");
+            }
+            result.options.vmCorpus = value;
+            continue;
+        }
+        if (arg == "--vm-out") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--vm-out requires a JSONL path");
+            }
+            result.options.vmOut = value;
+            continue;
+        }
+        if (arg == "--vm-functional") {
+            result.options.vmFunctional = true;
+            continue;
+        }
+        if (arg == "--vm-summary") {
+            result.options.vmJsonSummary = true;
+            continue;
+        }
+        if (arg == "--vm-limit") {
+            const char* value = requireValue();
+            if (!parseInteger(value, 1, result.options.vmLimit)) {
+                return fail(std::move(result), "--vm-limit requires a positive integer");
+            }
+            continue;
+        }
+        if (arg == "--vm-budget") {
+            const char* value = requireValue();
+            if (!parseInteger(value, 1, result.options.vmBudget)) {
+                return fail(std::move(result), "--vm-budget requires a positive integer");
+            }
             continue;
         }
         if (arg == "--module") {
@@ -288,11 +338,21 @@ void printUsage()
         << "  --playthrough         Run the deterministic 30-minute scripted gate\n"
         << "  --landmark-test       Check GIT landmarks/headings against the verified oracle\n"
         << "  --scene-assert        Assert the end_m01aa loader counts and exit\n"
+        << "  --script-test         Run the shipped script hooks and assert their effects\n"
+        << "  --rules-test          Assert the 2DA-driven character and d20 rules\n"
+        << "  --systems-test        Assert party, inventory, journal and save/load\n"
         << "  --demo-dialogue       Position at Trask and open the real dialogue UI\n"
         << "  --demo-combat         Position at a hostile creature and start combat\n"
         << "  --screenshot <path>   Write a BMP after the requested frames\n"
         << "  --save <path>         Save slot for the player state (F5 writes, --load reads)\n"
         << "  --load                Load the save slot at startup\n"
+        << "\n"
+        << "Script verification (no module):\n"
+        << "  --vm-corpus <dir>     Execute every .ncs in a directory and report\n"
+        << "  --vm-out <path>       Write per-file JSONL results\n"
+        << "  --vm-functional       Use the stateful action runtime\n"
+        << "  --vm-limit <n>        Stop after n files\n"
+        << "  --vm-budget <n>       Instruction budget per script (default 200000)\n"
         << "\n"
         << "Examples:\n"
         << "  kotor_engine --vulkan --frames 120 --seconds 5\n"

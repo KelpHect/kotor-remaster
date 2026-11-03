@@ -206,6 +206,7 @@ public:
 
     const std::string& name() const { return name_; }
     std::uint32_t rootIndex() const { return rootIndex_; }
+    std::size_t structureCount() const { return structures_.size(); }
     const GffStruct& structure(std::uint32_t index) const;
     const GffField* field(const GffStruct& structure, const std::string& label) const;
     const GffField* field(std::uint32_t structureIndex, const std::string& label) const;
@@ -367,29 +368,30 @@ struct DlgEntry {
     std::string speaker;
     std::string text;
     std::string script;
+    std::string active;
     std::string quest;
     std::int32_t action[4]{};
     std::string comment;
     std::string sound;
     std::vector<std::uint32_t> replies;
-    bool active = true;
 };
 
 struct DlgReply {
     std::string text;
     std::string script;
+    std::string active;
     std::string quest;
     std::int32_t action[4]{};
     std::string comment;
     std::string sound;
     std::vector<std::uint32_t> entries;
-    bool active = true;
 };
 
 struct Dlg {
     std::vector<DlgEntry> entries;
     std::vector<DlgReply> replies;
     std::vector<std::uint32_t> starting;
+    std::vector<std::string> startingActive;
     std::string endConversation;
     std::string endConversationAbort;
     bool skippable = true;
@@ -492,6 +494,9 @@ struct Entity {
     bool hostile = false;
     bool dead = false;
     bool useable = false;
+    // Hook name (ScriptSpawn, OnOpen, ...) to script resref. Template values
+    // are loaded first; non-empty GIT instance values override them.
+    std::map<std::string, std::string> scripts;
 };
 
 struct TextureBatch {
@@ -555,6 +560,7 @@ private:
 struct Scene {
     std::string module;
     std::string area;
+    std::string areaTag;
     std::string installPath;
     Vec3 entry;
     Vec3 entryDirection;
@@ -569,6 +575,7 @@ struct Scene {
     std::vector<TriggerVolume> triggers;
     std::vector<LytRoom> rooms;
     std::vector<std::string> warnings;
+    std::map<std::string, std::string> scripts;
     Vec3 ambient{0.35f, 0.35f, 0.38f};
     Vec3 diffuse{0.85f, 0.82f, 0.75f};
     Vec3 fogColor{0.06f, 0.07f, 0.10f};
@@ -578,6 +585,11 @@ struct Scene {
 };
 
 Scene loadModule(Install& install, const std::string& moduleStem);
+
+// Collect non-empty script hook fields from one GFF struct into a hook map.
+// Used for ARE/IFO module hooks and GIT instance overrides.
+void collectScriptHooks(const Gff& gff, std::uint32_t structure,
+                        std::map<std::string, std::string>& scripts);
 
 // Resolves GIT templates, model geometry and trigger polygons after the base
 // module has been loaded. Kept separate from loadModule so the room pass stays

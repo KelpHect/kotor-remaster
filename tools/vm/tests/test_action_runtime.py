@@ -142,5 +142,26 @@ class ActionRuntimeTest(unittest.TestCase):
                          ["GetGlobalNumber", "SetGlobalNumber"])
 
 
+class SwmgReturnTest(unittest.TestCase):
+    """Regression: typed returns must match the declared action signature."""
+
+    SPECS = {"actions": [
+        {"id": 590, "name": "SWMG_AdjustFollowerHitPoints", "return": "int",
+         "params": [{"type": "object"}, {"type": "int"}, {"type": "int"}]},
+        {"id": 649, "name": "SWMG_SetPlayerSpeed", "return": "void",
+         "params": [{"type": "float"}]},
+    ]}
+
+    def test_adjust_returns_int_and_set_returns_void(self):
+        rt = ActionRuntime(self.SPECS)
+        vm = ncs_vm.VM([], self.SPECS, runtime=rt)
+        adjust = rt.call(590, [[V("object", rt.world.pc.id)], [V("int", 5)],
+                               [V("int", 1)]], vm)
+        self.assertEqual(len(adjust), 1)
+        self.assertEqual(adjust[0].typ, "int")
+        set_speed = rt.call(649, [[V("float", 3.0)]], vm)
+        self.assertEqual(set_speed, [])
+
+
 if __name__ == "__main__":
     unittest.main()
