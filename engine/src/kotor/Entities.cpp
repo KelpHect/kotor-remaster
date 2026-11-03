@@ -312,7 +312,8 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                     entity.appearance = static_cast<std::uint32_t>(
                         intField(utp, utp.rootIndex(), "Appearance", 0));
                     entity.faction = static_cast<std::uint32_t>(intField(utp, utp.rootIndex(), "Faction", 0));
-                    entity.useable = !entity.conversation.empty();
+                    entity.useable = intField(utp, utp.rootIndex(), "Useable", 0) != 0
+                        || !entity.conversation.empty();
                     if (placeables.has_value()) {
                         entity.model = placeables->cell(std::to_string(entity.appearance), "modelname");
                     }

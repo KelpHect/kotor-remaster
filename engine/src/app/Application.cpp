@@ -379,6 +379,19 @@ int runPlaythrough(GameSession& game)
         ok = ok && fired;
     }
 
+    const std::size_t locker = game.findEntity("end_locker01");
+    if (locker == static_cast<std::size_t>(-1)) {
+        logWarn("playthrough: end_locker01 missing");
+        ok = false;
+    } else {
+        teleportOrWalk(game.scene().entities[locker].position, 10.0f);
+        const bool used = game.usePlaceable(locker);
+        const bool logged = hasEvent(game, "use end_locker01");
+        logInfo(concat("playthrough: placeable end_locker01 used=", used ? 1 : 0,
+                       " logged=", logged ? 1 : 0));
+        ok = ok && used && logged;
+    }
+
     const std::size_t hostile = firstHostile(game);
     if (hostile == static_cast<std::size_t>(-1)) {
         logWarn("playthrough: no hostile creature");
@@ -599,6 +612,30 @@ int runApplication(const Options& options)
                 logInfo(concat("  bounds: ", low.x, ", ", low.y, ", ", low.z, " .. ",
                                high.x, ", ", high.y, ", ", high.z));
             }
+            if (options.sceneAssert) {
+                const bool ok = loaded.rooms.size() == 15
+                    && loaded.vertices.size() == 235038
+                    && loaded.indices.size() == 235038
+                    && loaded.batches.size() == 34
+                    && loaded.textures.size() == 53
+                    && loaded.collisionVertices.size() == 850
+                    && loaded.collision.size() == 1365
+                    && loaded.entities.size() == 218
+                    && loaded.entityMeshes.size() == 101
+                    && loaded.triggers.size() == 13
+                    && loaded.warnings.empty();
+                logInfo(concat("scene assert: rooms=", loaded.rooms.size(),
+                               " vertices=", loaded.vertices.size(),
+                               " batches=", loaded.batches.size(),
+                               " textures=", loaded.textures.size(),
+                               " collision=", loaded.collision.size(),
+                               " entities=", loaded.entities.size(),
+                               " meshes=", loaded.entityMeshes.size(),
+                               " triggers=", loaded.triggers.size(),
+                               " warnings=", loaded.warnings.size(),
+                               " ok=", ok ? 1 : 0));
+                return ok ? 0 : 9;
+            }
             if (options.dialogueTest) {
                 return runDialogueTest(*game);
             }
@@ -661,14 +698,12 @@ int runApplication(const Options& options)
                 const std::size_t index = game->findEntity("end_trask");
                 if (index != static_cast<std::size_t>(-1)) {
                     const kotor::Entity& entity = game->scene().entities[index];
-                    const kotor::Vec3 delta = game->scene().entry - entity.position;
-                    const float distance = std::sqrt(delta.x * delta.x + delta.y * delta.y);
-                    const kotor::Vec3 stand = distance > 0.01f
-                        ? kotor::Vec3{entity.position.x + delta.x / distance * 2.5f,
-                                      entity.position.y + delta.y / distance * 2.5f,
-                                      entity.position.z}
-                        : entity.position;
-                    game->setPositionForTest(stand);
+                    kotor::Vec3 view;
+                    if (game->findClearView(entity.position, 3.5f, view)) {
+                        game->setPositionForTest(view);
+                    } else {
+                        game->setPositionForTest(game->scene().entry);
+                    }
                     game->faceTowards(entity.position);
                     if (!game->startDialogue(index)) {
                         logWarn("demo dialogue did not start");
@@ -680,10 +715,16 @@ int runApplication(const Options& options)
                 const std::size_t index = firstHostile(*game);
                 if (index != static_cast<std::size_t>(-1)) {
                     const kotor::Entity& entity = game->scene().entities[index];
-                    game->setPositionForTest({entity.position.x, entity.position.y - 3.0f, entity.position.z});
+                    kotor::Vec3 view;
+                    if (game->findClearView(entity.position, 4.0f, view)) {
+                        game->setPositionForTest(view);
+                    } else {
+                        game->setPositionForTest({entity.position.x, entity.position.y - 3.0f,
+                                                  entity.position.z});
+                    }
                     game->faceTowards(entity.position);
                     game->attackNearestHostile();
-                    for (int i = 0; i < 45; ++i) {
+                    for (int i = 0; i < 2; ++i) {
                         game->update(1.0f / 60.0f, InputState{});
                     }
                 } else {

@@ -154,7 +154,11 @@ if(KOTOR_ENGINE_BUILD_TESTS)
     if(EXISTS "${KOTOR_TEST_INSTALL}/chitin.key")
         add_test(NAME kotor_scene_stats
                  COMMAND kotor_engine --module end_m01aa --scene-stats --null --headless)
+        add_test(NAME kotor_scene_assert
+                 COMMAND kotor_engine --module end_m01aa --scene-assert --null --headless)
         add_test(NAME kotor_door_transition
+                 COMMAND kotor_engine --module tar_m02af --door-test --null --headless)
+        add_test(NAME kotor_taris_transition
                  COMMAND kotor_engine --module tar_m02af --door-test --null --headless)
         add_test(NAME kotor_walk_collision
                  COMMAND kotor_engine --module end_m01aa --walk-test --null --headless)
@@ -168,8 +172,9 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                  COMMAND kotor_engine --module end_m01aa --landmark-test --null --headless)
         add_test(NAME kotor_save_load
                  COMMAND kotor_engine --module end_m01aa --walk-test --save "${CMAKE_BINARY_DIR}/engine-save.txt" --null --headless)
-        set_tests_properties(kotor_scene_stats kotor_door_transition kotor_walk_collision
-                             kotor_dialogue kotor_combat kotor_playthrough kotor_landmark kotor_save_load
+        set_tests_properties(kotor_scene_stats kotor_scene_assert kotor_door_transition
+                             kotor_taris_transition kotor_walk_collision kotor_dialogue
+                             kotor_combat kotor_playthrough kotor_landmark kotor_save_load
             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
     endif()
 endif()

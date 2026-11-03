@@ -17,7 +17,8 @@ the product path, and fix faults found in our own tools while doing it.
    collision facets, 218 GIT entities, 101 entity meshes, and 13 trigger volumes with zero model
    warnings.
 3. **Player and interactions** - movement, mouse look, collision, doors, module transitions,
-   placeables, NPCs, dialogue, basic combat, triggers, save/load, and a minimal HUD/dialogue UI.
+   placeables (basic use/open), NPCs, dialogue, basic combat, triggers, save/load, and a minimal
+   HUD/dialogue UI.
 4. **Rendering** - the Classic scene renders on Vulkan 1.4 and OpenGL 4.5. Both backends draw the
    same room, doors, placeables, and creatures with the same camera; the scene-region mean absolute
    difference is 0.03/255.
@@ -27,7 +28,7 @@ the product path, and fix faults found in our own tools while doing it.
 6. **Placement and map validation** - landmark positions and headings match the verified GIT
    oracle; the retail map validator reports 0 hard failures on `end_m01aa`, `end_m01ab`,
    `tar_m02af`, and `tar_m02aa`.
-7. **Tests and evidence** - 11/11 CTest targets pass; commands, logs, screenshots, and the parity
+7. **Tests and evidence** - 13/13 CTest targets pass; commands, logs, screenshots, and the parity
    report are recorded in [SPRINT5_REPORT.md](SPRINT5_REPORT.md).
 
 ## Lanes

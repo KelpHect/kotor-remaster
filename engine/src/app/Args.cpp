@@ -141,6 +141,10 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.landmarkTest = true;
             continue;
         }
+        if (arg == "--scene-assert") {
+            result.options.sceneAssert = true;
+            continue;
+        }
         if (arg == "--demo-dialogue") {
             result.options.demoDialogue = true;
             continue;
@@ -283,6 +287,7 @@ void printUsage()
         << "  --combat-test         Resolve a real hostile creature to death\n"
         << "  --playthrough         Run the deterministic 30-minute scripted gate\n"
         << "  --landmark-test       Check GIT landmarks/headings against the verified oracle\n"
+        << "  --scene-assert        Assert the end_m01aa loader counts and exit\n"
         << "  --demo-dialogue       Position at Trask and open the real dialogue UI\n"
         << "  --demo-combat         Position at a hostile creature and start combat\n"
         << "  --screenshot <path>   Write a BMP after the requested frames\n"

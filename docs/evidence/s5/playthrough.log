@@ -16,9 +16,11 @@
 [INFO]   dialogue: Trask: You can left-click on an object to select it. Once the footlocker is selected, left-click on it again to perform the default action and open it.
 [INFO] playthrough: dialogue lines=3
 [INFO] playthrough: trigger end_trig02 fired=1
+[INFO] playthrough: placeable end_locker01 used=1 logged=1
+[WARN] playthrough: walk blocked, using scripted spawn
 [WARN] playthrough: walk blocked, using scripted spawn
 [INFO] playthrough: combat target end_darkjedi01 dead=1 playerHp=94/100 steps=110
 [INFO] playthrough: transition end_m01aa -> end_m01ab ok=1
 [INFO] playthrough: save/load module=end_m01ab same=1
-[INFO] playthrough: simulated 1800.03 s, events=15
+[INFO] playthrough: simulated 1800.03 s, events=18
 [INFO] playthrough: PASS
