@@ -123,6 +123,7 @@ endif()
 # SPIR-V is committed, so a stale configure-time copy would silently run the
 # wrong push-constant layout.
 add_custom_command(TARGET kotor_engine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}/shaders
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_CURRENT_SOURCE_DIR}/shaders
             ${CMAKE_BINARY_DIR}/shaders

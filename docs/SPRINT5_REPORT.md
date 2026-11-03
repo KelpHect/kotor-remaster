@@ -24,7 +24,7 @@ $ctest = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\I
 & $ctest --preset msvc-release --output-on-failure
 ```
 
-Result: **13/13 tests passed, 0 failed** (1.97 s on the final run; timing varies). Captured in
+Result: **13/13 tests passed, 0 failed** (1.91 s on the final run; timing varies). Captured in
 `engine/artifacts/engine/s5-evidence/ctest.log`.
 
 ## 1. Module load and scene inventory
@@ -221,6 +221,9 @@ unexplained hard failures.
 | `kotor_landmark` | passed |
 | `kotor_save_load` | passed |
 
+`kotor_formats` includes synthetic 2DA V2.b and TLK V3.0 cases in addition to the SHA-256,
+resref-normalization, LYT, and WOK cases (16 checks total).
+
 ## 10. Faults fixed in our own tools
 
 1. **GFF magic** - KotOR files use `ARE `/`GIT `/`IFO ` + `V3.2`, not the generic `GFF ` magic.
@@ -232,7 +235,8 @@ unexplained hard failures.
 4. **Screenshot orientation/format** - unified `Bmp.cpp`; GL and Vulkan captures are both written
    top-down; Vulkan readback converts BGRA to RGBA and flips projection Y before the view multiply.
 5. **Stale shaders** - CMake copied `shaders/` only at configure time, so a rebuilt executable
-   loaded an old push-constant layout; the copy is now a `POST_BUILD` step.
+   loaded an old push-constant layout; the copy is now a `POST_BUILD` step that clears the
+   destination first.
 6. **Door transition use-after-free** - `testTransition` passed `entity.linkedTo` by reference into
    `loadModule`, which replaced the scene and destroyed the string mid-call; both strings are now
    copied first.

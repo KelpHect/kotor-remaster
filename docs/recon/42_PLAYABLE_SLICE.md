@@ -128,7 +128,8 @@ loader inventory. `--dialogue-test`, `--combat-test`, `--scene-stats`, `--walk-t
 - The synthetic WOK count table ends at 0x60; data must start after it.
 - GL scene upload must create its VAO after the shader/program is ready.
 - Vulkan depth must exist before the first dynamic-rendering frame.
-- Shader SPIR-V must be copied at build time, not only at configure time.
+- Shader SPIR-V must be copied at build time, and the destination cleared first so a removed
+  shader cannot linger.
 - Do not pass a reference into `scene_` (e.g. `linkedTo`) into a function that replaces `scene_`.
 - Vulkan/GL parity needs the UNORM swapchain, projection-Y flip, and BGRA readback conversion.
 - The Mdl parser ignores animation/scale controllers; static bind pose is the P4 scope.
