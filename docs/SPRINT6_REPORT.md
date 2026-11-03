@@ -18,10 +18,10 @@ folder is [docs/evidence/s6](../evidence/s6/).
 ## 1. Build and test result
 
 ```text
-17/17 Test #17: kotor_vm_corpus ..................   Passed    3.50 sec
+17/17 Test #17: kotor_vm_corpus ..................   Passed    2.92 sec
 
 100% tests passed, 0 tests failed out of 17
-Total Test time (real) =   7.46 sec
+Total Test time (real) =   6.36 sec
 ```
 
 The 13 Sprint 5 targets still pass; four new targets were added: `kotor_script`, `kotor_rules`,
@@ -67,6 +67,9 @@ script test: area_enter_ran=1
 script test: creature_spawn_ran=1
 script test: trigger_script_ran=1
 script test: heartbeat_hook_ran=1
+script test: door_hook_ran=1
+script test: door_hook_logged=1
+script test: door_script_ran=1
 script test: pc_branch_ran=1
 script test: hostile_died=1
 script test: death_hook_ran=1
@@ -76,11 +79,10 @@ script test: dialogue start end_trask01 entry=54
 script test: PASS
 ```
 
-The test advances one 6-second heartbeat, enters the shipped `end_trig02`, kills a hostile to run
-its `ScriptDeath`, and checks the area branch with the PC as `GetEnteringObject`. Door `OnOpen`/
-`OnClick` and placeable `OnUsed` hooks are wired on the interaction paths; the `end_m01aa` doors
-carry no non-empty door script, so the executed cases in this module are spawn/enter/heartbeat/
-trigger/death/placeable. See `docs/evidence/s6/script.log`.
+The test advances one 6-second heartbeat, enters the shipped `end_trig02`, invokes the real
+`end_door16` `OnOpen` script (`k_pend_door16`), kills a hostile to run its `ScriptDeath`, and checks
+the area branch with the PC as `GetEnteringObject`. Placeable `OnUsed` is exercised by the
+playthrough's `end_locker01` interaction. See `docs/evidence/s6/script.log`.
 
 ## 4. Dialogue conditions
 
@@ -239,7 +241,8 @@ removed and changed nothing. Evidence: `docs/evidence/s6/install-sentinel.log`,
   matching the functional oracle's mediation.
 - Feat/Force-power selection has no UI; validation and sheet state are present.
 - Creature animation/skinning and weapon attachment remain Sprint 5 limitations.
-- Door scripts are executed on interaction when present; `end_m01aa` has none.
+- The door gate exercises `end_door16` `OnOpen`; other doors' scripts are loaded and use the same
+  path but are not individually gated.
 - Four modules are exercised (`end_m01aa`, `end_m01ab`, `tar_m02af`, `tar_m02aa`), not all 117.
 
 ## Evidence index

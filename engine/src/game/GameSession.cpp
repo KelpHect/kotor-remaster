@@ -281,6 +281,21 @@ std::uint32_t GameSession::objectForTag(const std::string& tag) const
     return scriptWorld_.byTag(tag, 0);
 }
 
+bool GameSession::runHookForTest(const std::string& hook, const std::string& tag,
+                                 std::uint32_t entering)
+{
+    const std::size_t index = findEntity(tag);
+    if (index == static_cast<std::size_t>(-1)) {
+        return false;
+    }
+    const auto it = scene_.entities[index].scripts.find(hook);
+    if (it == scene_.entities[index].scripts.end() || it->second.empty()) {
+        return false;
+    }
+    runHook(hook, index, entering == 0 ? scriptWorld_.pc : entering);
+    return true;
+}
+
 bool GameSession::scriptValueTruthy(const std::optional<script::Value>& value) const
 {
     return value.has_value() && value->truthy();
@@ -674,13 +689,13 @@ bool GameSession::interact()
         return startDialogue(static_cast<std::size_t>(talk - scene_.entities.data()));
     }
     const kotor::Entity* door = nearestDoor(2.8f);
-    if (door != nullptr && !door->linkedModule.empty()) {
+    if (door != nullptr) {
         const std::size_t index = static_cast<std::size_t>(door - scene_.entities.data());
         runHook("OnOpen", index, scriptWorld_.pc);
         runHook("OnClick", index, scriptWorld_.pc);
-        return loadModule(door->linkedModule, nullptr, door->linkedTo);
-    }
-    if (door != nullptr) {
+        if (!door->linkedModule.empty()) {
+            return loadModule(door->linkedModule, nullptr, door->linkedTo);
+        }
         logEvent("door " + door->tag + ": no transition");
         return true;
     }
