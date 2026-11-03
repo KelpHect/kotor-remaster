@@ -23,8 +23,8 @@
 [INFO]   dialogue: Trask: So hurry up and grab your gear. You need to suit up so we can get out of here.
 [INFO] playthrough: dialogue lines=9
 [INFO] playthrough: trigger end_trig02 fired=1
-[INFO] playthrough: placeable end_locker01 used=1 logged=1
 [WARN] playthrough: walk blocked, using scripted spawn
+[INFO] playthrough: placeable end_locker01 used=1 logged=1
 [WARN] playthrough: walk blocked, using scripted spawn
 [INFO] playthrough: combat target end_darkjedi01 dead=1 playerHp=7/12 steps=361
 [INFO] playthrough: transition end_m01aa -> end_m01ab ok=1
