@@ -250,7 +250,7 @@ Mdl Mdl::parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std
     model.mdl_ = std::move(mdl);
     model.mdx_ = std::move(mdx);
     const auto& b = model.mdl_;
-    const std::uint32_t root = readU32(b.data(), b.size(), 12 + 40, "MDL root");
+    model.supermodel_ = readCString(b.data(), b.size(), 12 + 136, 32, "MDL supermodel", model.name_);    const std::uint32_t root = readU32(b.data(), b.size(), 12 + 40, "MDL root");
     const std::uint32_t nameOff = readU32(b.data(), b.size(), 12 + 184, "MDL name offsets");
     const std::uint32_t nameCount = readU32(b.data(), b.size(), 12 + 188, "MDL name count");
     std::vector<std::uint32_t> nameOffsets;
@@ -540,6 +540,17 @@ int Mdl::animationIndex(const std::string& name) const
         }
     }
     return -1;
+}
+
+void Mdl::mergeAnimations(const Mdl& supermodel)
+{
+    for (const Animation& animation : supermodel.animationData_) {
+        if (animationIndex(animation.name) >= 0) {
+            continue;
+        }
+        animations_.push_back({animation.name, animation.duration, animation.transition});
+        animationData_.push_back(animation);
+    }
 }
 
 float Mdl::animationDuration(const std::string& name) const

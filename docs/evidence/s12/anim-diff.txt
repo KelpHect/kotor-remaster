@@ -1,0 +1,1 @@
+changed_pixels=12937 of 79200 max=255
