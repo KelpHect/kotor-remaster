@@ -841,7 +841,10 @@ std::vector<MdlMeshTriangle> Mdl::posedTriangles(const std::string& animation, f
                     positions.push_back(position);
                     normals.push_back(normalize(normalSum));
                 } else {
-                    positions.push_back(transform(nodePose.rotation, local));
+                    const Vec3 transformed = transform(nodePose.rotation, local);
+                    positions.push_back({nodePose.translation.x + transformed.x,
+                                         nodePose.translation.y + transformed.y,
+                                         nodePose.translation.z + transformed.z});
                     normals.push_back(transform(nodePose.rotation, normal));
                 }
             } else {
