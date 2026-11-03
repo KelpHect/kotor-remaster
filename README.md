@@ -1,29 +1,30 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 11 (combat, Force and alignment core) complete - gate S11 met
-(2026-11-03).** All **44** shipped Force powers and **125** feat rows load; Force points,
-alignment and saves drive damage/heal/stun/fear/buff effects; a shared `ActiveEffect` stack
-implements Force Immunity, Force Breach, Suppress Force and save/load persistence; combat feats
-have active modes (Power Attack/Power Blast, Flurry, Critical Strike, Whirlwind, Force Jump) and
-passive formulas (Toughness/Wookiee DR, Weapon Focus/Specialization, Dueling, Two-Weapon tiers,
-Caution/Empathy/Gear Head, Conditioning, Force Focus, Scoundrel's Luck/Jedi Sense, Sneak Attack,
-Jedi Defense deflection, Force Camouflage stealth entry, armor/weapon proficiency); the script
-bridge covers feats, spells, talents, FP, alignment and
-talent type/id queries; engine and original saves round-trip alignment/FP/effects. **35/35 CTest
-targets** pass.
-Sprint 10 remains complete (delayed/assigned closures, nested delays, `ActionWait`, `OBJECT_SELF`,
-world-clock timers). Sprint 9 remains complete (KotOR 1/K2 profiles and native original
-`SAVEGAME.sav` read/write with independent Python validation **0 errors / 0 warnings** on
-round-trip and fresh-create slots). Sprint 8.5 remains complete (container loot, companion melee
-AI, merchant store gold/identify); Sprint 8 remains complete (117-module sweep, encounter
-reset/respawn, formation/leader, feat/power selection); Sprint 7 remains complete (7 stores/41
-`keblastore` entries, 4 encounter volumes/8 spawns, 80% companion XP, systems UI); Sprint 6 remains
-complete (native script VM 8,666/8,666 default and functional, 303,616 ACTION calls, dialogue
-entry 54, d20 rounds); Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255 parity).
-Sprint 12+ remains: exact non-combat feat formulas, full effect/dispel stacks,
-animation/skinning/weapons, cutscene cameras, audio/EAX, Bink/lip sync, full `.gui`, minigames,
-localization, mods/Override, KotOR 2 world loading, faction reputation simulation and the P6
-content checklist. Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT11.md` and their
+Status: **Sprint 12 (creature animation and skinning) complete - gate S12 met
+(2026-11-03).** Shipped MDL animation clips parse and evaluate (position,
+packed/float orientation, scale, Bezier position); skin meshes carry bones,
+weights, `qbone`/`tbone` bind-inverse data and CPU deformation; `GameSession`
+plays/loops per-entity clips with `pause1`/`pause` defaults; `animations.2da`
+and `PlayAnimation`/`ActionPlayAnimation` are wired; GL and Vulkan refresh
+entity vertex buffers from the posed mesh. **36/36 CTest targets** pass.
+Sprint 11 remains complete (44 Force powers, 125 feat rows, combat/Force/
+alignment core, effect stack with Breach/Suppress/Immunity, Jedi Defense,
+Force Camouflage, passive formulas and save persistence). Sprint 10 remains
+complete (delayed/assigned closures, nested delays, `ActionWait`, `OBJECT_SELF`,
+world-clock timers). Sprint 9 remains complete (KotOR 1/K2 profiles and native
+original `SAVEGAME.sav` read/write with independent Python validation
+**0 errors / 0 warnings** on round-trip and fresh-create slots). Sprint 8.5
+remains complete (container loot, companion melee AI, merchant store
+gold/identify); Sprint 8 remains complete (117-module sweep, encounter
+reset/respawn, formation/leader, feat/power selection); Sprint 7 remains
+complete (7 stores/41 `keblastore` entries, 4 encounter volumes/8 spawns, 80%
+companion XP, systems UI); Sprint 6 remains complete (native script VM
+8,666/8,666 default and functional, 303,616 ACTION calls, dialogue entry 54,
+d20 rounds); Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255
+parity). Sprint 13+ remains: weapon attachment, cutscene cameras, audio/EAX,
+Bink/lip sync, full `.gui`, minigames, localization, mods/Override, KotOR 2
+world loading, faction reputation simulation and the P6 content checklist.
+Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT12.md` and their
 `*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
@@ -165,6 +166,14 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   CTest **35/35**; 117-module sweep 0/0; VM parity 0; scene parity 0.0300; Python 143 tests /
   7 skips; install unchanged. See `docs/recon/49_COMBAT_FORCE.md` and
   `docs/SPRINT11_REPORT.md`.
+- Sprint 12 (animation/skinning): MDL animation table/clips/controllers,
+  packed and float orientations, Bezier position, skin headers, node-to-bone
+  maps, `qbone`/`tbone` bind-inverse data, MDX weights/bone ids, CPU skinning,
+  per-entity playback with `pause1`/`pause` defaults, `animations.2da` and
+  `PlayAnimation`/`ActionPlayAnimation`, GL/Vulkan dynamic vertex refresh.
+  CTest **36/36**; 117-module sweep 0/0; VM parity 0; scene parity 0.0300;
+  Python 143 tests / 7 skips; install unchanged. See
+  `docs/recon/50_ANIMATION_SKINNING.md` and `docs/SPRINT12_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -223,6 +232,9 @@ Start with:
 - [`docs/SPRINT10.md`](docs/SPRINT10.md) - Sprint 10 plan: gate S10, lanes, non-goals
 - [`docs/SPRINT11_REPORT.md`](docs/SPRINT11_REPORT.md) - Sprint 11 (combat/Force/alignment) exit report
 - [`docs/SPRINT11.md`](docs/SPRINT11.md) - Sprint 11 plan: gate S11, lanes, non-goals
+- [`docs/SPRINT12_REPORT.md`](docs/SPRINT12_REPORT.md) - Sprint 12 (animation/skinning) exit report
+- [`docs/SPRINT12.md`](docs/SPRINT12.md) - Sprint 12 plan: gate S12, lanes, non-goals
+- [`docs/recon/50_ANIMATION_SKINNING.md`](docs/recon/50_ANIMATION_SKINNING.md) - MDL clips, controllers, skinning and playback
 - [`docs/recon/49_COMBAT_FORCE.md`](docs/recon/49_COMBAT_FORCE.md) - Force powers, feats, saves and alignment
 - [`docs/recon/48_FUNCTORS.md`](docs/recon/48_FUNCTORS.md) - delayed/assigned closures and OBJECT_SELF
 - [`docs/recon/47_ORIGINAL_SAVES.md`](docs/recon/47_ORIGINAL_SAVES.md) - original save read/write and validation

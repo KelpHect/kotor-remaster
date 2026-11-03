@@ -264,6 +264,13 @@ public:
 
     void setCamera(const SceneCamera& camera) override { camera_ = camera; }
 
+    void refreshEntityMeshes(const kotor::Scene& scene) override
+    {
+        if (sceneReady_) {
+            sceneRenderer_.refreshEntityMeshes(scene);
+        }
+    }
+
     bool screenshot(const std::filesystem::path& path) override
     {
         if (!initialized_ || swapchain_ == VK_NULL_HANDLE || lastImageIndex_ >= swapchainImages_.size()) {

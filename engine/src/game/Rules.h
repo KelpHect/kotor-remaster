@@ -126,6 +126,9 @@ public:
     bool canTakePower(const CharacterSheet& sheet, std::int32_t powerId) const;
     std::string featName(std::int32_t featId) const;
     std::string powerName(std::int32_t powerId) const;
+    std::string animationName(std::int32_t animationId) const;
+    bool animationLooping(std::int32_t animationId) const;
+    bool animationStationary(std::int32_t animationId) const;
     std::int32_t featCount() const {
         return feat_ ? static_cast<std::int32_t>(feat_->rowCount()) : 0;
     }
@@ -182,6 +185,7 @@ private:
     std::optional<kotor::TwoDa> baseitems_;
     std::optional<kotor::TwoDa> featgain_;
     std::optional<kotor::TwoDa> spells_;
+    std::optional<kotor::TwoDa> animations_;
     std::map<std::string, kotor::TwoDa> attackTables_;
     std::map<std::string, kotor::TwoDa> saveTables_;
     std::map<std::string, kotor::TwoDa> skillTables_;

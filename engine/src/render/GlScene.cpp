@@ -19,6 +19,7 @@ namespace {
 constexpr GlEnum kGlArrayBuffer = 0x8892u;
 constexpr GlEnum kGlElementArrayBuffer = 0x8893u;
 constexpr GlEnum kGlStaticDraw = 0x88E4u;
+constexpr GlEnum kGlDynamicDraw = 0x88E8u;
 constexpr GlEnum kGlFloat = 0x1406u;
 constexpr GlEnum kGlTriangles = 0x0004u;
 constexpr GlEnum kGlUnsignedInt = 0x1405u;
@@ -362,6 +363,25 @@ bool GlScene::upload(const kotor::Scene& scene, std::string& error)
         logWarn(concat("OpenGL scene upload error 0x", std::hex, uploadError, std::dec));
     }
     return true;
+}
+
+void GlScene::refreshEntityMeshes(const kotor::Scene& scene)
+{
+    std::size_t index = 1;
+    for (const kotor::EntityMesh& entityMesh : scene.entityMeshes) {
+        if (index >= meshes_.size()) {
+            break;
+        }
+        GlMesh& mesh = meshes_[index++];
+        if (mesh.entity != entityMesh.entity) {
+            continue;
+        }
+        gl_.BindBuffer(kGlArrayBuffer, mesh.vbo);
+        gl_.BufferData(kGlArrayBuffer,
+                       static_cast<GlSizeiptr>(entityMesh.vertices.size() * sizeof(kotor::SceneVertex)),
+                       entityMesh.vertices.data(), kGlDynamicDraw);
+    }
+    gl_.BindBuffer(kGlArrayBuffer, 0);
 }
 
 void GlScene::render(const SceneCamera& camera, int width, int height)

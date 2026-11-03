@@ -79,6 +79,7 @@ public:
     bool initialize(std::string& error);
     void shutdown();
     bool upload(const kotor::Scene& scene, std::string& error);
+    void refreshEntityMeshes(const kotor::Scene& scene);
     void render(const SceneCamera& camera, int width, int height);
     bool screenshot(const std::filesystem::path& path, int width, int height);
 

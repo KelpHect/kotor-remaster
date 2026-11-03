@@ -185,6 +185,18 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.combatForceTest = true;
             continue;
         }
+        if (arg == "--animation-test") {
+            result.options.animationTest = true;
+            continue;
+        }
+        if (arg == "--animation-script") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--animation-script requires an .ncs path");
+            }
+            result.options.animationScript = value;
+            continue;
+        }
         if (arg == "--combat-force-script") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -448,6 +460,8 @@ void printUsage()
         << "  --ui-test             Assert the systems UI panel state\n"
         << "  --loot-test           Assert container loot transfer\n"
         << "  --combat-force-test   Assert feats, Force powers, saves and alignment\n"
+        << "  --animation-test      Assert MDL clips, skinning and playback\n"
+        << "  --animation-script <ncs>  PlayAnimation script bridge assertions\n"
         << "  --combat-force-script <ncs>  Script bridge assertions for the combat-force gate\n"
         << "  --delayed-test <ncs>  Assert DelayCommand/AssignCommand closure execution\n"
         << "  --panel <name>        Open character|inventory|party|journal|merchant at startup\n"

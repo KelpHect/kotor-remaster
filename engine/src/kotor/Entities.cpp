@@ -142,55 +142,56 @@ std::uint32_t ensureTexture(Scene& scene, Install& install, const std::string& r
     }
 }
 
-bool loadModel(Install& install, const std::string& modelName, std::vector<MdlTriangle>& triangles,
-               std::string& error)
+std::shared_ptr<Mdl> loadModel(Install& install, const std::string& modelName, std::string& error)
 {
     if (modelName.empty()) {
         error = "empty model name";
-        return false;
+        return nullptr;
     }
     auto mdl = install.find(modelName, resType(ResType::Mdl));
     auto mdx = install.find(modelName, resType(ResType::Mdx));
     if (!mdl.has_value() || !mdx.has_value()) {
         error = "missing MDL/MDX for " + modelName;
-        return false;
+        return nullptr;
     }
     try {
-        Mdl model = Mdl::parse(std::move(*mdl), std::move(*mdx), lower(modelName) + ".mdl");
-        triangles = model.triangles({0.0f, 0.0f, 0.0f});
-        // A parsed model may legitimately have no trimesh geometry (smoke,
-        // steam and other emitter placeables). That is not a load failure.
-        return true;
+        return std::make_shared<Mdl>(Mdl::parse(std::move(*mdl), std::move(*mdx),
+                                                lower(modelName) + ".mdl"));
     } catch (const FormatError& exception) {
         error = exception.what();
-        return false;
+        return nullptr;
     }
 }
 
 void buildMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
-               const std::vector<MdlTriangle>& triangles)
+               const std::shared_ptr<Mdl>& model)
 {
-    std::map<std::string, std::vector<MdlTriangle>> byTexture;
-    for (const MdlTriangle& triangle : triangles) {
+    if (!model) {
+        return;
+    }
+    std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
+    for (MdlMeshTriangle& triangle : model->meshTriangles()) {
         std::string texture = lower(triangle.texture);
         if (texture.empty()) {
             texture = "__default";
         }
-        byTexture[texture].push_back(triangle);
+        byTexture[texture].push_back(std::move(triangle));
     }
     EntityMesh mesh;
     mesh.entity = entityIndex;
+    mesh.model = model;
     for (const auto& [textureName, list] : byTexture) {
         const std::uint32_t texture = ensureTexture(scene, install, textureName);
         TextureBatch batch;
         batch.texture = texture;
         batch.firstIndex = static_cast<std::uint32_t>(mesh.indices.size());
-        for (const MdlTriangle& triangle : list) {
+        for (const MdlMeshTriangle& triangle : list) {
+            mesh.triangles.push_back(triangle);
             for (int i = 0; i < 3; ++i) {
                 SceneVertex vertex;
-                vertex.position = triangle.p[i];
-                vertex.normal = triangle.normal;
-                vertex.uv = triangle.uv[i];
+                vertex.position = triangle.v[i].position;
+                vertex.normal = triangle.v[i].normal;
+                vertex.uv = triangle.v[i].uv;
                 mesh.vertices.push_back(vertex);
                 mesh.indices.push_back(static_cast<std::uint32_t>(mesh.vertices.size() - 1));
             }
@@ -203,6 +204,44 @@ void buildMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
     if (!mesh.vertices.empty()) {
         scene.entityMeshes.push_back(std::move(mesh));
     }
+}
+
+void refreshEntityMeshImpl(EntityMesh& mesh)
+{
+    if (!mesh.model) {
+        return;
+    }
+    std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
+    for (MdlMeshTriangle& triangle : mesh.model->posedTriangles(mesh.animation, mesh.animationTime)) {
+        std::string texture = lower(triangle.texture);
+        if (texture.empty()) {
+            texture = "__default";
+        }
+        byTexture[texture].push_back(std::move(triangle));
+    }
+    mesh.triangles.clear();
+    mesh.vertices.clear();
+    for (const auto& [textureName, list] : byTexture) {
+        (void)textureName;
+        for (const MdlMeshTriangle& triangle : list) {
+            mesh.triangles.push_back(triangle);
+            for (int i = 0; i < 3; ++i) {
+                SceneVertex vertex;
+                vertex.position = triangle.v[i].position;
+                vertex.normal = triangle.v[i].normal;
+                vertex.uv = triangle.v[i].uv;
+                mesh.vertices.push_back(vertex);
+            }
+        }
+    }
+    if (mesh.indices.size() != mesh.vertices.size()) {
+        mesh.indices.clear();
+        mesh.indices.reserve(mesh.vertices.size());
+        for (std::uint32_t i = 0; i < mesh.vertices.size(); ++i) {
+            mesh.indices.push_back(i);
+        }
+    }
+    ++mesh.revision;
 }
 
 void applyEquippedWeapon(Entity& entity, Install& install, const Gff& utc,
@@ -388,6 +427,11 @@ void addEncounterGeometry(Scene& scene, Install& install, const Gff& git)
 
 } // namespace
 
+void refreshEntityMesh(EntityMesh& mesh)
+{
+    refreshEntityMeshImpl(mesh);
+}
+
 void collectScriptHooks(const Gff& gff, std::uint32_t structure,
                         std::map<std::string, std::string>& scripts)
 {
@@ -489,10 +533,10 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
         scene.entities.push_back(std::move(entity));
         const std::size_t index = scene.entities.size() - 1;
         if (!scene.entities[index].model.empty()) {
-            std::vector<MdlTriangle> triangles;
             std::string error;
-            if (loadModel(install, scene.entities[index].model, triangles, error)) {
-                buildMesh(scene, install, static_cast<std::uint32_t>(index), triangles);
+            if (const std::shared_ptr<Mdl> model =
+                    loadModel(install, scene.entities[index].model, error)) {
+                buildMesh(scene, install, static_cast<std::uint32_t>(index), model);
             } else {
                 scene.warnings.push_back(scene.entities[index].model + ": " + error);
             }
@@ -654,10 +698,9 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
         if (!entity.model.empty()
             && (entity.kind == EntityKind::Creature || entity.kind == EntityKind::Door
                 || entity.kind == EntityKind::Placeable)) {
-            std::vector<MdlTriangle> triangles;
             std::string error;
-            if (loadModel(install, entity.model, triangles, error)) {
-                buildMesh(scene, install, static_cast<std::uint32_t>(index), triangles);
+            if (const std::shared_ptr<Mdl> model = loadModel(install, entity.model, error)) {
+                buildMesh(scene, install, static_cast<std::uint32_t>(index), model);
             } else {
                 scene.warnings.push_back(entity.model + ": " + error);
             }
