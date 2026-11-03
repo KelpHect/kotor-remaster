@@ -27,8 +27,8 @@ save/load.
    the full award. The party panel exposes the roster. `--party-test` proves all of it on the
    shipped Carth/Trask roster.
 4. **Systems UI** - ImGui panels for character, inventory/equipment, party, journal and merchant
-   stock replace the debug-only HUD state. Keyboard toggles (C/I/P/J/M) work in the real loop; the
-   panel state is asserted headlessly, and a real Vulkan/GL capture shows the merchant and inventory
+   stock extend the playable HUD. Keyboard toggles (C/I/P/J/M) work in the real loop; the panel
+   state is asserted headlessly, and a real Vulkan capture shows the merchant, inventory and party
    panels.
 5. **Persistence** - the engine save slot round-trips the character, companions, party roster,
    inventory/equipment, journal, gold, merchant stock deltas and script globals/locals. A load
