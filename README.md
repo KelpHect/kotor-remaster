@@ -4,7 +4,7 @@ Status: **Sprint 5 (playable KotOR P4 vertical slice) complete - gate S5 met (20
 engine's own C++23 runtime loads a user-owned KotOR 1.0.3.0 install directly and plays the
 `end_m01aa` slice on Vulkan 1.4 and OpenGL 4.5: room/entity models, textures, collision, doors,
 triggers, dialogue, basic combat, save/load, and a minimal HUD. The deterministic 1800-second gate
-passes, the scene parity check is 0.03/255, and 11/11 CTest targets pass. Sprint 4 remains
+passes, the scene parity check is 0.03/255, and 13/13 CTest targets pass. Sprint 4 remains
 complete: Hydra 12.3-hydra.6 / Hydralysis 0.8.0 record real 32-bit KotOR processes; two independent
 live runs are gap-free and the engine's aligned diff proves the deterministic 351-action prefix
 identical. Sprint 3 remains complete (228/228 source-level recompiles, 0 ABI, 8,666/8,666 raw

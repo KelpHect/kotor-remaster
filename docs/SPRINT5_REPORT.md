@@ -24,7 +24,7 @@ $ctest = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\I
 & $ctest --preset msvc-release --output-on-failure
 ```
 
-Result: **11/11 tests passed, 0 failed** (3.16 s on the final run; timing varies). Captured in
+Result: **13/13 tests passed, 0 failed** (1.97 s on the final run; timing varies). Captured in
 `engine/artifacts/engine/s5-evidence/ctest.log`.
 
 ## 1. Module load and scene inventory
@@ -122,10 +122,12 @@ combat test: end_darkjedi01 dead=1 hp=-3/8 player=94/100 steps=110
 The target and player HP are shown in the HUD, and the recent events list records rolls, hits,
 and the kill. Dead entities are skipped by both renderers.
 
-## 5. Triggers, doors, and save/load
+## 5. Triggers, placeables, doors, and save/load
 
 - `end_trig02` has a four-point GIT polygon. `updateTriggers()` tests the player's XY position
   against the triangulated polygon and fires the enter event once.
+- `end_locker01` has UTP `Useable = 1`; `usePlaceable()` records `use end_locker01` when the player
+  is within 2.5 m. The gate asserts the event.
 - `testTransition` selects a linked door, copies `LinkedToModule`/`LinkedTo` before reloading (the
   earlier reference into the replaced scene was a use-after-free), and loads the target module.
 - Save/load writes and restores the module, position, yaw, pitch, and player HP.
@@ -134,10 +136,11 @@ The combined playthrough output includes:
 
 ```text
 playthrough: trigger end_trig02 fired=1
+playthrough: placeable end_locker01 used=1 logged=1
 playthrough: combat target end_darkjedi01 dead=1 playerHp=94/100 steps=110
 playthrough: transition end_m01aa -> end_m01ab ok=1
 playthrough: save/load module=end_m01ab same=1
-playthrough: simulated 1800.03 s, events=15
+playthrough: simulated 1800.03 s, events=18
 playthrough: PASS
 ```
 
@@ -151,6 +154,7 @@ The gate runs a fixed set of events and then advances simulated time to 1800 s:
 
 - walks or script-spawns to Trask, opens the real dialogue, follows a branch;
 - enters the `end_trig02` trigger;
+- uses the `end_locker01` footlocker through the placeable interaction path;
 - fights the first Sith apprentice to death;
 - takes the first linked door to `end_m01ab`;
 - saves and reloads the player snapshot in the new module;
@@ -207,7 +211,9 @@ unexplained hard failures.
 | `smoke_null_headless` | passed |
 | `smoke_imgui_selftest` | passed |
 | `kotor_scene_stats` | passed |
+| `kotor_scene_assert` | passed |
 | `kotor_door_transition` | passed |
+| `kotor_taris_transition` | passed |
 | `kotor_walk_collision` | passed |
 | `kotor_dialogue` | passed |
 | `kotor_combat` | passed |
@@ -240,6 +246,8 @@ unexplained hard failures.
     already-sRGB texels), a Y-down viewport with a GL projection, and BGRA readback into an RGBA
     BMP. The UNORM swapchain, projection-Y flip, and channel conversion bring the scene diff to
     0.03/255.
+11. **Placeable use** - UTP `Useable` was not read; the loader now maps it and the interaction path
+    records `use <tag>` (the Endar Spire footlocker is the gate case).
 
 ## 11. Limitations and open work
 
@@ -248,6 +256,7 @@ unexplained hard failures.
 - Combat is a basic d20 attack/damage loop; no feats, Force powers, rounds, or death animation.
 - Save format is engine-local (`kotor.engine.player/1`), not original KotOR save compatibility.
 - GUI is the HUD, dialogue panel, and combat log; not the full `.gui` screen set.
+- Placeables support a basic `Useable` event only; there is no inventory/loot UI.
 - The 1800 s gate is deterministic simulated time, not a wall-clock session.
 - Four modules are validated (`end_m01aa`, `end_m01ab`, `tar_m02af`, `tar_m02aa`), not all 117.
 - `end_m01aa`'s first chosen dialogue branch is the controls tutorial because full `Active`
@@ -267,8 +276,9 @@ same files. The scene captures and logs are the final run used in this report.
 - Parity report: `engine/artifacts/engine/parity/parity-report.txt`
 - Parity captures: `engine/artifacts/engine/parity/parity-gl.png`,
   `engine/artifacts/engine/parity/parity-vk.png`, `parity-diff.png`
-- UI captures: `engine/artifacts/engine/demo-dialogue2.png`,
-  `engine/artifacts/engine/demo-combat.png`
+- Scene assert: `engine/artifacts/engine/s5-evidence/scene-assert.log`
+- UI captures: `engine/artifacts/engine/demo-dialogue4.png`,
+  `engine/artifacts/engine/demo-combat4.png`
 - Map validation: `artifacts/lanes/s5-mapvalidate.log`,
   `artifacts/lanes/s5-mapvalidate/summary.json`
 - Technical note: [docs/recon/42_PLAYABLE_SLICE.md](recon/42_PLAYABLE_SLICE.md)

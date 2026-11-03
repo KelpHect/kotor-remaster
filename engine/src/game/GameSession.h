@@ -68,6 +68,7 @@ public:
     void chooseDialogueOption(std::size_t optionIndex);
     void endDialogue();
     const DialogueView& dialogue() const { return dialogueView_; }
+    bool usePlaceable(std::size_t entityIndex);
 
     void attackNearestHostile();
     std::uint32_t combatTarget() const { return combatTarget_; }
@@ -82,6 +83,9 @@ public:
     std::size_t findEntity(const std::string& tag) const;
     void setPositionForTest(kotor::Vec3 position) { position_ = position; }
     void faceTowards(kotor::Vec3 target);
+    // Finds a standable spot with a clear walkmesh line to the target. Used by
+    // the demo captures so an NPC is not hidden behind a partition.
+    bool findClearView(kotor::Vec3 target, float radius, kotor::Vec3& out) const;
 
 private:
     struct ActiveDialogue {

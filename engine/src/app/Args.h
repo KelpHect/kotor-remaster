@@ -21,6 +21,7 @@ struct Options {
     bool combatTest = false;
     bool playthrough = false;
     bool landmarkTest = false;
+    bool sceneAssert = false;
     bool demoDialogue = false;
     bool demoCombat = false;
     int width = 1280;

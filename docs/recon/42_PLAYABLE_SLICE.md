@@ -97,6 +97,8 @@ text. Current result: 0.03/255 mean absolute channel difference.
   2.5 s timer; the player attacks every 1.8 s in range.
 - **Triggers**: GIT trigger geometry is triangulated; a point-in-triangle XY test fires
   `ScriptOnEnter`/`ScriptOnExit` once per transition.
+- **Placeables**: UTP `Useable` is loaded; the interaction path records `use <tag>` within 2.5 m
+  (the Endar Spire footlocker is the gate case). There is no inventory/loot UI yet.
 - **Doors**: `LinkedToModule`/`LinkedTo` cause a module reload; `LinkedTo` positions the player at
   the target door. The transition copies the strings before reloading the scene.
 - **Save/load**: `kotor.engine.player/1` stores module, position, yaw, pitch, and HP. This is an
@@ -110,14 +112,15 @@ text. Current result: 0.03/255 mean absolute channel difference.
 
 1. Trask dialogue (walks; script-spawn fallback when the direct path is blocked).
 2. `end_trig02` enter event (trigger centroid).
-3. First hostile fight to death.
-4. First linked door transition (`end_m01aa -> end_m01ab`).
-5. Save/load round-trip in the new module.
-6. Advance simulated time to 1800 s.
+3. `end_locker01` footlocker use through the placeable path.
+4. First hostile fight to death.
+5. First linked door transition (`end_m01aa -> end_m01ab`).
+6. Save/load round-trip in the new module.
+7. Advance simulated time to 1800 s.
 
-`--landmark-test` checks known GIT/IFO positions and headings. `--dialogue-test`,
-`--combat-test`, `--scene-stats`, `--walk-test`, and `--door-test` are the other headless gates.
-CTest runs all 11.
+`--landmark-test` checks known GIT/IFO positions and headings. `--scene-assert` asserts the exact
+loader inventory. `--dialogue-test`, `--combat-test`, `--scene-stats`, `--walk-test`, and
+`--door-test` are the other headless gates. CTest runs all 13.
 
 ## 7. Gotchas closed
 

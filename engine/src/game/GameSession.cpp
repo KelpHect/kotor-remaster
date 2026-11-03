@@ -360,13 +360,21 @@ std::string GameSession::interactionPrompt() const
         return "E: talk to " + (talk->name.empty() ? talk->tag : talk->name);
     }
     const kotor::Entity* door = nearestDoor(2.8f);
-    if (door == nullptr) {
-        return {};
+    if (door != nullptr) {
+        if (door->linkedModule.empty()) {
+            return "E: " + door->tag + " (no transition)";
+        }
+        return "E: " + door->tag + " -> " + door->linkedModule;
     }
-    if (door->linkedModule.empty()) {
-        return "E: " + door->tag + " (no transition)";
+    for (const kotor::Entity& entity : scene_.entities) {
+        if (entity.kind != kotor::EntityKind::Placeable || !entity.useable || entity.dead) {
+            continue;
+        }
+        if (distance2D(position_, entity.position) < 2.5f) {
+            return "E: use " + (entity.name.empty() ? entity.tag : entity.name);
+        }
     }
-    return "E: " + door->tag + " -> " + door->linkedModule;
+    return {};
 }
 
 bool GameSession::interact()
@@ -386,7 +394,32 @@ bool GameSession::interact()
         logEvent("door " + door->tag + ": no transition");
         return true;
     }
+    for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+        const kotor::Entity& entity = scene_.entities[i];
+        if (entity.kind != kotor::EntityKind::Placeable || !entity.useable || entity.dead) {
+            continue;
+        }
+        if (distance2D(position_, entity.position) < 2.5f) {
+            return usePlaceable(i);
+        }
+    }
     return false;
+}
+
+bool GameSession::usePlaceable(std::size_t entityIndex)
+{
+    if (entityIndex >= scene_.entities.size()) {
+        return false;
+    }
+    kotor::Entity& entity = scene_.entities[entityIndex];
+    if (entity.kind != kotor::EntityKind::Placeable || !entity.useable || entity.dead) {
+        return false;
+    }
+    if (distance2D(position_, entity.position) > 2.5f) {
+        return false;
+    }
+    logEvent("use " + entity.tag);
+    return true;
 }
 
 bool GameSession::testTransition(std::string& from, std::string& to)
@@ -411,6 +444,31 @@ void GameSession::faceTowards(kotor::Vec3 target)
 {
     yaw_ = std::atan2(target.y - position_.y, target.x - position_.x);
     pitch_ = 0.0f;
+}
+
+bool GameSession::findClearView(kotor::Vec3 target, float radius, kotor::Vec3& out) const
+{
+    constexpr int kAngles = 16;
+    const float radii[3] = {radius, radius + 1.5f, radius + 3.0f};
+    for (const float r : radii) {
+        for (int i = 0; i < kAngles; ++i) {
+            const float angle = 2.0f * kPi * static_cast<float>(i) / static_cast<float>(kAngles);
+            kotor::Vec3 candidate{target.x + std::cos(angle) * r,
+                                  target.y + std::sin(angle) * r, target.z};
+            float ground = candidate.z;
+            if (!floorHeight(scene_, candidate.x, candidate.y, candidate.z + 2.0f, ground)) {
+                continue;
+            }
+            candidate.z = ground;
+            const kotor::Vec3 from{candidate.x, candidate.y, ground + 1.2f};
+            const kotor::Vec3 to{target.x, target.y, target.z + 1.0f};
+            if (!wallBlocked(scene_, from, to, 0.15f)) {
+                out = candidate;
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 bool GameSession::walkTo(kotor::Vec3 target, float maxSeconds)
