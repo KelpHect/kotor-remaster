@@ -175,6 +175,13 @@ public:
 
     void setCamera(const SceneCamera& camera) override { camera_ = camera; }
 
+    void refreshEntityMeshes(const kotor::Scene& scene) override
+    {
+        if (sceneReady_) {
+            sceneRenderer_.refreshEntityMeshes(scene);
+        }
+    }
+
     bool screenshot(const std::filesystem::path& path) override
     {
         if (!sceneReady_ || scene_ == nullptr || window_ == nullptr) {

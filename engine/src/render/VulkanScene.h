@@ -19,6 +19,7 @@ public:
     bool initialize(VkDevice device, VkPhysicalDevice physicalDevice, VkCommandPool commandPool,
                     VkQueue queue, VkFormat colorFormat, std::string& error);
     bool upload(const kotor::Scene& scene, std::string& error);
+    void refreshEntityMeshes(const kotor::Scene& scene);
     void resize(VkExtent2D extent, std::string& error);
     void prepareDepth(VkCommandBuffer commandBuffer);
     void draw(VkCommandBuffer commandBuffer, const SceneCamera& camera, VkExtent2D extent);
@@ -38,6 +39,7 @@ private:
     struct GpuMesh {
         VkBuffer vertexBuffer = VK_NULL_HANDLE;
         VkDeviceMemory vertexMemory = VK_NULL_HANDLE;
+        VkDeviceSize vertexBytes = 0;
         VkBuffer indexBuffer = VK_NULL_HANDLE;
         VkDeviceMemory indexMemory = VK_NULL_HANDLE;
         std::vector<kotor::TextureBatch> batches;

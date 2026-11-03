@@ -288,6 +288,108 @@ void GameSession::leaveStealth()
     logEvent("stealth exit");
 }
 
+namespace {
+
+kotor::EntityMesh* findEntityMesh(kotor::Scene& scene, std::size_t entityIndex)
+{
+    for (kotor::EntityMesh& mesh : scene.entityMeshes) {
+        if (mesh.entity == entityIndex) {
+            return &mesh;
+        }
+    }
+    return nullptr;
+}
+
+const kotor::EntityMesh* findEntityMesh(const kotor::Scene& scene, std::size_t entityIndex)
+{
+    for (const kotor::EntityMesh& mesh : scene.entityMeshes) {
+        if (mesh.entity == entityIndex) {
+            return &mesh;
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
+
+bool GameSession::playAnimation(std::size_t entityIndex, const std::string& name, bool loop)
+{
+    kotor::EntityMesh* mesh = findEntityMesh(scene_, entityIndex);
+    if (mesh == nullptr || !mesh->model || mesh->model->animationDuration(name) <= 0.0f) {
+        return false;
+    }
+    mesh->animation = name;
+    mesh->animationTime = 0.0f;
+    mesh->animationLoop = loop;
+    kotor::refreshEntityMesh(*mesh);
+    ++animationRevision_;
+    return true;
+}
+
+void GameSession::stopAnimation(std::size_t entityIndex)
+{
+    if (kotor::EntityMesh* mesh = findEntityMesh(scene_, entityIndex)) {
+        mesh->animation.clear();
+        mesh->animationTime = 0.0f;
+        kotor::refreshEntityMesh(*mesh);
+        ++animationRevision_;
+    }
+}
+
+std::string GameSession::animationName(std::size_t entityIndex) const
+{
+    const kotor::EntityMesh* mesh = findEntityMesh(scene_, entityIndex);
+    return mesh == nullptr ? std::string{} : mesh->animation;
+}
+
+float GameSession::animationTime(std::size_t entityIndex) const
+{
+    const kotor::EntityMesh* mesh = findEntityMesh(scene_, entityIndex);
+    return mesh == nullptr ? 0.0f : mesh->animationTime;
+}
+
+void GameSession::updateAnimations(float dt)
+{
+    if (!animationEnabled_) {
+        return;
+    }
+    for (kotor::EntityMesh& mesh : scene_.entityMeshes) {
+        if (!mesh.model || mesh.animation.empty()) {
+            continue;
+        }
+        const float duration = mesh.model->animationDuration(mesh.animation);
+        if (duration <= 0.0f) {
+            continue;
+        }
+        mesh.animationTime += dt;
+        if (mesh.animationLoop) {
+            mesh.animationTime = std::fmod(mesh.animationTime, duration);
+        } else {
+            mesh.animationTime = std::min(mesh.animationTime, duration);
+        }
+        kotor::refreshEntityMesh(mesh);
+        ++animationRevision_;
+    }
+}
+
+void GameSession::initAnimations()
+{
+    for (kotor::EntityMesh& mesh : scene_.entityMeshes) {
+        if (!mesh.model) {
+            continue;
+        }
+        for (const char* name : {"pause1", "pause", "cpause1", "default"}) {
+            if (mesh.model->animationDuration(name) > 0.0f) {
+                mesh.animation = name;
+                mesh.animationTime = 0.0f;
+                mesh.animationLoop = true;
+                break;
+            }
+        }
+    }
+    ++animationRevision_;
+}
+
 GameSession::GameSession(std::string installPath, std::string module)
     : installPath_(std::move(installPath))
     , install_(installPath_)
@@ -377,6 +479,7 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
         initScriptWorld();
         syncPlayerToScriptWorld();
     }
+    initAnimations();
     return true;
 }
 
@@ -1236,6 +1339,7 @@ void GameSession::update(float dt, const InputState& input)
     }
     dt = std::min(dt, 0.08f);
     elapsed_ += dt;
+    updateAnimations(dt);
     yaw_ += input.mouseDx * 0.0026f;
     pitch_ = clamp(pitch_ - input.mouseDy * 0.0022f, -1.35f, 1.35f);
 
@@ -2822,6 +2926,22 @@ std::optional<std::vector<script::Value>> GameSession::action(
     case 378: // OpenStore
         scriptLog_.push_back("store " + stringArg(0));
         return std::vector<script::Value>{};
+    case 40: // ActionPlayAnimation
+    case 300: { // PlayAnimation
+        const std::int32_t animationId = static_cast<std::int32_t>(intArg(0));
+        const std::string name = rules_.animationName(animationId);
+        if (!name.empty()) {
+            const std::uint32_t self = runtime_ != nullptr
+                ? runtime_->contextObject("self") : world.pc;
+            for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+                if (objectForEntity(i) == self) {
+                    playAnimation(i, name, rules_.animationLooping(animationId));
+                    break;
+                }
+            }
+        }
+        return std::vector<script::Value>{};
+    }
     case 48: // ActionCastSpellAtObject
         useForcePower(static_cast<std::int32_t>(intArg(0)), objectArg(1));
         return std::vector<script::Value>{};

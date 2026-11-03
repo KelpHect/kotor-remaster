@@ -32,6 +32,8 @@ struct Options {
     bool uiTest = false;
     bool lootTest = false;
     bool combatForceTest = false;
+    bool animationTest = false;
+    std::string animationScript;
     std::string combatForceScript;
     std::string delayedTest;
     std::string panel;

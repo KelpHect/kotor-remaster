@@ -9,8 +9,10 @@
 
 #include <cstdint>
 #include <cmath>
+#include <array>
 #include <filesystem>
 #include <map>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -32,6 +34,10 @@ struct Vec3 {
     float x = 0.0f;
     float y = 0.0f;
     float z = 0.0f;
+};
+
+struct Mat3 {
+    float m[3][3]{};
 };
 
 inline Vec3 operator+(Vec3 a, Vec3 b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
@@ -279,24 +285,70 @@ struct MdlTriangle {
     std::string texture;
 };
 
-// Minimal MDL/MDX parser for room meshes: node hierarchy, trimesh nodes and
-// world-space triangles. Animation controllers and skinning are out of scope
-// for the first vertical slice.
+struct MdlMeshVertex {
+    Vec3 position;
+    Vec3 normal;
+    Vec2 uv;
+    std::int32_t node = -1;
+    std::array<float, 4> weights{0.0f, 0.0f, 0.0f, 0.0f};
+    std::array<std::int32_t, 4> bones{-1, -1, -1, -1};
+};
+
+struct MdlMeshTriangle {
+    MdlMeshVertex v[3];
+    std::string texture;
+};
+
+struct MdlAnimationInfo {
+    std::string name;
+    float duration = 0.0f;
+    float transition = 0.0f;
+};
+
+// Minimal MDL/MDX parser: node hierarchy, trimesh/skin nodes, world-space
+// triangles and animation clips. Skinning is evaluated on the CPU.
 class Mdl {
 public:
     static Mdl parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std::string name);
+
     std::vector<MdlTriangle> triangles(Vec3 roomOrigin) const;
+    std::vector<MdlMeshTriangle> meshTriangles() const;
+    std::vector<MdlMeshTriangle> posedTriangles(const std::string& animation, float time) const;
 
     const std::string& name() const { return name_; }
+    const std::vector<MdlAnimationInfo>& animations() const { return animations_; }
+    int animationIndex(const std::string& name) const;
+    float animationDuration(const std::string& name) const;
+    std::size_t skinnedNodeCount() const;
+    float skinBindError() const;
 
 private:
+    struct ControllerKey {
+        float time = 0.0f;
+        std::vector<float> data;
+    };
+
+    struct Controller {
+        std::int32_t type = 0;
+        bool bezier = false;
+        std::vector<ControllerKey> keys;
+    };
+
+    struct Skin {
+        std::vector<std::int32_t> boneMap;
+        std::vector<std::array<float, 4>> qbones;
+        std::vector<Vec3> tbones;
+        std::uint32_t weightsOffset = 0;
+        std::uint32_t bonesOffset = 0;
+    };
+
     struct Node {
         std::uint32_t offset = 0;
         std::uint16_t type = 0;
-        std::uint16_t nameIndex = 0;
+        std::uint16_t supernode = 0;
+        std::uint16_t nodeId = 0;
         std::uint32_t parent = 0;
         Vec3 position;
-        Vec3 quaternion; // stored WXYZ; x/y/z below
         float qw = 1.0f;
         float qx = 0.0f;
         float qy = 0.0f;
@@ -311,13 +363,37 @@ private:
         std::string texture0;
         std::string texture1;
         bool trimesh = false;
+        std::optional<Skin> skin;
+        std::vector<Controller> controllers;
     };
+
+    struct Animation {
+        std::string name;
+        float duration = 0.0f;
+        float transition = 0.0f;
+        std::vector<Node> nodes;
+    };
+
+    struct Pose {
+        Mat3 rotation;
+        Vec3 translation;
+    };
+
+    std::vector<Node> parseNodes(std::uint32_t rootOffset) const;
+    std::vector<Controller> parseControllers(std::uint32_t nodeHeader) const;
+    Animation parseAnimation(std::uint32_t offset) const;
+    std::map<std::uint16_t, const Node*> animationNodes(const Animation& animation) const;
+    std::vector<Pose> poseWorld(const Animation* animation, float time) const;
 
     std::string name_;
     std::vector<std::uint8_t> mdl_;
     std::vector<std::uint8_t> mdx_;
     std::vector<Node> nodes_;
+    std::vector<Animation> animationData_;
+    std::vector<MdlAnimationInfo> animations_;
+    std::vector<Pose> bindWorld_;
     std::unordered_map<std::uint32_t, std::size_t> nodeByOffset_;
+    std::unordered_map<std::uint16_t, std::size_t> nodeById_;
 };
 
 // ---- 2DA -----------------------------------------------------------------------------------------------------------------
@@ -601,14 +677,21 @@ struct SceneVertex {
     Vec2 uv;
 };
 
-// Static bind-pose geometry for one GIT instance. Vertices are in model space;
-// the entity's position/bearing is applied by the renderer, so a dead or moved
-// creature can be skipped without rebuilding the room buffers.
+// Geometry for one GIT instance. Vertices are in model space; the entity's
+// position/bearing is applied by the renderer. Animated meshes keep their MDL
+// and bind triangles so a pose can refresh the vertex buffer without rebuilding
+// topology.
 struct EntityMesh {
     std::uint32_t entity = 0;
+    std::shared_ptr<Mdl> model;
+    std::vector<MdlMeshTriangle> triangles;
     std::vector<SceneVertex> vertices;
     std::vector<std::uint32_t> indices;
     std::vector<TextureBatch> batches;
+    std::string animation;
+    float animationTime = 0.0f;
+    bool animationLoop = true;
+    std::uint32_t revision = 0;
 };
 
 // One walkable trigger polygon in world space (GIT TriggerList geometry).
@@ -678,6 +761,7 @@ struct Scene {
 };
 
 Scene loadModule(Install& install, const std::string& moduleStem);
+void refreshEntityMesh(EntityMesh& mesh);
 
 // Collect non-empty script hook fields from one GFF struct into a hook map.
 // Used for ARE/IFO module hooks and GIT instance overrides.

@@ -52,6 +52,7 @@ public:
     // the application still runs its logical loop and HUD.
     virtual void setScene(const kotor::Scene* scene) { (void)scene; }
     virtual void setCamera(const SceneCamera& camera) { (void)camera; }
+    virtual void refreshEntityMeshes(const kotor::Scene& scene) { (void)scene; }
     virtual bool screenshot(const std::filesystem::path& path) { (void)path; return false; }
 
     virtual const BackendInfo& info() const = 0;

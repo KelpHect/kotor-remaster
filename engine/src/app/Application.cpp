@@ -1393,6 +1393,189 @@ std::string resolveInstallPath(const Options& options)
     return "E:/SteamLibrary/steamapps/common/swkotor";
 }
 
+int runAnimationTest(GameSession& game, const std::string& scriptPath)
+{
+    game.setAnimationEnabled(true);
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("animation test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    if (!game.rules().loaded()) {
+        logError("animation test: rules tables are not loaded");
+        return 50;
+    }
+    kotor::Install install(game.installPath());
+    const auto loadModel = [&](const std::string& name) -> std::optional<kotor::Mdl> {
+        auto mdl = install.find(name, 2002);
+        auto mdx = install.find(name, 3008);
+        if (!mdl.has_value() || !mdx.has_value()) {
+            return std::nullopt;
+        }
+        try {
+            return kotor::Mdl::parse(std::move(*mdl), std::move(*mdx), name + ".mdl");
+        } catch (const kotor::FormatError& exception) {
+            logError(concat("animation test: ", name, " parse failed: ", exception.what()));
+            return std::nullopt;
+        }
+    };
+
+    const std::optional<kotor::Mdl> bith = loadModel("n_bith");
+    check(bith.has_value(), "bith_loaded");
+    if (!bith.has_value()) {
+        return 51;
+    }
+    check(bith->animations().size() >= 10, "bith_clip_count");
+    check(std::fabs(bith->animationDuration("pause1") - 3.0f) < 0.01f, "bith_pause1_duration");
+    check(std::fabs(bith->animationDuration("walk") - 1.0f) < 0.01f, "bith_walk_duration");
+    check(bith->skinnedNodeCount() >= 4, "bith_skin_nodes");
+    check(bith->skinBindError() < 0.001f, "bith_skin_bind");
+
+    const std::vector<kotor::MdlMeshTriangle> bind = bith->meshTriangles();
+    const std::vector<kotor::MdlMeshTriangle> walk = bith->posedTriangles("walk", 0.5f);
+    check(!bind.empty() && bind.size() == walk.size(), "bith_mesh_stable");
+    std::size_t moved = 0;
+    bool finite = true;
+    for (std::size_t i = 0; i < bind.size(); ++i) {
+        for (int v = 0; v < 3; ++v) {
+            const kotor::Vec3 a = bind[i].v[v].position;
+            const kotor::Vec3 b = walk[i].v[v].position;
+            finite = finite && std::isfinite(b.x) && std::isfinite(b.y) && std::isfinite(b.z);
+            const float dx = a.x - b.x;
+            const float dy = a.y - b.y;
+            const float dz = a.z - b.z;
+            if (std::sqrt(dx * dx + dy * dy + dz * dz) > 0.001f) {
+                ++moved;
+            }
+        }
+    }
+    check(finite, "bith_pose_finite");
+    check(moved > 0, "bith_pose_moves");
+
+    const std::optional<kotor::Mdl> bantha = loadModel("c_bantha");
+    check(bantha.has_value(), "bantha_loaded");
+    if (bantha.has_value()) {
+        check(bantha->skinnedNodeCount() >= 3, "bantha_skin_nodes");
+        check(bantha->skinBindError() < 0.01f, "bantha_skin_bind");
+        const std::vector<kotor::MdlMeshTriangle> posed =
+            bantha->posedTriangles("cwalk", 0.5f);
+        bool banthaFinite = !posed.empty();
+        for (const kotor::MdlMeshTriangle& triangle : posed) {
+            for (const kotor::MdlMeshVertex& vertex : triangle.v) {
+                banthaFinite = banthaFinite && std::isfinite(vertex.position.x)
+                    && std::isfinite(vertex.position.y) && std::isfinite(vertex.position.z);
+            }
+        }
+        check(banthaFinite, "bantha_pose_finite");
+    }
+
+    check(game.rules().animationName(6) == "pause1", "animation_2da_name");
+    check(game.rules().animationLooping(6), "animation_2da_loop");
+
+    std::size_t entityIndex = static_cast<std::size_t>(-1);
+    std::string defaultAnimation;
+    for (const kotor::EntityMesh& mesh : game.scene().entityMeshes) {
+        if (!mesh.animation.empty()) {
+            entityIndex = mesh.entity;
+            defaultAnimation = mesh.animation;
+            break;
+        }
+    }
+    check(entityIndex != static_cast<std::size_t>(-1), "default_animation");
+    check(!defaultAnimation.empty(), "default_animation_name");
+    std::size_t playbackIndex = entityIndex;
+    std::string playbackClip = defaultAnimation;
+    for (const kotor::EntityMesh& mesh : game.scene().entityMeshes) {
+        if (mesh.model && mesh.model->animationDuration("pause1") > 0.0f) {
+            playbackIndex = mesh.entity;
+            playbackClip = "pause1";
+            break;
+        }
+    }
+    if (playbackClip == defaultAnimation) {
+        for (const kotor::EntityMesh& mesh : game.scene().entityMeshes) {
+            if (mesh.model && mesh.model->animationDuration("walk") > 0.0f) {
+                playbackIndex = mesh.entity;
+                playbackClip = "walk";
+                break;
+            }
+        }
+    }
+    if (playbackIndex != static_cast<std::size_t>(-1)) {
+        const kotor::EntityMesh* mesh = nullptr;
+        for (const kotor::EntityMesh& candidate : game.scene().entityMeshes) {
+            if (candidate.entity == playbackIndex) {
+                mesh = &candidate;
+                break;
+            }
+        }
+        std::vector<kotor::Vec3> beforeVertices;
+        if (mesh != nullptr) {
+            beforeVertices.reserve(mesh->vertices.size());
+            for (const kotor::SceneVertex& vertex : mesh->vertices) {
+                beforeVertices.push_back(vertex.position);
+            }
+            logInfo(concat("animation test: model ", mesh->model ? mesh->model->name() : "(none)",
+                           " clip ", playbackClip, " vertices ", mesh->vertices.size(),
+                           " animations ", mesh->model ? mesh->model->animations().size() : 0));
+        }
+        const std::uint32_t revision = game.animationRevision();
+        check(game.playAnimation(playbackIndex, playbackClip, true), "play_animation");
+        InputState idle;
+        for (int i = 0; i < 12; ++i) {
+            game.update(0.08f, idle);
+        }
+        check(game.animationTime(playbackIndex) > 0.0f, "playback_time");
+        check(game.animationRevision() > revision, "playback_revision");
+        std::size_t movedVertices = 0;
+        if (mesh != nullptr && mesh->vertices.size() == beforeVertices.size()) {
+            for (std::size_t i = 0; i < mesh->vertices.size(); ++i) {
+                const kotor::Vec3 after = mesh->vertices[i].position;
+                const kotor::Vec3 old = beforeVertices[i];
+                if (std::fabs(after.x - old.x) > 0.0001f
+                    || std::fabs(after.y - old.y) > 0.0001f
+                    || std::fabs(after.z - old.z) > 0.0001f) {
+                    ++movedVertices;
+                }
+            }
+        }
+        check(movedVertices > 0, "playback_vertices");
+        check(game.animationName(playbackIndex) == playbackClip, "playback_name");
+    }
+
+    if (!scriptPath.empty()) {
+        std::ifstream scriptFile(scriptPath, std::ios::binary | std::ios::ate);
+        std::vector<std::uint8_t> scriptBytes;
+        if (scriptFile) {
+            const std::streamoff size = scriptFile.tellg();
+            scriptFile.seekg(0, std::ios::beg);
+            scriptBytes.resize(static_cast<std::size_t>(size));
+            if (!scriptBytes.empty()) {
+                scriptFile.read(reinterpret_cast<char*>(scriptBytes.data()), size);
+            }
+        }
+        check(!scriptBytes.empty(), "animation_script_loaded");
+        std::size_t scriptedEntity = static_cast<std::size_t>(-1);
+        for (const kotor::EntityMesh& mesh : game.scene().entityMeshes) {
+            if (mesh.model && mesh.model->animationDuration("pause1") > 0.0f) {
+                scriptedEntity = mesh.entity;
+                break;
+            }
+        }
+        check(scriptedEntity != static_cast<std::size_t>(-1), "animation_script_target");
+        if (scriptedEntity != static_cast<std::size_t>(-1)) {
+            game.stopAnimation(scriptedEntity);
+            check(game.runScriptNcsForTest("anim_script_test", scriptBytes,
+                                           game.objectForEntityIndex(scriptedEntity)),
+                  "animation_script_ran");
+            check(game.animationName(scriptedEntity) == "pause1", "animation_script_play");
+        }
+    }
+
+    logInfo(ok ? "animation test: PASS" : "animation test: FAIL");
+    return ok ? 0 : 52;
+}
+
 int runCombatForceTest(GameSession& game, const std::string& scriptPath)
 {
     if (!game.rules().loaded()) {
@@ -1995,6 +2178,7 @@ int runApplication(const Options& options)
         }
         try {
             game.emplace(installPath, options.module);
+            game->setAnimationEnabled(!options.headless && options.backend != BackendKind::Null);
             const ke::kotor::Scene& loaded = game->scene();
             const auto countKind = [&](ke::kotor::EntityKind kind) {
                 return std::count_if(loaded.entities.begin(), loaded.entities.end(),
@@ -2111,7 +2295,7 @@ int runApplication(const Options& options)
                     && loaded.vertices.size() == 235038
                     && loaded.indices.size() == 235038
                     && loaded.batches.size() == 34
-                    && loaded.textures.size() == 53
+                    && loaded.textures.size() == 58
                     && loaded.collisionVertices.size() == 850
                     && loaded.collision.size() == 1365
                     && loaded.entities.size() == 218
@@ -2162,6 +2346,9 @@ int runApplication(const Options& options)
             }
             if (options.combatForceTest) {
                 return runCombatForceTest(*game, options.combatForceScript);
+            }
+            if (options.animationTest) {
+                return runAnimationTest(*game, options.animationScript);
             }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);
@@ -2381,6 +2568,7 @@ int runApplication(const Options& options)
 
     std::uint64_t frames = 0;
     bool loggedUiGeometry = false;
+    std::uint32_t lastAnimationRevision = UINT32_MAX;
     bool running = true;
     bool mouseRelative = game && !options.headless;
     float mouseDx = 0.0f;
@@ -2487,6 +2675,10 @@ int runApplication(const Options& options)
             mouseDy = 0.0f;
             game->update(static_cast<float>(deltaMs / 1000.0), input);
             state.backend->setCamera(game->camera());
+            if (game->animationRevision() != lastAnimationRevision) {
+                lastAnimationRevision = game->animationRevision();
+                state.backend->refreshEntityMeshes(game->scene());
+            }
         }
 
         if (state.imguiReady) {

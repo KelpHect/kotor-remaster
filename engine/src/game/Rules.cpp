@@ -61,6 +61,7 @@ Rules::Rules(kotor::Install& install)
     baseitems_ = loadTable("baseitems");
     featgain_ = loadTable("featgain");
     spells_ = loadTable("spells");
+    animations_ = loadTable("animations");
     if (!classes_ || !exptable_ || !baseitems_) {
         error_ = "missing classes/exptable/baseitems 2DA";
         return;
@@ -320,6 +321,34 @@ std::string Rules::featName(std::int32_t featId) const
         return "feat " + std::to_string(featId);
     }
     return feat_->cell(row, "label");
+}
+
+std::string Rules::animationName(std::int32_t animationId) const
+{
+    if (!animations_) {
+        return {};
+    }
+    const std::string row = std::to_string(animationId);
+    if (animations_->rowIndex(row) < 0) {
+        return {};
+    }
+    return animations_->cell(row, "name");
+}
+
+bool Rules::animationLooping(std::int32_t animationId) const
+{
+    if (!animations_) {
+        return false;
+    }
+    return cellInt(*animations_, std::to_string(animationId), "looping", 0) != 0;
+}
+
+bool Rules::animationStationary(std::int32_t animationId) const
+{
+    if (!animations_) {
+        return false;
+    }
+    return cellInt(*animations_, std::to_string(animationId), "stationary", 0) != 0;
 }
 
 std::string Rules::powerName(std::int32_t powerId) const

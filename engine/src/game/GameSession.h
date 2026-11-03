@@ -197,6 +197,15 @@ public:
     bool enterStealth();
     void leaveStealth();
     bool stealthActive() const { return stealthActive_; }
+    bool playAnimation(std::size_t entityIndex, const std::string& name, bool loop = true);
+    void stopAnimation(std::size_t entityIndex);
+    std::string animationName(std::size_t entityIndex) const;
+    float animationTime(std::size_t entityIndex) const;
+    std::uint32_t animationRevision() const { return animationRevision_; }
+    void initAnimations();
+    void updateAnimations(float dt);
+    void setAnimationEnabled(bool enabled) { animationEnabled_ = enabled; }
+    bool animationEnabled() const { return animationEnabled_; }
     // Test hook invocation without moving the player; returns false if the
     // entity or hook is absent.
     bool runHookForTest(const std::string& hook, const std::string& tag,
@@ -286,6 +295,8 @@ private:
     std::int32_t lastForcePower_ = -1;
     bool lastForcePowerSuccess_ = false;
     bool stealthActive_ = false;
+    std::uint32_t animationRevision_ = 0;
+    bool animationEnabled_ = true;
     std::int32_t forceJumpBonus_ = 0;
     std::vector<float> npcAttackTimers_;
     std::vector<bool> triggerInside_;

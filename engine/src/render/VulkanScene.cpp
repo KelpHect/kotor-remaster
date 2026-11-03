@@ -455,6 +455,7 @@ VulkanScene::GpuMesh VulkanScene::uploadMesh(const std::vector<kotor::SceneVerte
     GpuMesh mesh;
     mesh.entity = entity;
     mesh.batches = batches;
+    mesh.vertexBytes = vertices.size() * sizeof(kotor::SceneVertex);
     if (vertices.empty() || indices.empty()) {
         return mesh;
     }
@@ -485,6 +486,26 @@ VulkanScene::GpuMesh VulkanScene::uploadMesh(const std::vector<kotor::SceneVerte
     std::memcpy(mapped, indices.data(), indices.size() * sizeof(std::uint32_t));
     vkUnmapMemory(device_, mesh.indexMemory);
     return mesh;
+}
+
+void VulkanScene::refreshEntityMeshes(const kotor::Scene& scene)
+{
+    std::size_t index = 1;
+    for (const kotor::EntityMesh& entityMesh : scene.entityMeshes) {
+        if (index >= meshes_.size()) {
+            break;
+        }
+        GpuMesh& mesh = meshes_[index++];
+        if (mesh.entity != entityMesh.entity || mesh.vertexMemory == VK_NULL_HANDLE
+            || entityMesh.vertices.size() * sizeof(kotor::SceneVertex) != mesh.vertexBytes) {
+            continue;
+        }
+        void* mapped = nullptr;
+        if (vkMapMemory(device_, mesh.vertexMemory, 0, mesh.vertexBytes, 0, &mapped) == VK_SUCCESS) {
+            std::memcpy(mapped, entityMesh.vertices.data(), mesh.vertexBytes);
+            vkUnmapMemory(device_, mesh.vertexMemory);
+        }
+    }
 }
 
 void VulkanScene::destroyMesh(GpuMesh& mesh)
