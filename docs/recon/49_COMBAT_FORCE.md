@@ -61,7 +61,22 @@ Save DC is `10 + level/2 + WIS modifier`; the target's `FortSaveThrow`,
 - **Dueling / Advanced / Master**: +1/+2/+3 attack.
 - **Two-Weapon Fighting / Advanced / Mastery**: -6/-4/-2/0 attack while two
   weapons are equipped.
-- Weapon proficiency, non-combat/crafting and skill feats are data-only.
+- **Caution / Improved / Master**: +1/+2/+3 Demolitions and Stealth.
+- **Empathy / Improved / Master**: +1/+2/+3 Persuade, Awareness and Treat Injury.
+- **Gear Head / Improved / Master**: +1/+2/+3 Repair, Security and Computer Use.
+- **Conditioning / Improved / Master**: +1/+2/+3 to all saving throws.
+- **Force Focus / Improved / Master**: +1/+2/+4 to Force power save DC.
+- **Scoundrel's Luck / Improved / Master**: +2/+4/+6 defense.
+- **Jedi Sense / Knight / Master**: +2/+4/+6 defense.
+- **Sneak Attack I-X**: +1d6..+10d6 against stunned/fear-immobilized targets.
+- **Improved/Master Toughness**: +1 HP/level and 2-point damage reduction
+  (Master adds a second +1 HP/level).
+- **Wookiee Toughness**: +2 HP/level and 2-point damage reduction.
+- **Armor/Weapon Proficiency**: base item `reqfeat0..4` is enforced by
+  `Rules::canEquip`; classes receive their starting proficiencies.
+- Battle Meditation, Jedi Defense projectile deflection, Force Camouflage and
+  Force Jump remain content-specific no-ops until their presentation/projectile/
+  stealth/navigation subsystems exist.
 
 Active modes last 30 s and are stored as `CombatMode`; the character panel
 shows the current mode.
@@ -99,10 +114,13 @@ mediation.
 
 ## 6. Persistence
 
-- Engine text save: `alignment`, `force_points`, `max_force_points`.
+- Engine text save: `alignment`, `force_points`, `max_force_points`, plus one
+  `effect=` line per live `ActiveEffect` and `force_suppressed`.
 - Original `SAVEGAME.sav`: PC `GoodEvil`, `CurrentForce`, `MaxForcePoints` are
-  read and written through the same `Mod_PlayerList` schema; a generated slot
-  round-trips alignment 25 and the current FP.
+  read and written through the same `Mod_PlayerList` schema; the live effect
+  stack uses `EffectList` entries with spell id, label, duration, bonuses,
+  shield, force and dispellable flags, plus `ForceSuppressed`. A generated slot
+  round-trips alignment 25, FP and an armor effect.
 - Feats round-trip through `feat=` lines and the original `FeatList`. Powers
   round-trip through `power=` lines and the original per-level
   `LvlStatList[].KnownList0[].Spell` list (the schema used by the real Jedi

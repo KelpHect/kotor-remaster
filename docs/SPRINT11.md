@@ -9,7 +9,7 @@ round-trip the new state.
 
 Baseline: Sprint 10 `34/34` CTest, 117/117 modules, VM 8,666/8,666, scene parity
 0.0300, Python 143 tests / 7 skips, install unchanged. Sprint 11 result:
-`35/35` CTest, 48.47 s.
+`35/35` CTest, 59.37 s.
 
 ## Gate S11
 
@@ -34,7 +34,10 @@ Baseline: Sprint 10 `34/34` CTest, 117/117 modules, VM 8,666/8,666, scene parity
    Toughness/Improved/Master, Weapon Focus/Specialization, Dueling and
    Two-Weapon Fighting/Advanced/Mastery. Modes modify attack/damage/critical
    threat; Flurry adds an attack; Whirlwind hits adjacent hostiles; two-weapon
-   penalties are -6/-4/-2/0 by tier.
+   penalties are -6/-4/-2/0 by tier. Skill feats (Caution/Empathy/Gear Head),
+   Conditioning saves, Force Focus DC, Scoundrel's Luck/Jedi Sense defense,
+   Sneak Attack, Toughness/Wookiee damage reduction and armor/weapon
+   proficiency follow their TLK-described formulas.
 4. **Alignment** - `CharacterSheet::alignment` is 0 dark .. 50 neutral ..
    100 light. Script get/set/adjust (`GetGoodEvilValue`,
    `GetAlignmentGoodEvil`, `SetGoodEvilValue`, `AdjustAlignment`) and party
@@ -45,8 +48,9 @@ Baseline: Sprint 10 `34/34` CTest, 117/117 modules, VM 8,666/8,666, scene parity
    `GetMaxForcePoints` and the talent type/id queries are exercised from a
    compiled NCS fixture.
 6. **Persistence** - engine saves and original `SAVEGAME.sav` slots round-trip
-   alignment, current/max Force points, feats and powers.
-7. **Regression** - **35/35** CTest (48.47 s), 117/117 modules with 0 failures /
+   alignment, current/max Force points, feats, powers, the live `ActiveEffect`
+   stack and suppression timer.
+7. **Regression** - **35/35** CTest, 117/117 modules with 0 failures /
    0 warnings, VM corpus 8,666/8,666 with 0 mismatches, scene parity 0.0300,
    Python 143 tests / 7 skips, install sentinel 0 session changes.
 8. **Evidence and docs** - report, technical note, fixtures and logs.
@@ -64,9 +68,9 @@ Baseline: Sprint 10 `34/34` CTest, 117/117 modules, VM 8,666/8,666, scene parity
 
 ## Explicitly not this sprint
 
-- Exact original formulas/animations for every non-combat feat (crafting,
-   skill focus, gear feats) and content-specific scripted ability exceptions.
-- Persisting active Force effects across save/load; the stack is live state.
+- Content-specific abilities that need absent presentation/subsystems:
+   Battle Meditation (large-scale only), Jedi Defense projectile deflection,
+   Force Camouflage (stealth presentation) and Force Jump (navigation presentation).
 - `ActionWait`/closure persistence across save, cutscenes, animation, audio/EAX,
    Bink/lip sync, full `.gui`, minigames, localization, mods/Override, KotOR 2
    world loading and P6 content.

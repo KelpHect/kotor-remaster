@@ -1419,6 +1419,63 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     }
     check(forcePowerCount == 44, "force_catalog_44");
     check(game.rules().featCount() == 125, "feat_catalog_125");
+    CharacterSheet passive = sheet;
+    passive.feats = {7}; // CAUTIOUS
+    check(game.rules().skillBonus(passive, "Demolitions") == 1, "caution_1");
+    passive.feats.insert(117); // IMPROVED_CAUTION
+    check(game.rules().skillBonus(passive, "Stealth") == 2, "caution_2");
+    passive.feats.insert(118); // MASTER_CAUTION
+    check(game.rules().skillBonus(passive, "Demolitions") == 3, "caution_3");
+    passive.feats.insert(10); // EMPATHY
+    check(game.rules().skillBonus(passive, "Persuade") == 1, "empathy_1");
+    passive.feats.insert(12); // GEAR_HEAD
+    check(game.rules().skillBonus(passive, "Repair") == 1, "gear_head_1");
+    const std::int32_t baseFort = game.rules().savingThrow(3, 5, 0);
+    passive.feats.insert(13); // CONDITIONING
+    check(game.rules().savingThrow(passive, 0) == baseFort + 1, "conditioning_1");
+    passive.feats.insert(21); // IMPROVED_CONDITIONING
+    check(game.rules().savingThrow(passive, 0) == baseFort + 2, "conditioning_2");
+    passive.feats.insert(22); // MASTER_CONDITIONING
+    check(game.rules().savingThrow(passive, 0) == baseFort + 3, "conditioning_3");
+    passive.feats.insert(60); // SNEAK_ATTACK_1D6
+    check(game.rules().sneakAttackDice(passive) == 1, "sneak_1");
+    passive.feats.insert(61); // SNEAK_ATTACK_2D6
+    check(game.rules().sneakAttackDice(passive) == 2, "sneak_2");
+    passive.feats.insert(123); // IMPROVED_TOUGHNESS
+    check(game.rules().damageReduction(passive) == 2, "damage_reduction_2");
+    const std::int32_t baseAc = game.rules().armorClass(passive);
+    passive.feats.insert(104); // SCOUNDRELS_LUCK
+    check(game.rules().armorClass(passive) == baseAc + 2, "scoundrel_luck_2");
+    passive.feats.insert(105); // IMPROVED_SCOUNDRELS_LUCK
+    check(game.rules().armorClass(passive) == baseAc + 4, "scoundrel_luck_4");
+    passive.feats.insert(106); // MASTER_SCOUNDRELS_LUCK
+    check(game.rules().armorClass(passive) == baseAc + 6, "scoundrel_luck_6");
+    passive.feats.insert(107); // JEDI_SENSE
+    check(game.rules().armorClass(passive) == baseAc + 8, "jedi_sense_2");
+    passive.feats.insert(108); // KNIGHT_SENSE
+    check(game.rules().armorClass(passive) == baseAc + 10, "knight_sense_4");
+    passive.feats.insert(109); // MASTER_SENSE
+    check(game.rules().armorClass(passive) == baseAc + 12, "master_sense_6");
+    const std::int32_t baseDc = game.rules().forcePowerSaveDC(passive);
+    passive.feats.insert(88); // FORCE_FOCUS
+    check(game.rules().forcePowerSaveDC(passive) == baseDc + 1, "force_focus_1");
+    passive.feats.insert(89); // FORCE_FOCUS_ADVANCED
+    check(game.rules().forcePowerSaveDC(passive) == baseDc + 2, "force_focus_2");
+    passive.feats.insert(90); // FORCE_FOCUS_MASTERY
+    check(game.rules().forcePowerSaveDC(passive) == baseDc + 4, "force_focus_4");
+    passive.feats.insert(95); // WOOKIE_ENDURANCE
+    check(game.rules().damageReduction(passive) == 2, "wookiee_endurance_dr");
+    check(game.rules().toughnessBonus(passive) >= 2 * passive.level, "wookiee_endurance_hp");
+    CharacterSheet noProf;
+    check(!game.rules().canEquip(noProf, game.rules().makeItem("sword", 2)),
+          "weapon_proficiency_required");
+    check(game.rules().canEquip(sheet, game.rules().makeItem("robe", 35)),
+          "jedi_robe_proficiency");
+    check(!game.rules().canEquip(sheet, game.rules().makeItem("heavy", 43)),
+          "heavy_armor_proficiency_required");
+    check(game.rules().canEquip(game.rules().createCharacter(0, 1),
+                                game.rules().makeItem("heavy", 43)),
+          "soldier_heavy_armor");
     CharacterSheet dual = sheet;
     InventoryItem mainHand = game.rules().makeItem("main", 2);
     mainHand.equipped = true;
@@ -1543,6 +1600,8 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
         check(game.alignment() == 81, "script_alignment_action");
     }
 
+    check(game.useForcePower(17, 0), "persist_effect_added");
+    check(game.hasEffect("FORCE_ARMOR"), "persist_effect_live");
     game.setAlignment(20);
     game.adjustAlignment(5);
     check(game.alignment() == 25, "alignment_adjust");
@@ -1557,12 +1616,15 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     check(restored.load(engineSave), "engine_load");
     check(restored.alignment() == 25, "alignment_engine_roundtrip");
     check(restored.forcePoints() == game.forcePoints(), "force_engine_roundtrip");
+    check(restored.hasEffect("FORCE_ARMOR"), "effect_engine_roundtrip");
+    check(restored.forceArmorBonus() > 0, "effect_bonus_engine_roundtrip");
 
     const std::filesystem::path originalSlot = temp / "000012 - ENGINE";
     check(game.saveOriginalSave(originalSlot, "S11 COMBAT"), "original_save");
     const kotor::OriginalSave written = kotor::readOriginalSave(originalSlot);
     check(written.alignment == 25, "alignment_original_roundtrip");
     check(written.forcePoints == game.forcePoints(), "force_original_roundtrip");
+    check(!written.effects.empty(), "effect_original_roundtrip");
     check(std::find(written.powers.begin(), written.powers.end(), 35) != written.powers.end(),
           "powers_original_roundtrip");
     check(std::find(written.feats.begin(), written.feats.end(), 28) != written.feats.end(),
@@ -1572,6 +1634,8 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     check(reloaded.alignment() == 25, "alignment_original_load");
     check(reloaded.character().powers.contains(35), "powers_original_load");
     check(reloaded.character().feats.contains(28), "feats_original_load");
+    check(reloaded.hasEffect("FORCE_ARMOR"), "effect_original_load");
+    check(reloaded.forceArmorBonus() > 0, "effect_bonus_original_load");
 
     logInfo(ok ? "combat force test: PASS" : "combat force test: FAIL");
     return ok ? 0 : 42;

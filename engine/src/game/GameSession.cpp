@@ -69,6 +69,23 @@ std::string lower(std::string text)
     return text;
 }
 
+std::vector<std::string> split(const std::string& text, char delimiter)
+{
+    std::vector<std::string> parts;
+    std::size_t start = 0;
+    while (start <= text.size()) {
+        const std::size_t end = text.find(delimiter, start);
+        parts.push_back(text.substr(start, end == std::string::npos
+                                           ? std::string::npos
+                                           : end - start));
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+    return parts;
+}
+
 bool hasEffectLabel(const std::vector<kotor::ActiveEffect>& effects, const std::string& needle)
 {
     for (const kotor::ActiveEffect& effect : effects) {
@@ -1734,9 +1751,17 @@ void GameSession::playerAttack(std::size_t target)
                  + " (" + std::to_string(result.total) + " vs " + std::to_string(entity.defense) + ")");
         return;
     }
-    entity.hitPoints -= result.damage;
+    std::int32_t sneakDamage = 0;
+    const std::int32_t sneakDice = rules_.sneakAttackDice(character_);
+    if (sneakDice > 0 && (entity.stunTimer > 0.0f || entity.fearTimer > 0.0f)) {
+        for (std::int32_t roll = 0; roll < sneakDice; ++roll) {
+            sneakDamage += 1 + static_cast<std::int32_t>(random() % 6u);
+        }
+    }
+    entity.hitPoints -= result.damage + sneakDamage;
     logEvent("player hits " + (entity.name.empty() ? entity.tag : entity.name)
-             + " for " + std::to_string(result.damage)
+             + " for " + std::to_string(result.damage + sneakDamage)
+             + (sneakDamage > 0 ? " (sneak)" : "")
              + (result.critical ? " (critical)" : "") + " ("
              + std::to_string(std::max(0, entity.hitPoints)) + "/" + std::to_string(entity.maxHitPoints) + ")");
     if (entity.hitPoints <= 0) {
@@ -1781,6 +1806,7 @@ void GameSession::npcAttack(std::size_t attacker)
             break;
         }
     }
+    damage = std::max(0, damage - rules_.damageReduction(character_));
     playerHp_ -= damage;
     logEvent((entity.name.empty() ? entity.tag : entity.name) + " hits player for "
              + std::to_string(damage) + (roll == 20 ? " (critical)" : "") + " ("
@@ -2241,6 +2267,12 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
         return static_cast<std::size_t>(-1);
     };
     const bool selfTarget = targetObject == self;
+    const bool immuneFear = selfTarget
+        && rules_.hasFeatLabel(character_, "FORCE_IMMUNITY_FEAR");
+    const bool immuneStun = selfTarget
+        && rules_.hasFeatLabel(character_, "FORCE_IMMUNITY_STUN");
+    const bool immuneParalysis = selfTarget
+        && rules_.hasFeatLabel(character_, "FORCE_IMMUNITY_PARALYSIS");
     const std::size_t targetIndex = selfTarget
         ? static_cast<std::size_t>(-1)
         : entityIndex(targetObject);
@@ -2332,12 +2364,15 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
             entity.hitPoints -= damage;
             if (contains("STUN") || contains("STASIS") || contains("SLOW")
                 || contains("DROID_DISABLE")) {
-                if (!saved) {
+                const bool blocked = selfTarget
+                    && ((contains("STASIS") && immuneParalysis)
+                        || (contains("STUN") && immuneStun));
+                if (!saved && !blocked) {
                     entity.stunTimer = 6.0f;
                 }
             }
             if (contains("FEAR") || contains("HORROR") || contains("INSANITY")) {
-                if (!saved) {
+                if (!saved && !(selfTarget && immuneFear)) {
                     entity.fearTimer = 6.0f;
                 }
             }
@@ -2353,15 +2388,23 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
     } else if (contains("STUN") || contains("STASIS") || contains("SLOW")
                || contains("DROID_STUN") || contains("AFFECT_MIND")
                || contains("DOMINATE")) {
+        const bool blocked = selfTarget
+            && ((contains("STASIS") && immuneParalysis)
+                || (contains("STUN") && immuneStun));
         if (!selfTarget && !saved) {
             scene_.entities[targetIndex].stunTimer = 6.0f;
+        } else if (selfTarget && !blocked) {
+            // Self-targeted stun powers do not apply in normal play; keep the
+            // immunity branch deterministic without adding a player stun.
         }
-        logEvent("force " + info->label + (saved ? " saved" : ""));
+        logEvent("force " + info->label
+                 + (saved ? " saved" : blocked ? " immune" : ""));
     } else if (contains("FEAR") || contains("HORROR") || contains("INSANITY")) {
         if (!selfTarget && !saved) {
             scene_.entities[targetIndex].fearTimer = 6.0f;
         }
-        logEvent("force " + info->label + (saved ? " saved" : ""));
+        logEvent("force " + info->label
+                 + (saved ? " saved" : (selfTarget && immuneFear) ? " immune" : ""));
     } else if (contains("BREACH")) {
         const std::size_t before = targetEffects->size();
         std::erase_if(*targetEffects, [](const kotor::ActiveEffect& effect) {
@@ -2808,6 +2851,14 @@ bool GameSession::save(const std::filesystem::path& path) const
     for (const std::int32_t power : character_.powers) {
         file << "power=" << power << "\n";
     }
+    for (const kotor::ActiveEffect& effect : character_.effects) {
+        file << "effect=" << effect.spellId << "|" << effect.label << "|"
+             << effect.remaining << "|" << effect.armorBonus << "|"
+             << effect.attackBonus << "|" << effect.damageBonus << "|"
+             << effect.shield << "|" << (effect.force ? 1 : 0) << "|"
+             << (effect.dispellable ? 1 : 0) << "\n";
+    }
+    file << "force_suppressed=" << character_.forceSuppressedTimer << "\n";
     for (const auto& [plot, state] : journal_) {
         file << "journal=" << plot << ":" << state << "\n";
     }
@@ -2968,6 +3019,23 @@ bool GameSession::load(const std::filesystem::path& path)
                 sheet.feats.insert(std::stoi(value));
             } else if (key == "power") {
                 sheet.powers.insert(std::stoi(value));
+            } else if (key == "effect") {
+                const auto parts = split(value, '|');
+                if (parts.size() >= 9) {
+                    kotor::ActiveEffect effect;
+                    effect.spellId = std::stoi(parts[0]);
+                    effect.label = parts[1];
+                    effect.remaining = std::stof(parts[2]);
+                    effect.armorBonus = std::stoi(parts[3]);
+                    effect.attackBonus = std::stoi(parts[4]);
+                    effect.damageBonus = std::stoi(parts[5]);
+                    effect.shield = std::stoi(parts[6]);
+                    effect.force = std::stoi(parts[7]) != 0;
+                    effect.dispellable = std::stoi(parts[8]) != 0;
+                    sheet.effects.push_back(std::move(effect));
+                }
+            } else if (key == "force_suppressed") {
+                sheet.forceSuppressedTimer = std::stof(value);
             } else if (key == "journal") {
                 const std::size_t colon = value.rfind(':');
                 if (colon != std::string::npos) {
@@ -3227,6 +3295,8 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder)
     for (const std::int32_t power : saved.powers) {
         character_.powers.insert(power);
     }
+    character_.effects = saved.effects;
+    character_.forceSuppressedTimer = saved.forceSuppressedTimer;
     character_.inventory.clear();
     for (const kotor::SavedInventoryItem& source : saved.inventory) {
         InventoryItem item;
@@ -3373,6 +3443,8 @@ bool GameSession::saveOriginalSave(const std::filesystem::path& folder,
     for (const std::int32_t power : character_.powers) {
         save.powers.push_back(power);
     }
+    save.effects = character_.effects;
+    save.forceSuppressedTimer = character_.forceSuppressedTimer;
     for (const InventoryItem& item : character_.inventory) {
         kotor::SavedInventoryItem copy;
         copy.resref = item.resref;

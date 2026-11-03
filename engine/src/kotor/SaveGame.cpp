@@ -320,6 +320,25 @@ void readPlayer(const Gff& gff, std::uint32_t structure, OriginalSave& save)
     for (const std::uint32_t feat : list(gff, structure, "FeatList")) {
         save.feats.push_back(numberInt(gff, feat, "Feat", 0));
     }
+    for (const std::uint32_t effectStruct : list(gff, structure, "EffectList")) {
+        ActiveEffect effect;
+        effect.spellId = numberInt(gff, effectStruct, "SpellId", -1);
+        if (effect.spellId < 0) {
+            continue;
+        }
+        effect.label = text(gff, effectStruct, "Label");
+        effect.remaining = numberFloat(gff, effectStruct, "Duration", 0.0f);
+        effect.armorBonus = numberInt(gff, effectStruct, "Armor", 0);
+        effect.attackBonus = numberInt(gff, effectStruct, "Attack", 0);
+        effect.damageBonus = numberInt(gff, effectStruct, "Damage", 0);
+        effect.shield = numberInt(gff, effectStruct, "Shield", 0);
+        effect.force = numberInt(gff, effectStruct, "Force", 0) != 0;
+        effect.dispellable = numberInt(gff, effectStruct, "Dispellable", 1) != 0;
+        if (effect.remaining > 0.0f) {
+            save.effects.push_back(std::move(effect));
+        }
+    }
+    save.forceSuppressedTimer = numberFloat(gff, structure, "ForceSuppressed", 0.0f);
     for (const std::uint32_t level : list(gff, structure, "LvlStatList")) {
         for (const std::uint32_t row : gff.structure(level).fieldRows) {
             const GffField& field = gff.fieldAt(row);
@@ -729,7 +748,25 @@ GffNodePtr buildPlayerNode(const OriginalSave& save)
     node->addFloat("ZOrientation", 0.0f);
     node->addUInt32("JoiningXP", 0);
     node->addStruct("FollowInfo", std::make_shared<GffNode>(0));
-    node->addList("EffectList", {});
+    std::vector<GffNodePtr> effects;
+    for (const ActiveEffect& source : save.effects) {
+        if (source.remaining <= 0.0f) {
+            continue;
+        }
+        auto effect = std::make_shared<GffNode>(0);
+        effect->addInt32("SpellId", source.spellId);
+        effect->addString("Label", source.label);
+        effect->addFloat("Duration", source.remaining);
+        effect->addInt32("Armor", source.armorBonus);
+        effect->addInt32("Attack", source.attackBonus);
+        effect->addInt32("Damage", source.damageBonus);
+        effect->addInt32("Shield", source.shield);
+        effect->addUInt8("Force", source.force ? 1u : 0u);
+        effect->addUInt8("Dispellable", source.dispellable ? 1u : 0u);
+        effects.push_back(std::move(effect));
+    }
+    node->addList("EffectList", std::move(effects));
+    node->addFloat("ForceSuppressed", save.forceSuppressedTimer);
     node->addList("VarTable", {});
     node->addStruct("SWVarTable", std::make_shared<GffNode>(0));
     node->addList("ActionList", {});

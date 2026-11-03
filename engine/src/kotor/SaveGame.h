@@ -97,6 +97,8 @@ struct OriginalSave {
     std::map<std::string, std::int32_t> journal;
     std::vector<SavedGlobal> globals;
     std::vector<SavedObjectState> objects;
+    std::vector<ActiveEffect> effects;
+    float forceSuppressedTimer = 0.0f;
     // Raw REPUTE payload from the source slot, when present. The engine does
     // not model faction reputation yet, so preserving the parsed retail FAC
     // is safer than replacing it with an empty one on round trip.
