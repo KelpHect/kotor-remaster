@@ -24,6 +24,11 @@ Plan of record: [`SPRINT1.md`](SPRINT1.md). Baselines: `docs/SPRINT0_REPORT.md`,
 | 8 | First textured tools-side viewer | **met** — `tools/viewer/` renders m01aa (top-down + perspective, 9 TPC textures, 42/42 checks; counts match recon/11) and m09ab (26/26), plus `mainmenu.gui` (9/9) and `maininterface.gui` (31/31) to PNG | `docs/recon/24_VIEWER.md`; `artifacts/lanes/s1-08-viewer/` |
 | 9 | Evidence/repo hygiene | **met** — lanes wrote only their own new files; integrator owns edits to existing tracked files and this report; tests green (see below); no assets/secrets in tracked files | this report; `git status` |
 
+The binary lane was re-verified on Hydralysis 0.8.0 / Hydra 12.3-hydra.6 on 2026-11-03:
+claims #11, #18 and #19 return the same bounds and write counts. The P0/S2 10,849-function
+inventory is target `kotor-v4` (10,849/10,849, 565/565 handlers), while the stock `kotor` target
+is the 8,616-function h6 Golden subset (`docs/recon/40_HYDRA_UPGRADE.md`).
+
 ## Test totals (integrator re-run on the merged tree)
 
 - `python tools/tests/run_all.py` → **110 tests, OK (1 pre-existing skip: no save in the reference
