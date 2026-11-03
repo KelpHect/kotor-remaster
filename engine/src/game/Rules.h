@@ -49,6 +49,8 @@ struct CharacterSheet {
     std::int32_t skillPoints = 0;
     std::int32_t featPoints = 0;
     std::vector<InventoryItem> inventory;
+    std::vector<kotor::ActiveEffect> effects;
+    float forceSuppressedTimer = 0.0f;
 };
 
 struct AttackResult {
@@ -132,6 +134,7 @@ public:
     std::int32_t forcePowerSaveDC(const CharacterSheet& sheet) const;
     std::int32_t featAttackBonus(const CharacterSheet& sheet) const;
     std::int32_t featDamageBonus(const CharacterSheet& sheet) const;
+    std::int32_t twoWeaponPenalty(const CharacterSheet& sheet) const;
     std::int32_t toughnessBonus(const CharacterSheet& sheet) const;
     bool hasFeatLabel(const CharacterSheet& sheet, const std::string& needle) const;
 

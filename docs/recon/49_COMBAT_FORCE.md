@@ -39,23 +39,28 @@ Save DC is `10 + level/2 + WIS modifier`; the target's `FortSaveThrow`,
 | Lightning, Shock, Storm, Death Field, Drain Life, Wound, Kill, Choke, Plague, Affliction, Saber Throw, Push, Wave, Whirlwind, Droid Disable/Destroy | d6 damage per two levels; reflex/fortitude/will save for half |
 | Stun, Stasis, Mass Stasis, Slow, Droid Stun, Affect Mind, Dominate | 6 s stun on failed will save |
 | Fear, Horror, Insanity | 6 s fear on failed will save |
-| Armor, Aura, Shield, Resist Energy, Force Immunity | +4..+9 AC for 30 s; Shield also absorbs `10 + 2*level` damage |
-| Valor, Knight Valor, Master Valor | +2..+6 attack/damage for 30 s |
-| Speed, Speed Burst, Knight Speed, Speed Mastery | 1.5x movement for 20 s |
-| Breach, Suppress Force | logged control effect (no dispel model yet) |
+| Armor, Aura, Shield, Resist Energy | `ActiveEffect` +4..+9 AC for 30 s; Shield also absorbs `10 + 2*level` damage |
+| Valor, Knight Valor, Master Valor | `ActiveEffect` +2..+6 attack/damage for 30 s |
+| Speed, Speed Burst, Knight Speed, Speed Mastery | `ActiveEffect` 1.5x movement for 20 s |
+| Force Immunity | `ActiveEffect`; blocks Force powers until removed/expired |
+| Force Breach | removes every dispellable `ActiveEffect`, including Immunity |
+| Suppress Force | removes dispellable effects and blocks Force powers for 15 s |
 
 ## 3. Feats
 
 `feat.2da` categories are loaded for all 125 rows. Combat-relevant effects:
 
-- **Power Attack / Improved / Master**: attack -3, damage +5/+8/+10.
+- **Power Attack / Improved / Master** and **Power Blast / Improved / Master**:
+  attack -3, damage +5/+8/+10.
 - **Flurry / Improved / Master**: one extra attack, attack -4/-2/0.
 - **Critical Strike / Improved / Master**: attack -2, critical threat 19/18/17.
 - **Whirlwind Attack**: attack -4, hits every hostile within 2.4 m.
 - **Toughness / Improved / Master**: +2/+4/+6 HP per level when learned.
-- **Weapon Focus**: +1 attack per focus feat.
-- **Weapon Specialization**: +2 damage per specialization feat.
+- **Weapon Focus**: +1 attack (max one focus bonus).
+- **Weapon Specialization**: +2 damage (max one specialization bonus).
 - **Dueling / Advanced / Master**: +1/+2/+3 attack.
+- **Two-Weapon Fighting / Advanced / Mastery**: -6/-4/-2/0 attack while two
+  weapons are equipped.
 - Weapon proficiency, non-combat/crafting and skill feats are data-only.
 
 Active modes last 30 s and are stored as `CombatMode`; the character panel
@@ -111,7 +116,12 @@ combat force test: force_catalog_44=1
 combat force test: feat_catalog_125=1
 combat force test: lightning_used=1 / lightning_cost=1 / lightning_damage=1
 combat force test: heal_used=1 / armor_used=1 / stun_used=1
-combat force test: power_attack_used=1 / flurry_used=1 / toughness_learned=1
+combat force test: power_attack_used=1 / power_blast_used=1
+combat force test: flurry_used=1 / toughness_learned=1
+combat force test: two_weapon_penalty=1 / two_weapon_fighting=1
+combat force test: immunity_blocks_power=1 / breach_removes_immunity=1
+combat force test: shield_effect=1 / breach_removes_buffs=1
+combat force test: suppress_blocks_power=1 / suppress_expires=1
 combat force test: script_action_feat=1 / script_action_spell=1
 combat force test: alignment_engine_roundtrip=1
 combat force test: alignment_original_roundtrip=1
@@ -127,6 +137,7 @@ Regression: 35/35 CTest, 117/117 modules, 8,666/8,666 VM, 0.0300 parity,
 
 - Exact original formulas/animations for non-combat feats (crafting, skill
   focus, gear feats) and content-specific scripted exceptions.
-- Full effect stack/dispel model for Breach/Suppress/Force Immunity.
+- Persisting active `ActiveEffect` entries across save/load; the stack is live
+  state.
 - Cutscenes, animation/skinning, audio/EAX, Bink/lip sync, full `.gui`,
   minigames, localization, mods/Override, KotOR 2 world loading and P6 content.

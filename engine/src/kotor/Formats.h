@@ -521,6 +521,20 @@ struct CollisionFacet {
     bool floor = false;
 };
 
+// One active Force/spell effect. The stack is shared by the player sheet and
+// scene entities so Breach/Suppress/dispel can remove effects uniformly.
+struct ActiveEffect {
+    std::int32_t spellId = -1;
+    std::string label;
+    float remaining = 0.0f;
+    std::int32_t armorBonus = 0;
+    std::int32_t attackBonus = 0;
+    std::int32_t damageBonus = 0;
+    std::int32_t shield = 0;
+    bool force = false;
+    bool dispellable = true;
+};
+
 enum class EntityKind { Door, Placeable, Creature, Waypoint, Trigger, Encounter, Sound, Store, Unknown };
 
 struct Entity {
@@ -555,6 +569,8 @@ struct Entity {
     float walkRate = 1.0f;
     float stunTimer = 0.0f;
     float fearTimer = 0.0f;
+    float forceSuppressedTimer = 0.0f;
+    std::vector<ActiveEffect> effects;
     bool hostile = false;
     bool dead = false;
     bool useable = false;

@@ -10,7 +10,7 @@ alignment/FP/feats/powers persist in both engine and original saves.
 
 ```text
 100% tests passed, 0 tests failed out of 35
-Total Test time (real) =  64.78 sec
+Total Test time (real) =  48.47 sec
 ```
 
 The new target is `kotor_combat_force`. All Sprint 10 save/profile/delayed
@@ -35,8 +35,11 @@ Fortitude/Will/Reflex save against `10 + level/2 + WIS`, and applies:
   saber throw/push/wave/whirlwind damage,
 - stun/stasis/slow/droid stun/affect mind/dominate,
 - fear/horror/insanity,
-- armor/shield/resist/immunity,
-- valor and speed,
+- armor/shield/resist, valor and speed through a shared `ActiveEffect` stack,
+- Force Immunity, Force Breach and Suppress Force:
+  Immunity blocks Force powers, Breach removes all dispellable effects
+  (including Immunity), and Suppress Force removes effects and blocks further
+  Force powers for 15 s,
 - dark/light alignment shifts (`G` +2, `E` -2).
 
 The gate checks lightning cost/damage/dark-side shift, heal, armor, stun and
@@ -46,13 +49,15 @@ alignment.
 
 Combat feats now have effects:
 
-- Power Attack/Improved/Master: attack -3, damage +5/+8/+10.
+- Power Attack/Improved/Master and Power Blast/Improved/Master: attack -3,
+  damage +5/+8/+10.
 - Flurry/Improved/Master: extra attack, attack -4/-2/0.
 - Critical Strike/Improved/Master: attack -2, threat 19/18/17.
 - Whirlwind: attack -4, adjacent AoE.
 - Toughness/Improved/Master: +2/+4/+6 HP per level.
 - Weapon Focus: +1 attack; Weapon Specialization: +2 damage.
 - Dueling/Advanced/Master: +1/+2/+3 attack.
+- Two-Weapon Fighting/Advanced/Mastery: -6/-4/-2/0 attack with two weapons.
 
 Flurry adds an attack in the round, Whirlwind hits adjacent hostiles, and
 stunned/feared creatures skip movement and attacks. Force armor adds AC, Force
@@ -88,7 +93,7 @@ reloads the original slot.
 
 ## 7. Regression
 
-- **CTest: 35/35 passed** (64.78 s).
+- **CTest: 35/35 passed** (48.47 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0300**, PASS.
@@ -99,7 +104,7 @@ reloads the original slot.
 
 - Exact original formulas/animations for non-combat feats (crafting, skill
   focus, gear feats) and content-specific scripted exceptions.
-- Full effect-stack/dispel model for Breach/Suppress/Force Immunity.
+- Persisting the live `ActiveEffect` stack across save/load.
 - Cutscenes, animation/skinning, audio/EAX, Bink/lip sync, full `.gui`,
   minigames, localization, mods/Override, KotOR 2 world loading and P6 content.
 

@@ -69,6 +69,51 @@ std::string lower(std::string text)
     return text;
 }
 
+bool hasEffectLabel(const std::vector<kotor::ActiveEffect>& effects, const std::string& needle)
+{
+    for (const kotor::ActiveEffect& effect : effects) {
+        if (effect.remaining > 0.0f
+            && effect.label.find(needle) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::int32_t effectBonus(const std::vector<kotor::ActiveEffect>& effects,
+                         std::int32_t kotor::ActiveEffect::*member)
+{
+    std::int32_t total = 0;
+    for (const kotor::ActiveEffect& effect : effects) {
+        if (effect.remaining > 0.0f) {
+            total += effect.*member;
+        }
+    }
+    return total;
+}
+
+void tickEffects(std::vector<kotor::ActiveEffect>& effects, float dt)
+{
+    for (kotor::ActiveEffect& effect : effects) {
+        effect.remaining = std::max(0.0f, effect.remaining - dt);
+    }
+    std::erase_if(effects, [](const kotor::ActiveEffect& effect) {
+        return effect.remaining <= 0.0f;
+    });
+}
+
+void addOrRefreshEffect(std::vector<kotor::ActiveEffect>& effects,
+                        kotor::ActiveEffect effect)
+{
+    for (kotor::ActiveEffect& existing : effects) {
+        if (existing.label == effect.label && existing.spellId == effect.spellId) {
+            existing = std::move(effect);
+            return;
+        }
+    }
+    effects.push_back(std::move(effect));
+}
+
 // Barycentric floor height at (x, y); the highest triangle below maxZ wins.
 bool floorHeight(const kotor::Scene& scene, float x, float y, float maxZ, float& out)
 {
@@ -177,6 +222,31 @@ std::vector<script::Value> floatCells(double value)
 }
 
 } // namespace
+
+std::int32_t GameSession::forceArmorBonus() const
+{
+    return effectBonus(character_.effects, &kotor::ActiveEffect::armorBonus);
+}
+
+std::int32_t GameSession::forceAttackBonus() const
+{
+    return effectBonus(character_.effects, &kotor::ActiveEffect::attackBonus);
+}
+
+std::int32_t GameSession::forceDamageBonus() const
+{
+    return effectBonus(character_.effects, &kotor::ActiveEffect::damageBonus);
+}
+
+std::int32_t GameSession::forceShield() const
+{
+    return effectBonus(character_.effects, &kotor::ActiveEffect::shield);
+}
+
+bool GameSession::hasEffect(const std::string& label) const
+{
+    return hasEffectLabel(character_.effects, label);
+}
 
 GameSession::GameSession(std::string installPath, std::string module)
     : installPath_(std::move(installPath))
@@ -401,6 +471,14 @@ bool GameSession::runFunctor(const script::Functor& functor, std::uint32_t targe
 
 void GameSession::updateTimers(float dt)
 {
+    tickEffects(character_.effects, dt);
+    character_.forceSuppressedTimer = std::max(0.0f, character_.forceSuppressedTimer - dt);
+    for (kotor::Entity& entity : scene_.entities) {
+        entity.stunTimer = std::max(0.0f, entity.stunTimer - dt);
+        entity.fearTimer = std::max(0.0f, entity.fearTimer - dt);
+        entity.forceSuppressedTimer = std::max(0.0f, entity.forceSuppressedTimer - dt);
+        tickEffects(entity.effects, dt);
+    }
     const std::vector<script::Timer> due = scriptWorld_.advance(dt);
     for (const script::Timer& timer : due) {
         if (timer.functor < 0) {
@@ -1130,7 +1208,7 @@ void GameSession::update(float dt, const InputState& input)
         if (input.left) rightAxis -= 1.0f;
     }
     float speed = input.run ? 7.5f : 3.8f;
-    if (forceSpeedTimer_ > 0.0f) {
+    if (hasEffect("SPEED")) {
         speed *= 1.5f;
     }
     const float cosYaw = std::cos(yaw_);
@@ -1628,10 +1706,8 @@ void GameSession::playerAttack(std::size_t target)
     std::int32_t die = 8;
     std::int32_t bonus = 0;
     rules_.weaponDamage(character_, dice, die, bonus);
-    if (forceValorTimer_ > 0.0f) {
-        bonus += forceValorBonus_;
-    }
-    std::int32_t attackModifier = forceValorTimer_ > 0.0f ? forceValorBonus_ : 0;
+    bonus += forceDamageBonus();
+    std::int32_t attackModifier = forceAttackBonus();
     std::int32_t criticalThreat = 20;
     switch (combatMode_) {
     case CombatMode::PowerAttack:
@@ -1681,8 +1757,7 @@ void GameSession::npcAttack(std::size_t attacker)
         return;
     }
     const std::int32_t roll = 1 + static_cast<std::int32_t>(random() % 20u);
-    const std::int32_t targetAc = rules_.armorClass(character_)
-        + (forceArmorTimer_ > 0.0f ? forceArmorBonus_ : 0);
+    const std::int32_t targetAc = rules_.armorClass(character_) + forceArmorBonus();
     const std::int32_t total = roll + entity.attackBonus;
     if (roll != 20 && (roll == 1 || total < targetAc)) {
         logEvent((entity.name.empty() ? entity.tag : entity.name) + " misses player ("
@@ -1695,10 +1770,16 @@ void GameSession::npcAttack(std::size_t attacker)
     if (roll == 20) {
         damage *= 2;
     }
-    if (forceShieldTimer_ > 0.0f && forceShield_ > 0) {
-        const std::int32_t absorbed = std::min(forceShield_, damage);
+    for (kotor::ActiveEffect& effect : character_.effects) {
+        if (effect.remaining <= 0.0f || effect.shield <= 0) {
+            continue;
+        }
+        const std::int32_t absorbed = std::min(effect.shield, damage);
         damage -= absorbed;
-        forceShield_ -= absorbed;
+        effect.shield -= absorbed;
+        if (damage <= 0) {
+            break;
+        }
     }
     playerHp_ -= damage;
     logEvent((entity.name.empty() ? entity.tag : entity.name) + " hits player for "
@@ -1727,31 +1808,6 @@ void GameSession::updateCombat(float dt)
         if (combatModeTimer_ <= 0.0f) {
             combatMode_ = CombatMode::Normal;
         }
-    }
-    if (forceArmorTimer_ > 0.0f) {
-        forceArmorTimer_ -= dt;
-        if (forceArmorTimer_ <= 0.0f) {
-            forceArmorBonus_ = 0;
-        }
-    }
-    if (forceValorTimer_ > 0.0f) {
-        forceValorTimer_ -= dt;
-        if (forceValorTimer_ <= 0.0f) {
-            forceValorBonus_ = 0;
-        }
-    }
-    if (forceSpeedTimer_ > 0.0f) {
-        forceSpeedTimer_ = std::max(0.0f, forceSpeedTimer_ - dt);
-    }
-    if (forceShieldTimer_ > 0.0f) {
-        forceShieldTimer_ -= dt;
-        if (forceShieldTimer_ <= 0.0f) {
-            forceShield_ = 0;
-        }
-    }
-    for (kotor::Entity& entity : scene_.entities) {
-        entity.stunTimer = std::max(0.0f, entity.stunTimer - dt);
-        entity.fearTimer = std::max(0.0f, entity.fearTimer - dt);
     }
     if (combatTarget_ != UINT32_MAX
         && (combatTarget_ >= scene_.entities.size() || scene_.entities[combatTarget_].dead)) {
@@ -2141,7 +2197,8 @@ bool GameSession::useFeat(std::int32_t featId, std::uint32_t target)
         return false;
     }
     const std::string label = rules_.featName(featId);
-    if (label.find("POWER_ATTACK") != std::string::npos) {
+    if (label.find("POWER_ATTACK") != std::string::npos
+        || label.find("POWER_BLAST") != std::string::npos) {
         combatMode_ = CombatMode::PowerAttack;
     } else if (label.find("FLURRY") != std::string::npos) {
         combatMode_ = CombatMode::Flurry;
@@ -2170,6 +2227,9 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
         lastForcePowerSuccess_ = false;
         return false;
     }
+    const auto contains = [&](const char* needle) {
+        return info->label.find(needle) != std::string::npos;
+    };
     const std::uint32_t self = scriptWorld_.pc;
     const std::uint32_t targetObject = target == 0 ? self : target;
     const auto entityIndex = [&](std::uint32_t object) -> std::size_t {
@@ -2198,12 +2258,25 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
             return false;
         }
     }
+    std::vector<kotor::ActiveEffect>* targetEffects = selfTarget
+        ? &character_.effects
+        : &scene_.entities[targetIndex].effects;
+    const bool bypassImmunity = contains("BREACH") || contains("SUPRESS")
+        || contains("SUPPRESS");
+    const bool casterSuppressed = character_.forceSuppressedTimer > 0.0f;
+    const bool targetSuppressed = !selfTarget
+        && scene_.entities[targetIndex].forceSuppressedTimer > 0.0f;
+    if (!bypassImmunity
+        && (hasEffectLabel(*targetEffects, "FORCE_IMMUNITY") || casterSuppressed
+            || targetSuppressed)) {
+        lastForcePower_ = powerId;
+        lastForcePowerSuccess_ = false;
+        logEvent("force " + info->label + " resisted");
+        return false;
+    }
     character_.fp -= info->cost;
     lastForcePower_ = powerId;
     lastForcePowerSuccess_ = true;
-    const auto contains = [&](const char* needle) {
-        return info->label.find(needle) != std::string::npos;
-    };
     const auto roll = [&]() { return 1 + static_cast<std::int32_t>(random() % 20u); };
     const auto damageRoll = [&](int dice, int sides) {
         int value = 0;
@@ -2289,21 +2362,65 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
             scene_.entities[targetIndex].fearTimer = 6.0f;
         }
         logEvent("force " + info->label + (saved ? " saved" : ""));
-    } else if (contains("ARMOR") || contains("AURA") || contains("SHIELD")
-               || contains("RESIST") || contains("IMMUNITY")) {
-        forceArmorBonus_ = 4 + character_.level / 4;
-        forceArmorTimer_ = 30.0f;
-        if (contains("SHIELD")) {
-            forceShield_ = 10 + character_.level * 2;
-            forceShieldTimer_ = 30.0f;
+    } else if (contains("BREACH")) {
+        const std::size_t before = targetEffects->size();
+        std::erase_if(*targetEffects, [](const kotor::ActiveEffect& effect) {
+            return effect.dispellable;
+        });
+        logEvent("force breach removed " + std::to_string(before - targetEffects->size()));
+    } else if (contains("SUPRESS") || contains("SUPPRESS")) {
+        std::erase_if(*targetEffects, [](const kotor::ActiveEffect& effect) {
+            return effect.dispellable;
+        });
+        if (selfTarget) {
+            character_.forceSuppressedTimer = 15.0f;
+        } else {
+            scene_.entities[targetIndex].forceSuppressedTimer = 15.0f;
         }
-        logEvent("force armor +" + std::to_string(forceArmorBonus_));
+        logEvent("force suppress");
+    } else if (contains("IMMUNITY")) {
+        kotor::ActiveEffect effect;
+        effect.spellId = powerId;
+        effect.label = info->label;
+        effect.remaining = 30.0f;
+        effect.force = true;
+        effect.dispellable = true;
+        addOrRefreshEffect(*targetEffects, std::move(effect));
+        logEvent("force immunity");
+    } else if (contains("ARMOR") || contains("AURA") || contains("SHIELD")
+               || contains("RESIST")) {
+        kotor::ActiveEffect effect;
+        effect.spellId = powerId;
+        effect.label = info->label;
+        effect.remaining = 30.0f;
+        effect.armorBonus = 4 + character_.level / 4;
+        if (contains("SHIELD")) {
+            effect.shield = 10 + character_.level * 2;
+        }
+        effect.force = true;
+        effect.dispellable = true;
+        addOrRefreshEffect(*targetEffects, std::move(effect));
+        logEvent("force armor +" + std::to_string(4 + character_.level / 4));
     } else if (contains("VALOR")) {
-        forceValorBonus_ = 2 + character_.level / 5;
-        forceValorTimer_ = 30.0f;
-        logEvent("force valor +" + std::to_string(forceValorBonus_));
+        kotor::ActiveEffect effect;
+        effect.spellId = powerId;
+        effect.label = info->label;
+        effect.remaining = 30.0f;
+        const std::int32_t valor = 2 + character_.level / 5;
+        effect.attackBonus = valor;
+        effect.damageBonus = valor;
+        effect.force = true;
+        effect.dispellable = true;
+        addOrRefreshEffect(*targetEffects, std::move(effect));
+        logEvent("force valor +" + std::to_string(valor));
     } else if (contains("SPEED")) {
-        forceSpeedTimer_ = 20.0f;
+        kotor::ActiveEffect effect;
+        effect.spellId = powerId;
+        effect.label = info->label;
+        effect.remaining = 20.0f;
+        effect.force = true;
+        effect.dispellable = true;
+        addOrRefreshEffect(*targetEffects, std::move(effect));
         logEvent("force speed");
     } else {
         logEvent("force " + info->label);
@@ -2620,8 +2737,8 @@ std::optional<std::vector<script::Value>> GameSession::action(
         useFeat(static_cast<std::int32_t>(intArg(0)), objectArg(1));
         return std::vector<script::Value>{};
     case 304: // GetHasSpellEffect
-        return intCells(lastForcePower_ == static_cast<std::int32_t>(intArg(0))
-                            && lastForcePowerSuccess_ ? 1 : 0);
+        return intCells(hasEffect(rules_.powerName(static_cast<std::int32_t>(intArg(0))))
+                            ? 1 : 0);
     case 309: // ActionUseTalentOnObject
     case 310: { // ActionUseTalentAtLocation
         const std::int64_t talent = intArg(0);

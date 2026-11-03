@@ -185,7 +185,12 @@ public:
         playerMaxHp_ = sheet.maxHp;
         playerDead_ = false;
     }
-    std::int32_t forceArmorBonus() const { return forceArmorBonus_; }
+    std::int32_t forceArmorBonus() const;
+    std::int32_t forceAttackBonus() const;
+    std::int32_t forceDamageBonus() const;
+    std::int32_t forceShield() const;
+    bool hasEffect(const std::string& label) const;
+    bool forceSuppressed() const { return character_.forceSuppressedTimer > 0.0f; }
     // Test hook invocation without moving the player; returns false if the
     // entity or hook is absent.
     bool runHookForTest(const std::string& hook, const std::string& tag,
@@ -272,13 +277,6 @@ private:
     CombatMode combatMode_ = CombatMode::Normal;
     std::int32_t combatModeRank_ = 1;
     float combatModeTimer_ = 0.0f;
-    std::int32_t forceArmorBonus_ = 0;
-    float forceArmorTimer_ = 0.0f;
-    std::int32_t forceValorBonus_ = 0;
-    float forceValorTimer_ = 0.0f;
-    float forceSpeedTimer_ = 0.0f;
-    std::int32_t forceShield_ = 0;
-    float forceShieldTimer_ = 0.0f;
     std::int32_t lastForcePower_ = -1;
     bool lastForcePowerSuccess_ = false;
     std::vector<float> npcAttackTimers_;

@@ -475,11 +475,42 @@ std::int32_t Rules::armorClass(const CharacterSheet& sheet) const
     return ac;
 }
 
+std::int32_t Rules::twoWeaponPenalty(const CharacterSheet& sheet) const
+{
+    if (!baseitems_) {
+        return 0;
+    }
+    int weapons = 0;
+    for (const InventoryItem& item : sheet.inventory) {
+        if (!item.equipped) {
+            continue;
+        }
+        const std::string row = std::to_string(item.baseItem);
+        if (cellInt(*baseitems_, row, "weapontype", 0) != 0) {
+            ++weapons;
+        }
+    }
+    if (weapons < 2) {
+        return 0;
+    }
+    if (hasFeatLabel(sheet, "TWO_WEAPON_MASTERY")) {
+        return 0;
+    }
+    if (hasFeatLabel(sheet, "TWO_WEAPON_ADVANCED")) {
+        return -2;
+    }
+    if (hasFeatLabel(sheet, "TWO_WEAPON_FIGHTING")) {
+        return -4;
+    }
+    return -6;
+}
+
 std::int32_t Rules::attackBonus(const CharacterSheet& sheet) const
 {
     return baseAttackBonus(sheet.classId, sheet.level)
         + static_cast<std::int32_t>(abilityModifier(sheet.str))
-        + featAttackBonus(sheet);
+        + featAttackBonus(sheet)
+        + twoWeaponPenalty(sheet);
 }
 
 std::int32_t Rules::damageBonus(const CharacterSheet& sheet) const
