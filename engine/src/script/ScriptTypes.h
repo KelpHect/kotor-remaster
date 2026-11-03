@@ -14,7 +14,7 @@ namespace ke::script {
 
 constexpr std::uint32_t kObjectInvalid = 0x7F000000u;
 
-enum class ValueType : std::uint8_t { Int, Float, String, Object, Engine };
+enum class ValueType : std::uint8_t { Int, Float, String, Object, Engine, Functor };
 
 struct Value {
     ValueType type = ValueType::Int;
@@ -27,6 +27,7 @@ struct Value {
     static Value makeString(std::string value) { Value v; v.type = ValueType::String; v.text = std::move(value); return v; }
     static Value makeObject(std::uint32_t value) { Value v; v.type = ValueType::Object; v.integer = value; return v; }
     static Value makeEngine(std::int64_t tag) { Value v; v.type = ValueType::Engine; v.integer = tag; return v; }
+    static Value makeFunctor(std::int64_t id) { Value v; v.type = ValueType::Functor; v.integer = id; return v; }
 
     std::int64_t asInt() const
     {
@@ -78,6 +79,7 @@ struct Value {
         case ValueType::String: return "string";
         case ValueType::Object: return "object";
         case ValueType::Engine: return "engine";
+        case ValueType::Functor: return "functor";
         }
         return "unknown";
     }

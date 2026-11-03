@@ -1,0 +1,54 @@
+{
+  "corpus": "artifacts\\lanes\\04-ncs\\extracted\\unique",
+  "default": {
+    "engine_files": 8666,
+    "examples": [],
+    "mismatches": 0,
+    "missing": 0,
+    "oracle": "artifacts/lanes/s6-01-vm/default_oracle_s6.json",
+    "oracle_files": 8666
+  },
+  "default_run": {
+    "cmd": [
+      "engine\\build\\msvc-release\\kotor_engine.exe",
+      "--vm-corpus",
+      "artifacts\\lanes\\04-ncs\\extracted\\unique",
+      "--vm-out",
+      "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s10\\vm-parity.jsonl"
+    ],
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "[INFO] vm corpus: files=8666 returned=8184 blocked=472 budget=10 decode_errors=0 vm_errors=0 invalid_jumps=0 steps=3927953 action_calls=308362 max_sp=217 functional=0\n[INFO] vm corpus: wrote E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s10\\vm-parity.jsonl\n"
+  },
+  "engine": "engine\\build\\msvc-release\\kotor_engine.exe",
+  "failures": [],
+  "functional": {
+    "action_calls": 303616,
+    "engine_files": 8666,
+    "examples": [],
+    "mismatches": 0,
+    "oracle": "artifacts/lanes/s6-02-actions/functional_oracle_s6.json",
+    "oracle_files": 8666,
+    "statuses": {
+      "blocked": 472,
+      "budget": 9,
+      "returned": 8185
+    }
+  },
+  "functional_run": {
+    "cmd": [
+      "engine\\build\\msvc-release\\kotor_engine.exe",
+      "--vm-corpus",
+      "artifacts\\lanes\\04-ncs\\extracted\\unique",
+      "--vm-out",
+      "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s10\\vm-parity.jsonl",
+      "--vm-functional"
+    ],
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "[INFO] vm corpus: files=8666 returned=8185 blocked=472 budget=9 decode_errors=0 vm_errors=0 invalid_jumps=0 steps=3697114 action_calls=303616 max_sp=221 functional=1\n[INFO] vm corpus: wrote E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s10\\vm-parity.jsonl\n"
+  },
+  "limit": 0,
+  "pass": true,
+  "schema": "kotor.vm-parity/1"
+}

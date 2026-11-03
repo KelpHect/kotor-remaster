@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <deque>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
@@ -203,6 +204,8 @@ GameSession::GameSession(std::string installPath, std::string module)
         throw kotor::FormatError("cannot load module " + module);
     }
     runtime_ = std::make_unique<script::ActionRuntime>(&scriptWorld_, this);
+    runtime_->setSelfAware(true);
+    runtime_->setContinuations(true);
     initScriptWorld();
     syncPlayerToScriptWorld();
 }
@@ -334,6 +337,86 @@ std::string GameSession::scriptSource(const std::string& resref)
     }
     ncsCache_.emplace(resref, *data);
     return std::string(data->begin(), data->end());
+}
+
+bool GameSession::runScriptNcsForTest(const std::string& label,
+                                      const std::vector<std::uint8_t>& bytes,
+                                      std::uint32_t self)
+{
+    if (runtime_ == nullptr || bytes.empty()) {
+        return false;
+    }
+    std::vector<script::Instruction> instructions;
+    try {
+        instructions = script::decodeNcs(bytes.data(), bytes.size());
+    } catch (const script::NcsError& error) {
+        scriptLog_.push_back("decode " + label + ": " + error.what());
+        return false;
+    }
+    runtime_->setContextObject("self", self == 0 ? scriptWorld_.pc : self);
+    runtime_->setContextObject("entering", scriptWorld_.pc);
+    runtime_->setContextObject("exiting", scriptWorld_.pc);
+    runtime_->setContextObject("caller", scriptWorld_.pc);
+    runtime_->setContextObject("trigger", scriptWorld_.pc);
+    runtime_->setContextObject("speaker", self == 0 ? scriptWorld_.pc : self);
+    script::Vm vm(std::move(instructions), runtime_.get(), 200000);
+    const script::VmResult result = vm.run();
+    scriptLog_.push_back("script " + label + " status=" + script::statusName(result.status)
+                         + " steps=" + std::to_string(result.steps));
+    return result.status == script::VmStatus::Returned
+        || result.status == script::VmStatus::Blocked;
+}
+
+bool GameSession::runFunctor(const script::Functor& functor, std::uint32_t target)
+{
+    if (runtime_ == nullptr) {
+        return false;
+    }
+    runtime_->setContext(functor.context);
+    if (target != 0 && target != script::kObjectInvalid) {
+        runtime_->setContextObject("self", target);
+        runtime_->setContextObject("speaker", target);
+    }
+    script::Vm vm(functor.instructions, runtime_.get(), 200000);
+    vm.setEntry(functor.ip, functor.stack, functor.bp);
+    const script::VmResult result = vm.run();
+    scriptLog_.push_back("functor " + functor.source + " status="
+                         + script::statusName(result.status)
+                         + " steps=" + std::to_string(result.steps));
+    syncScriptWorld();
+    return result.status == script::VmStatus::Returned;
+}
+
+void GameSession::updateTimers(float dt)
+{
+    const std::vector<script::Timer> due = scriptWorld_.advance(dt);
+    for (const script::Timer& timer : due) {
+        if (timer.functor < 0) {
+            continue;
+        }
+        const std::shared_ptr<script::Functor> functor = scriptWorld_.functor(timer.functor);
+        if (functor != nullptr) {
+            runFunctor(*functor, timer.target);
+        }
+        scriptWorld_.functors.erase(timer.functor);
+    }
+    std::deque<script::QueuedAction> remaining;
+    std::size_t executed = 0;
+    while (!scriptWorld_.actionQueue.empty()) {
+        script::QueuedAction action = std::move(scriptWorld_.actionQueue.front());
+        scriptWorld_.actionQueue.pop_front();
+        if (action.functor < 0 || executed >= 32) {
+            remaining.push_back(std::move(action));
+            continue;
+        }
+        const std::shared_ptr<script::Functor> functor = scriptWorld_.functor(action.functor);
+        if (functor != nullptr) {
+            runFunctor(*functor, action.target);
+            ++executed;
+        }
+        scriptWorld_.functors.erase(action.functor);
+    }
+    scriptWorld_.actionQueue.swap(remaining);
 }
 
 std::optional<script::Value> GameSession::runScript(const std::string& resref,
@@ -1083,6 +1166,7 @@ void GameSession::update(float dt, const InputState& input)
     updateTriggers();
     updateCombat(dt);
     updateParty(dt);
+    updateTimers(dt);
     updateScripts(dt);
     updateEncounters(dt);
     syncPlayerToScriptWorld();
@@ -1961,9 +2045,10 @@ std::optional<std::vector<script::Value>> GameSession::action(
     };
     const auto objectArg = [&](std::size_t index) -> std::uint32_t {
         const script::Value value = arg(index, script::ParamKind::Object);
-        return value.type == script::ValueType::Object
+        const std::uint32_t id = value.type == script::ValueType::Object
             ? static_cast<std::uint32_t>(value.integer)
             : script::kObjectInvalid;
+        return id == 0 && runtime_ != nullptr ? runtime_->contextObject("self") : id;
     };
     const auto intArg = [&](std::size_t index) -> std::int64_t {
         return arg(index, script::ParamKind::Int).asInt();

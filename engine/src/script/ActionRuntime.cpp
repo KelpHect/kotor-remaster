@@ -206,7 +206,10 @@ std::string ActionRuntime::argString(const Args& args, std::size_t index) const
 std::uint32_t ActionRuntime::argObject(const Args& args, std::size_t index) const
 {
     const Value value = cell(args, index, ParamKind::Object);
-    return value.type == ValueType::Object ? static_cast<std::uint32_t>(value.integer) : kObjectInvalid;
+    const std::uint32_t id = value.type == ValueType::Object
+        ? static_cast<std::uint32_t>(value.integer)
+        : kObjectInvalid;
+    return selfAware_ && id == 0 ? contextObject("self") : id;
 }
 
 std::vector<Value> ActionRuntime::argVector(const Args& args, std::size_t index) const
@@ -375,7 +378,7 @@ std::optional<std::vector<Value>> ActionRuntime::specific(const std::string& nam
     if (name == "GetPosition") return hGetPosition(args);
     if (name == "GetDistanceToObject") return hGetDistanceToObject(args);
     if (name == "GetTime") return hGetTime();
-    if (name == "ActionWait") return hActionWait(vm);
+    if (name == "ActionWait") return hActionWait(args, vm);
     if (name == "ActionPauseConversation") return hQueue(205, args);
     if (name == "DelayCommand") return hDelayCommand(args);
     if (name == "AssignCommand") return hAssignCommand(args);
@@ -987,14 +990,34 @@ std::vector<Value> ActionRuntime::hGetTime()
     return {Value::makeFloat(world_->time)};
 }
 
-std::vector<Value> ActionRuntime::hActionWait(Vm& vm)
+std::vector<Value> ActionRuntime::hActionWait(const Args& args, Vm& vm)
 {
+    if (continuations_) {
+        Functor functor = vm.captureContinuation("ActionWait");
+        const std::int64_t id = registerFunctor(std::move(functor));
+        world_->scheduleFunctor(argFloat(args, 0), id);
+    }
     vm.block(202);
     return {};
 }
 
+std::int64_t ActionRuntime::registerFunctor(Functor functor)
+{
+    functor.context = context_;
+    return world_->addFunctor(std::move(functor));
+}
+
 std::vector<Value> ActionRuntime::hDelayCommand(const Args& args)
 {
+    const Value value = cell(args, 1, ParamKind::Action);
+    if (value.type == ValueType::Functor && value.integer >= 0) {
+        if (const auto functor = world_->functor(value.integer)) {
+            functor->source = "DelayCommand";
+        }
+        world_->scheduleFunctor(argFloat(args, 0), value.integer);
+        ++timersScheduled_;
+        return {};
+    }
     world_->schedule(argFloat(args, 0), -1, args, "DelayCommand");
     ++timersScheduled_;
     return {};
@@ -1002,6 +1025,15 @@ std::vector<Value> ActionRuntime::hDelayCommand(const Args& args)
 
 std::vector<Value> ActionRuntime::hAssignCommand(const Args& args)
 {
+    const Value value = cell(args, 1, ParamKind::Action);
+    if (value.type == ValueType::Functor && value.integer >= 0) {
+        if (const auto functor = world_->functor(value.integer)) {
+            functor->source = "AssignCommand";
+        }
+        world_->queueFunctor(value.integer, argObject(args, 0));
+        ++actionsQueued_;
+        return {};
+    }
     world_->queueAction(-1, args, "AssignCommand");
     ++actionsQueued_;
     return {};

@@ -147,7 +147,16 @@ void Vm::doAction(const Instruction& ins)
         const ParamKind kind = index < spec.paramCount ? spec.params[index] : ParamKind::Int;
         if (kind == ParamKind::Action) {
             // A functor is created by STORESTATE and is not a stack cell.
-            args.emplace_back();
+            if (pendingFunctor_ && pendingFunctorData_.has_value()) {
+                Functor functor = std::move(*pendingFunctorData_);
+                pendingFunctorData_.reset();
+                const std::int64_t id = sink_ != nullptr
+                    ? sink_->registerFunctor(std::move(functor))
+                    : -1;
+                args.push_back({Value::makeFunctor(id)});
+            } else {
+                args.emplace_back();
+            }
             pendingFunctor_ = false;
             continue;
         }
@@ -181,9 +190,22 @@ std::optional<std::size_t> Vm::step(const Instruction& ins)
     case Op::NOP:
     case Op::STORESTATEALL:
         return next;
-    case Op::STORESTATE:
+    case Op::STORESTATE: {
+        // The closure body follows STORESTATE and a JMP that skips it on the
+        // normal path. Resume at the body, with a snapshot of the stack/BP.
+        std::size_t entry = ip_ + 1u;
+        if (entry < instructions_.size() && instructions_[entry].op == Op::JMP) {
+            ++entry;
+        }
+        Functor functor;
+        functor.instructions = instructions_;
+        functor.ip = entry;
+        functor.stack = stack_;
+        functor.bp = bp_;
+        pendingFunctorData_ = std::move(functor);
         pendingFunctor_ = true;
         return next;
+    }
     case Op::CPTOPSP: {
         const std::int64_t stackSize = static_cast<std::int64_t>(stack_.size());
         const std::int64_t index = stackSize + ins.operand0 / 4;
@@ -524,6 +546,26 @@ std::optional<std::size_t> Vm::step(const Instruction& ins)
         return next;
     }
     throw VmError("unsupported opcode");
+}
+
+void Vm::setEntry(std::size_t ip, std::vector<Value> stack, std::int64_t bp)
+{
+    ip_ = std::min(ip, instructions_.size());
+    stack_ = std::move(stack);
+    bp_ = bp;
+    maxStack_ = stack_.size();
+    status_ = VmStatus::Running;
+}
+
+Functor Vm::captureContinuation(const std::string& source) const
+{
+    Functor functor;
+    functor.instructions = instructions_;
+    functor.ip = std::min(ip_ + 1u, instructions_.size());
+    functor.stack = stack_;
+    functor.bp = bp_;
+    functor.source = source;
+    return functor;
 }
 
 VmResult Vm::run()
