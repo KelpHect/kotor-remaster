@@ -95,6 +95,52 @@ void testWok()
     expect(wok.faces[0].surface == 7, "WOK surface id");
 }
 
+void testTwoDa()
+{
+    std::vector<std::uint8_t> bytes;
+    const auto append = [&](const char* text, std::size_t size) {
+        bytes.insert(bytes.end(), text, text + size);
+    };
+    const auto appendU16 = [&](std::uint16_t value) {
+        bytes.push_back(static_cast<std::uint8_t>(value & 0xFFu));
+        bytes.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFFu));
+    };
+    const auto appendU32 = [&](std::uint32_t value) {
+        const std::size_t offset = bytes.size();
+        bytes.resize(offset + 4);
+        put32(bytes, offset, value);
+    };
+    append("2DA V2.b\n", 9);
+    append("label\tvalue\t", 12);
+    bytes.push_back(0);
+    appendU32(1);          // row count
+    append("0\t", 2);      // row label
+    appendU16(0);          // cell 0 -> "foo"
+    appendU16(4);          // cell 1 -> "bar"
+    appendU16(8);          // string table size
+    append("foo\0bar\0", 8);
+    const ke::kotor::TwoDa table = ke::kotor::TwoDa::parse(std::move(bytes), "test.2da");
+    expect(table.rowCount() == 1 && table.columnCount() == 2, "2DA counts");
+    expect(table.cell("0", "label") == "foo" && table.cell("0", "value") == "bar", "2DA cells");
+    expect(table.columnIndex("LABEL") == 0, "2DA column lookup is case-insensitive");
+}
+
+void testTlk()
+{
+    std::vector<std::uint8_t> bytes(20 + 40 + 5, 0);
+    std::memcpy(bytes.data(), "TLK V3.0", 8);
+    put32(bytes, 8, 0);   // language
+    put32(bytes, 12, 1);  // entry count
+    put32(bytes, 16, 60); // text table offset
+    put32(bytes, 48, 0);  // first string offset
+    put32(bytes, 52, 5);  // first string length
+    std::memcpy(bytes.data() + 60, "Hello", 5);
+    const ke::kotor::Tlk tlk = ke::kotor::Tlk::parse(std::move(bytes), "test.tlk");
+    expect(tlk.size() == 1, "TLK entries");
+    expect(tlk.text(0) == "Hello", "TLK text");
+    expect(tlk.text(1).empty(), "TLK missing strref is empty");
+}
+
 } // namespace
 
 int main()
@@ -103,6 +149,8 @@ int main()
     testResref();
     testLyt();
     testWok();
+    testTwoDa();
+    testTlk();
     if (failures != 0) {
         std::cerr << failures << " test(s) failed\n";
         return 1;
