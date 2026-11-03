@@ -22,6 +22,10 @@ constexpr GlEnum kGlStaticDraw = 0x88E4u;
 constexpr GlEnum kGlDynamicDraw = 0x88E8u;
 constexpr GlEnum kGlFloat = 0x1406u;
 constexpr GlEnum kGlTriangles = 0x0004u;
+constexpr GlEnum kGlBlend = 0x0BE2u;
+constexpr GlEnum kGlSrcAlpha = 0x0302u;
+constexpr GlEnum kGlOneMinusSrcAlpha = 0x0303u;
+constexpr GlEnum kGlOne = 0x0001u;
 constexpr GlEnum kGlUnsignedInt = 0x1405u;
 constexpr GlEnum kGlTexture2D = 0x0DE1u;
 constexpr GlEnum kGlRgba = 0x1908u;
@@ -163,6 +167,7 @@ bool GlScene::initialize(std::string& error)
     KE_LOAD_GL(DrawElements, "glDrawElements")
     KE_LOAD_GL(Enable, "glEnable")
     KE_LOAD_GL(Disable, "glDisable")
+    KE_LOAD_GL(BlendFunc, "glBlendFunc")
     KE_LOAD_GL(DepthFunc, "glDepthFunc")
     KE_LOAD_GL(ClearDepth, "glClearDepth")
     KE_LOAD_GL(ClearColor, "glClearColor")
@@ -429,17 +434,40 @@ void GlScene::render(const SceneCamera& camera, int width, int height)
             }
             gl_.ActiveTexture(kGlTexture0);
             gl_.BindTexture(kGlTexture2D, textures_[batch.texture]);
+            if (batch.blend == kotor::BlendMode::Opaque) {
+                gl_.Disable(kGlBlend);
+            } else {
+                gl_.Enable(kGlBlend);
+                if (batch.blend == kotor::BlendMode::Additive) {
+                    gl_.BlendFunc(kGlSrcAlpha, kGlOne);
+                } else {
+                    gl_.BlendFunc(kGlSrcAlpha, kGlOneMinusSrcAlpha);
+                }
+            }
             gl_.DrawElements(kGlTriangles, static_cast<GlSizei>(batch.indexCount), kGlUnsignedInt,
                              reinterpret_cast<const void*>(static_cast<std::size_t>(batch.firstIndex) * sizeof(std::uint32_t)));
         }
         ++drawnMeshes;
     }
+    gl_.Disable(kGlBlend);
     gl_.BindVertexArray(0);
     if (!loggedFirstFrame_) {
         loggedFirstFrame_ = true;
         const GlEnum drawError = gl_.GetError();
+        std::size_t alphaBatches = 0;
+        std::size_t additiveBatches = 0;
+        for (const GlMesh& mesh : meshes_) {
+            for (const kotor::TextureBatch& batch : mesh.batches) {
+                if (batch.blend == kotor::BlendMode::Alpha) {
+                    ++alphaBatches;
+                } else if (batch.blend == kotor::BlendMode::Additive) {
+                    ++additiveBatches;
+                }
+            }
+        }
         logInfo(concat("Scene frame: eye ", camera.eye.x, ", ", camera.eye.y, ", ", camera.eye.z,
                        " meshes ", drawnMeshes, "/", meshes_.size(), " textures ", textures_.size(),
+                       " alpha batches ", alphaBatches, " additive batches ", additiveBatches,
                        drawError != 0 ? concat(" glError 0x", std::hex, drawError, std::dec).c_str() : ""));
     }
 }

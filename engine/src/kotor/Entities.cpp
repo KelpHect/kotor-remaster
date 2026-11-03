@@ -312,6 +312,9 @@ void buildFxMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
         const std::uint32_t texture = ensureTexture(scene, install, textureName);
         TextureBatch batch;
         batch.texture = texture;
+        if (!list.empty()) {
+            batch.blend = list.front().blend;
+        }
         batch.firstIndex = static_cast<std::uint32_t>(mesh.indices.size());
         for (const MdlMeshTriangle& triangle : list) {
             mesh.triangles.push_back(triangle);

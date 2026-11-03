@@ -280,11 +280,16 @@ struct Lyt {
 Lyt parseLyt(std::vector<std::uint8_t> bytes, const std::string& name);
 Wok parseWok(std::vector<std::uint8_t> bytes, const std::string& name);
 
+// Blend state for a draw batch. FX lights are additive, emitters are
+// alpha-blended, and all static geometry stays opaque.
+enum class BlendMode { Opaque, Alpha, Additive };
+
 struct MdlTriangle {
     Vec3 p[3];
     Vec2 uv[3];
     Vec3 normal;
     std::string texture;
+    BlendMode blend = BlendMode::Opaque;
 };
 
 struct MdlMeshVertex {
@@ -300,6 +305,7 @@ struct MdlMeshVertex {
 struct MdlMeshTriangle {
     MdlMeshVertex v[3];
     std::string texture;
+    BlendMode blend = BlendMode::Opaque;
 };
 
 struct MdlAnimationInfo {
@@ -735,6 +741,7 @@ struct TextureBatch {
     std::uint32_t texture = 0; // index into Scene::textures
     std::uint32_t firstIndex = 0;
     std::uint32_t indexCount = 0;
+    BlendMode blend = BlendMode::Opaque;
 };
 
 struct SceneVertex {

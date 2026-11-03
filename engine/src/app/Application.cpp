@@ -1565,7 +1565,45 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
         }
         check(fxFinite, "fx_finite");
         check(fxMoved > 0, "fx_animated");
+        bool additive = false;
+        bool alpha = false;
+        for (const kotor::MdlMeshTriangle& triangle : fx0) {
+            additive = additive
+                || triangle.blend == kotor::BlendMode::Additive;
+            alpha = alpha || triangle.blend == kotor::BlendMode::Alpha;
+        }
+        check(additive, "fx_additive_batches");
+        check(alpha, "fx_alpha_batches");
     }
+    std::size_t sceneAdditive = 0;
+    std::size_t sceneAlpha = 0;
+    std::size_t sceneOpaque = 0;
+    for (const kotor::TextureBatch& batch : game.scene().batches) {
+        if (batch.blend == kotor::BlendMode::Additive) {
+            ++sceneAdditive;
+        } else if (batch.blend == kotor::BlendMode::Alpha) {
+            ++sceneAlpha;
+        } else {
+            ++sceneOpaque;
+        }
+    }
+    std::size_t entityAlpha = 0;
+    for (const kotor::EntityMesh& mesh : game.scene().entityMeshes) {
+        if (!mesh.fx) {
+            continue;
+        }
+        for (const kotor::TextureBatch& batch : mesh.batches) {
+            if (batch.blend == kotor::BlendMode::Alpha) {
+                ++entityAlpha;
+            }
+        }
+    }
+    logInfo(concat("animation test: blend batches room additive=", sceneAdditive,
+                   " alpha=", sceneAlpha, " opaque=", sceneOpaque,
+                   " entity alpha=", entityAlpha));
+    check(sceneAdditive > 0, "scene_additive_batches");
+    check(sceneOpaque > 0, "scene_opaque_batches");
+    check(entityAlpha > 0, "entity_alpha_batches");
     const std::optional<kotor::Mdl> roomFx = loadModel("m01aa_01a");
     check(roomFx.has_value(), "room_light_loaded");
     if (roomFx.has_value()) {
