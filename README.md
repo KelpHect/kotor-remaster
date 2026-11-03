@@ -6,9 +6,11 @@ evaluate (position, packed/float orientation, scale, Bezier position); skin
 meshes carry bones, weights, `qbone`/`tbone` bind-inverse data and CPU
 deformation; `GameSession` plays/loops per-entity clips with `pause1`/`pause`
 defaults; equipped weapons attach to `Rhand_g`/`Lhand_g` and follow the hand
-pose; GIT cameras and DLG `CameraID`/`CameraAnimation` playback override the
-first-person camera during dialogue, with camera-MDL `CUT###W` clips evaluated
-through `camerahook`; `animations.2da` and `PlayAnimation`/`ActionPlayAnimation`
+pose; GIT cameras and DLG `CameraID`/`CameraAnimation`/`CameraAngle` playback
+override the first-person camera during dialogue, with camera-MDL `CUT###W`
+clips evaluated through `camerahook` and height-offset presets; dangly
+constraints settle deterministically; saber header geometry renders;
+`animations.2da` and `PlayAnimation`/`ActionPlayAnimation`
 are wired; GL and Vulkan refresh entity vertex buffers from the posed mesh.
 **36/36 CTest targets** pass.
 Sprint 11 remains complete (44 Force powers, 125 feat rows, combat/Force/
@@ -25,10 +27,10 @@ complete (7 stores/41 `keblastore` entries, 4 encounter volumes/8 spawns, 80%
 companion XP, systems UI); Sprint 6 remains complete (native script VM
 8,666/8,666 default and functional, 303,616 ACTION calls, dialogue entry 54,
 d20 rounds); Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255
-parity). Sprint 13+ remains: animation blending/root motion, camera effects/
-height-offset presets, dangly/saber simulation, audio/EAX, Bink/lip sync, full `.gui`,
-minigames, localization, mods/Override, KotOR 2 world loading, faction
-reputation simulation and the P6 content checklist.
+parity). Sprint 13+ remains: animation blending/root motion, non-default
+`CamVidEffect` semantics, particle/light controllers, audio/EAX, Bink/lip sync,
+full `.gui`, minigames, localization, mods/Override, KotOR 2 world loading,
+faction reputation simulation and the P6 content checklist.
 Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT12.md` and their
 `*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
 
@@ -176,9 +178,10 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   node-to-bone maps, `qbone`/`tbone` bind-inverse data, MDX weights/bone ids,
   CPU skinning, per-entity playback with `pause1`/`pause` defaults,
   `animations.2da` and `PlayAnimation`/`ActionPlayAnimation`, equipped weapon
-  models on hand hooks, GIT cameras with DLG `CameraID` fallback and
-  `CameraAnimation` → `CUT###W` camera-MDL playback, GL/Vulkan dynamic vertex
-  refresh.
+  models on hand hooks, dangly constraint settle and SaberHeader geometry,
+  GIT cameras with DLG `CameraID` fallback, `CameraAnimation` → `CUT###W`
+  camera-MDL playback and `CameraAngle` height presets, GL/Vulkan dynamic
+  vertex refresh.
   CTest **36/36**; 117-module sweep 0/0; VM parity 0; scene parity 0.0300;
   Python 143 tests / 7 skips; install unchanged. See
   `docs/recon/50_ANIMATION_SKINNING.md` and `docs/SPRINT12_REPORT.md`.

@@ -293,6 +293,7 @@ struct MdlMeshVertex {
     std::int32_t node = -1;
     std::array<float, 4> weights{0.0f, 0.0f, 0.0f, 0.0f};
     std::array<std::int32_t, 4> bones{-1, -1, -1, -1};
+    float dangly = 0.0f;
 };
 
 struct MdlMeshTriangle {
@@ -319,7 +320,8 @@ public:
 
     std::vector<MdlTriangle> triangles(Vec3 roomOrigin) const;
     std::vector<MdlMeshTriangle> meshTriangles() const;
-    std::vector<MdlMeshTriangle> posedTriangles(const std::string& animation, float time) const;
+    std::vector<MdlMeshTriangle> posedTriangles(const std::string& animation, float time,
+                                                float danglyTime = -1.0f) const;
 
     const std::string& name() const { return name_; }
     const std::string& supermodel() const { return supermodel_; }
@@ -328,6 +330,7 @@ public:
     int animationIndex(const std::string& name) const;
     float animationDuration(const std::string& name) const;
     std::size_t skinnedNodeCount() const;
+    std::size_t danglyNodeCount() const;
     float skinBindError() const;
     std::optional<Pose> nodePose(const std::string& node, const std::string& animation,
                                  float time) const;
@@ -352,6 +355,19 @@ private:
         std::uint32_t bonesOffset = 0;
     };
 
+    struct Dangly {
+        std::vector<float> constraints;
+        float displacement = 0.0f;
+        float tightness = 0.0f;
+        float period = 0.0f;
+    };
+
+    struct Saber {
+        std::vector<Vec3> positions;
+        std::vector<Vec2> uvs;
+        std::vector<Vec3> normals;
+    };
+
     struct Node {
         std::uint32_t offset = 0;
         std::uint16_t type = 0;
@@ -374,6 +390,8 @@ private:
         std::string texture1;
         bool trimesh = false;
         std::optional<Skin> skin;
+        std::optional<Dangly> dangly;
+        std::optional<Saber> saber;
         std::vector<Controller> controllers;
     };
 
@@ -726,6 +744,7 @@ struct EntityMesh {
     std::string animation;
     float animationTime = 0.0f;
     bool animationLoop = true;
+    float danglyTime = 0.0f;
     std::shared_ptr<Mdl> attachModel;
     std::string attachNode;
     std::string attachAnimation;

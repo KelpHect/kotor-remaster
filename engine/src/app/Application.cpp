@@ -1479,6 +1479,40 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
         check(banthaFinite, "bantha_pose_finite");
     }
 
+    const std::optional<kotor::Mdl> danglyModel = loadModel("c_rakghoul");
+    check(danglyModel.has_value(), "dangly_loaded");
+    if (danglyModel.has_value()) {
+        check(danglyModel->danglyNodeCount() > 0, "dangly_nodes");
+        const std::vector<kotor::MdlMeshTriangle> bindDangly = danglyModel->meshTriangles();
+        const std::vector<kotor::MdlMeshTriangle> posedDangly =
+            danglyModel->posedTriangles({}, 0.0f, 2.0f);
+        check(!bindDangly.empty() && bindDangly.size() == posedDangly.size(), "dangly_mesh");
+        std::size_t danglyMoved = 0;
+        bool danglyFinite = true;
+        for (std::size_t i = 0; i < bindDangly.size(); ++i) {
+            for (int v = 0; v < 3; ++v) {
+                const kotor::Vec3 a = bindDangly[i].v[v].position;
+                const kotor::Vec3 b = posedDangly[i].v[v].position;
+                danglyFinite = danglyFinite && std::isfinite(b.x) && std::isfinite(b.y)
+                    && std::isfinite(b.z);
+                if (std::fabs(a.x - b.x) > 0.0001f || std::fabs(a.y - b.y) > 0.0001f
+                    || std::fabs(a.z - b.z) > 0.0001f) {
+                    ++danglyMoved;
+                }
+            }
+        }
+        check(danglyFinite, "dangly_finite");
+        check(danglyMoved > 0, "dangly_vertices");
+    }
+
+    const std::optional<kotor::Mdl> saberModel = loadModel("w_lghtsbr_001");
+    check(saberModel.has_value(), "saber_loaded");
+    if (saberModel.has_value()) {
+        check(!saberModel->meshTriangles().empty(), "saber_static_geometry");
+        check(saberModel->danglyNodeCount() == 0, "saber_no_dangly");
+        check(saberModel->skinnedNodeCount() == 0, "saber_no_skin");
+    }
+
     check(game.rules().animationName(6) == "pause1", "animation_2da_name");
     check(game.rules().animationLooping(6), "animation_2da_loop");
 
@@ -1681,6 +1715,23 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
             const float dz = frame1.eye.z - frame0.eye.z;
             check(std::sqrt(dx * dx + dy * dy + dz * dz) > 0.001f, "camera_clip_advance");
             game.endDialogue();
+            for (int angle = 1; angle <= 3; ++angle) {
+                const SceneCamera preset = game.presetCamera(
+                    angle, 0.35f, 0.1f, {0.0f, 0.0f, 0.0f}, {0.0f, 3.0f, 0.0f});
+                check(std::isfinite(preset.eye.x) && std::isfinite(preset.eye.y)
+                          && std::isfinite(preset.eye.z)
+                          && std::fabs(kotor::length(preset.forward) - 1.0f) < 0.01f,
+                      angle == 1 ? "camera_preset_1"
+                          : angle == 2 ? "camera_preset_2" : "camera_preset_3");
+            }
+            bool camVidDefaults = true;
+            for (const kotor::DlgEntry& entry : dlg.entries) {
+                camVidDefaults = camVidDefaults && entry.camVidEffect <= 0;
+            }
+            for (const kotor::DlgReply& reply : dlg.replies) {
+                camVidDefaults = camVidDefaults && reply.camVidEffect <= 0;
+            }
+            check(camVidDefaults, "camvid_defaults");
         } catch (const kotor::FormatError&) {
             check(false, "camera_dialogue");
         }
@@ -2455,11 +2506,12 @@ int runApplication(const Options& options)
                     && loaded.vertices.size() == 235038
                     && loaded.indices.size() == 235038
                     && loaded.batches.size() == 34
-                    && loaded.textures.size() == 65
+                    && loaded.textures.size() == 67
                     && loaded.collisionVertices.size() == 850
                     && loaded.collision.size() == 1365
                     && loaded.entities.size() == 218
-                    && loaded.entityMeshes.size() == 120
+                    && loaded.entityMeshes.size() == 122
+                    && loaded.cameras.size() == 40
                     && loaded.triggers.size() == 13
                     && loaded.warnings.empty();
                 logInfo(concat("scene assert: rooms=", loaded.rooms.size(),

@@ -45,6 +45,9 @@ struct DialogueView {
     std::vector<DialogueOption> options;
     std::uint32_t entry = UINT32_MAX;
     std::int32_t cameraId = -1;
+    std::int32_t cameraAngle = -1;
+    float camHeightOffset = 0.0f;
+    float tarHeightOffset = 0.0f;
 };
 
 enum class UiPanel { None, Character, Inventory, Party, Journal, Merchant, Loot };
@@ -71,6 +74,8 @@ public:
     void update(float dt, const InputState& input);
     SceneCamera camera() const;
     SceneCamera cinematicCamera(std::int32_t cameraId) const;
+    SceneCamera presetCamera(std::int32_t angle, float camHeight, float targetHeight,
+                             kotor::Vec3 speaker, kotor::Vec3 target) const;
     void setDialogueCameraForTest(std::int32_t cameraId) {
         dialogueView_.active = true;
         dialogueView_.cameraId = cameraId;
