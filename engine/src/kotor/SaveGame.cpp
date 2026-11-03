@@ -309,6 +309,9 @@ void readPlayer(const Gff& gff, std::uint32_t structure, OriginalSave& save)
                         numberInt(gff, structure, "HitPoints", 1));
     save.maxHp = std::max(1, numberInt(gff, structure, "MaxHitPoints", save.hp));
     save.xp = numberInt(gff, structure, "Experience", 0);
+    save.alignment = std::clamp(numberInt(gff, structure, "GoodEvil", 50), 0, 100);
+    save.forcePoints = numberInt(gff, structure, "CurrentForce", 0);
+    save.maxForcePoints = numberInt(gff, structure, "MaxForcePoints", 0);
     const auto classes = list(gff, structure, "ClassList");
     if (!classes.empty()) {
         save.classId = numberInt(gff, classes.front(), "Class", 0);
@@ -316,6 +319,20 @@ void readPlayer(const Gff& gff, std::uint32_t structure, OriginalSave& save)
     }
     for (const std::uint32_t feat : list(gff, structure, "FeatList")) {
         save.feats.push_back(numberInt(gff, feat, "Feat", 0));
+    }
+    for (const std::uint32_t level : list(gff, structure, "LvlStatList")) {
+        for (const std::uint32_t row : gff.structure(level).fieldRows) {
+            const GffField& field = gff.fieldAt(row);
+            if (field.label.rfind("KnownList", 0) != 0 || field.type != GffType::List) {
+                continue;
+            }
+            for (const std::uint32_t spellStruct : gff.list(field)) {
+                const std::int32_t spell = numberInt(gff, spellStruct, "Spell", -1);
+                if (spell >= 0) {
+                    save.powers.push_back(spell);
+                }
+            }
+        }
     }
 }
 
@@ -604,13 +621,13 @@ GffNodePtr buildPlayerNode(const OriginalSave& save)
     node->addInt16("CurrentHitPoints", static_cast<std::int16_t>(save.hp));
     node->addInt16("MaxHitPoints", static_cast<std::int16_t>(save.maxHp));
     node->addInt16("PregameCurrent", static_cast<std::int16_t>(save.maxHp));
-    node->addInt16("ForcePoints", 0);
-    node->addInt16("CurrentForce", 0);
-    node->addInt16("MaxForcePoints", 0);
+    node->addInt16("ForcePoints", static_cast<std::int16_t>(save.maxForcePoints));
+    node->addInt16("CurrentForce", static_cast<std::int16_t>(save.forcePoints));
+    node->addInt16("MaxForcePoints", static_cast<std::int16_t>(save.maxForcePoints));
     node->addUInt32("Experience", static_cast<std::uint32_t>(save.xp));
     node->addUInt8("MovementRate", 0);
     node->addUInt16("PortraitId", 26);
-    node->addUInt8("GoodEvil", 50);
+    node->addUInt8("GoodEvil", static_cast<std::uint32_t>(std::clamp(save.alignment, 0, 100)));
     node->addUInt8("Color_Skin", 0);
     node->addUInt8("Color_Hair", 0);
     node->addUInt8("Color_Tattoo1", 0);
@@ -630,7 +647,27 @@ GffNodePtr buildPlayerNode(const OriginalSave& save)
     classes->addInt32("Class", save.classId);
     classes->addInt16("ClassLevel", static_cast<std::int16_t>(save.level));
     node->addList("ClassList", {classes});
-    node->addList("LvlStatList", {});
+    std::vector<GffNodePtr> levels;
+    const std::int32_t levelCount = std::max<std::int32_t>(1, save.level);
+    for (std::int32_t level = 0; level < levelCount; ++level) {
+        auto entry = std::make_shared<GffNode>(0);
+        entry->addUInt8("LvlStatHitDie", 0);
+        entry->addUInt8("LvlStatForce", 0);
+        entry->addUInt8("LvlStatClass", static_cast<std::uint32_t>(save.classId));
+        entry->addList("SkillList", {});
+        entry->addList("FeatList", {});
+        if (level == levelCount - 1) {
+            std::vector<GffNodePtr> known;
+            for (const std::int32_t power : save.powers) {
+                auto spell = std::make_shared<GffNode>(0);
+                spell->addInt32("Spell", power);
+                known.push_back(std::move(spell));
+            }
+            entry->addList("KnownList0", std::move(known));
+        }
+        levels.push_back(std::move(entry));
+    }
+    node->addList("LvlStatList", std::move(levels));
     node->addUInt16("SkillPoints", 0);
     std::vector<GffNodePtr> skills;
     for (int i = 0; i < 8; ++i) {

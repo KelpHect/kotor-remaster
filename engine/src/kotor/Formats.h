@@ -547,9 +547,14 @@ struct Entity {
     std::int32_t maxHitPoints = 1;
     std::int32_t attackBonus = 0;
     std::int32_t defense = 10;
+    std::int32_t fortSave = 0;
+    std::int32_t willSave = 0;
+    std::int32_t refSave = 0;
     std::int32_t damageMin = 1;
     std::int32_t damageMax = 4;
     float walkRate = 1.0f;
+    float stunTimer = 0.0f;
+    float fearTimer = 0.0f;
     bool hostile = false;
     bool dead = false;
     bool useable = false;

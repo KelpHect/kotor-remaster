@@ -181,6 +181,18 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.lootTest = true;
             continue;
         }
+        if (arg == "--combat-force-test") {
+            result.options.combatForceTest = true;
+            continue;
+        }
+        if (arg == "--combat-force-script") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--combat-force-script requires an .ncs path");
+            }
+            result.options.combatForceScript = value;
+            continue;
+        }
         if (arg == "--delayed-test") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -435,6 +447,8 @@ void printUsage()
         << "  --party-test          Assert companion sheets and 80% XP sharing\n"
         << "  --ui-test             Assert the systems UI panel state\n"
         << "  --loot-test           Assert container loot transfer\n"
+        << "  --combat-force-test   Assert feats, Force powers, saves and alignment\n"
+        << "  --combat-force-script <ncs>  Script bridge assertions for the combat-force gate\n"
         << "  --delayed-test <ncs>  Assert DelayCommand/AssignCommand closure execution\n"
         << "  --panel <name>        Open character|inventory|party|journal|merchant at startup\n"
         << "  --add-party <tag>     Add a scene creature to the party at startup\n"

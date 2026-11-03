@@ -1,0 +1,621 @@
+{
+  "folder": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s11\\000012 - ENGINE",
+  "folder_name": "000012 - ENGINE",
+  "slot": 12,
+  "label": "ENGINE",
+  "kind": "manual",
+  "autosave": false,
+  "files": [
+    {
+      "name": "GLOBALVARS.res",
+      "size": 424,
+      "canonical": "globalvars.res"
+    },
+    {
+      "name": "PARTYTABLE.res",
+      "size": 1332,
+      "canonical": "partytable.res"
+    },
+    {
+      "name": "SAVEGAME.sav",
+      "size": 77784,
+      "canonical": "savegame.sav"
+    },
+    {
+      "name": "savenfo.res",
+      "size": 625,
+      "canonical": "savenfo.res"
+    },
+    {
+      "name": "Screen.tga",
+      "size": 196626,
+      "canonical": "screen.tga"
+    }
+  ],
+  "validation": {
+    "errors": [],
+    "warnings": [],
+    "infos": []
+  },
+  "nfo": {
+    "present": true,
+    "file": "savenfo.res",
+    "size": 625,
+    "check_errors": [],
+    "checks": [],
+    "file_type": "NFO",
+    "magic": "NFO ",
+    "version": "V3.2",
+    "struct_count": 1,
+    "field_count": 15,
+    "label_count": 15,
+    "labels": [
+      "AREANAME",
+      "LASTMODULE",
+      "TIMEPLAYED",
+      "CHEATUSED",
+      "SAVEGAMENAME",
+      "GAMEPLAYHINT",
+      "STORYHINT",
+      "LIVE1",
+      "LIVE2",
+      "LIVE3",
+      "LIVE4",
+      "LIVE5",
+      "LIVE6",
+      "LIVECONTENT",
+      "PORTRAIT0"
+    ],
+    "list_counts": {},
+    "expected_file_type": "NFO",
+    "magic_ok": true,
+    "area_name": "Untitled",
+    "last_module": "end_m01aa",
+    "save_game_name": "S11 COMBAT",
+    "pc_name": null,
+    "time_played": 0,
+    "timestamp_filetime": null,
+    "timestamp_unix": null,
+    "cheat_used": false,
+    "gameplay_hint": 0,
+    "story_hint": 0,
+    "portraits": [
+      "po_pmhc4",
+      null,
+      null
+    ],
+    "screenshot": null,
+    "live": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ]
+  },
+  "party_table": {
+    "present": true,
+    "file": "PARTYTABLE.res",
+    "size": 1332,
+    "check_errors": [],
+    "checks": [],
+    "file_type": "PT",
+    "magic": "PT  ",
+    "version": "V3.2",
+    "struct_count": 12,
+    "field_count": 41,
+    "label_count": 25,
+    "labels": [
+      "PT_GOLD",
+      "PT_XP_POOL",
+      "PT_PLAYEDSECONDS",
+      "PT_CONTROLLED_NP",
+      "PT_SOLOMODE",
+      "PT_CHEAT_USED",
+      "PT_NUM_MEMBERS",
+      "PT_MEMBERS",
+      "PT_AVAIL_NPCS",
+      "PT_AISTATE",
+      "PT_FOLLOWSTATE",
+      "GlxyMap",
+      "PT_PAZAAKCARDS",
+      "PT_PAZSIDELIST",
+      "PT_TUT_WND_SHOWN",
+      "PT_LAST_GUI_PNL",
+      "PT_FB_MSG_LIST",
+      "PT_DLG_MSG_LIST",
+      "PT_COST_MULT_LIS",
+      "JNL_SortOrder",
+      "JNL_Entries"
+    ],
+    "list_counts": {
+      "PT_MEMBERS": 1,
+      "PT_AVAIL_NPCS": 9,
+      "PT_PAZAAKCARDS": 0,
+      "PT_PAZSIDELIST": 0,
+      "PT_FB_MSG_LIST": 0,
+      "PT_DLG_MSG_LIST": 0,
+      "PT_COST_MULT_LIS": 0,
+      "JNL_Entries": 0
+    },
+    "expected_file_type": "PT",
+    "magic_ok": true,
+    "gold": 0,
+    "member_count": 1,
+    "members": [
+      {
+        "leader": true,
+        "member_id": 0
+      }
+    ],
+    "available_npc_count": 1,
+    "selectable_npc_count": 9,
+    "influence_count": 0,
+    "journal_count": 0,
+    "journal_states": {},
+    "journal_sample": [],
+    "journal_truncated": false,
+    "chemical_count": null,
+    "component_count": null
+  },
+  "global_vars": {
+    "present": true,
+    "file": "GLOBALVARS.res",
+    "size": 424,
+    "check_errors": [],
+    "checks": [],
+    "file_type": "GVT",
+    "magic": "GVT ",
+    "version": "V3.2",
+    "struct_count": 2,
+    "field_count": 9,
+    "label_count": 9,
+    "labels": [
+      "CatBoolean",
+      "CatNumber",
+      "CatLocation",
+      "CatString",
+      "ValBoolean",
+      "ValNumber",
+      "ValLocation",
+      "ValString"
+    ],
+    "list_counts": {
+      "CatBoolean": 0,
+      "CatNumber": 1,
+      "CatLocation": 0,
+      "CatString": 0,
+      "ValString": 0
+    },
+    "expected_file_type": "GVT",
+    "magic_ok": true,
+    "category_counts": {
+      "number": 1,
+      "boolean": 0,
+      "string": 0,
+      "location": 0
+    },
+    "val_number_bytes": 1,
+    "val_boolean_bytes": 0,
+    "val_location_bytes": 0,
+    "val_string_count": 0,
+    "boolean_true_count": 0,
+    "numbers": [
+      {
+        "name": "K_CURRENT_PLANET",
+        "value": 5
+      }
+    ],
+    "booleans": [],
+    "strings": [],
+    "locations": [],
+    "checks_structure": "ValBoolean is MSB-first in each byte (prior-art behavior)"
+  },
+  "pifo": {
+    "present": false,
+    "file": "pifo.ifo",
+    "size": 0,
+    "check_errors": [],
+    "checks": [
+      "missing pifo.ifo"
+    ]
+  },
+  "screen": {
+    "present": true,
+    "file": "Screen.tga",
+    "size": 196626,
+    "tga": {
+      "size": 196626,
+      "valid": true,
+      "id_length": 0,
+      "color_map_type": 0,
+      "image_type": 2,
+      "width": 256,
+      "height": 256,
+      "bits_per_pixel": 24,
+      "descriptor": 0
+    }
+  },
+  "corrupt": {
+    "present": false
+  },
+  "sidecar_files": {
+    "nfo": {
+      "present": true,
+      "file": "savenfo.res",
+      "size": 625
+    },
+    "party_table": {
+      "present": true,
+      "file": "PARTYTABLE.res",
+      "size": 1332
+    },
+    "global_vars": {
+      "present": true,
+      "file": "GLOBALVARS.res",
+      "size": 424
+    },
+    "screen": {
+      "present": true,
+      "file": "Screen.tga",
+      "size": 196626
+    },
+    "pifo": {
+      "present": false
+    },
+    "corrupt": {
+      "present": false
+    }
+  },
+  "outer": {
+    "present": true,
+    "file": "SAVEGAME.sav",
+    "size": 77784,
+    "errors": [],
+    "entries": [
+      {
+        "index": 0,
+        "resref": "end_m01aa",
+        "type": 2057,
+        "kind": "SAV",
+        "id": 0,
+        "offset": 256,
+        "size": 77285
+      },
+      {
+        "index": 1,
+        "resref": "INVENTORY",
+        "type": 2037,
+        "kind": "GFF",
+        "id": 1,
+        "offset": 77544,
+        "size": 100
+      },
+      {
+        "index": 2,
+        "resref": "REPUTE",
+        "type": 2038,
+        "kind": "FAC",
+        "id": 2,
+        "offset": 77644,
+        "size": 140
+      }
+    ],
+    "duplicates": [],
+    "magic": "MOD ",
+    "version": "V1.0",
+    "entry_count": 3
+  },
+  "modules": [
+    {
+      "resref": "end_m01aa",
+      "type": 2057,
+      "size": 77285,
+      "nested_magic": "MOD ",
+      "nested_version": "V1.0",
+      "entry_count": 3,
+      "entries": [
+        {
+          "index": 0,
+          "resref": "m01aa",
+          "type": 2023,
+          "kind": "GIT",
+          "id": 0,
+          "offset": 256,
+          "size": 66364
+        },
+        {
+          "index": 1,
+          "resref": "m01aa",
+          "type": 2012,
+          "kind": "ARE",
+          "id": 1,
+          "offset": 66620,
+          "size": 3676
+        },
+        {
+          "index": 2,
+          "resref": "Module",
+          "type": 2014,
+          "kind": "IFO",
+          "id": 2,
+          "offset": 70296,
+          "size": 6989
+        }
+      ],
+      "ifo": {
+        "file_type": "IFO",
+        "magic": "IFO ",
+        "version": 3,
+        "struct_count": 30,
+        "field_count": 208,
+        "label_count": 172,
+        "labels": [
+          "Mod_ID",
+          "Mod_Creator_ID",
+          "Mod_Version",
+          "Mod_VO_ID",
+          "Expansion_Pack",
+          "Mod_Name",
+          "Mod_Tag",
+          "Mod_Hak",
+          "Mod_Description",
+          "Mod_IsSaveGame",
+          "Mod_Entry_Area",
+          "Mod_Entry_X",
+          "Mod_Entry_Y",
+          "Mod_Entry_Z",
+          "Mod_Entry_Dir_X",
+          "Mod_Entry_Dir_Y",
+          "Mod_Expan_List",
+          "Mod_DawnHour",
+          "Mod_DuskHour",
+          "Mod_MinPerHour",
+          "Mod_StartMonth",
+          "Mod_StartDay",
+          "Mod_StartHour",
+          "Mod_StartYear",
+          "Mod_XPScale",
+          "Mod_OnHeartbeat",
+          "Mod_OnModLoad",
+          "Mod_OnModStart",
+          "Mod_OnClientEntr",
+          "Mod_OnClientLeav",
+          "Mod_OnActvtItem",
+          "Mod_OnAcquirItem",
+          "Mod_OnUsrDefined",
+          "Mod_OnUnAqreItem",
+          "Mod_OnPlrDeath",
+          "Mod_OnPlrDying",
+          "Mod_OnPlrLvlUp",
+          "Mod_OnSpawnBtnDn",
+          "Mod_OnPlrRest",
+          "Mod_StartMovie",
+          "Mod_CutSceneList",
+          "Mod_GVar_List",
+          "Mod_Area_list",
+          "Mod_IsNWMFile",
+          "Mod_PlayerList"
+        ],
+        "list_counts": {
+          "Mod_Expan_List": 0,
+          "Mod_CutSceneList": 0,
+          "Mod_GVar_List": 0,
+          "Mod_Area_list": 1,
+          "Mod_PlayerList": 1
+        },
+        "check_errors": [],
+        "entry": {
+          "area": "m01aa",
+          "x": 15.424799919128418,
+          "y": 20.12150001525879,
+          "z": -1.1984034776687622,
+          "dir_x": -4.371138828673793e-08,
+          "dir_y": 1.0
+        },
+        "tag": "end_m01aa",
+        "name": "end_m01aa",
+        "area_list": [
+          "m01aa"
+        ],
+        "area_list_truncated": false,
+        "is_save_game": 1,
+        "start": {
+          "hour": 13,
+          "day": 1,
+          "month": 6,
+          "year": 1372,
+          "minutes_per_hour": 2
+        },
+        "xp_scale": 10
+      },
+      "are": {
+        "file_type": "ARE",
+        "magic": "ARE ",
+        "version": "V3.2",
+        "struct_count": 17,
+        "field_count": 116,
+        "label_count": 74,
+        "labels": [
+          "ID",
+          "Creator_ID",
+          "Version",
+          "Tag",
+          "Name",
+          "Comments",
+          "Map",
+          "Expansion_List",
+          "Flags",
+          "ModSpotCheck",
+          "ModListenCheck",
+          "AlphaTest",
+          "CameraStyle",
+          "DefaultEnvMap",
+          "Grass_TexName",
+          "Grass_Density",
+          "Grass_QuadSize",
+          "Grass_Ambient",
+          "Grass_Diffuse",
+          "Grass_Prob_LL",
+          "Grass_Prob_LR",
+          "Grass_Prob_UL",
+          "Grass_Prob_UR",
+          "MoonAmbientColor",
+          "MoonDiffuseColor",
+          "MoonFogOn",
+          "MoonFogNear",
+          "MoonFogFar",
+          "MoonFogColor",
+          "MoonShadows",
+          "SunAmbientColor",
+          "SunDiffuseColor",
+          "SunFogOn",
+          "SunFogNear",
+          "SunFogFar",
+          "SunFogColor",
+          "SunShadows",
+          "DynAmbientColor",
+          "IsNight",
+          "LightingScheme",
+          "ShadowOpacity",
+          "DayNightCycle",
+          "ChanceRain",
+          "ChanceSnow",
+          "ChanceLightning",
+          "WindPower",
+          "LoadScreenID",
+          "PlayerVsPlayer",
+          "NoRest",
+          "NoHangBack",
+          "PlayerOnly",
+          "Unescapable",
+          "StealthXPEnabled",
+          "StealthXPLoss",
+          "StealthXPMax",
+          "Rooms",
+          "OnEnter",
+          "OnExit",
+          "OnHeartbeat",
+          "OnUserDefined"
+        ],
+        "list_counts": {
+          "Expansion_List": 0,
+          "Rooms": 15
+        },
+        "check_errors": [],
+        "tag": "Untitled",
+        "name": null,
+        "flags": 1,
+        "camera_style": 0,
+        "load_screen_id": 0,
+        "rooms": 15
+      },
+      "git": {
+        "file_type": "GIT",
+        "magic": "GIT ",
+        "version": "V3.2",
+        "struct_count": 322,
+        "field_count": 3066,
+        "label_count": 102,
+        "labels": [
+          "AreaProperties",
+          "Creature List",
+          "Door List",
+          "Encounter List",
+          "List",
+          "SoundList",
+          "StoreList",
+          "TriggerList",
+          "WaypointList",
+          "Placeable List",
+          "CameraList"
+        ],
+        "list_counts": {
+          "Creature List": 26,
+          "Door List": 15,
+          "Encounter List": 0,
+          "List": 0,
+          "SoundList": 45,
+          "StoreList": 0,
+          "TriggerList": 14,
+          "WaypointList": 58,
+          "Placeable List": 60,
+          "CameraList": 40
+        },
+        "check_errors": [],
+        "use_templates": null,
+        "object_counts": {
+          "creatures": 26,
+          "doors": 15,
+          "encounters": 0,
+          "misc": 0,
+          "sounds": 45,
+          "stores": 0,
+          "triggers": 14,
+          "waypoints": 58,
+          "placeables": 60,
+          "cameras": 40
+        },
+        "total_instances": 258
+      },
+      "others": [],
+      "errors": []
+    }
+  ],
+  "inventory": {
+    "entry": {
+      "index": 1,
+      "resref": "INVENTORY",
+      "type": 2037,
+      "kind": "GFF",
+      "id": 1,
+      "offset": 77544,
+      "size": 100
+    },
+    "file_type": "INV",
+    "magic": "INV ",
+    "version": "V3.2",
+    "struct_count": 1,
+    "field_count": 1,
+    "label_count": 1,
+    "labels": [
+      "ItemList"
+    ],
+    "list_counts": {
+      "ItemList": 0
+    },
+    "check_errors": [],
+    "item_list_label": "ItemList",
+    "item_count": 0,
+    "items": []
+  },
+  "repute": {
+    "entry": {
+      "index": 2,
+      "resref": "REPUTE",
+      "type": 2038,
+      "kind": "FAC",
+      "id": 2,
+      "offset": 77644,
+      "size": 140
+    },
+    "file_type": "FAC",
+    "magic": "FAC ",
+    "version": "V3.2",
+    "struct_count": 1,
+    "field_count": 2,
+    "label_count": 2,
+    "labels": [
+      "FactionList",
+      "RepList"
+    ],
+    "list_counts": {
+      "FactionList": 0,
+      "RepList": 0
+    },
+    "check_errors": []
+  },
+  "pcs": [],
+  "avail_npcs": []
+}

@@ -31,6 +31,8 @@ struct Options {
     bool partyTest = false;
     bool uiTest = false;
     bool lootTest = false;
+    bool combatForceTest = false;
+    std::string combatForceScript;
     std::string delayedTest;
     std::string panel;
     std::string addParty;

@@ -7,6 +7,7 @@
 #include "script/ActionRuntime.h"
 #include "script/World.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <filesystem>
@@ -47,6 +48,9 @@ struct DialogueView {
 
 enum class UiPanel { None, Character, Inventory, Party, Journal, Merchant, Loot };
 const char* uiPanelName(UiPanel panel);
+
+enum class CombatMode { Normal, PowerAttack, Flurry, CriticalStrike, Whirlwind };
+const char* combatModeName(CombatMode mode);
 
 // One loaded module plus the player state. All KotOR data comes through the
 // C++ kotor::Install/VFS; this class never calls an external tool. Scripts run
@@ -148,6 +152,18 @@ public:
     bool learnPower(std::int32_t powerId);
     void giveXp(std::int32_t amount);
 
+    // Combat/Force/alignment core.
+    bool useFeat(std::int32_t featId, std::uint32_t target = 0);
+    bool useForcePower(std::int32_t powerId, std::uint32_t target = 0);
+    CombatMode combatMode() const { return combatMode_; }
+    std::int32_t forcePoints() const { return character_.fp; }
+    std::int32_t maxForcePoints() const { return character_.maxFp; }
+    std::int32_t alignment() const { return character_.alignment; }
+    void setAlignment(std::int32_t value) { character_.alignment = std::clamp(value, 0, 100); }
+    void adjustAlignment(std::int32_t delta) { setAlignment(character_.alignment + delta); }
+    std::int32_t lastForcePower() const { return lastForcePower_; }
+    bool lastForcePowerSuccess() const { return lastForcePowerSuccess_; }
+
     // Run a raw NCS payload (test fixtures and tooling) with the live action
     // runtime. Returns false when decode or execution fails.
     bool runScriptNcsForTest(const std::string& label,
@@ -162,6 +178,14 @@ public:
                                            std::uint32_t caller = 0,
                                            std::uint32_t trigger = 0);
     std::uint32_t objectForTag(const std::string& tag) const;
+    std::uint32_t objectForEntityIndex(std::size_t index) const { return objectForEntity(index); }
+    void setCharacterForTest(const CharacterSheet& sheet) {
+        character_ = sheet;
+        playerHp_ = sheet.hp;
+        playerMaxHp_ = sheet.maxHp;
+        playerDead_ = false;
+    }
+    std::int32_t forceArmorBonus() const { return forceArmorBonus_; }
     // Test hook invocation without moving the player; returns false if the
     // entity or hook is absent.
     bool runHookForTest(const std::string& hook, const std::string& tag,
@@ -245,6 +269,18 @@ private:
     float playerAttackTimer_ = 0.0f;
     float combatRoundTimer_ = 0.0f;
     int combatRound_ = 0;
+    CombatMode combatMode_ = CombatMode::Normal;
+    std::int32_t combatModeRank_ = 1;
+    float combatModeTimer_ = 0.0f;
+    std::int32_t forceArmorBonus_ = 0;
+    float forceArmorTimer_ = 0.0f;
+    std::int32_t forceValorBonus_ = 0;
+    float forceValorTimer_ = 0.0f;
+    float forceSpeedTimer_ = 0.0f;
+    std::int32_t forceShield_ = 0;
+    float forceShieldTimer_ = 0.0f;
+    std::int32_t lastForcePower_ = -1;
+    bool lastForcePowerSuccess_ = false;
     std::vector<float> npcAttackTimers_;
     std::vector<bool> triggerInside_;
     std::vector<std::string> combatLog_;

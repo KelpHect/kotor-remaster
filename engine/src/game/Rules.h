@@ -42,6 +42,7 @@ struct CharacterSheet {
     std::int32_t intel = 10;
     std::int32_t wis = 10;
     std::int32_t cha = 10;
+    std::int32_t alignment = 50; // 0 dark .. 50 neutral .. 100 light
     std::map<std::string, std::int32_t> skills;
     std::set<std::int32_t> feats;
     std::set<std::int32_t> powers;
@@ -56,6 +57,14 @@ struct AttackResult {
     bool hit = false;
     bool critical = false;
     std::int32_t damage = 0;
+};
+
+struct ForcePowerInfo {
+    std::int32_t id = 0;
+    std::string label;
+    std::int32_t cost = 0;
+    char alignment = '-'; // G, E or -
+    std::int32_t range = 0; // metres; 0 = self/personal
 };
 
 struct MerchantStockItem {
@@ -114,6 +123,17 @@ public:
     bool canTakePower(const CharacterSheet& sheet, std::int32_t powerId) const;
     std::string featName(std::int32_t featId) const;
     std::string powerName(std::int32_t powerId) const;
+    std::int32_t featCount() const {
+        return feat_ ? static_cast<std::int32_t>(feat_->rowCount()) : 0;
+    }
+    std::optional<ForcePowerInfo> forcePower(std::int32_t powerId) const;
+    std::int32_t maxForcePoints(std::int32_t classId, std::int32_t level,
+                                std::int32_t wisdom, std::int32_t charisma) const;
+    std::int32_t forcePowerSaveDC(const CharacterSheet& sheet) const;
+    std::int32_t featAttackBonus(const CharacterSheet& sheet) const;
+    std::int32_t featDamageBonus(const CharacterSheet& sheet) const;
+    std::int32_t toughnessBonus(const CharacterSheet& sheet) const;
+    bool hasFeatLabel(const CharacterSheet& sheet, const std::string& needle) const;
 
     int equipSlotFor(std::int32_t baseItem) const;
     int itemCost(std::int32_t baseItem) const;
@@ -126,7 +146,9 @@ public:
     std::int32_t initiativeBonus(const CharacterSheet& sheet) const;
     AttackResult resolveAttack(const CharacterSheet& attacker, std::int32_t targetAc,
                                std::uint32_t& rng, std::int32_t damageDice,
-                               std::int32_t damageDie, std::int32_t damageBonus) const;
+                               std::int32_t damageDie, std::int32_t damageBonus,
+                               std::int32_t criticalThreat = 20,
+                               std::int32_t attackModifier = 0) const;
     void weaponDamage(const CharacterSheet& sheet, std::int32_t& dice, std::int32_t& die,
                       std::int32_t& bonus) const;
 

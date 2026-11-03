@@ -88,6 +88,7 @@ build\msvc-release\kotor_engine.exe --module end_m01aa --ui-test --null --headle
 build\msvc-release\kotor_engine.exe --module danm13 --loot-test --null --headless
 build\msvc-release\kotor_engine.exe --module tar_m03ab --encounter-reset-test --null --headless
 build\msvc-release\kotor_engine.exe --module end_m01aa --delayed-test "tests\fixtures\delay_test.ncs" --null --headless
+build\msvc-release\kotor_engine.exe --module end_m01aa --combat-force-test --combat-force-script "tests\fixtures\force_script_test.ncs" --null --headless
 build\msvc-release\kotor_engine.exe --profile-info "E:\SteamLibrary\steamapps\common\swkotor" --null --headless
 build\msvc-release\kotor_engine.exe --original-save-load "..\artifacts\lanes\06-dynamic\profile\saves\000000 - QUICKSAVE" --null --headless
 build\msvc-release\kotor_engine.exe --module end_m01aa --original-save-create "build\msvc-release\000010 - ENGINE" --null --headless

@@ -15,6 +15,18 @@
 
 namespace ke {
 
+const char* combatModeName(CombatMode mode)
+{
+    switch (mode) {
+    case CombatMode::PowerAttack: return "power_attack";
+    case CombatMode::Flurry: return "flurry";
+    case CombatMode::CriticalStrike: return "critical_strike";
+    case CombatMode::Whirlwind: return "whirlwind";
+    case CombatMode::Normal: return "normal";
+    }
+    return "normal";
+}
+
 const char* uiPanelName(UiPanel panel)
 {
     switch (panel) {
@@ -494,7 +506,9 @@ void GameSession::syncPlayerToScriptWorld()
     pc->attrs["gold"] = static_cast<std::int64_t>(gold_);
     pc->attrs["class_id"] = static_cast<std::int64_t>(character_.classId);
     pc->attrs["ac"] = static_cast<std::int64_t>(rules_.armorClass(character_));
-    pc->attrs["good_evil"] = static_cast<std::int64_t>(50);
+    pc->attrs["good_evil"] = static_cast<std::int64_t>(character_.alignment);
+    pc->attrs["force_points"] = static_cast<std::int64_t>(character_.fp);
+    pc->attrs["max_force_points"] = static_cast<std::int64_t>(character_.maxFp);
 }
 
 void GameSession::syncEntityToScriptWorld(std::size_t index)
@@ -1115,7 +1129,10 @@ void GameSession::update(float dt, const InputState& input)
         if (input.right) rightAxis += 1.0f;
         if (input.left) rightAxis -= 1.0f;
     }
-    const float speed = input.run ? 7.5f : 3.8f;
+    float speed = input.run ? 7.5f : 3.8f;
+    if (forceSpeedTimer_ > 0.0f) {
+        speed *= 1.5f;
+    }
     const float cosYaw = std::cos(yaw_);
     const float sinYaw = std::sin(yaw_);
     kotor::Vec3 desired{cosYaw * forwardAxis + sinYaw * rightAxis,
@@ -1611,8 +1628,31 @@ void GameSession::playerAttack(std::size_t target)
     std::int32_t die = 8;
     std::int32_t bonus = 0;
     rules_.weaponDamage(character_, dice, die, bonus);
+    if (forceValorTimer_ > 0.0f) {
+        bonus += forceValorBonus_;
+    }
+    std::int32_t attackModifier = forceValorTimer_ > 0.0f ? forceValorBonus_ : 0;
+    std::int32_t criticalThreat = 20;
+    switch (combatMode_) {
+    case CombatMode::PowerAttack:
+        attackModifier -= 3;
+        bonus += combatModeRank_ == 1 ? 5 : combatModeRank_ == 2 ? 8 : 10;
+        break;
+    case CombatMode::Flurry:
+        attackModifier -= combatModeRank_ == 1 ? 4 : combatModeRank_ == 2 ? 2 : 0;
+        break;
+    case CombatMode::CriticalStrike:
+        attackModifier -= 2;
+        criticalThreat = combatModeRank_ == 1 ? 19 : combatModeRank_ == 2 ? 18 : 17;
+        break;
+    case CombatMode::Whirlwind:
+        attackModifier -= 4;
+        break;
+    case CombatMode::Normal:
+        break;
+    }
     const AttackResult result = rules_.resolveAttack(character_, entity.defense, rng_, dice, die,
-                                                     bonus);
+                                                     bonus, criticalThreat, attackModifier);
     if (!result.hit) {
         logEvent("player misses " + (entity.name.empty() ? entity.tag : entity.name)
                  + " (" + std::to_string(result.total) + " vs " + std::to_string(entity.defense) + ")");
@@ -1637,8 +1677,12 @@ void GameSession::playerAttack(std::size_t target)
 void GameSession::npcAttack(std::size_t attacker)
 {
     kotor::Entity& entity = scene_.entities[attacker];
+    if (entity.stunTimer > 0.0f || entity.fearTimer > 0.0f) {
+        return;
+    }
     const std::int32_t roll = 1 + static_cast<std::int32_t>(random() % 20u);
-    const std::int32_t targetAc = rules_.armorClass(character_);
+    const std::int32_t targetAc = rules_.armorClass(character_)
+        + (forceArmorTimer_ > 0.0f ? forceArmorBonus_ : 0);
     const std::int32_t total = roll + entity.attackBonus;
     if (roll != 20 && (roll == 1 || total < targetAc)) {
         logEvent((entity.name.empty() ? entity.tag : entity.name) + " misses player ("
@@ -1650,6 +1694,11 @@ void GameSession::npcAttack(std::size_t attacker)
         + static_cast<std::int32_t>(random() % static_cast<std::uint32_t>(span));
     if (roll == 20) {
         damage *= 2;
+    }
+    if (forceShieldTimer_ > 0.0f && forceShield_ > 0) {
+        const std::int32_t absorbed = std::min(forceShield_, damage);
+        damage -= absorbed;
+        forceShield_ -= absorbed;
     }
     playerHp_ -= damage;
     logEvent((entity.name.empty() ? entity.tag : entity.name) + " hits player for "
@@ -1672,6 +1721,37 @@ void GameSession::updateCombat(float dt)
     }
     if (npcAttackTimers_.size() != scene_.entities.size()) {
         npcAttackTimers_.resize(scene_.entities.size(), 0.0f);
+    }
+    if (combatModeTimer_ > 0.0f) {
+        combatModeTimer_ -= dt;
+        if (combatModeTimer_ <= 0.0f) {
+            combatMode_ = CombatMode::Normal;
+        }
+    }
+    if (forceArmorTimer_ > 0.0f) {
+        forceArmorTimer_ -= dt;
+        if (forceArmorTimer_ <= 0.0f) {
+            forceArmorBonus_ = 0;
+        }
+    }
+    if (forceValorTimer_ > 0.0f) {
+        forceValorTimer_ -= dt;
+        if (forceValorTimer_ <= 0.0f) {
+            forceValorBonus_ = 0;
+        }
+    }
+    if (forceSpeedTimer_ > 0.0f) {
+        forceSpeedTimer_ = std::max(0.0f, forceSpeedTimer_ - dt);
+    }
+    if (forceShieldTimer_ > 0.0f) {
+        forceShieldTimer_ -= dt;
+        if (forceShieldTimer_ <= 0.0f) {
+            forceShield_ = 0;
+        }
+    }
+    for (kotor::Entity& entity : scene_.entities) {
+        entity.stunTimer = std::max(0.0f, entity.stunTimer - dt);
+        entity.fearTimer = std::max(0.0f, entity.fearTimer - dt);
     }
     if (combatTarget_ != UINT32_MAX
         && (combatTarget_ >= scene_.entities.size() || scene_.entities[combatTarget_].dead)) {
@@ -1701,7 +1781,8 @@ void GameSession::updateCombat(float dt)
 
     for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
         kotor::Entity& entity = scene_.entities[i];
-        if (!entity.hostile || entity.dead) {
+        if (!entity.hostile || entity.dead || entity.stunTimer > 0.0f
+            || entity.fearTimer > 0.0f) {
             continue;
         }
         const float distance = distance2D(position_, entity.position);
@@ -1733,7 +1814,8 @@ void GameSession::updateCombat(float dt)
                      0, true});
     for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
         const kotor::Entity& entity = scene_.entities[i];
-        if (!entity.hostile || entity.dead) {
+        if (!entity.hostile || entity.dead || entity.stunTimer > 0.0f
+            || entity.fearTimer > 0.0f) {
             continue;
         }
         if (distance2D(position_, entity.position) <= 2.4f) {
@@ -1750,9 +1832,19 @@ void GameSession::updateCombat(float dt)
             break;
         }
         if (actor.player) {
-            if (combatTarget_ != UINT32_MAX
-                && distance2D(position_, scene_.entities[combatTarget_].position) <= 2.4f) {
+            if (combatMode_ == CombatMode::Whirlwind) {
+                for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+                    if (scene_.entities[i].hostile && !scene_.entities[i].dead
+                        && distance2D(position_, scene_.entities[i].position) <= 2.4f) {
+                        playerAttack(i);
+                    }
+                }
+            } else if (combatTarget_ != UINT32_MAX
+                       && distance2D(position_, scene_.entities[combatTarget_].position) <= 2.4f) {
                 playerAttack(combatTarget_);
+                if (combatMode_ == CombatMode::Flurry && combatTarget_ != UINT32_MAX) {
+                    playerAttack(combatTarget_);
+                }
             }
         } else if (actor.index < scene_.entities.size()
                    && !scene_.entities[actor.index].dead) {
@@ -1984,6 +2076,16 @@ bool GameSession::learnFeat(std::int32_t featId)
     }
     character_.feats.insert(featId);
     --character_.featPoints;
+    if (rules_.loaded()) {
+        const std::int32_t oldMax = character_.maxHp;
+        character_.maxHp = rules_.maxHitPoints(character_.classId, character_.level,
+                                               character_.con)
+            + rules_.toughnessBonus(character_);
+        character_.hp += std::max<std::int32_t>(0, character_.maxHp - oldMax);
+        playerMaxHp_ = character_.maxHp;
+        playerHp_ = std::min(playerHp_ + std::max<std::int32_t>(0, character_.maxHp - oldMax),
+                            playerMaxHp_);
+    }
     logEvent("learn feat " + rules_.featName(featId));
     return true;
 }
@@ -2030,6 +2132,190 @@ void GameSession::giveXp(std::int32_t amount){
         }
     }
     logEvent("xp +" + std::to_string(amount) + " = " + std::to_string(character_.xp));
+}
+
+bool GameSession::useFeat(std::int32_t featId, std::uint32_t target)
+{
+    (void)target;
+    if (!character_.feats.contains(featId) || !rules_.loaded()) {
+        return false;
+    }
+    const std::string label = rules_.featName(featId);
+    if (label.find("POWER_ATTACK") != std::string::npos) {
+        combatMode_ = CombatMode::PowerAttack;
+    } else if (label.find("FLURRY") != std::string::npos) {
+        combatMode_ = CombatMode::Flurry;
+    } else if (label.find("CRITICAL_STRIKE") != std::string::npos) {
+        combatMode_ = CombatMode::CriticalStrike;
+    } else if (label == "WHIRLWIND_ATTACK") {
+        combatMode_ = CombatMode::Whirlwind;
+    } else {
+        return false;
+    }
+    combatModeRank_ = label.find("MASTER") != std::string::npos ? 3
+        : label.find("IMPROVED") != std::string::npos ? 2 : 1;
+    combatModeTimer_ = 30.0f;
+    logEvent("feat " + label);
+    return true;
+}
+
+bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
+{
+    if (!rules_.loaded() || !character_.powers.contains(powerId)) {
+        return false;
+    }
+    const std::optional<ForcePowerInfo> info = rules_.forcePower(powerId);
+    if (!info.has_value() || character_.fp < info->cost) {
+        lastForcePower_ = powerId;
+        lastForcePowerSuccess_ = false;
+        return false;
+    }
+    const std::uint32_t self = scriptWorld_.pc;
+    const std::uint32_t targetObject = target == 0 ? self : target;
+    const auto entityIndex = [&](std::uint32_t object) -> std::size_t {
+        for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+            if (objectForEntity(i) == object) {
+                return i;
+            }
+        }
+        return static_cast<std::size_t>(-1);
+    };
+    const bool selfTarget = targetObject == self;
+    const std::size_t targetIndex = selfTarget
+        ? static_cast<std::size_t>(-1)
+        : entityIndex(targetObject);
+    if (!selfTarget && targetIndex == static_cast<std::size_t>(-1)) {
+        lastForcePower_ = powerId;
+        lastForcePowerSuccess_ = false;
+        return false;
+    }
+    if (!selfTarget && info->range > 0) {
+        const kotor::Vec3 delta = scene_.entities[targetIndex].position - position_;
+        const float distance = std::sqrt(delta.x * delta.x + delta.y * delta.y);
+        if (distance > static_cast<float>(info->range) + 0.5f) {
+            lastForcePower_ = powerId;
+            lastForcePowerSuccess_ = false;
+            return false;
+        }
+    }
+    character_.fp -= info->cost;
+    lastForcePower_ = powerId;
+    lastForcePowerSuccess_ = true;
+    const auto contains = [&](const char* needle) {
+        return info->label.find(needle) != std::string::npos;
+    };
+    const auto roll = [&]() { return 1 + static_cast<std::int32_t>(random() % 20u); };
+    const auto damageRoll = [&](int dice, int sides) {
+        int value = 0;
+        for (int i = 0; i < dice; ++i) {
+            value += 1 + static_cast<int>(random() % static_cast<std::uint32_t>(sides));
+        }
+        return value;
+    };
+    const std::int32_t dc = rules_.forcePowerSaveDC(character_);
+    const int saveType = (contains("LIGHTNING") || contains("SHOCK") || contains("STORM")
+                          || contains("PUSH") || contains("WAVE") || contains("WHIRLWIND"))
+        ? 2
+        : (contains("FEAR") || contains("HORROR") || contains("INSANITY")
+           || contains("STUN") || contains("STASIS") || contains("SLOW"))
+        ? 1
+        : 0;
+    const int saveBonus = selfTarget ? 0
+        : saveType == 0 ? scene_.entities[targetIndex].fortSave
+        : saveType == 1 ? scene_.entities[targetIndex].willSave
+                        : scene_.entities[targetIndex].refSave;
+    const bool saved = !selfTarget && roll() + saveBonus >= dc;
+
+    if (contains("HEAL") || contains("CURE")) {
+        const std::int32_t heal = 8 + character_.level * 2
+            + std::max(0, (character_.wis - 10) / 2);
+        if (selfTarget) {
+            playerHp_ = std::min(playerMaxHp_, playerHp_ + heal);
+            character_.hp = playerHp_;
+        } else {
+            kotor::Entity& entity = scene_.entities[targetIndex];
+            entity.hitPoints = std::min(entity.maxHitPoints, entity.hitPoints + heal);
+        }
+        logEvent("force heal " + std::to_string(heal));
+    } else if (contains("LIGHTNING") || contains("SHOCK") || contains("STORM")
+               || contains("DEATH_FIELD") || contains("DRAIN_LIFE") || contains("WOUND")
+               || contains("KILL") || contains("CHOKE") || contains("PLAGUE")
+               || contains("AFFLICTION") || contains("SABER_THROW") || contains("PUSH")
+               || contains("WAVE") || contains("WHIRLWIND") || contains("DROID_DISABLE")
+               || contains("DROID_DESTROY")) {
+        if (selfTarget) {
+            logEvent("force power has no hostile target");
+            lastForcePowerSuccess_ = false;
+        } else {
+            kotor::Entity& entity = scene_.entities[targetIndex];
+            const int dice = std::max(1, character_.level / 2);
+            std::int32_t damage = damageRoll(dice, 6);
+            if (saved) {
+                damage = std::max<std::int32_t>(1, damage / 2);
+            }
+            if (info->alignment == 'E') {
+                damage += 2;
+            }
+            entity.hitPoints -= damage;
+            if (contains("STUN") || contains("STASIS") || contains("SLOW")
+                || contains("DROID_DISABLE")) {
+                if (!saved) {
+                    entity.stunTimer = 6.0f;
+                }
+            }
+            if (contains("FEAR") || contains("HORROR") || contains("INSANITY")) {
+                if (!saved) {
+                    entity.fearTimer = 6.0f;
+                }
+            }
+            if (entity.hitPoints <= 0) {
+                entity.dead = true;
+                logEvent("force power defeats " + entity.tag);
+                combatTarget_ = UINT32_MAX;
+                runHook("ScriptDeath", targetIndex, scriptWorld_.pc);
+            }
+            logEvent("force " + info->label + " damage=" + std::to_string(damage)
+                     + (saved ? " saved" : ""));
+        }
+    } else if (contains("STUN") || contains("STASIS") || contains("SLOW")
+               || contains("DROID_STUN") || contains("AFFECT_MIND")
+               || contains("DOMINATE")) {
+        if (!selfTarget && !saved) {
+            scene_.entities[targetIndex].stunTimer = 6.0f;
+        }
+        logEvent("force " + info->label + (saved ? " saved" : ""));
+    } else if (contains("FEAR") || contains("HORROR") || contains("INSANITY")) {
+        if (!selfTarget && !saved) {
+            scene_.entities[targetIndex].fearTimer = 6.0f;
+        }
+        logEvent("force " + info->label + (saved ? " saved" : ""));
+    } else if (contains("ARMOR") || contains("AURA") || contains("SHIELD")
+               || contains("RESIST") || contains("IMMUNITY")) {
+        forceArmorBonus_ = 4 + character_.level / 4;
+        forceArmorTimer_ = 30.0f;
+        if (contains("SHIELD")) {
+            forceShield_ = 10 + character_.level * 2;
+            forceShieldTimer_ = 30.0f;
+        }
+        logEvent("force armor +" + std::to_string(forceArmorBonus_));
+    } else if (contains("VALOR")) {
+        forceValorBonus_ = 2 + character_.level / 5;
+        forceValorTimer_ = 30.0f;
+        logEvent("force valor +" + std::to_string(forceValorBonus_));
+    } else if (contains("SPEED")) {
+        forceSpeedTimer_ = 20.0f;
+        logEvent("force speed");
+    } else {
+        logEvent("force " + info->label);
+    }
+
+    if (info->alignment == 'G') {
+        adjustAlignment(2);
+    } else if (info->alignment == 'E') {
+        adjustAlignment(-2);
+    }
+    syncPlayerToScriptWorld();
+    return true;
 }
 
 std::optional<std::vector<script::Value>> GameSession::action(
@@ -2313,6 +2599,59 @@ std::optional<std::vector<script::Value>> GameSession::action(
     case 378: // OpenStore
         scriptLog_.push_back("store " + stringArg(0));
         return std::vector<script::Value>{};
+    case 48: // ActionCastSpellAtObject
+        useForcePower(static_cast<std::int32_t>(intArg(0)), objectArg(1));
+        return std::vector<script::Value>{};
+    case 55: // GetCurrentForcePoints
+        return intCells(character_.fp);
+    case 56: // GetMaxForcePoints
+        return intCells(character_.maxFp);
+    case 125: // GetGoodEvilValue
+        return intCells(character_.alignment);
+    case 127: // GetAlignmentGoodEvil
+        return intCells(character_.alignment > 50 ? 1
+                        : character_.alignment < 50 ? 2 : 0);
+    case 201: // AdjustAlignment
+        adjustAlignment(static_cast<std::int32_t>(intArg(1)));
+        return std::vector<script::Value>{};
+    case 285: // GetHasFeat
+        return intCells(character_.feats.contains(static_cast<std::int32_t>(intArg(0))) ? 1 : 0);
+    case 287: // ActionUseFeat
+        useFeat(static_cast<std::int32_t>(intArg(0)), objectArg(1));
+        return std::vector<script::Value>{};
+    case 304: // GetHasSpellEffect
+        return intCells(lastForcePower_ == static_cast<std::int32_t>(intArg(0))
+                            && lastForcePowerSuccess_ ? 1 : 0);
+    case 309: // ActionUseTalentOnObject
+    case 310: { // ActionUseTalentAtLocation
+        const std::int64_t talent = intArg(0);
+        const std::int32_t type = static_cast<std::int32_t>((talent >> 29) & 0x7);
+        const std::int32_t id = static_cast<std::int32_t>(talent & 0x1FFFFFFF);
+        if (type == 1) {
+            useForcePower(id, objectArg(1));
+        } else if (type == 2) {
+            useFeat(id, objectArg(1));
+        } else {
+            scriptLog_.push_back("talent type " + std::to_string(type)
+                                 + " id " + std::to_string(id));
+        }
+        return std::vector<script::Value>{};
+    }
+    case 317: // GetLastAttackType
+        return intCells(static_cast<std::int32_t>(combatMode_));
+    case 318: // GetLastAttackMode
+        return intCells(static_cast<std::int32_t>(combatMode_));
+    case 377: // GetHasSpell
+        return intCells(character_.powers.contains(static_cast<std::int32_t>(intArg(0))) ? 1 : 0);
+    case 543: // GetHasFeatEffect
+        return intCells(character_.feats.contains(static_cast<std::int32_t>(intArg(0))) ? 1 : 0);
+    case 723: // GetLastForcePowerUsed
+        return intCells(lastForcePower_);
+    case 726: // GetWasForcePowerSuccessful
+        return intCells(lastForcePowerSuccess_ ? 1 : 0);
+    case 750: // SetGoodEvilValue
+        setAlignment(static_cast<std::int32_t>(intArg(1)));
+        return std::vector<script::Value>{};
     default:
         break;
     }
@@ -2338,6 +2677,9 @@ bool GameSession::save(const std::filesystem::path& path) const
     file << "level=" << character_.level << "\n";
     file << "xp=" << character_.xp << "\n";
     file << "gold=" << gold_ << "\n";
+    file << "alignment=" << character_.alignment << "\n";
+    file << "force_points=" << character_.fp << "\n";
+    file << "max_force_points=" << character_.maxFp << "\n";
     file << "str=" << character_.str << "\ndex=" << character_.dex
          << "\ncon=" << character_.con << "\nint=" << character_.intel
          << "\nwis=" << character_.wis << "\ncha=" << character_.cha << "\n";
@@ -2483,6 +2825,12 @@ bool GameSession::load(const std::filesystem::path& path)
                 sheet.xp = std::stoi(value);
             } else if (key == "gold") {
                 gold = std::stoi(value);
+            } else if (key == "alignment") {
+                sheet.alignment = std::clamp(std::stoi(value), 0, 100);
+            } else if (key == "force_points") {
+                sheet.fp = std::max(0, std::stoi(value));
+            } else if (key == "max_force_points") {
+                sheet.maxFp = std::max(0, std::stoi(value));
             } else if (key == "str") {
                 sheet.str = std::stoi(value);
             } else if (key == "dex") {
@@ -2743,6 +3091,9 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder)
     character_.classId = saved.classId;
     character_.level = std::max(1, saved.level);
     character_.xp = saved.xp;
+    character_.alignment = std::clamp(saved.alignment, 0, 100);
+    character_.fp = saved.forcePoints;
+    character_.maxFp = std::max(saved.maxForcePoints, saved.forcePoints);
     character_.str = saved.str;
     character_.dex = saved.dex;
     character_.con = saved.con;
@@ -2754,6 +3105,10 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder)
     character_.feats.clear();
     for (const std::int32_t feat : saved.feats) {
         character_.feats.insert(feat);
+    }
+    character_.powers.clear();
+    for (const std::int32_t power : saved.powers) {
+        character_.powers.insert(power);
     }
     character_.inventory.clear();
     for (const kotor::SavedInventoryItem& source : saved.inventory) {
@@ -2881,6 +3236,9 @@ bool GameSession::saveOriginalSave(const std::filesystem::path& folder,
     save.maxHp = std::max(playerHp_, playerMaxHp_);
     save.level = character_.level;
     save.classId = character_.classId;
+    save.alignment = character_.alignment;
+    save.forcePoints = character_.fp;
+    save.maxForcePoints = character_.maxFp;
     save.str = character_.str;
     save.dex = character_.dex;
     save.con = character_.con;
@@ -2894,6 +3252,9 @@ bool GameSession::saveOriginalSave(const std::filesystem::path& folder,
     save.preservedModules = originalPreservedModules_;
     for (const std::int32_t feat : character_.feats) {
         save.feats.push_back(feat);
+    }
+    for (const std::int32_t power : character_.powers) {
+        save.powers.push_back(power);
     }
     for (const InventoryItem& item : character_.inventory) {
         kotor::SavedInventoryItem copy;

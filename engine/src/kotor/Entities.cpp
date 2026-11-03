@@ -432,6 +432,9 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
         entity.hitPoints = std::max(1, std::min(entity.hitPoints, entity.maxHitPoints));
         const std::int32_t dexterity = intField(utc, root, "Dex", 10);
         entity.defense = 10 + (dexterity - 10) / 2 + intField(utc, root, "NaturalAC", 0);
+        entity.fortSave = intField(utc, root, "FortSaveThrow", 0);
+        entity.willSave = intField(utc, root, "WillSaveThrow", 0);
+        entity.refSave = intField(utc, root, "RefSaveThrow", 0);
         entity.attackBonus = 2 + std::max(0, static_cast<int>(numberField(utc, root,
                                                                         "ChallengeRating", 0.0f)));
         entity.damageMin = 1;
@@ -493,6 +496,9 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                     entity.hitPoints = std::max(1, std::min(entity.hitPoints, entity.maxHitPoints));
                     const std::int32_t dexterity = intField(utc, utc.rootIndex(), "Dex", 10);
                     entity.defense = 10 + (dexterity - 10) / 2 + intField(utc, utc.rootIndex(), "NaturalAC", 0);
+                    entity.fortSave = intField(utc, utc.rootIndex(), "FortSaveThrow", 0);
+                    entity.willSave = intField(utc, utc.rootIndex(), "WillSaveThrow", 0);
+                    entity.refSave = intField(utc, utc.rootIndex(), "RefSaveThrow", 0);
                     entity.attackBonus = 2 + std::max(0, static_cast<int>(numberField(utc, utc.rootIndex(),
                                                                                     "ChallengeRating", 0.0f)));
                     entity.damageMin = 1;

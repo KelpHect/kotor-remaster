@@ -1,24 +1,26 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 10 (VM/script closure and object context) complete - gate S10 met
-(2026-11-03).** `DelayCommand` and `AssignCommand` closures are now captured from `STORESTATE`,
-scheduled/queued and executed; nested delays work; `AssignCommand` targets receive the correct
-`OBJECT_SELF`; `ActionWait` continuations resume; and live scripts resolve `OBJECT_SELF` instead
-of dropping object id 0. A custom fixture and the shipped `k_pend_time01` script both pass,
-alongside **34/34 CTest targets**.
-Sprint 9 remains complete (KotOR 1/K2 profiles and native original `SAVEGAME.sav` read/write with
-independent Python validation **0 errors / 0 warnings** on round-trip and fresh-create slots).
-Sprint 8.5 remains complete (container loot, companion melee AI, merchant store gold/identify);
-Sprint 8 remains complete (117-module sweep, encounter reset/respawn, formation/leader,
-feat/power selection); Sprint 7 remains complete (7 stores/41 `keblastore` entries, 4 encounter
-volumes/8 spawns, 80% companion XP, systems UI); Sprint 6 remains complete (native script VM
-8,666/8,666 default and functional, 303,616 ACTION calls, dialogue entry 54, d20 rounds); Sprint 5
-remains complete (playable `end_m01aa` slice, 0.03/255 parity). Sprint 11+ remains: `ActionWait`
-resumption, full action/combat/Force/alignment effects, animation/skinning/weapons, cutscene
-cameras, audio/EAX, Bink/lip sync, full `.gui`, minigames, localization, mods/Override, KotOR 2
-world loading, faction reputation simulation and the P6 content checklist. Plans/reports:
-`docs/SPRINT1.md` through `docs/SPRINT10.md` and their `*_REPORT.md`; P0 gate in
-`docs/P0_REPORT.md`.
+Status: **Sprint 11 (combat, Force and alignment core) complete - gate S11 met
+(2026-11-03).** All **44** shipped Force powers and **125** feat rows load; Force points,
+alignment and saves drive damage/heal/stun/fear/buff effects; combat feats have active modes
+(Power Attack, Flurry, Critical Strike, Whirlwind) and passive bonuses (Toughness, Weapon
+Focus/Specialization, Dueling); the script bridge covers feats, spells, talents, FP, alignment and
+talent type/id queries; engine and original saves round-trip alignment/FP. **35/35 CTest
+targets** pass.
+Sprint 10 remains complete (delayed/assigned closures, nested delays, `ActionWait`, `OBJECT_SELF`,
+world-clock timers). Sprint 9 remains complete (KotOR 1/K2 profiles and native original
+`SAVEGAME.sav` read/write with independent Python validation **0 errors / 0 warnings** on
+round-trip and fresh-create slots). Sprint 8.5 remains complete (container loot, companion melee
+AI, merchant store gold/identify); Sprint 8 remains complete (117-module sweep, encounter
+reset/respawn, formation/leader, feat/power selection); Sprint 7 remains complete (7 stores/41
+`keblastore` entries, 4 encounter volumes/8 spawns, 80% companion XP, systems UI); Sprint 6 remains
+complete (native script VM 8,666/8,666 default and functional, 303,616 ACTION calls, dialogue
+entry 54, d20 rounds); Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255 parity).
+Sprint 12+ remains: exact non-combat feat formulas, full effect/dispel stacks,
+animation/skinning/weapons, cutscene cameras, audio/EAX, Bink/lip sync, full `.gui`, minigames,
+localization, mods/Override, KotOR 2 world loading, faction reputation simulation and the P6
+content checklist. Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT11.md` and their
+`*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
 does not ship, download, extract, or redistribute game assets, and it does not require or execute
@@ -149,6 +151,12 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   Custom fixture + shipped `k_pend_time01` pass; CTest **34/34**; 117-module sweep 0/0; VM
   parity 0; scene parity 0.0300; Python 143 tests / 7 skips; install unchanged. See
   `docs/recon/48_FUNCTORS.md` and `docs/SPRINT10_REPORT.md`.
+- Sprint 11 (combat/Force/alignment): 44 Force powers with FP cost/alignment/range and
+  save-based damage/heal/stun/fear/buffs; 125 feat rows; Power Attack/Flurry/Critical/Whirlwind
+  modes; Toughness/Weapon Focus/Specialization/Dueling; script action/talent bridge; alignment
+  and FP round-trip in engine and original saves. CTest **35/35**; 117-module sweep 0/0; VM
+  parity 0; scene parity 0.0300; Python 143 tests / 7 skips; install unchanged. See
+  `docs/recon/49_COMBAT_FORCE.md` and `docs/SPRINT11_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -205,6 +213,9 @@ Start with:
 - [`docs/SPRINT9.md`](docs/SPRINT9.md) - Sprint 9 plan: gate S9, lanes, non-goals
 - [`docs/SPRINT10_REPORT.md`](docs/SPRINT10_REPORT.md) - Sprint 10 (VM/script closure) exit report
 - [`docs/SPRINT10.md`](docs/SPRINT10.md) - Sprint 10 plan: gate S10, lanes, non-goals
+- [`docs/SPRINT11_REPORT.md`](docs/SPRINT11_REPORT.md) - Sprint 11 (combat/Force/alignment) exit report
+- [`docs/SPRINT11.md`](docs/SPRINT11.md) - Sprint 11 plan: gate S11, lanes, non-goals
+- [`docs/recon/49_COMBAT_FORCE.md`](docs/recon/49_COMBAT_FORCE.md) - Force powers, feats, saves and alignment
 - [`docs/recon/48_FUNCTORS.md`](docs/recon/48_FUNCTORS.md) - delayed/assigned closures and OBJECT_SELF
 - [`docs/recon/47_ORIGINAL_SAVES.md`](docs/recon/47_ORIGINAL_SAVES.md) - original save read/write and validation
 - [`docs/recon/46_RESIDUAL_SYSTEMS.md`](docs/recon/46_RESIDUAL_SYSTEMS.md) - loot, companion combat, merchant depth

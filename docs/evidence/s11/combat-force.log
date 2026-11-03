@@ -1,0 +1,64 @@
+[INFO] KotOR module end_m01aa area m01aa from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 15 vertices: 235038 indices: 235038 batches: 34
+[INFO]   textures: 53 collision vertices: 850 facets: 1365
+[INFO]   entities: 218 (door 15, placeable 60, creature 26, waypoint 58, store 0, encounter 0)
+[INFO]   encounter volumes: 0
+[INFO]   entry: 15.4248, 20.1215, -1.275
+[INFO]   entity meshes: 101 triggers: 13 warnings: 0
+[INFO]   script hooks: 284 on 54 entities; scene hooks: 3; script runs: 25
+[INFO]   entity mesh 0 end_door05 verts=564 local=-3.07263,-0.121998,-0.047403 .. 3.08736,0.123205,3.00955
+[INFO]   entity mesh 1 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   entity mesh 2 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   creature mesh Carth verts=3276 local=-0.606384,-0.151653,-0.00207151 .. 0.610334,0.167699,1.54884
+[INFO]   bounds: -170.51, -32.6442, -204.652 .. 238.793, 471.187, 291.201
+[INFO] combat force test: jedi_force_points=1
+[INFO] combat force test: force_catalog_44=1
+[INFO] combat force test: feat_catalog_125=1
+[INFO] combat force test: hostile_found=1
+[INFO] combat force test: lightning_used=1
+[INFO] combat force test: lightning_cost=1
+[INFO] combat force test: lightning_damage=1
+[INFO] combat force test: lightning_dark_side=1
+[INFO] combat force test: heal_used=1
+[INFO] combat force test: heal_amount=1
+[INFO] combat force test: heal_light_side=1
+[INFO] combat force test: armor_used=1
+[INFO] combat force test: armor_buff=1
+[INFO] combat force test: armor_light_side=1
+[INFO] combat force test: stun_used=1
+[INFO] combat force test: stun_applied=1
+[INFO] combat force test: stun_light_side=1
+[INFO] combat force test: power_attack_used=1
+[INFO] combat force test: power_attack_mode=1
+[INFO] combat force test: flurry_used=1
+[INFO] combat force test: flurry_mode=1
+[INFO] combat force test: toughness_learned=1
+[INFO] combat force test: toughness_hp=1
+[INFO] combat force test: force_script_loaded=1
+[INFO] combat force test: force_script_ran=1
+[INFO] combat force test: script_alignment_read=1
+[INFO] combat force test: script_has_feat=1
+[INFO] combat force test: script_has_spell=1
+[INFO] combat force test: script_force_points=1
+[INFO] combat force test: script_max_force_points=1
+[INFO] combat force test: script_talent_type=1
+[INFO] combat force test: script_talent_id=1
+[INFO] combat force test: script_action_feat=1
+[INFO] combat force test: script_action_spell=1
+[INFO] combat force test: script_alignment_action=1
+[INFO] combat force test: alignment_adjust=1
+[INFO] combat force test: engine_save=1
+[INFO] combat force test: engine_load=1
+[INFO] combat force test: alignment_engine_roundtrip=1
+[INFO] combat force test: force_engine_roundtrip=1
+[INFO] combat force test: original_save=1
+[INFO] combat force test: alignment_original_roundtrip=1
+[INFO] combat force test: force_original_roundtrip=1
+[INFO] combat force test: powers_original_roundtrip=1
+[INFO] combat force test: feats_original_roundtrip=1
+[INFO] combat force test: original_load=1
+[INFO] combat force test: alignment_original_load=1
+[INFO] combat force test: powers_original_load=1
+[INFO] combat force test: feats_original_load=1
+[INFO] combat force test: PASS
