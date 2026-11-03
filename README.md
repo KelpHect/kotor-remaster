@@ -1,12 +1,14 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 3 (P3 functional NCS runtime and P3/G3 residual closure) complete - gate S3 met
-(2026-11-02).** All 228 compiler-limited recompiles are now source-level byte-identical with
-zero bytecode transforms; the full corpus is 8,666/8,666 raw exact. There is still no playable engine build; P4/P5 renderer and gameplay work
+Status: **Sprint 4 (semantic trace and the KotOR game profile) complete - gate S4 met
+(2026-11-03).** Hydra 12.3-hydra.6 / Hydralysis 0.8.0 record real 32-bit KotOR processes; two
+independent live runs are gap-free and the engine's aligned diff proves the deterministic
+351-action prefix identical. Sprint 3 remains complete (228/228 source-level recompiles, 0 ABI,
+8,666/8,666 raw exact). There is still no playable engine build; P4/P5 renderer and gameplay work
 continues on the frozen data foundation and the executable NCS runtime. Sprint plans/reports:
-`docs/SPRINT1.md` / `docs/SPRINT1_REPORT.md`, `docs/SPRINT2.md` / `docs/SPRINT2_REPORT.md`, and
-`docs/SPRINT3.md` / `docs/SPRINT3_REPORT.md`; the P0 gate and handoff remain in
-`docs/P0_REPORT.md`.
+`docs/SPRINT1.md` / `docs/SPRINT1_REPORT.md`, `docs/SPRINT2.md` / `docs/SPRINT2_REPORT.md`,
+`docs/SPRINT3.md` / `docs/SPRINT3_REPORT.md`, and `docs/SPRINT4.md` / `docs/SPRINT4_REPORT.md`;
+the P0 gate and handoff remain in `docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
 does not ship, download, extract, or redistribute game assets, and it does not require or execute
@@ -135,6 +137,9 @@ Start with:
 - [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) — program lanes, phases, gates, verification
 - [`docs/SPRINT3_REPORT.md`](docs/SPRINT3_REPORT.md) — Sprint 3 (P3 functional runtime) exit report
 - [`docs/SPRINT3.md`](docs/SPRINT3.md) - Sprint 3 plan: exit criteria, lanes, shared-resource rules
+- [`docs/SPRINT4_REPORT.md`](docs/SPRINT4_REPORT.md) - Sprint 4 (semantic trace and KotOR profile) exit report
+- [`docs/SPRINT4.md`](docs/SPRINT4.md) - Sprint 4 plan: gate S4, lanes, non-goals
+- [`docs/recon/41_SEMANTIC_TRACE.md`](docs/recon/41_SEMANTIC_TRACE.md) - live KotOR trace, hook map, tool fixes and the bounded diff
 - [`docs/recon/30_UNUSED_ACTIONS.md`](docs/recon/30_UNUSED_ACTIONS.md) - 306 corpus-unused action conformance
 - [`docs/recon/31_COMPILER_CODEGEN.md`](docs/recon/31_COMPILER_CODEGEN.md) - 228 compiler-limited recompile reconciliation
 - [`docs/recon/32_LIVE_DIFFERENTIAL.md`](docs/recon/32_LIVE_DIFFERENTIAL.md) - live ExecuteCode/action-dispatch and RunCommand differential

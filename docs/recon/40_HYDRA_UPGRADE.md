@@ -131,9 +131,12 @@ Other rechecks:
 - Every Sprint 1–3 gate JSON inspected has its booleans true: 8,666/8,666 recompiles, 228/228
   source-level, 3/3 body-order, 5/5 unreachable, 306/306 actions, 8,666/8,666 functional
   corpus, 772/772 specs and dispatch.
-- No KOTOR trace profile exists in the repository, so `trace` is installed but not applicable
-  without authoring one. It is an additive follow-up; the existing live camera observation and
-  the 28/28 + 30/30 live differential already cover the dynamic gates.
+- No KOTOR trace profile existed in the repository at upgrade time, so `trace` was installed but
+  not applicable without authoring one. It is an additive follow-up; the existing live camera
+  observation and the 28/28 + 30/30 live differential already cover the dynamic gates. **Follow-up
+  (2026-11-03):** `tools/traces/kotor/swkotor-1.0.3.toml` now binds the four live hooks to both
+  builds and the stack is exercised end to end; see
+  [`41_SEMANTIC_TRACE.md`](41_SEMANTIC_TRACE.md).
 
 Verdict: **Sprints 0–3 remain 100% against their declared gates; no redo.** The only change is
 that P0/S2 inventory claims should cite `kotor-v4` when the address is one of the v4 pointer
