@@ -130,15 +130,18 @@ reloads the original slot.
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
-## 8. Not in Sprint 11
+## 8. Content-specific abilities and scope boundary
 
-- Battle Meditation is **re-scoped out by shipped data**: its TLK description
+- **Jedi Defense / Advanced / Master** is implemented: lightsaber deflection
+  with +0/+3/+6 and returned bolts on a 10-point margin.
+- **Force Camouflage** is implemented: `canStealth`/`enterStealth`, hostile
+  acquisition suppression and break-on-attack.
+- **Battle Meditation is re-scoped out by shipped data**: its TLK description
   says it is for large fleets/armies and "not applicable to small-scale
   combat", so there is no small-scale rule to implement.
-- Force Camouflage grants stealth entry; hostiles do not acquire a stealthed
-  player and attacking or using a Force power breaks stealth.
-- Cutscenes, animation/skinning, audio/EAX, Bink/lip sync, full `.gui`,
-  minigames, localization, mods/Override, KotOR 2 world loading and P6 content.
+- Outside this sprint: cutscenes, animation/skinning, audio/EAX, Bink/lip sync,
+  full `.gui`, minigames, localization, mods/Override, KotOR 2 world loading
+  and P6 content.
 
 ## Evidence index
 
