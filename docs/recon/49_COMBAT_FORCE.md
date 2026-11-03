@@ -167,12 +167,15 @@ Regression: 35/35 CTest, 117/117 modules, 8,666/8,666 VM, 0.0300 parity,
 `000012 - ENGINE` original slot independently validates with
 `kotor_save.py` at 0 errors / 0 warnings.
 
-## 8. Residual and evidence-based re-scope
+## 8. Content-specific abilities and scope boundary
 
+- **Jedi Defense / Advanced / Master** implements ranged deflection and
+  returned bolts.
+- **Force Camouflage** implements stealth entry (`canStealth`/`enterStealth`),
+  hostile acquisition suppression and break-on-attack.
 - **Battle Meditation is re-scoped out of Sprint 11 by shipped data.** Its
   `feat.2da` TLK description says it is for large fleets/armies and "is not
   applicable to small-scale combat"; there is no small-scale rule to implement.
-- **Force Camouflage** implements stealth entry (`canStealth`/`enterStealth`),
-  hostile acquisition suppression and break-on-attack.
-- Cutscenes, animation/skinning, audio/EAX, Bink/lip sync, full `.gui`,
-  minigames, localization, mods/Override, KotOR 2 world loading and P6 content.
+- Outside this sprint: cutscenes, animation/skinning, audio/EAX, Bink/lip sync,
+  full `.gui`, minigames, localization, mods/Override, KotOR 2 world loading
+  and P6 content.

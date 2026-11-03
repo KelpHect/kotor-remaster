@@ -66,7 +66,7 @@ Baseline: Sprint 10 `34/34` CTest, 117/117 modules, VM 8,666/8,666, scene parity
 | s11-05-save | engine/original save alignment + FP | `engine/src/game/GameSession.*`, `engine/src/kotor/SaveGame.*` |
 | s11-06-evidence | gate, report, recon note, regression logs | `engine/CMakeLists.txt`, `docs/` |
 
-## Explicitly not this sprint
+## Content-specific abilities and scope boundary
 
 - Battle Meditation is re-scoped out by shipped data: its TLK description says
    it is large-scale only and "not applicable to small-scale combat".
@@ -74,9 +74,9 @@ Baseline: Sprint 10 `34/34` CTest, 117/117 modules, VM 8,666/8,666, scene parity
    do not acquire a stealthed player and any attack or Force power breaks
    stealth.
 - Jedi Defense deflection is implemented for ranged NPC attacks.
-- `ActionWait`/closure persistence across save, cutscenes, animation, audio/EAX,
-   Bink/lip sync, full `.gui`, minigames, localization, mods/Override, KotOR 2
-   world loading and P6 content.
+- Outside this sprint: `ActionWait`/closure persistence across save, cutscenes,
+   animation, audio/EAX, Bink/lip sync, full `.gui`, minigames, localization,
+   mods/Override, KotOR 2 world loading and P6 content.
 - Retail-engine visual/audio acceptance of Force powers; this gate is
    deterministic simulation + script/action + save evidence in this engine.
 
