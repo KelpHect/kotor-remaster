@@ -13,7 +13,7 @@ and both renderers refresh entity vertex buffers from the posed mesh.
 
 ```text
 100% tests passed, 0 tests failed out of 36
-Total Test time (real) = 198.27 sec
+Total Test time (real) = 196.89 sec
 ```
 
 The new target is `kotor_animation`; all Sprint 11 targets still pass.
@@ -140,10 +140,12 @@ Saber nodes use the SaberHeader's static vertex/UV/normal arrays. The shipped
 saber physics is evidence-based re-scoped rather than invented.
 
 `fx_flame01` and room light nodes evaluate light/emitter controllers 76/80/84/
-88/380/392 and emit deterministic billboard quads. Room light quads are added
-to the room mesh; entity effect quads use a separate refreshed FX mesh, so the
-existing GL/Vulkan path renders them without a new pipeline. The particle
-positions are a deterministic function of time, not random state.
+88/380/392 and emit deterministic billboard quads. The full controller
+catalog is asserted: `fx_flame01` exposes 30+ controller types (including
+80/84/132/144/380/392) and room lights expose 76/88/140. Room light quads are
+added to the room mesh; entity effect quads use a separate refreshed FX mesh,
+so the existing GL/Vulkan path renders them without a new pipeline. The
+particle positions are a deterministic function of time, not random state.
 
 A corpus scan of **1,135 DLGs** found **45,396** `CamVidEffect=-1` and **39**
 `CamVidEffect=0`, with **0** non-default values; non-default effect semantics
@@ -152,9 +154,10 @@ therefore have no shipped K1 data to implement.
 Gate assertions: `dangly_loaded`, `dangly_nodes`, `dangly_mesh`,
 `dangly_finite`, `dangly_vertices`, `saber_loaded`, `saber_static_geometry`,
 `saber_no_dangly`, `saber_no_skin`, `fx_loaded`, `fx_controllers_present`,
-`fx_controller_types`, `fx_no_skin`, `fx_nodes`, `fx_geometry`, `fx_finite`,
+`fx_controller_types`, `fx_controller_catalog`, `fx_controller_families`,
+`fx_no_skin`, `fx_nodes`, `fx_geometry`, `fx_finite`,
 `fx_animated`, `room_light_loaded`, `room_light_nodes`,
-`room_light_geometry`, `camvid_defaults`, `camvid_corpus_dlgs`,
+`room_light_geometry`, `room_light_controllers`, `camvid_defaults`, `camvid_corpus_dlgs`,
 `camvid_corpus_defaults`.
 
 ## 8. Rendering
@@ -174,7 +177,7 @@ in **12,937 of 79,200** 3D-view pixels after excluding the HUD.
 
 ## 9. Regression
 
-- **CTest: 36/36 passed** (198.27 s).
+- **CTest: 36/36 passed** (196.89 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0300**, PASS.

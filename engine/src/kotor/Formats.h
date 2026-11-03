@@ -14,6 +14,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -340,6 +341,7 @@ public:
     std::size_t danglyNodeCount() const;
     bool hasNonPoseControllers() const;
     bool hasControllerType(std::int32_t type) const;
+    std::set<std::int32_t> fxControllerTypes() const;
     float skinBindError() const;
     std::optional<Pose> nodePose(const std::string& node, const std::string& animation,
                                  float time) const;
