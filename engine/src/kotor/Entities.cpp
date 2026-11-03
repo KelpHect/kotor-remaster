@@ -205,6 +205,39 @@ void buildMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
     }
 }
 
+void applyEquippedWeapon(Entity& entity, Install& install, const Gff& utc,
+                         const TwoDa& baseitems)
+{
+    const GffField* list = utc.field(utc.rootIndex(), "Equip_ItemList");
+    if (list == nullptr) {
+        return;
+    }
+    for (const std::uint32_t item : utc.list(*list)) {
+        std::int32_t baseItem = intField(utc, item, "BaseItem", -1);
+        if (baseItem < 0) {
+            const std::string resref = textField(utc, item, "EquippedRes");
+            if (!resref.empty()) {
+                if (const std::optional<ItemTemplate> templ = loadItemTemplate(install, resref);
+                    templ.has_value()) {
+                    baseItem = templ->baseItem;
+                }
+            }
+        }
+        if (baseItem < 0) {
+            continue;
+        }
+        const std::string row = std::to_string(baseItem);
+        if (baseitems.rowIndex(row) < 0) {
+            continue;
+        }
+        if (baseitems.cell(row, "weapontype") == "4") {
+            entity.ranged = true;
+            entity.attackRange = 15.0f;
+            return;
+        }
+    }
+}
+
 std::string creatureModel(const TwoDa& appearances, std::uint32_t appearance, std::string& texture)
 {
     const std::string row = std::to_string(appearance);
@@ -408,6 +441,7 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
         const std::uint32_t root = utc.rootIndex();
         const std::optional<Tlk> tlk = loadTlk(install);
         const std::optional<TwoDa> appearances = loadTable(install, "appearance");
+        const std::optional<TwoDa> baseitems = loadTable(install, "baseitems");
 
         Entity entity;
         entity.kind = EntityKind::Creature;
@@ -443,6 +477,9 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
         entity.scriptOnEnter = textField(utc, root, "ScriptOnNotice");
         entity.walkRate = 3.0f + numberField(utc, root, "WalkRate", 7.0f) * 0.15f;
         entity.hostile = entity.faction == 4;
+        if (baseitems.has_value()) {
+            applyEquippedWeapon(entity, install, utc, *baseitems);
+        }
         collectScriptHooks(utc, root, entity.scripts);
         if (appearances.has_value()) {
             std::string texture;
@@ -472,6 +509,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
     const std::optional<TwoDa> appearances = loadTable(install, "appearance");
     const std::optional<TwoDa> genericDoors = loadTable(install, "genericdoors");
     const std::optional<TwoDa> placeables = loadTable(install, "placeables");
+    const std::optional<TwoDa> baseitems = loadTable(install, "baseitems");
 
     for (std::size_t index = 0; index < scene.entities.size(); ++index) {
         Entity& entity = scene.entities[index];
@@ -507,6 +545,9 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                     entity.scriptOnEnter = textField(utc, utc.rootIndex(), "ScriptOnNotice");
                     entity.walkRate = 3.0f + numberField(utc, utc.rootIndex(), "WalkRate", 7.0f) * 0.15f;
                     entity.hostile = entity.faction == 4; // Sith faction in the Endar Spire slice
+                    if (baseitems.has_value()) {
+                        applyEquippedWeapon(entity, install, utc, *baseitems);
+                    }
                     if (appearances.has_value()) {
                         std::string texture;
                         entity.model = creatureModel(*appearances, entity.appearance, texture);

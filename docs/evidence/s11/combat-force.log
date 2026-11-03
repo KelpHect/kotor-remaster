@@ -15,6 +15,7 @@
 [INFO] combat force test: jedi_force_points=1
 [INFO] combat force test: force_catalog_44=1
 [INFO] combat force test: feat_catalog_125=1
+[INFO] combat force test: ranged_entities_detected=1
 [INFO] combat force test: caution_1=1
 [INFO] combat force test: caution_2=1
 [INFO] combat force test: caution_3=1
@@ -80,6 +81,11 @@
 [INFO] combat force test: lightning_after_suppress=1
 [INFO] combat force test: force_jump_bonus=1
 [INFO] combat force test: force_jump_closed=1
+[INFO] combat force test: jedi_defense_6=1
+[INFO] combat force test: jedi_deflect_yes=1
+[INFO] combat force test: jedi_deflect_no=1
+[INFO] combat force test: force_camouflage_stealth=1
+[INFO] combat force test: jedi_deflect_integration=1
 [INFO] combat force test: power_attack_used=1
 [INFO] combat force test: power_attack_mode=1
 [INFO] combat force test: power_blast_used=1

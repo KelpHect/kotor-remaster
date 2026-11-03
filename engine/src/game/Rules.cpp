@@ -479,6 +479,37 @@ std::int32_t Rules::forceJumpBonus(const CharacterSheet& sheet) const
     return 0;
 }
 
+std::int32_t Rules::jediDefenseBonus(const CharacterSheet& sheet) const
+{
+    if (!hasLightsaber(sheet)) {
+        return 0;
+    }
+    if (hasFeatLabel(sheet, "MASTER_JEDI_DEFENSE")) {
+        return 6;
+    }
+    if (hasFeatLabel(sheet, "ADVANCED_JEDI_DEFENSE")) {
+        return 3;
+    }
+    return 0;
+}
+
+bool Rules::allowsStealth(const CharacterSheet& sheet) const
+{
+    return hasFeatLabel(sheet, "FORCE_CAMOFLAGE");
+}
+
+bool Rules::jediDeflects(const CharacterSheet& sheet, std::int32_t attackTotal,
+                         std::int32_t deflectionRoll) const
+{
+    if (!hasLightsaber(sheet)
+        || (!hasFeatLabel(sheet, "JEDI_DEFENSE")
+            && !hasFeatLabel(sheet, "ADVANCED_JEDI_DEFENSE")
+            && !hasFeatLabel(sheet, "MASTER_JEDI_DEFENSE"))) {
+        return false;
+    }
+    return deflectionRoll + jediDefenseBonus(sheet) > attackTotal;
+}
+
 bool Rules::hasLightsaber(const CharacterSheet& sheet) const
 {
     if (!baseitems_) {

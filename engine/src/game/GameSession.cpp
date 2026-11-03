@@ -1810,6 +1810,22 @@ void GameSession::npcAttack(std::size_t attacker)
     if (roll == 20) {
         damage *= 2;
     }
+    if (entity.ranged) {
+        const std::int32_t deflection = 1 + static_cast<std::int32_t>(random() % 20u);
+        if (rules_.jediDeflects(character_, total, deflection)) {
+            logEvent("player deflects " + entity.tag);
+            if (deflection + rules_.jediDefenseBonus(character_) >= total + 10) {
+                entity.hitPoints -= damage;
+                logEvent("deflected bolt hits " + entity.tag + " for "
+                         + std::to_string(damage));
+                if (entity.hitPoints <= 0) {
+                    entity.dead = true;
+                    logEvent("deflected bolt defeats " + entity.tag);
+                }
+            }
+            return;
+        }
+    }
     for (kotor::ActiveEffect& effect : character_.effects) {
         if (effect.remaining <= 0.0f || effect.shield <= 0) {
             continue;
@@ -1883,8 +1899,10 @@ void GameSession::updateCombat(float dt)
             continue;
         }
         const float distance = distance2D(position_, entity.position);
-        if (distance < 14.0f && distance > 1.5f) {
-            const float step = std::min(2.5f * dt, distance - 1.4f);
+        const float stopRange = entity.ranged ? entity.attackRange : 1.4f;
+        const float chaseLimit = entity.ranged ? entity.attackRange : 14.0f;
+        if (distance <= chaseLimit && distance > stopRange && distance > 0.01f) {
+            const float step = std::min(2.5f * dt, distance - stopRange);
             const float dx = (position_.x - entity.position.x) / distance;
             const float dy = (position_.y - entity.position.y) / distance;
             entity.position.x += dx * step;
@@ -1915,7 +1933,7 @@ void GameSession::updateCombat(float dt)
             || entity.fearTimer > 0.0f) {
             continue;
         }
-        if (distance2D(position_, entity.position) <= 2.4f) {
+        if (distance2D(position_, entity.position) <= (entity.ranged ? entity.attackRange : 2.4f)) {
             order.push_back({1 + static_cast<int>(random() % 20u), i, false});
         }
     }

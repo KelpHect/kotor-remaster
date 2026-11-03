@@ -142,6 +142,10 @@ public:
     std::int32_t skillBonus(const CharacterSheet& sheet, const std::string& skill) const;
     std::int32_t forceJumpBonus(const CharacterSheet& sheet) const;
     bool hasLightsaber(const CharacterSheet& sheet) const;
+    std::int32_t jediDefenseBonus(const CharacterSheet& sheet) const;
+    bool jediDeflects(const CharacterSheet& sheet, std::int32_t attackTotal,
+                      std::int32_t deflectionRoll) const;
+    bool allowsStealth(const CharacterSheet& sheet) const;
     bool hasFeatLabel(const CharacterSheet& sheet, const std::string& needle) const;
 
     int equipSlotFor(std::int32_t baseItem) const;

@@ -18,7 +18,7 @@
     },
     {
       "name": "SAVEGAME.sav",
-      "size": 81352,
+      "size": 81436,
       "canonical": "savegame.sav"
     },
     {
@@ -271,7 +271,7 @@
   "outer": {
     "present": true,
     "file": "SAVEGAME.sav",
-    "size": 81352,
+    "size": 81436,
     "errors": [],
     "entries": [
       {
@@ -281,7 +281,7 @@
         "kind": "SAV",
         "id": 0,
         "offset": 256,
-        "size": 78819
+        "size": 78903
       },
       {
         "index": 1,
@@ -289,7 +289,7 @@
         "type": 2037,
         "kind": "GFF",
         "id": 1,
-        "offset": 79076,
+        "offset": 79160,
         "size": 2133
       },
       {
@@ -298,7 +298,7 @@
         "type": 2038,
         "kind": "FAC",
         "id": 2,
-        "offset": 81212,
+        "offset": 81296,
         "size": 140
       }
     ],
@@ -311,7 +311,7 @@
     {
       "resref": "end_m01aa",
       "type": 2057,
-      "size": 78819,
+      "size": 78903,
       "nested_magic": "MOD ",
       "nested_version": "V1.0",
       "entry_count": 3,
@@ -341,15 +341,15 @@
           "kind": "IFO",
           "id": 2,
           "offset": 70296,
-          "size": 8523
+          "size": 8607
         }
       ],
       "ifo": {
         "file_type": "IFO",
         "magic": "IFO ",
         "version": 3,
-        "struct_count": 45,
-        "field_count": 258,
+        "struct_count": 48,
+        "field_count": 261,
         "label_count": 200,
         "labels": [
           "Mod_ID",
@@ -570,7 +570,7 @@
       "type": 2037,
       "kind": "GFF",
       "id": 1,
-      "offset": 79076,
+      "offset": 79160,
       "size": 2133
     },
     "file_type": "INV",
@@ -613,7 +613,7 @@
       "type": 2038,
       "kind": "FAC",
       "id": 2,
-      "offset": 81212,
+      "offset": 81296,
       "size": 140
     },
     "file_type": "FAC",
