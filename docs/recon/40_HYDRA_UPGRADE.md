@@ -96,3 +96,45 @@ and the address-level evidence above is unchanged.
   jobs were not touched.
 - The installed Vibe skills were refreshed from the v0.8.0 checkout: `hydralysis` (now says
   twenty-one tools) and the new `trace` skill.
+
+## 2026-11-03 recheck: function-inventory reconciliation
+
+The upgrade exposed one difference worth recording, not a Sprint failure: the stock `kotor`
+target and the P0 v4 inventory describe different function sets.
+
+| target | internal functions | external | total | relation |
+|---|---:|---:|---:|---|
+| `kotor` (stock adopted project, h6) | 8,616 | 350 | 8,966 | strict subset of v4 |
+| `kotor-v4` (P0 v4 project, h6, read-only) | 10,849 | 350 | 11,199 | exact P0 inventory |
+
+`kotor-v4` was adopted read-only on 2026-11-03 from
+`artifacts/lanes/engine-semantics/export-v4/project` (Ghidra 12.1.4, `-noanalysis -readOnly`).
+It lists **10,849/10,849** `functions-v4.jsonl` entries and **565/565** action handlers; the
+stock target lists 8,616, all of which are in the v4 set (no h6-only function). The 2,233 v4
+entries absent from the stock project are pointer-created entry points (1,005 vtable methods,
+440 action handlers, 15 thunks, 24 CRT, the rest engine code), not missing bytes: sample sites
+`0x00401a30` and `0x0052c6a0` disassemble as ordinary functions.
+
+Evidence claims that name such an entry point cannot be queried on the stock target. Claim #2
+(dispatcher `0x0052c0d0`) and claim #16 (supermodel query `0x00484d20`) were re-run on
+`kotor-v4`: `NWScript_DispatchAction` body `[0052c0d0,0052c0fa]`, and `FUN_00484d20` body
+`[00484d20,00484d39],[00484d40,00484df1]`, decompiling normally. The v4 target is therefore the
+reproduction target for P0/S2 inventory claims; the stock `kotor` target remains the h6 Golden
+target (8,616 functions, matching the engine's KotOR Golden gate).
+
+Other rechecks:
+
+- `writes` counts match the old claims on h6: `+0xc4` 57 sites (claim #19), `+0x38` 265 sites
+  with the same four camera-region sites (claim #18), `+0x1d0` 48 sites (claim #22).
+- P0 export: 10,849 rows, 0 empty C, 0 `decompile_error`, 0 truncation; 4 rows used the
+  300-second timeout; no row is clipped at a 32,000-character cap (max 171,244).
+- Every Sprint 1–3 gate JSON inspected has its booleans true: 8,666/8,666 recompiles, 228/228
+  source-level, 3/3 body-order, 5/5 unreachable, 306/306 actions, 8,666/8,666 functional
+  corpus, 772/772 specs and dispatch.
+- No KOTOR trace profile exists in the repository, so `trace` is installed but not applicable
+  without authoring one. It is an additive follow-up; the existing live camera observation and
+  the 28/28 + 30/30 live differential already cover the dynamic gates.
+
+Verdict: **Sprints 0–3 remain 100% against their declared gates; no redo.** The only change is
+that P0/S2 inventory claims should cite `kotor-v4` when the address is one of the v4 pointer
+entry points.

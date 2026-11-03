@@ -43,7 +43,9 @@ v4 export; the 772 actions map to 565 unique handler targets.
 `tools/analysis/engine_map.py` combines the v4 inventory with the action specs and writes
 `docs/recon/26_ENGINE_MAP.md` + `engine_map.json`. The v4 inventory has 10,849 rows
 (10,302 engine, 441 CRT, 76 thunks, 30 compiler helpers), 0 unknown, and the earlier
-classification pass records 0 unexplained `.text` bytes. The map records the dispatcher
+classification pass records 0 unexplained `.text` bytes. The inventory is reproducible on the
+read-only `kotor-v4` Hydralysis target (10,849/10,849 functions, 565/565 handlers); the stock
+`kotor` target is the 8,616-function h6 Golden subset. See `docs/recon/40_HYDRA_UPGRADE.md`. The map records the dispatcher
 (`0x0052c0d0`, vtable `0x7450e4` slot `+8`, bound 772), the initializer (`0x0054c960`),
 the 565 handler targets, and the known subsystem interfaces (script VM, resource/VFS,
 save/GFF, renderer, input/camera, audio, chargen/UI, minimap).
