@@ -20,6 +20,22 @@ std::string lower(std::string text)
     return text;
 }
 
+Vec3 rotate(const Mat3& matrix, Vec3 value)
+{
+    return {matrix.m[0][0] * value.x + matrix.m[0][1] * value.y + matrix.m[0][2] * value.z,
+            matrix.m[1][0] * value.x + matrix.m[1][1] * value.y + matrix.m[1][2] * value.z,
+            matrix.m[2][0] * value.x + matrix.m[2][1] * value.y + matrix.m[2][2] * value.z};
+}
+
+Vec3 normalized(Vec3 value)
+{
+    const float length = std::sqrt(value.x * value.x + value.y * value.y + value.z * value.z);
+    if (length <= 0.0f) {
+        return {0.0f, 0.0f, 0.0f};
+    }
+    return {value.x / length, value.y / length, value.z / length};
+}
+
 const std::vector<std::string>& scriptHookLabels()
 {
     static const std::vector<std::string> labels = {
@@ -187,8 +203,12 @@ std::shared_ptr<Mdl> loadModel(Install& install, const std::string& modelName, s
     }
 }
 
+void refreshEntityMeshImpl(EntityMesh& mesh);
+
 void buildMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
-               const std::shared_ptr<Mdl>& model)
+               const std::shared_ptr<Mdl>& model,
+               const std::shared_ptr<Mdl>& attachModel = nullptr,
+               const std::string& attachNode = {})
 {
     if (!model) {
         return;
@@ -226,6 +246,11 @@ void buildMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
         }
     }
     if (!mesh.vertices.empty()) {
+        if (attachModel) {
+            mesh.attachModel = attachModel;
+            mesh.attachNode = attachNode;
+            refreshEntityMeshImpl(mesh);
+        }
         scene.entityMeshes.push_back(std::move(mesh));
     }
 }
@@ -233,6 +258,48 @@ void buildMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
 void refreshEntityMeshImpl(EntityMesh& mesh)
 {
     if (!mesh.model) {
+        return;
+    }
+    if (mesh.attachModel) {
+        const std::optional<Mdl::Pose> hand = mesh.attachModel->nodePose(
+            mesh.attachNode, mesh.attachAnimation, mesh.attachTime);
+        std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
+        for (MdlMeshTriangle& triangle : mesh.model->posedTriangles({}, 0.0f)) {
+            if (hand.has_value()) {
+                for (MdlMeshVertex& vertex : triangle.v) {
+                    const Vec3 rotated = rotate(hand->rotation, vertex.position);
+                    vertex.position = {hand->translation.x + rotated.x,
+                                       hand->translation.y + rotated.y,
+                                       hand->translation.z + rotated.z};
+                    vertex.normal = normalized(rotate(hand->rotation, vertex.normal));
+                }
+            }
+            std::string texture = lower(triangle.texture);
+            if (texture.empty()) {
+                texture = "__default";
+            }
+            byTexture[texture].push_back(std::move(triangle));
+        }
+        mesh.triangles.clear();
+        mesh.vertices.clear();
+        for (const auto& [textureName, list] : byTexture) {
+            (void)textureName;
+            for (const MdlMeshTriangle& triangle : list) {
+                mesh.triangles.push_back(triangle);
+                for (int i = 0; i < 3; ++i) {
+                    mesh.vertices.push_back({triangle.v[i].position, triangle.v[i].normal,
+                                             triangle.v[i].uv});
+                }
+            }
+        }
+        if (mesh.indices.size() != mesh.vertices.size()) {
+            mesh.indices.clear();
+            mesh.indices.reserve(mesh.vertices.size());
+            for (std::uint32_t i = 0; i < mesh.vertices.size(); ++i) {
+                mesh.indices.push_back(i);
+            }
+        }
+        ++mesh.revision;
         return;
     }
     std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
@@ -293,10 +360,20 @@ void applyEquippedWeapon(Entity& entity, Install& install, const Gff& utc,
         if (baseitems.rowIndex(row) < 0) {
             continue;
         }
-        if (baseitems.cell(row, "weapontype") == "4") {
+        const std::string weaponType = baseitems.cell(row, "weapontype");
+        if (!weaponType.empty() && weaponType != "0" && weaponType != "****") {
+            const std::string model = baseitems.cell(row, "defaultmodel");
+            if (!model.empty() && model != "I_Null") {
+                if (entity.weaponModel.empty()) {
+                    entity.weaponModel = model;
+                } else if (entity.offhandModel.empty()) {
+                    entity.offhandModel = model;
+                }
+            }
+        }
+        if (weaponType == "4") {
             entity.ranged = true;
             entity.attackRange = 15.0f;
-            return;
         }
     }
 }
@@ -561,6 +638,23 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
             if (const std::shared_ptr<Mdl> model =
                     loadModel(install, scene.entities[index].model, error)) {
                 buildMesh(scene, install, static_cast<std::uint32_t>(index), model);
+                const Entity& spawned = scene.entities[index];
+                if (!spawned.weaponModel.empty()) {
+                    std::string weaponError;
+                    if (const std::shared_ptr<Mdl> weapon =
+                            loadModel(install, spawned.weaponModel, weaponError)) {
+                        buildMesh(scene, install, static_cast<std::uint32_t>(index), weapon,
+                                  model, spawned.weaponAttach);
+                    }
+                }
+                if (!spawned.offhandModel.empty()) {
+                    std::string weaponError;
+                    if (const std::shared_ptr<Mdl> weapon =
+                            loadModel(install, spawned.offhandModel, weaponError)) {
+                        buildMesh(scene, install, static_cast<std::uint32_t>(index), weapon,
+                                  model, spawned.offhandAttach);
+                    }
+                }
             } else {
                 scene.warnings.push_back(scene.entities[index].model + ": " + error);
             }
@@ -725,6 +819,22 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
             std::string error;
             if (const std::shared_ptr<Mdl> model = loadModel(install, entity.model, error)) {
                 buildMesh(scene, install, static_cast<std::uint32_t>(index), model);
+                if (!entity.weaponModel.empty()) {
+                    std::string weaponError;
+                    if (const std::shared_ptr<Mdl> weapon =
+                            loadModel(install, entity.weaponModel, weaponError)) {
+                        buildMesh(scene, install, static_cast<std::uint32_t>(index), weapon,
+                                  model, entity.weaponAttach);
+                    }
+                }
+                if (!entity.offhandModel.empty()) {
+                    std::string weaponError;
+                    if (const std::shared_ptr<Mdl> weapon =
+                            loadModel(install, entity.offhandModel, weaponError)) {
+                        buildMesh(scene, install, static_cast<std::uint32_t>(index), weapon,
+                                  model, entity.offhandAttach);
+                    }
+                }
             } else {
                 scene.warnings.push_back(entity.model + ": " + error);
             }

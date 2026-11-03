@@ -106,6 +106,40 @@ void addEntities(const Gff& git, std::uint32_t root, const char* listLabel, Enti
     }
 }
 
+void addCameras(const Gff& git, std::uint32_t root, Scene& scene)
+{
+    const GffField* listField = git.field(root, "CameraList");
+    if (listField == nullptr || listField->type != GffType::List) {
+        return;
+    }
+    for (const std::uint32_t structure : git.list(*listField)) {
+        CameraDef camera;
+        if (const GffField* field = git.field(structure, "CameraID")) {
+            camera.id = static_cast<std::uint32_t>(std::max(0, git.integer(*field)));
+        }
+        if (const GffField* field = git.field(structure, "Position")) {
+            camera.position = git.vector3(*field);
+        }
+        if (const GffField* field = git.field(structure, "Orientation")) {
+            const std::array<float, 4> orientation = git.vector4(*field);
+            camera.qw = orientation[3];
+            camera.qx = orientation[0];
+            camera.qy = orientation[1];
+            camera.qz = orientation[2];
+        }
+        if (const GffField* field = git.field(structure, "Pitch")) {
+            camera.pitch = git.number(*field);
+        }
+        if (const GffField* field = git.field(structure, "Height")) {
+            camera.height = git.number(*field);
+        }
+        if (const GffField* field = git.field(structure, "FieldOfView")) {
+            camera.fov = git.number(*field);
+        }
+        scene.cameras.push_back(camera);
+    }
+}
+
 } // namespace
 
 Scene loadModule(Install& install, const std::string& moduleStem)
@@ -247,6 +281,7 @@ Scene loadModule(Install& install, const std::string& moduleStem)
     addEntities(git, git.rootIndex(), "Encounter List", EntityKind::Encounter, scene);
     addEntities(git, git.rootIndex(), "SoundList", EntityKind::Sound, scene);
     addEntities(git, git.rootIndex(), "StoreList", EntityKind::Store, scene);
+    addCameras(git, git.rootIndex(), scene);
 
     loadEntityAssets(scene, install, git);
     return scene;

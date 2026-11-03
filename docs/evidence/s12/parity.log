@@ -1,11 +1,11 @@
 [INFO] KotOR module end_m01aa area m01aa from E:/SteamLibrary/steamapps/common/swkotor
 [INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
 [INFO]   rooms: 15 vertices: 235038 indices: 235038 batches: 34
-[INFO]   textures: 58 collision vertices: 850 facets: 1365
+[INFO]   textures: 65 collision vertices: 850 facets: 1365
 [INFO]   entities: 218 (door 15, placeable 60, creature 26, waypoint 58, store 0, encounter 0)
 [INFO]   encounter volumes: 0
 [INFO]   entry: 15.4248, 20.1215, -1.275
-[INFO]   entity meshes: 101 triggers: 13 warnings: 0
+[INFO]   entity meshes: 120 triggers: 13 warnings: 0
 [INFO]   script hooks: 284 on 54 entities; scene hooks: 3; script runs: 25
 [INFO]   entity mesh 0 end_door05 verts=564 local=-3.07263,-0.121998,-0.047403 .. 3.08736,0.123205,3.00955
 [INFO]   entity mesh 1 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
@@ -21,19 +21,19 @@
 [INFO]   Swapchain: double-buffered SDL window
 [INFO] ImGui 1.93.0 renderer initialized
 [INFO] ImGui draw data at frame 0: 1 list(s), 8 vertices
-[INFO] Scene frame: eye 15.4248, 20.1215, 0.351596 meshes 102/102 textures 58
+[INFO] Scene frame: eye 15.4248, 20.1215, 0.351596 meshes 121/121 textures 65
 [INFO] Screenshot: E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s12-parity\parity-gl.bmp
 [INFO] Exit: frame limit reached (3)
-[INFO] Frames: 3 in 0.0910777 s (avg 30.3592 ms/frame)
+[INFO] Frames: 3 in 0.0830203 s (avg 27.6734 ms/frame)
 [INFO] Backend summary: opengl | 4.5.0 Core Profile Context 26.10.1.261008 | double-buffered SDL window
 [INFO] KotOR module end_m01aa area m01aa from E:/SteamLibrary/steamapps/common/swkotor
 [INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
 [INFO]   rooms: 15 vertices: 235038 indices: 235038 batches: 34
-[INFO]   textures: 58 collision vertices: 850 facets: 1365
+[INFO]   textures: 65 collision vertices: 850 facets: 1365
 [INFO]   entities: 218 (door 15, placeable 60, creature 26, waypoint 58, store 0, encounter 0)
 [INFO]   encounter volumes: 0
 [INFO]   entry: 15.4248, 20.1215, -1.275
-[INFO]   entity meshes: 101 triggers: 13 warnings: 0
+[INFO]   entity meshes: 120 triggers: 13 warnings: 0
 [INFO]   script hooks: 284 on 54 entities; scene hooks: 3; script runs: 25
 [INFO]   entity mesh 0 end_door05 verts=564 local=-3.07263,-0.121998,-0.047403 .. 3.08736,0.123205,3.00955
 [INFO]   entity mesh 1 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
@@ -53,10 +53,10 @@
 [INFO]   Swapchain: VK_FORMAT_B8G8R8A8_UNORM 960x540, 3 images, FIFO
 [INFO] ImGui 1.93.0 renderer initialized
 [INFO] ImGui draw data at frame 0: 1 list(s), 8 vertices
-[INFO] Vulkan scene draw: meshes 102/102 textures 58 eye 15.4248, 20.1215, 0.351596
+[INFO] Vulkan scene draw: meshes 121/121 textures 65 eye 15.4248, 20.1215, 0.351596
 [INFO] Screenshot: E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s12-parity\parity-vulkan.bmp
 [INFO] Exit: frame limit reached (3)
-[INFO] Frames: 3 in 0.111912 s (avg 37.3042 ms/frame)
+[INFO] Frames: 3 in 0.0812519 s (avg 27.084 ms/frame)
 [INFO] Backend summary: vulkan | instance 1.4.0 / device 1.4.359 | VK_FORMAT_B8G8R8A8_UNORM 960x540, 3 images, FIFO
 + E:\Projects\kotor-remaster\kotor-remaster\engine\build\msvc-release\kotor_engine.exe --module end_m01aa --gl --width 960 --height 540 --frames 3 --screenshot E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s12-parity\parity-gl.bmp
 + E:\Projects\kotor-remaster\kotor-remaster\engine\build\msvc-release\kotor_engine.exe --module end_m01aa --vulkan --width 960 --height 540 --frames 3 --screenshot E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s12-parity\parity-vulkan.bmp

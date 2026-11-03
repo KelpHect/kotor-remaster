@@ -1,11 +1,11 @@
 [INFO] KotOR module end_m01aa area m01aa from E:/SteamLibrary/steamapps/common/swkotor
 [INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
 [INFO]   rooms: 15 vertices: 235038 indices: 235038 batches: 34
-[INFO]   textures: 58 collision vertices: 850 facets: 1365
+[INFO]   textures: 65 collision vertices: 850 facets: 1365
 [INFO]   entities: 218 (door 15, placeable 60, creature 26, waypoint 58, store 0, encounter 0)
 [INFO]   encounter volumes: 0
 [INFO]   entry: 15.4248, 20.1215, -1.275
-[INFO]   entity meshes: 101 triggers: 13 warnings: 0
+[INFO]   entity meshes: 120 triggers: 13 warnings: 0
 [INFO]   script hooks: 284 on 54 entities; scene hooks: 3; script runs: 25
 [INFO]   entity mesh 0 end_door05 verts=564 local=-3.07263,-0.121998,-0.047403 .. 3.08736,0.123205,3.00955
 [INFO]   entity mesh 1 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
@@ -38,6 +38,18 @@
 [INFO] animation test: playback_revision=1
 [INFO] animation test: playback_vertices=1
 [INFO] animation test: playback_name=1
+[INFO] animation test: weapon_attachment=1
+[INFO] animation test: weapon_hand_hook=1
+[INFO] animation test: weapon_models=1
+[INFO] animation test: weapon_vertices=1
+[INFO] animation test: weapon_parent=1
+[INFO] animation test: weapon_follows_animation=1
+[INFO] animation test: camera_catalog=1
+[INFO] animation test: camera_math=1
+[INFO] animation test: camera_height=1
+[INFO] animation test: camera_forward=1
+[INFO] animation test: dialogue_camera_apply=1
+[INFO] animation test: dlg_camera_field=1
 [INFO] animation test: animation_script_loaded=1
 [INFO] animation test: animation_script_target=1
 [INFO] animation test: animation_script_ran=1

@@ -44,6 +44,7 @@ struct DialogueView {
     std::string text;
     std::vector<DialogueOption> options;
     std::uint32_t entry = UINT32_MAX;
+    std::int32_t cameraId = -1;
 };
 
 enum class UiPanel { None, Character, Inventory, Party, Journal, Merchant, Loot };
@@ -69,6 +70,11 @@ public:
 
     void update(float dt, const InputState& input);
     SceneCamera camera() const;
+    SceneCamera cinematicCamera(std::int32_t cameraId) const;
+    void setDialogueCameraForTest(std::int32_t cameraId) {
+        dialogueView_.active = true;
+        dialogueView_.cameraId = cameraId;
+    }
     std::string interactionPrompt() const;
     bool interact();
     bool testTransition(std::string& from, std::string& to);

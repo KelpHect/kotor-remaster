@@ -1406,6 +1406,8 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
         return 50;
     }
     kotor::Install install(game.installPath());
+    install.bindModule(game.module());
+    install.addPacks();
     const auto loadModel = [&](const std::string& name) -> std::optional<kotor::Mdl> {
         auto mdl = install.find(name, 2002);
         auto mdx = install.find(name, 3008);
@@ -1549,6 +1551,104 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
         }
         check(movedVertices > 0, "playback_vertices");
         check(game.animationName(playbackIndex) == playbackClip, "playback_name");
+    }
+
+    const kotor::EntityMesh* weaponMesh = nullptr;
+    std::size_t weaponEntity = static_cast<std::size_t>(-1);
+    for (const kotor::EntityMesh& mesh : game.scene().entityMeshes) {
+        if (mesh.attachModel) {
+            weaponMesh = &mesh;
+            weaponEntity = mesh.entity;
+            break;
+        }
+    }
+    check(weaponMesh != nullptr, "weapon_attachment");
+    if (weaponMesh != nullptr) {
+        check(weaponMesh->attachNode == "Rhand_g" || weaponMesh->attachNode == "Lhand_g",
+              "weapon_hand_hook");
+        check(weaponMesh->model != nullptr && weaponMesh->attachModel != nullptr,
+              "weapon_models");
+        bool weaponFinite = !weaponMesh->vertices.empty();
+        for (const kotor::SceneVertex& vertex : weaponMesh->vertices) {
+            weaponFinite = weaponFinite && std::isfinite(vertex.position.x)
+                && std::isfinite(vertex.position.y) && std::isfinite(vertex.position.z);
+        }
+        check(weaponFinite, "weapon_vertices");
+        std::vector<kotor::Vec3> weaponBefore;
+        weaponBefore.reserve(weaponMesh->vertices.size());
+        for (const kotor::SceneVertex& vertex : weaponMesh->vertices) {
+            weaponBefore.push_back(vertex.position);
+        }
+        const kotor::EntityMesh* parent = nullptr;
+        for (const kotor::EntityMesh& mesh : game.scene().entityMeshes) {
+            if (mesh.entity == weaponEntity && !mesh.attachModel) {
+                parent = &mesh;
+                break;
+            }
+        }
+        check(parent != nullptr, "weapon_parent");
+        if (parent != nullptr && parent->model) {
+            const std::string clip = parent->model->animationDuration("pause1") > 0.0f
+                ? "pause1" : parent->animation;
+            if (!clip.empty()) {
+                game.playAnimation(weaponEntity, clip, true);
+                InputState idle;
+                for (int i = 0; i < 10; ++i) {
+                    game.update(0.08f, idle);
+                }
+                std::size_t weaponMoved = 0;
+                if (weaponBefore.size() == weaponMesh->vertices.size()) {
+                    for (std::size_t i = 0; i < weaponBefore.size(); ++i) {
+                        const kotor::Vec3 after = weaponMesh->vertices[i].position;
+                        if (std::fabs(after.x - weaponBefore[i].x) > 0.0001f
+                            || std::fabs(after.y - weaponBefore[i].y) > 0.0001f
+                            || std::fabs(after.z - weaponBefore[i].z) > 0.0001f) {
+                            ++weaponMoved;
+                        }
+                    }
+                }
+                check(weaponMoved > 0, "weapon_follows_animation");
+            }
+        }
+    }
+
+    check(!game.scene().cameras.empty(), "camera_catalog");
+    if (!game.scene().cameras.empty()) {
+        const std::uint32_t cameraId = game.scene().cameras.front().id;
+        const SceneCamera cinematic = game.cinematicCamera(static_cast<std::int32_t>(cameraId));
+        check(cinematic.fovYDegrees > 0.0f
+                  && std::isfinite(cinematic.eye.x) && std::isfinite(cinematic.eye.y)
+                  && std::isfinite(cinematic.eye.z) && std::isfinite(cinematic.forward.x)
+                  && std::isfinite(cinematic.forward.y) && std::isfinite(cinematic.forward.z),
+              "camera_math");
+        const kotor::CameraDef& definition = game.scene().cameras.front();
+        check(std::fabs(cinematic.eye.z - (definition.position.z + definition.height)) < 0.001f,
+              "camera_height");
+        check(std::fabs(kotor::length(cinematic.forward) - 1.0f) < 0.01f, "camera_forward");
+        game.setDialogueCameraForTest(static_cast<std::int32_t>(cameraId));
+        const SceneCamera applied = game.camera();
+        check(std::fabs(applied.eye.x - cinematic.eye.x) < 0.001f
+                  && std::fabs(applied.eye.y - cinematic.eye.y) < 0.001f
+                  && std::fabs(applied.eye.z - cinematic.eye.z) < 0.001f,
+              "dialogue_camera_apply");
+        game.endDialogue();
+    }
+    const auto dlgData = install.find("end_trask01", 2029);
+    if (dlgData.has_value()) {
+        try {
+            kotor::Gff dlgGff = kotor::Gff::parse(*dlgData, "end_trask01.dlg");
+            const kotor::Dlg dlg = kotor::Dlg::parse(dlgGff, nullptr, "end_trask01.dlg");
+            bool cameraSeen = false;
+            for (const kotor::DlgEntry& entry : dlg.entries) {
+                cameraSeen = cameraSeen || entry.cameraId >= 0;
+            }
+            for (const kotor::DlgReply& reply : dlg.replies) {
+                cameraSeen = cameraSeen || reply.cameraId >= 0;
+            }
+            check(cameraSeen, "dlg_camera_field");
+        } catch (const kotor::FormatError&) {
+            check(false, "dlg_camera_field");
+        }
     }
 
     if (!scriptPath.empty()) {
@@ -2303,11 +2403,11 @@ int runApplication(const Options& options)
                     && loaded.vertices.size() == 235038
                     && loaded.indices.size() == 235038
                     && loaded.batches.size() == 34
-                    && loaded.textures.size() == 58
+                    && loaded.textures.size() == 65
                     && loaded.collisionVertices.size() == 850
                     && loaded.collision.size() == 1365
                     && loaded.entities.size() == 218
-                    && loaded.entityMeshes.size() == 101
+                    && loaded.entityMeshes.size() == 120
                     && loaded.triggers.size() == 13
                     && loaded.warnings.empty();
                 logInfo(concat("scene assert: rooms=", loaded.rooms.size(),
@@ -2317,6 +2417,7 @@ int runApplication(const Options& options)
                                " collision=", loaded.collision.size(),
                                " entities=", loaded.entities.size(),
                                " meshes=", loaded.entityMeshes.size(),
+                               " cameras=", loaded.cameras.size(),
                                " triggers=", loaded.triggers.size(),
                                " warnings=", loaded.warnings.size(),
                                " ok=", ok ? 1 : 0));

@@ -1,11 +1,12 @@
-# Sprint 12 - creature animation and skinning
+# Sprint 12 - creature animation, skinning, weapons and cutscene cameras
 
 Status: **complete - gate S12 met (2026-11-03)**. Sprint 11 closed combat,
 Force powers, alignment, the effect stack and the content-specific ability
 set. Sprint 12 closes the bind-pose-only creature gap: shipped MDL animation
 clips are parsed, evaluated and played; skinned meshes are deformed on the CPU
-with the verified `qbone`/`tbone` bind-inverse data; and both renderers refresh
-entity vertex buffers from the posed mesh.
+with the verified `qbone`/`tbone` bind-inverse data; equipped weapons follow
+the hand hooks; dialogue camera ids play GIT cameras; and both renderers
+refresh entity vertex buffers from the posed mesh.
 
 Baseline: Sprint 11 `35/35` CTest, 117/117 modules, VM 8,666/8,666, scene
 parity 0.0300, Python 143 tests / 7 skips, install unchanged.
@@ -26,16 +27,23 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
    defaults creatures to `pause1`/`pause`/`cpause1`/`default`, advances clips
    in `update`, and exposes `playAnimation`/`stopAnimation` plus name/time/
    revision accessors.
-5. **Script bridge** - `animations.2da` names and flags load; `PlayAnimation`
+5. **Weapon attachment** - `EquippedRes` resolves through the UTI to
+   `baseitems.defaultmodel`; weapon meshes attach to `Rhand_g`/`Lhand_g` and
+   follow the animated hand pose.
+6. **Cutscene cameras** - GIT `CameraList` cameras load with position,
+   orientation, pitch, height and FOV; DLG `CameraID` entries/replies select a
+   camera; `GameSession::camera()` returns the cinematic camera while dialogue
+   is active.
+7. **Script bridge** - `animations.2da` names and flags load; `PlayAnimation`
    and `ActionPlayAnimation` map an animation id to a clip and play it on
    `OBJECT_SELF`.
-6. **Rendering** - both GL and Vulkan refresh entity vertex buffers when the
+8. **Rendering** - both GL and Vulkan refresh entity vertex buffers when the
    animation revision changes; room geometry and bind-pose topology stay
    stable.
-7. **Regression** - **36/36** CTest, 117/117 modules, VM 8,666/8,666 with
+9. **Regression** - **36/36** CTest, 117/117 modules, VM 8,666/8,666 with
    0 mismatches, scene parity 0.0300, Python 143 tests / 7 skips, install
    sentinel 0 session changes.
-8. **Evidence and docs** - report, technical note, fixture and logs.
+10. **Evidence and docs** - report, technical note, fixture and logs.
 
 ## Lanes
 
@@ -45,15 +53,16 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
 | s12-02-skin | skin headers, bone maps, `qbone`/`tbone`, MDX weights | `engine/src/kotor/Geometry.cpp` |
 | s12-03-playback | session animation state, defaults, update loop | `engine/src/game/GameSession.*` |
 | s12-04-script | `animations.2da` and `PlayAnimation` bridge | `engine/src/game/Rules.*`, `GameSession.*` |
-| s12-05-render | entity mesh refresh for GL/Vulkan | `engine/src/render/*`, `Application.cpp` |
-| s12-06-evidence | gate, report, recon note, regression logs | `engine/CMakeLists.txt`, `docs/` |
+| s12-05-attach | equipped weapon models on hand hooks | `engine/src/kotor/Entities.cpp`, `Formats.h` |
+| s12-06-camera | GIT cameras and DLG camera playback | `engine/src/kotor/Scene.cpp`, `Tlk.cpp`, `GameSession.*` |
+| s12-07-render | entity mesh refresh for GL/Vulkan | `engine/src/render/*`, `Application.cpp` |
+| s12-08-evidence | gate, report, recon note, regression logs | `engine/CMakeLists.txt`, `docs/` |
 
 ## Outside this sprint
 
-- Weapon attachment to hand hooks (the next visual parity item).
-- Cutscene camera playback, dialogue camera clips and camera animation.
 - Dangly/saber vertex simulation and particle/light controllers.
 - Animation blending, transitions, root motion and inverse kinematics.
+- Camera animation clips (`CameraAnimation`) and dialogue camera effects.
 - Audio/EAX, Bink movies, lip sync, full `.gui`, minigames, localization,
   mods/Override runtime precedence and the P6 content checklist.
 

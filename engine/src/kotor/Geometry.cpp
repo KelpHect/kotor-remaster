@@ -1,6 +1,7 @@
 #include "kotor/Formats.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <functional>
@@ -236,6 +237,14 @@ std::string readCString(const std::uint8_t* data, std::size_t size, std::size_t 
     (void)what;
     (void)name;
     return out;
+}
+
+std::string lowerAscii(std::string text)
+{
+    for (char& ch : text) {
+        ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+    return text;
 }
 
 } // namespace
@@ -629,6 +638,21 @@ float Mdl::skinBindError() const
         }
     }
     return maxError;
+}
+
+std::optional<Mdl::Pose> Mdl::nodePose(const std::string& node, const std::string& animation,
+                                       float time) const
+{
+    const int clip = animation.empty() ? -1 : animationIndex(animation);
+    const Animation* anim = clip >= 0 ? &animationData_[static_cast<std::size_t>(clip)] : nullptr;
+    const std::vector<Pose> world = anim != nullptr ? poseWorld(anim, time) : bindWorld_;
+    const std::string wanted = lowerAscii(node);
+    for (std::size_t i = 0; i < nodes_.size(); ++i) {
+        if (lowerAscii(nodes_[i].name) == wanted) {
+            return world[i];
+        }
+    }
+    return std::nullopt;
 }
 
 std::vector<Mdl::Pose> Mdl::poseWorld(const Animation* animation, float time) const
