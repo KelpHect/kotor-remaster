@@ -9,7 +9,7 @@ round-trip the new state.
 
 Baseline: Sprint 10 `34/34` CTest, 117/117 modules, VM 8,666/8,666, scene parity
 0.0300, Python 143 tests / 7 skips, install unchanged. Sprint 11 result:
-`35/35` CTest, 59.37 s.
+`35/35` CTest, 63.59 s.
 
 ## Gate S11
 
@@ -69,8 +69,8 @@ Baseline: Sprint 10 `34/34` CTest, 117/117 modules, VM 8,666/8,666, scene parity
 ## Explicitly not this sprint
 
 - Content-specific abilities that need absent presentation/subsystems:
-   Battle Meditation (large-scale only), Jedi Defense projectile deflection,
-   Force Camouflage (stealth presentation) and Force Jump (navigation presentation).
+   Battle Meditation (large-scale only), Jedi Defense projectile deflection and
+   Force Camouflage (stealth presentation).
 - `ActionWait`/closure persistence across save, cutscenes, animation, audio/EAX,
    Bink/lip sync, full `.gui`, minigames, localization, mods/Override, KotOR 2
    world loading and P6 content.

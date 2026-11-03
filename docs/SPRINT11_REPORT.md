@@ -10,7 +10,7 @@ alignment/FP/feats/powers persist in both engine and original saves.
 
 ```text
 100% tests passed, 0 tests failed out of 35
-Total Test time (real) =  59.37 sec
+Total Test time (real) =  63.59 sec
 ```
 
 The new target is `kotor_combat_force`. All Sprint 10 save/profile/delayed
@@ -68,6 +68,8 @@ Combat feats now have effects:
 - Wookiee Toughness: +2 HP/level and 2-point damage reduction.
 - Armor/weapon proficiency is enforced from `baseitems.reqfeat0..4`; classes
   receive their starting proficiencies.
+- Force Jump / Advanced / Mastery closes a lightsaber attack from beyond 10 m
+  to 2 m and adds +0/+2/+4 to the first strike.
 
 Flurry adds an attack in the round, Whirlwind hits adjacent hostiles, and
 stunned/feared creatures skip movement and attacks. Force armor adds AC, Force
@@ -115,7 +117,7 @@ reloads the original slot.
 
 ## 7. Regression
 
-- **CTest: 35/35 passed** (59.37 s).
+- **CTest: 35/35 passed** (63.59 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0300**, PASS.
@@ -125,8 +127,8 @@ reloads the original slot.
 ## 8. Not in Sprint 11
 
 - Content-specific abilities that need absent presentation/subsystems:
-  Battle Meditation (large-scale only), Jedi Defense projectile deflection,
-  Force Camouflage (stealth presentation) and Force Jump (navigation presentation).
+  Battle Meditation (large-scale only), Jedi Defense projectile deflection and
+  Force Camouflage (stealth presentation).
 - Cutscenes, animation/skinning, audio/EAX, Bink/lip sync, full `.gui`,
   minigames, localization, mods/Override, KotOR 2 world loading and P6 content.
 

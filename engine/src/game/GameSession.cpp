@@ -1705,6 +1705,20 @@ void GameSession::attackNearestHostile()
     }
     combatTarget_ = static_cast<std::uint32_t>(best);
     logEvent("combat target " + combatTargetName());
+    const kotor::Entity& target = scene_.entities[best];
+    const float distance = distance2D(position_, target.position);
+    const std::int32_t jump = rules_.forceJumpBonus(character_);
+    if (distance > 10.0f && jump > 0 && rules_.hasLightsaber(character_)) {
+        const kotor::Vec3 direction = (position_ - target.position) * (1.0f / distance);
+        position_ = target.position + direction * 2.0f;
+        float ground = position_.z;
+        if (floorHeight(scene_, position_.x, position_.y, position_.z + 2.0f, ground)) {
+            position_.z = ground;
+        }
+        forceJumpBonus_ = jump;
+        logEvent("force jump +" + std::to_string(jump));
+        syncPlayerToScriptWorld();
+    }
 }
 
 std::string GameSession::combatTargetName() const
@@ -1723,8 +1737,9 @@ void GameSession::playerAttack(std::size_t target)
     std::int32_t die = 8;
     std::int32_t bonus = 0;
     rules_.weaponDamage(character_, dice, die, bonus);
-    bonus += forceDamageBonus();
-    std::int32_t attackModifier = forceAttackBonus();
+    bonus += forceDamageBonus() + forceJumpBonus_;
+    std::int32_t attackModifier = forceAttackBonus() + forceJumpBonus_;
+    forceJumpBonus_ = 0;
     std::int32_t criticalThreat = 20;
     switch (combatMode_) {
     case CombatMode::PowerAttack:

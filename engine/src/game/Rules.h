@@ -140,6 +140,8 @@ public:
     std::int32_t damageReduction(const CharacterSheet& sheet) const;
     std::int32_t sneakAttackDice(const CharacterSheet& sheet) const;
     std::int32_t skillBonus(const CharacterSheet& sheet, const std::string& skill) const;
+    std::int32_t forceJumpBonus(const CharacterSheet& sheet) const;
+    bool hasLightsaber(const CharacterSheet& sheet) const;
     bool hasFeatLabel(const CharacterSheet& sheet, const std::string& needle) const;
 
     int equipSlotFor(std::int32_t baseItem) const;

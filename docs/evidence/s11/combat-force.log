@@ -78,6 +78,8 @@
 [INFO] combat force test: suppress_no_cost=1
 [INFO] combat force test: suppress_expires=1
 [INFO] combat force test: lightning_after_suppress=1
+[INFO] combat force test: force_jump_bonus=1
+[INFO] combat force test: force_jump_closed=1
 [INFO] combat force test: power_attack_used=1
 [INFO] combat force test: power_attack_mode=1
 [INFO] combat force test: power_blast_used=1

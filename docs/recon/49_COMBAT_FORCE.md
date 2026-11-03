@@ -74,9 +74,12 @@ Save DC is `10 + level/2 + WIS modifier`; the target's `FortSaveThrow`,
 - **Wookiee Toughness**: +2 HP/level and 2-point damage reduction.
 - **Armor/Weapon Proficiency**: base item `reqfeat0..4` is enforced by
   `Rules::canEquip`; classes receive their starting proficiencies.
-- Battle Meditation, Jedi Defense projectile deflection, Force Camouflage and
-  Force Jump remain content-specific no-ops until their presentation/projectile/
-  stealth/navigation subsystems exist.
+- **Force Jump / Advanced / Mastery**: an equipped lightsaber plus a hostile
+  target beyond 10 m closes to 2 m and grants +0/+2/+4 attack and damage on the
+  first strike.
+- Battle Meditation (large-scale only), Jedi Defense projectile deflection and
+  Force Camouflage remain no-ops until their presentation/projectile/stealth
+  subsystems exist.
 
 Active modes last 30 s and are stored as `CombatMode`; the character panel
 shows the current mode.
@@ -137,6 +140,8 @@ combat force test: heal_used=1 / armor_used=1 / stun_used=1
 combat force test: power_attack_used=1 / power_blast_used=1
 combat force test: flurry_used=1 / toughness_learned=1
 combat force test: two_weapon_penalty=1 / two_weapon_fighting=1
+combat force test: force_jump_bonus=1 / force_jump_closed=1
+combat force test: caution_1/2/3=1 / gear_head_1=1
 combat force test: immunity_blocks_power=1 / breach_removes_immunity=1
 combat force test: shield_effect=1 / breach_removes_buffs=1
 combat force test: suppress_blocks_power=1 / suppress_expires=1
