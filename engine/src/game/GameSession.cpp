@@ -1,6 +1,7 @@
 #include "game/GameSession.h"
 
 #include "core/Log.h"
+#include "kotor/SaveGame.h"
 #include "script/Ncs.h"
 
 #include <algorithm>
@@ -2626,6 +2627,279 @@ bool GameSession::load(const std::filesystem::path& path)
         }
         syncPlayerToScriptWorld();
     }
+    return true;
+}
+
+bool GameSession::loadOriginalSave(const std::filesystem::path& folder)
+{
+    kotor::OriginalSave saved;
+    try {
+        saved = kotor::readOriginalSave(folder);
+    } catch (const std::exception& exception) {
+        logEvent(std::string("original save read failed: ") + exception.what());
+        return false;
+    }
+    if (saved.module.empty()) {
+        logEvent("original save has no module");
+        return false;
+    }
+    try {
+        if (!loadModule(saved.module, nullptr, {})) {
+            return false;
+        }
+    } catch (const std::exception& exception) {
+        logEvent(std::string("original save module failed: ") + exception.what());
+        return false;
+    }
+    if (!saved.area.empty() && lower(saved.area) != lower(scene_.area)) {
+        logEvent("original save area differs from module entry: " + saved.area);
+    }
+    character_.name = saved.pcName.empty() ? "Player" : saved.pcName;
+    character_.classId = saved.classId;
+    character_.level = std::max(1, saved.level);
+    character_.xp = saved.xp;
+    character_.str = saved.str;
+    character_.dex = saved.dex;
+    character_.con = saved.con;
+    character_.intel = saved.intel;
+    character_.wis = saved.wis;
+    character_.cha = saved.cha;
+    character_.hp = std::max(1, saved.hp);
+    character_.maxHp = std::max(character_.hp, saved.maxHp);
+    character_.feats.clear();
+    for (const std::int32_t feat : saved.feats) {
+        character_.feats.insert(feat);
+    }
+    character_.inventory.clear();
+    for (const kotor::SavedInventoryItem& source : saved.inventory) {
+        InventoryItem item;
+        item.resref = source.resref;
+        item.name = source.name;
+        item.baseItem = source.baseItem;
+        item.cost = source.cost;
+        item.stack = std::max(1, source.stack);
+        item.slot = source.slot;
+        item.equipped = source.equipped;
+        item.identified = source.identified;
+        character_.inventory.push_back(std::move(item));
+    }
+    gold_ = saved.gold;
+    journal_ = saved.journal;
+    playerHp_ = character_.hp;
+    playerMaxHp_ = character_.maxHp;
+    playerDead_ = false;
+
+    scriptWorld_.globals.clear();
+    globalKinds_.clear();
+    locationGlobals_.clear();
+    for (const kotor::SavedGlobal& value : saved.globals) {
+        if (value.type == kotor::SavedGlobal::Type::String) {
+            scriptWorld_.globals[value.name] = script::Value::makeString(value.text);
+            globalKinds_[value.name] = "string";
+        } else if (value.type == kotor::SavedGlobal::Type::Boolean) {
+            scriptWorld_.globals[value.name] = script::Value::makeInt(value.boolean ? 1 : 0);
+            globalKinds_[value.name] = "boolean";
+        } else if (value.type == kotor::SavedGlobal::Type::Location) {
+            locationGlobals_[value.name] = value.location;
+            globalKinds_[value.name] = "location";
+        } else {
+            scriptWorld_.globals[value.name] = script::Value::makeInt(value.number);
+            globalKinds_[value.name] = "number";
+        }
+    }
+
+    partyTags_.clear();
+    companions_.clear();
+    selectedCompanion_ = -1;
+    leaderTag_ = "PC";
+    for (const std::string& tag : saved.partyTags) {
+        if (tag != "PC") {
+            addPartyMember(tag);
+        }
+    }
+    for (const auto& [memberId, leader] : saved.party) {
+        if (leader && memberId != 0) {
+            const std::string tag = memberId == 1 ? "Carth"
+                : memberId == 2 ? "Bastila"
+                : memberId == 3 ? "Zaalbar"
+                : memberId == 4 ? "Mission"
+                : memberId == 5 ? "Canderous"
+                : memberId == 6 ? "Jolee"
+                : memberId == 7 ? "Juhani"
+                : memberId == 8 ? "HK-47"
+                : memberId == 9 ? "T3-M4" : "";
+            if (!tag.empty()) {
+                setPartyLeader(tag);
+            }
+        }
+    }
+
+    for (const kotor::SavedObjectState& state : saved.objects) {
+        const std::size_t index = findEntity(state.tag);
+        if (index == static_cast<std::size_t>(-1)) {
+            continue;
+        }
+        kotor::Entity& entity = scene_.entities[index];
+        entity.position = state.position;
+        entity.bearing = state.bearing;
+        entity.hitPoints = state.hitPoints;
+        entity.maxHitPoints = std::max(1, state.maxHitPoints);
+        entity.dead = state.dead;
+        entity.open = state.open;
+        entity.locked = state.locked;
+        if (entity.kind == kotor::EntityKind::Placeable) {
+            entity.lootItems = state.loot;
+        }
+    }
+
+    originalAreaName_ = saved.areaName;
+    originalPortrait_ = saved.portrait;
+    originalTimePlayed_ = saved.timePlayed;
+    originalRepute_ = saved.repute;
+    originalOuterExtras_ = saved.preservedOuter;
+    originalPreservedModules_ = saved.preservedModules;
+    position_ = saved.position;
+    yaw_ = saved.yaw;
+    float ground = position_.z;
+    if (floorHeight(scene_, position_.x, position_.y, position_.z + 2.0f, ground)) {
+        position_.z = ground;
+    }
+    activeDialogue_.reset();
+    dialogueView_ = {};
+    combatTarget_ = UINT32_MAX;
+    syncScriptWorld();
+    logEvent("original save loaded: " + saved.module + " gold=" + std::to_string(gold_)
+             + " inventory=" + std::to_string(character_.inventory.size())
+             + " journal=" + std::to_string(journal_.size())
+             + " globals=" + std::to_string(scriptWorld_.globals.size()));
+    return true;
+}
+
+bool GameSession::saveOriginalSave(const std::filesystem::path& folder,
+                                   const std::string& saveName)
+{
+    kotor::OriginalSave save;
+    save.folder = folder;
+    save.module = module_;
+    save.area = scene_.area;
+    save.areaName = originalAreaName_.empty()
+        ? (scene_.areaTag.empty() ? scene_.area : scene_.areaTag)
+        : originalAreaName_;
+    save.saveName = saveName;
+    save.pcName = character_.name;
+    save.portrait = originalPortrait_.empty() ? "po_pmhc4" : originalPortrait_;
+    save.position = position_;
+    save.yaw = yaw_;
+    save.gold = gold_;
+    save.xp = character_.xp;
+    save.hp = playerHp_;
+    save.maxHp = std::max(playerHp_, playerMaxHp_);
+    save.level = character_.level;
+    save.classId = character_.classId;
+    save.str = character_.str;
+    save.dex = character_.dex;
+    save.con = character_.con;
+    save.intel = character_.intel;
+    save.wis = character_.wis;
+    save.cha = character_.cha;
+    save.playedSeconds = originalTimePlayed_ + static_cast<std::int32_t>(elapsed_);
+    save.timePlayed = save.playedSeconds;
+    save.repute = originalRepute_;
+    save.preservedOuter = originalOuterExtras_;
+    save.preservedModules = originalPreservedModules_;
+    for (const std::int32_t feat : character_.feats) {
+        save.feats.push_back(feat);
+    }
+    for (const InventoryItem& item : character_.inventory) {
+        kotor::SavedInventoryItem copy;
+        copy.resref = item.resref;
+        copy.name = item.name;
+        copy.baseItem = item.baseItem;
+        copy.cost = item.cost;
+        copy.stack = item.stack;
+        copy.slot = item.slot;
+        copy.equipped = item.equipped;
+        copy.identified = item.identified;
+        save.inventory.push_back(std::move(copy));
+    }
+    save.party.emplace_back(0, leaderTag_ == "PC");
+    for (const CompanionState& companion : companions_) {
+        const std::int32_t id = companion.tag == "Carth" ? 1
+            : companion.tag == "Bastila" ? 2
+            : companion.tag == "Zaalbar" ? 3
+            : companion.tag == "Mission" ? 4
+            : companion.tag == "Canderous" ? 5
+            : companion.tag == "Jolee" ? 6
+            : companion.tag == "Juhani" ? 7
+            : companion.tag == "HK-47" ? 8
+            : companion.tag == "T3-M4" ? 9 : -1;
+        if (id >= 0) {
+            save.party.emplace_back(id, leaderTag_ == companion.tag);
+            save.partyTags.push_back(companion.tag);
+        }
+    }
+    save.journal = journal_;
+    for (const auto& [name, value] : scriptWorld_.globals) {
+        kotor::SavedGlobal global;
+        global.name = name;
+        const auto kind = globalKinds_.find(name);
+        if (value.type == script::ValueType::String) {
+            global.type = kotor::SavedGlobal::Type::String;
+            global.text = value.text;
+        } else if (kind != globalKinds_.end() && kind->second == "boolean") {
+            global.type = kotor::SavedGlobal::Type::Boolean;
+            global.boolean = value.integer != 0;
+        } else {
+            global.type = kotor::SavedGlobal::Type::Number;
+            global.number = static_cast<std::int32_t>(value.integer);
+        }
+        save.globals.push_back(std::move(global));
+    }
+    for (const auto& [name, location] : locationGlobals_) {
+        kotor::SavedGlobal global;
+        global.type = kotor::SavedGlobal::Type::Location;
+        global.name = name;
+        global.location = location;
+        save.globals.push_back(std::move(global));
+    }
+    for (const kotor::Entity& entity : scene_.entities) {
+        if (entity.tag.empty()) {
+            continue;
+        }
+        kotor::SavedObjectState state;
+        switch (entity.kind) {
+        case kotor::EntityKind::Creature: state.kind = kotor::SavedObjectState::Kind::Creature; break;
+        case kotor::EntityKind::Door: state.kind = kotor::SavedObjectState::Kind::Door; break;
+        case kotor::EntityKind::Placeable: state.kind = kotor::SavedObjectState::Kind::Placeable; break;
+        case kotor::EntityKind::Trigger: state.kind = kotor::SavedObjectState::Kind::Trigger; break;
+        case kotor::EntityKind::Store: state.kind = kotor::SavedObjectState::Kind::Store; break;
+        case kotor::EntityKind::Encounter: state.kind = kotor::SavedObjectState::Kind::Encounter; break;
+        case kotor::EntityKind::Waypoint: state.kind = kotor::SavedObjectState::Kind::Waypoint; break;
+        case kotor::EntityKind::Sound: state.kind = kotor::SavedObjectState::Kind::Sound; break;
+        default: state.kind = kotor::SavedObjectState::Kind::Other; break;
+        }
+        state.tag = entity.tag;
+        state.templateResref = entity.templateResref;
+        state.position = entity.position;
+        state.bearing = entity.bearing;
+        state.hitPoints = entity.hitPoints;
+        state.maxHitPoints = entity.maxHitPoints;
+        state.dead = entity.dead;
+        state.open = entity.open;
+        state.locked = entity.locked;
+        state.loot = entity.lootItems;
+        save.objects.push_back(std::move(state));
+    }
+    try {
+        if (!kotor::writeOriginalSave(folder, save, install_, true)) {
+            logEvent("original save write refused: " + folder.string());
+            return false;
+        }
+    } catch (const std::exception& exception) {
+        logEvent(std::string("original save write failed: ") + exception.what());
+        return false;
+    }
+    logEvent("original save written: " + folder.string());
     return true;
 }
 

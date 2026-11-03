@@ -1,0 +1,14 @@
+folder: 000011 - ENGINE (slot=11, kind=manual)
+files: 5; outer=11 entries
+modules: 7
+  tar_m03aa: ifo=True are=True git=True area='m03aa' objects=125
+  tar_m02aa: ifo=True are=True git=True area='m02aa' objects=103
+  tar_m02ab: ifo=True are=True git=True area='m02ab' objects=158
+  tar_m02ac: ifo=True are=True git=True area='m02ac' objects=144
+  tar_m02ad: ifo=True are=True git=True area='m02ad' objects=118
+  tar_m02ae: ifo=True are=True git=True area='m02ae' objects=143
+  tar_m02af: ifo=True are=True git=True area='m02af' objects=23
+party: present=True gold=731 members=2 journal=9
+globals: present=True cats={'number': 369, 'boolean': 809, 'string': 2, 'location': 5}
+nfo: present=True last_module='tar_m03aa'
+validation: 0 errors, 3 warnings, 0 infos

@@ -3,6 +3,7 @@
 #include "core/Log.h"
 #include "game/GameSession.h"
 #include "kotor/Formats.h"
+#include "kotor/SaveGame.h"
 #include "render/Backend.h"
 #include "script/Corpus.h"
 
@@ -1343,8 +1344,205 @@ int runVmCorpus(const Options& options)
     }
 }
 
+std::string resolveInstallPath(const Options& options)
+{
+    if (!options.install.empty()) {
+        return options.install;
+    }
+#if defined(_WIN32)
+    char* value = nullptr;
+    std::size_t length = 0;
+    if (_dupenv_s(&value, &length, "KOTOR_INSTALL") == 0 && value != nullptr) {
+        std::string result = value;
+        std::free(value);
+        return result;
+    }
+#else
+    if (const char* value = std::getenv("KOTOR_INSTALL"); value != nullptr) {
+        return value;
+    }
+#endif
+    return "E:/SteamLibrary/steamapps/common/swkotor";
+}
+
+int runOriginalSaveCreate(const Options& options)
+{
+    const std::string installPath = resolveInstallPath(options);
+    const std::string module = options.module.empty() ? "end_m01aa" : options.module;
+    const std::filesystem::path out = options.originalSaveCreate;
+    try {
+        GameSession game(installPath, module);
+        game.character().name = "S9 Create";
+        game.character().inventory.clear();
+        game.addInventoryItem("g_w_vbroshort01", 1, 1, 100);
+        game.addJournalEntry("s9_create_plot", 1);
+        game.giveXp(1000);
+        std::error_code error;
+        std::filesystem::remove_all(out, error);
+        if (!game.saveOriginalSave(out, "S9 CREATE")) {
+            logError("original save create: write FAIL");
+            return 20;
+        }
+        const ke::kotor::OriginalSave written = ke::kotor::readOriginalSave(out);
+        bool ok = written.module == module
+            && written.inventory.size() == 1
+            && written.journal.count("s9_create_plot") == 1
+            && written.pcName == "S9 Create";
+        GameSession reloaded(installPath, module);
+        const bool reloadedOk = reloaded.loadOriginalSave(out);
+        ok = ok && reloadedOk
+            && reloaded.inventory().size() == 1
+            && reloaded.journalState("s9_create_plot") == 1;
+        const ke::kotor::OriginalSaveCheck check = ke::kotor::checkOriginalSave(out);
+        ok = ok && check.ok;
+        logInfo(concat("original save create: path=", out.string(),
+                       " module=", written.module,
+                       " inventory=", written.inventory.size(),
+                       " journal=", written.journal.size(),
+                       " reload=", reloadedOk ? 1 : 0,
+                       " -> ", ok ? "PASS" : "FAIL"));
+        for (const std::string& message : check.errors) {
+            logInfo(concat("  original save create check: ", message));
+        }
+        return ok ? 0 : 21;
+    } catch (const std::exception& exception) {
+        logError(concat("original save create failed: ", exception.what()));
+        return 22;
+    }
+}
+
+int runOriginalSaveGate(const Options& options)
+{
+    const std::string sourceFolder = !options.originalSaveLoad.empty()
+        ? options.originalSaveLoad
+        : options.originalSaveRoundtrip;
+    const std::string installPath = resolveInstallPath(options);
+    try {
+        const ke::kotor::OriginalSave source = ke::kotor::readOriginalSave(sourceFolder);
+        logInfo(concat("original save source: module=", source.module, " area=", source.area,
+                       " pc=", source.pcName, " gold=", source.gold,
+                       " inventory=", source.inventory.size(),
+                       " journal=", source.journal.size(),
+                       " globals=", source.globals.size(),
+                       " objects=", source.objects.size()));
+        GameSession game(installPath, source.module);
+        if (!game.loadOriginalSave(sourceFolder)) {
+            logError("original save load: FAIL");
+            return 10;
+        }
+        std::size_t runtimeGlobals = 0;
+        std::size_t locationGlobals = 0;
+        for (const ke::kotor::SavedGlobal& value : source.globals) {
+            if (value.type == ke::kotor::SavedGlobal::Type::Location) {
+                ++locationGlobals;
+            } else {
+                ++runtimeGlobals;
+            }
+        }
+        bool ok = game.module() == source.module;
+        ok = ok && game.gold() == source.gold;
+        ok = ok && game.inventory().size() == source.inventory.size();
+        ok = ok && game.journal().size() == source.journal.size();
+        ok = ok && game.scriptWorld().globals.size() == runtimeGlobals;
+        ok = ok && game.companions().size() == source.partyTags.size();
+        const float dx = game.position().x - source.position.x;
+        const float dy = game.position().y - source.position.y;
+        const float dz = game.position().z - source.position.z;
+        ok = ok && (dx * dx + dy * dy + dz * dz) < 1.0f;
+        logInfo(concat("original save load: module=", game.module(),
+                       " gold=", game.gold(),
+                       " inventory=", game.inventory().size(),
+                       " journal=", game.journal().size(),
+                       " globals=", game.scriptWorld().globals.size(),
+                       " locations=", locationGlobals,
+                       " companions=", game.companions().size(),
+                       " position=", game.position().x, ",", game.position().y, ",",
+                       game.position().z, " -> ", ok ? "PASS" : "FAIL"));
+        if (!ok) {
+            return 11;
+        }
+        if (options.originalSaveRoundtrip.empty()) {
+            return 0;
+        }
+
+        std::filesystem::path out = options.originalSaveOut;
+        if (out.empty()) {
+            out = std::filesystem::temp_directory_path() / "kotor-engine-s9-save";
+        }
+        std::error_code error;
+        std::filesystem::remove_all(out, error);
+        if (!game.saveOriginalSave(out, source.saveName)) {
+            logError("original save write: FAIL");
+            return 12;
+        }
+        const ke::kotor::OriginalSaveCheck check = ke::kotor::checkOriginalSave(out);
+        logInfo(concat("original save write: path=", out.string(),
+                       " errors=", check.errors.size(), " warnings=", check.warnings.size(),
+                       " -> ", check.ok ? "PASS" : "FAIL"));
+        for (const std::string& message : check.errors) {
+            logInfo(concat("  original save check: ", message));
+        }
+        if (!check.ok) {
+            return 13;
+        }
+        const ke::kotor::OriginalSave written = ke::kotor::readOriginalSave(out);
+        bool roundtrip = written.module == source.module
+            && written.area == source.area
+            && written.areaName == source.areaName
+            && written.timePlayed >= source.timePlayed
+            && written.gold == source.gold
+            && written.inventory.size() == source.inventory.size()
+            && written.journal.size() == source.journal.size()
+            && written.globals.size() == source.globals.size()
+            && written.partyTags.size() == source.partyTags.size()
+            && written.pcName == source.pcName;
+        const float wx = written.position.x - source.position.x;
+        const float wy = written.position.y - source.position.y;
+        const float wz = written.position.z - source.position.z;
+        roundtrip = roundtrip && (wx * wx + wy * wy + wz * wz) < 1.0f;
+
+        GameSession reloaded(installPath, source.module);
+        const bool reloadedOk = reloaded.loadOriginalSave(out);
+        roundtrip = roundtrip && reloadedOk
+            && reloaded.gold() == source.gold
+            && reloaded.inventory().size() == source.inventory.size()
+            && reloaded.journal().size() == source.journal.size()
+            && reloaded.companions().size() == source.partyTags.size();
+        logInfo(concat("original save roundtrip: module=", written.module,
+                       " gold=", written.gold,
+                       " inventory=", written.inventory.size(),
+                       " journal=", written.journal.size(),
+                       " globals=", written.globals.size(),
+                       " companions=", reloaded.companions().size(),
+                       " reload=", reloadedOk ? 1 : 0,
+                       " -> ", roundtrip ? "PASS" : "FAIL"));
+        return roundtrip ? 0 : 14;
+    } catch (const std::exception& exception) {
+        logError(concat("original save gate failed: ", exception.what()));
+        return 15;
+    }
+}
+
 int runApplication(const Options& options)
 {
+    if (!options.profileInfo.empty()) {
+        const ke::kotor::GameProfile profile =
+            ke::kotor::GameProfile::detect(options.profileInfo);
+        logInfo(concat("game profile: kind=", ke::kotor::gameKindName(profile.kind),
+                       " name=", profile.name,
+                       " executable=", profile.executable,
+                       " sha256=", profile.buildSha256,
+                       " recognized=", profile.recognized ? 1 : 0,
+                       " world=", profile.supportsWorldLoad() ? 1 : 0,
+                       " original_saves=", profile.supportsOriginalSaves() ? 1 : 0));
+        return profile.recognized ? 0 : 1;
+    }
+    if (!options.originalSaveCreate.empty()) {
+        return runOriginalSaveCreate(options);
+    }
+    if (!options.originalSaveLoad.empty() || !options.originalSaveRoundtrip.empty()) {
+        return runOriginalSaveGate(options);
+    }
     if (!options.vmCorpus.empty()) {
         return runVmCorpus(options);
     }

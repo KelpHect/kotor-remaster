@@ -7,8 +7,6 @@ namespace ke::kotor {
 
 namespace {
 
-constexpr const char* kKotorBuildSha256 = "0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6";
-
 std::string lower(std::string text)
 {
     for (char& ch : text) {
@@ -25,13 +23,14 @@ Install::Install(std::filesystem::path gameDir, bool verifyBuild)
     if (!std::filesystem::is_directory(root_)) {
         throw FormatError("install directory not found: " + root_.string());
     }
-    const std::filesystem::path exe = root_ / "swkotor.exe";
-    if (!std::filesystem::is_regular_file(exe)) {
-        throw FormatError("swkotor.exe not found in " + root_.string());
+    profile_ = GameProfile::detect(root_);
+    if (profile_.kind == GameKind::Unknown) {
+        throw FormatError("no supported KotOR executable in " + root_.string());
     }
-    buildSha256_ = sha256File(exe);
-    if (verifyBuild && buildSha256_ != kKotorBuildSha256) {
-        throw FormatError("swkotor.exe SHA-256 " + buildSha256_ + " is not the supported 1.0.3.0 build");
+    buildSha256_ = profile_.buildSha256;
+    if (verifyBuild && !profile_.recognized) {
+        throw FormatError(profile_.executable + " SHA-256 " + buildSha256_
+                          + " is not a supported " + profile_.name + " build");
     }
     key_ = KeyFile::open(root_ / "chitin.key");
 }

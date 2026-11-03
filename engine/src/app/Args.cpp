@@ -279,6 +279,46 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.savePath = value;
             continue;
         }
+        if (arg == "--original-save-load") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--original-save-load requires a save folder");
+            }
+            result.options.originalSaveLoad = value;
+            continue;
+        }
+        if (arg == "--original-save-roundtrip") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--original-save-roundtrip requires a save folder");
+            }
+            result.options.originalSaveRoundtrip = value;
+            continue;
+        }
+        if (arg == "--profile-info") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--profile-info requires a game directory");
+            }
+            result.options.profileInfo = value;
+            continue;
+        }
+        if (arg == "--original-save-create") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--original-save-create requires a folder");
+            }
+            result.options.originalSaveCreate = value;
+            continue;
+        }
+        if (arg == "--original-save-out") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--original-save-out requires a folder");
+            }
+            result.options.originalSaveOut = value;
+            continue;
+        }
         if (arg.starts_with("--backend=")) {
             const std::string_view value = arg.substr(std::string_view("--backend=").size());
             if (value == "auto") {
@@ -394,6 +434,11 @@ void printUsage()
         << "  --screenshot <path>   Write a BMP after the requested frames\n"
         << "  --save <path>         Save slot for the player state (F5 writes, --load reads)\n"
         << "  --load                Load the save slot at startup\n"
+        << "  --original-save-load <folder>       Load an original SAVEGAME.sav folder\n"
+        << "  --original-save-roundtrip <folder>  Load, write and reload an original slot\n"
+        << "  --profile-info <dir>                Detect KotOR 1 / KotOR 2 and exit\n"
+        << "  --original-save-create <folder>     Write a fresh original slot from --module\n"
+        << "  --original-save-out <folder>        Output folder for the round-trip slot\n"
         << "\n"
         << "Script verification (no module):\n"
         << "  --vm-corpus <dir>     Execute every .ncs in a directory and report\n"
