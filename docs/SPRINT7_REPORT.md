@@ -192,8 +192,9 @@ following are the remaining future systems.
   entry.
 - Merchant identify/reputation haggling and store gold limits are not modeled; UTM markup/down and
   buy/sell flags are.
-- Cutscene cameras, movie/audio, animation/skinning, minigames, the full `.gui` set and all 117
-  areas remain Sprint 8.
+- Cutscene cameras, movie/audio, animation/skinning, minigames and the full `.gui` set remain
+  future systems. The 117-module loader sweep was closed by Sprint 8; all-area gameplay/content
+  parity is still open.
 - Companion AI/formation and party selection of the active leader are not modeled; companion
   sheets, XP share, roster and selection are.
 
