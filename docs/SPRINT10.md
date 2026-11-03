@@ -10,6 +10,11 @@ Baseline: Sprint 9 `33/33` CTest, 117/117 modules, VM 8,666/8,666, scene parity
 0.0300, Python 143 tests / 7 skips, install unchanged. Sprint 10 result:
 `34/34` CTest, including the new delayed-functor gate.
 
+Scope note: an earlier roadmap sketch grouped "full combat/Force/alignment
+effects" with a possible Sprint 10. This written gate narrows Sprint 10 to the
+VM/script closure lane and moves full combat/Force/alignment to Sprint 11.
+Those systems are **not** claimed as part of this gate.
+
 ## Gate S10
 
 1. **Closure capture** - `STORESTATE` snapshots the instruction stream, closure
