@@ -195,7 +195,10 @@ void drawSystemsUi(GameSession& game)
     case UiPanel::Character: {
         ImGui::Text("%s  %s %d", sheet.name.c_str(), game.rules().className(sheet.classId).c_str(),
                     sheet.level);
-        ImGui::Text("XP %d   HP %d/%d   Gold %d", sheet.xp, sheet.hp, sheet.maxHp, game.gold());
+        ImGui::Text("XP %d   HP %d/%d   FP %d/%d   Gold %d", sheet.xp, sheet.hp,
+                    sheet.maxHp, sheet.fp, sheet.maxFp, game.gold());
+        ImGui::Text("Alignment %d (0 dark .. 100 light)   Combat mode %s",
+                    sheet.alignment, combatModeName(game.combatMode()));
         ImGui::Separator();
         ImGui::Text("STR %d  DEX %d  CON %d", sheet.str, sheet.dex, sheet.con);
         ImGui::Text("INT %d  WIS %d  CHA %d", sheet.intel, sheet.wis, sheet.cha);
@@ -221,8 +224,15 @@ void drawSystemsUi(GameSession& game)
         }
         if (!sheet.powers.empty()) {
             ImGui::TextUnformatted("Force powers");
+            const std::string targetTag = game.combatTargetName();
             for (const std::int32_t power : sheet.powers) {
                 ImGui::Text("#%d %s", power, game.rules().powerName(power).c_str());
+                ImGui::SameLine();
+                if (ImGui::Button((std::string("Use##") + std::to_string(power)).c_str())) {
+                    const std::uint32_t target = targetTag.empty()
+                        ? 0 : game.objectForTag(targetTag);
+                    game.useForcePower(power, target);
+                }
             }
         }
         static int powerId = 6;
@@ -1366,6 +1376,152 @@ std::string resolveInstallPath(const Options& options)
     return "E:/SteamLibrary/steamapps/common/swkotor";
 }
 
+int runCombatForceTest(GameSession& game, const std::string& scriptPath)
+{
+    if (!game.rules().loaded()) {
+        logError("combat/force test: rules tables are not loaded");
+        return 40;
+    }
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("combat force test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+
+    CharacterSheet sheet = game.rules().createCharacter(3, 5);
+    sheet.maxHp = game.rules().maxHitPoints(3, 5, sheet.con);
+    sheet.hp = 20;
+    sheet.fp = 200;
+    sheet.maxFp = 200;
+    sheet.alignment = 50;
+    sheet.featPoints = 10;
+    sheet.feats.insert(28); // POWER_ATTACK
+    sheet.feats.insert(11); // FLURRY
+    sheet.feats.insert(36); // WEAPON_FOCUS_LIGHTSABER
+    sheet.feats.insert(50); // WEAPON_SPEC_LIGHTSABER
+    sheet.powers.insert(28); // FORCE_POWER_HEAL
+    sheet.powers.insert(35); // FORCE_POWER_LIGHTNING
+    sheet.powers.insert(17); // FORCE_POWER_FORCE_ARMOR
+    sheet.powers.insert(46); // FORCE_POWER_STUN
+    game.setCharacterForTest(sheet);
+
+    check(game.maxForcePoints() == 200, "jedi_force_points");
+    int forcePowerCount = 0;
+    for (std::int32_t id = 0; id < 200; ++id) {
+        if (game.rules().forcePower(id).has_value()) {
+            ++forcePowerCount;
+        }
+    }
+    check(forcePowerCount == 44, "force_catalog_44");
+    check(game.rules().featCount() == 125, "feat_catalog_125");
+    const std::size_t hostile = firstHostile(game);
+    check(hostile != static_cast<std::size_t>(-1), "hostile_found");
+    if (hostile == static_cast<std::size_t>(-1)) {
+        return 41;
+    }
+    kotor::Entity& target = game.scene().entities[hostile];
+    target.hitPoints = 200;
+    target.maxHitPoints = 200;
+    target.fortSave = -100;
+    target.willSave = -100;
+    target.refSave = -100;
+    target.dead = false;
+    target.position = game.position();
+    target.position.x += 1.0f;
+    const std::uint32_t targetObject = game.objectForEntityIndex(hostile);
+
+    const std::int32_t fpBefore = game.forcePoints();
+    const std::int32_t hpBefore = target.hitPoints;
+    check(game.useForcePower(35, targetObject), "lightning_used");
+    check(game.forcePoints() == fpBefore - 20, "lightning_cost");
+    check(target.hitPoints < hpBefore, "lightning_damage");
+    check(game.alignment() == 48, "lightning_dark_side");
+
+    check(game.useForcePower(28, 0), "heal_used");
+    check(game.character().hp > 20, "heal_amount");
+    check(game.alignment() == 50, "heal_light_side");
+
+    check(game.useForcePower(17, 0), "armor_used");
+    check(game.forceArmorBonus() > 0, "armor_buff");
+    check(game.alignment() == 52, "armor_light_side");
+
+    check(game.useForcePower(46, targetObject), "stun_used");
+    check(target.stunTimer > 0.0f, "stun_applied");
+    check(game.alignment() == 54, "stun_light_side");
+
+    const std::int32_t hpBeforeFeat = game.character().maxHp;
+    check(game.useFeat(28, targetObject), "power_attack_used");
+    check(game.combatMode() == CombatMode::PowerAttack, "power_attack_mode");
+    check(game.useFeat(11, targetObject), "flurry_used");
+    check(game.combatMode() == CombatMode::Flurry, "flurry_mode");
+    check(game.learnFeat(84), "toughness_learned");
+    check(game.character().maxHp > hpBeforeFeat, "toughness_hp");
+
+    if (!scriptPath.empty()) {
+        std::ifstream scriptFile(scriptPath, std::ios::binary | std::ios::ate);
+        std::vector<std::uint8_t> scriptBytes;
+        if (scriptFile) {
+            const std::streamoff size = scriptFile.tellg();
+            scriptFile.seekg(0, std::ios::beg);
+            scriptBytes.resize(static_cast<std::size_t>(size));
+            if (!scriptBytes.empty()) {
+                scriptFile.read(reinterpret_cast<char*>(scriptBytes.data()), size);
+            }
+        }
+        const std::int32_t fpBeforeScript = game.forcePoints();
+        check(!scriptBytes.empty(), "force_script_loaded");
+        check(game.runScriptNcsForTest("force_script_test", scriptBytes,
+                                       game.scriptWorld().pc), "force_script_ran");
+        const auto scriptLocal = [&](const char* name) {
+            return game.scriptWorld().getLocal(game.scriptWorld().pc, name,
+                                               script::ValueType::Int).asInt();
+        };
+        check(scriptLocal("0") == 77, "script_alignment_read");
+        check(scriptLocal("1") == 1, "script_has_feat");
+        check(scriptLocal("2") == 1, "script_has_spell");
+        check(scriptLocal("3") == fpBeforeScript, "script_force_points");
+        check(scriptLocal("4") == 200, "script_max_force_points");
+        check(scriptLocal("5") == 1, "script_talent_type");
+        check(scriptLocal("6") == 35, "script_talent_id");
+        check(game.combatMode() == CombatMode::PowerAttack, "script_action_feat");
+        check(game.forceArmorBonus() > 0, "script_action_spell");
+        check(game.alignment() == 81, "script_alignment_action");
+    }
+
+    game.setAlignment(20);
+    game.adjustAlignment(5);
+    check(game.alignment() == 25, "alignment_adjust");
+
+    const std::filesystem::path temp = std::filesystem::temp_directory_path()
+        / "kotor-s11-combat-force";
+    std::error_code error;
+    std::filesystem::remove_all(temp, error);
+    const std::filesystem::path engineSave = temp / "player.txt";
+    check(game.save(engineSave), "engine_save");
+    GameSession restored(game.installPath(), game.module());
+    check(restored.load(engineSave), "engine_load");
+    check(restored.alignment() == 25, "alignment_engine_roundtrip");
+    check(restored.forcePoints() == game.forcePoints(), "force_engine_roundtrip");
+
+    const std::filesystem::path originalSlot = temp / "000012 - ENGINE";
+    check(game.saveOriginalSave(originalSlot, "S11 COMBAT"), "original_save");
+    const kotor::OriginalSave written = kotor::readOriginalSave(originalSlot);
+    check(written.alignment == 25, "alignment_original_roundtrip");
+    check(written.forcePoints == game.forcePoints(), "force_original_roundtrip");
+    check(std::find(written.powers.begin(), written.powers.end(), 35) != written.powers.end(),
+          "powers_original_roundtrip");
+    check(std::find(written.feats.begin(), written.feats.end(), 28) != written.feats.end(),
+          "feats_original_roundtrip");
+    GameSession reloaded(game.installPath(), game.module());
+    check(reloaded.loadOriginalSave(originalSlot), "original_load");
+    check(reloaded.alignment() == 25, "alignment_original_load");
+    check(reloaded.character().powers.contains(35), "powers_original_load");
+    check(reloaded.character().feats.contains(28), "feats_original_load");
+
+    logInfo(ok ? "combat force test: PASS" : "combat force test: FAIL");
+    return ok ? 0 : 42;
+}
+
 int runDelayedTest(GameSession& game, const std::string& path)
 {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -1815,6 +1971,9 @@ int runApplication(const Options& options)
             }
             if (options.lootTest) {
                 return runLootTest(*game);
+            }
+            if (options.combatForceTest) {
+                return runCombatForceTest(*game, options.combatForceScript);
             }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);

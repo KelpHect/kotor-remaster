@@ -78,6 +78,9 @@ struct OriginalSave {
     std::int32_t maxHp = 1;
     std::int32_t level = 1;
     std::int32_t classId = 0;
+    std::int32_t alignment = 50;
+    std::int32_t forcePoints = 0;
+    std::int32_t maxForcePoints = 0;
     std::int32_t str = 10;
     std::int32_t dex = 10;
     std::int32_t con = 10;
@@ -87,6 +90,7 @@ struct OriginalSave {
     std::int32_t playedSeconds = 0;
     std::int32_t timePlayed = 0;
     std::vector<std::int32_t> feats;
+    std::vector<std::int32_t> powers;
     std::vector<SavedInventoryItem> inventory;
     std::vector<std::pair<std::int32_t, bool>> party; // member id, leader
     std::vector<std::string> partyTags;

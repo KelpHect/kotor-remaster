@@ -344,6 +344,22 @@ std::optional<std::vector<Value>> ActionRuntime::specific(const std::string& nam
     if (name == "TestStringAgainstPattern") return hTestStringAgainstPattern(args);
     if (name == "RandomName") return hRandomName(args);
     if (name == "WriteTimestampedLogEntry") return hWriteTimestampedLogEntry(args);
+    // Talent values are a live-engine bridge. The pinned corpus oracle keeps
+    // the original generic mediation for these four actions.
+    if (selfAware_) {
+        if (name == "TalentSpell") return hTalent(1, args);
+        if (name == "TalentFeat") return hTalent(2, args);
+        if (name == "TalentSkill") return hTalent(3, args);
+        if (name == "GetTypeFromTalent") {
+            return std::vector<Value>{Value::makeInt((argInt(args, 0) >> 29) & 0x7)};
+        }
+        if (name == "GetIdFromTalent") {
+            return std::vector<Value>{Value::makeInt(argInt(args, 0) & 0x1FFFFFFF)};
+        }
+        if (name == "GetIsTalentValid") {
+            return std::vector<Value>{Value::makeInt((argInt(args, 0) & 0x1FFFFFFF) >= 0 ? 1 : 0)};
+        }
+    }
     if (name == "MagicalEffect") return hEffect(112);
     if (name == "SupernaturalEffect") return hEffect(113);
     if (name == "ExtraordinaryEffect") return hEffect(114);
@@ -836,6 +852,12 @@ std::vector<Value> ActionRuntime::hWriteTimestampedLogEntry(const Args& args)
 {
     world_->log.emplace_back(world_->time, argString(args, 0));
     return {};
+}
+
+std::vector<Value> ActionRuntime::hTalent(std::int64_t type, const Args& args)
+{
+    const std::int64_t id = argInt(args, 0) & 0x1FFFFFFF;
+    return {Value::makeEngine((type << 29) | id)};
 }
 
 std::vector<Value> ActionRuntime::hEffect(std::int64_t tag)

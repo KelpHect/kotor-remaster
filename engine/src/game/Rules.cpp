@@ -123,8 +123,9 @@ CharacterSheet Rules::createCharacter(std::int32_t classId, std::int32_t level,
     }
     sheet.maxHp = maxHitPoints(sheet.classId, sheet.level, sheet.con);
     sheet.hp = sheet.maxHp;
-    sheet.maxFp = 0;
-    sheet.fp = 0;
+    sheet.alignment = 50;
+    sheet.maxFp = maxForcePoints(sheet.classId, sheet.level, sheet.wis, sheet.cha);
+    sheet.fp = sheet.maxFp;
     if (skills_) {
         for (std::size_t row = 0; row < skills_->rowCount(); ++row) {
             sheet.skills[skills_->rowLabel(row)] = 0;
@@ -301,6 +302,113 @@ std::string Rules::powerName(std::int32_t powerId) const
     return spells_->cell(row, "label");
 }
 
+std::optional<ForcePowerInfo> Rules::forcePower(std::int32_t powerId) const
+{
+    if (!spells_) {
+        return std::nullopt;
+    }
+    const std::string row = std::to_string(powerId);
+    if (spells_->rowIndex(row) < 0) {
+        return std::nullopt;
+    }
+    const std::string label = spells_->cell(row, "label");
+    if (label.empty() || cellInt(*spells_, row, "usertype", 0) != 1) {
+        return std::nullopt;
+    }
+    ForcePowerInfo info;
+    info.id = powerId;
+    info.label = label;
+    info.cost = std::max<std::int32_t>(0, cellInt(*spells_, row, "forcepoints", 0));
+    const std::string alignment = spells_->cell(row, "goodevil");
+    info.alignment = alignment.empty() ? '-' : alignment.front();
+    const std::string range = spells_->cell(row, "range");
+    if (range == "W" || range == "T") {
+        info.range = 2;
+    } else if (range == "M") {
+        info.range = 15;
+    } else if (range == "S") {
+        info.range = 25;
+    } else {
+        info.range = 0;
+    }
+    return info;
+}
+
+std::int32_t Rules::maxForcePoints(std::int32_t classId, std::int32_t level,
+                                   std::int32_t wisdom, std::int32_t charisma) const
+{
+    // Jedi Guardian/Consular/Sentinel have force points. The engine uses a
+    // transparent data-scaled rule (10 + positive WIS/CHA modifiers per level)
+    // because the shipped tables do not carry a force-point progression.
+    if (classId < 3 || classId > 5) {
+        return 0;
+    }
+    const std::int32_t wis = std::max(0, static_cast<std::int32_t>(abilityModifier(wisdom)));
+    const std::int32_t cha = std::max(0, static_cast<std::int32_t>(abilityModifier(charisma)));
+    return std::max<std::int32_t>(1, level * (10 + wis + cha));
+}
+
+std::int32_t Rules::forcePowerSaveDC(const CharacterSheet& sheet) const
+{
+    return 10 + sheet.level / 2
+        + static_cast<std::int32_t>(abilityModifier(sheet.wis));
+}
+
+bool Rules::hasFeatLabel(const CharacterSheet& sheet, const std::string& needle) const
+{
+    for (const std::int32_t feat : sheet.feats) {
+        if (featName(feat).find(needle) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::int32_t Rules::featAttackBonus(const CharacterSheet& sheet) const
+{
+    bool weaponFocus = false;
+    std::int32_t dueling = 0;
+    for (const std::int32_t feat : sheet.feats) {
+        const std::string label = featName(feat);
+        if (label.find("WEAPON_FOCUS") != std::string::npos) {
+            weaponFocus = true;
+        } else if (label == "DUELING") {
+            dueling = std::max<std::int32_t>(dueling, 1);
+        } else if (label == "ADVANCED_DUELING") {
+            dueling = std::max<std::int32_t>(dueling, 2);
+        } else if (label == "MASTER_DUELING") {
+            dueling = std::max<std::int32_t>(dueling, 3);
+        }
+    }
+    return (weaponFocus ? 1 : 0) + dueling;
+}
+
+std::int32_t Rules::featDamageBonus(const CharacterSheet& sheet) const
+{
+    for (const std::int32_t feat : sheet.feats) {
+        if (featName(feat).find("WEAPON_SPEC") != std::string::npos) {
+            return 2;
+        }
+    }
+    return 0;
+}
+
+std::int32_t Rules::toughnessBonus(const CharacterSheet& sheet) const
+{
+    std::int32_t perLevel = 0;
+    for (const std::int32_t feat : sheet.feats) {
+        const std::string label = featName(feat);
+        if (label == "TOUGHNESS") {
+            perLevel = std::max<std::int32_t>(perLevel, 2);
+        } else if (label == "IMPROVED_TOUGHNESS") {
+            perLevel = std::max<std::int32_t>(perLevel, 4);
+        } else if (label == "MASTER_TOUGHNESS") {
+            perLevel = std::max<std::int32_t>(perLevel, 6);
+        }
+    }
+    return perLevel * sheet.level;
+}
+
 int Rules::equipSlotFor(std::int32_t baseItem) const
 {
     if (!baseitems_) {
@@ -370,12 +478,14 @@ std::int32_t Rules::armorClass(const CharacterSheet& sheet) const
 std::int32_t Rules::attackBonus(const CharacterSheet& sheet) const
 {
     return baseAttackBonus(sheet.classId, sheet.level)
-        + static_cast<std::int32_t>(abilityModifier(sheet.str));
+        + static_cast<std::int32_t>(abilityModifier(sheet.str))
+        + featAttackBonus(sheet);
 }
 
 std::int32_t Rules::damageBonus(const CharacterSheet& sheet) const
 {
-    return static_cast<std::int32_t>(abilityModifier(sheet.str));
+    return static_cast<std::int32_t>(abilityModifier(sheet.str))
+        + featDamageBonus(sheet);
 }
 
 std::int32_t Rules::initiativeBonus(const CharacterSheet& sheet) const
@@ -385,11 +495,12 @@ std::int32_t Rules::initiativeBonus(const CharacterSheet& sheet) const
 
 AttackResult Rules::resolveAttack(const CharacterSheet& attacker, std::int32_t targetAc,
                                   std::uint32_t& rng, std::int32_t damageDice,
-                                  std::int32_t damageDie, std::int32_t damageBonus) const
+                                  std::int32_t damageDie, std::int32_t damageBonus,
+                                  std::int32_t criticalThreat, std::int32_t attackModifier) const
 {
     AttackResult result;
     result.roll = rollDie(rng, 20);
-    result.total = result.roll + attackBonus(attacker);
+    result.total = result.roll + attackBonus(attacker) + attackModifier;
     if (result.roll == 1) {
         return result;
     }
@@ -397,8 +508,8 @@ AttackResult Rules::resolveAttack(const CharacterSheet& attacker, std::int32_t t
     if (!result.hit) {
         return result;
     }
-    if (result.roll == 20) {
-        const int confirm = rollDie(rng, 20) + attackBonus(attacker);
+    if (result.roll >= std::max<std::int32_t>(2, std::min<std::int32_t>(20, criticalThreat))) {
+        const int confirm = rollDie(rng, 20) + attackBonus(attacker) + attackModifier;
         result.critical = confirm >= targetAc;
     }
     std::int32_t damage = damageBonus;

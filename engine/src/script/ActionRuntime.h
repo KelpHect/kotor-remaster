@@ -160,6 +160,7 @@ private:
     std::vector<Value> hRandomName(const Args&);
     std::vector<Value> hWriteTimestampedLogEntry(const Args&);
     std::vector<Value> hEffect(std::int64_t tag);
+    std::vector<Value> hTalent(std::int64_t type, const Args& args);
     std::vector<Value> hDeleteJournalWorldAllEntries();
     std::vector<Value> hDeleteJournalWorldEntry(const Args&);
     std::vector<Value> hQueue(std::int64_t actionId, const Args& args);
