@@ -6,6 +6,10 @@ and profiles. Sprint 10 closes the script-runtime gap behind delayed actions:
 executed, nested closures work, `ActionWait` continuations resume, and live
 scripts resolve `OBJECT_SELF` instead of silently dropping object id 0.
 
+Scope note: an earlier roadmap sketch grouped full combat/Force/alignment with
+a possible Sprint 10. The written Sprint 10 gate narrowed to VM/script closure;
+full combat/Force/alignment is Sprint 11 and is not claimed here.
+
 ## 1. What changed
 
 ### Closure capture
