@@ -14,6 +14,9 @@
 [INFO]   bounds: -170.51, -32.6442, -204.652 .. 238.793, 471.187, 291.201
 [INFO] animation test: bith_loaded=1
 [INFO] animation test: bith_clip_count=1
+[INFO] animation test: bith_supermodel=1
+[INFO] animation test: bith_supermodel_loaded=1
+[INFO] animation test: supermodel_merge=1
 [INFO] animation test: bith_pause1_duration=1
 [INFO] animation test: bith_walk_duration=1
 [INFO] animation test: bith_skin_nodes=1
@@ -29,7 +32,7 @@
 [INFO] animation test: animation_2da_loop=1
 [INFO] animation test: default_animation=1
 [INFO] animation test: default_animation_name=1
-[INFO] animation test: model n_sithappren.mdl clip pause1 vertices 8355 animations 2
+[INFO] animation test: model p_carthba.mdl clip pause1 vertices 8208 animations 267
 [INFO] animation test: play_animation=1
 [INFO] animation test: playback_time=1
 [INFO] animation test: playback_revision=1

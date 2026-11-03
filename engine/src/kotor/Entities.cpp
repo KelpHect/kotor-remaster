@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <set>
 #include <unordered_map>
 
 namespace ke::kotor {
@@ -155,8 +156,31 @@ std::shared_ptr<Mdl> loadModel(Install& install, const std::string& modelName, s
         return nullptr;
     }
     try {
-        return std::make_shared<Mdl>(Mdl::parse(std::move(*mdl), std::move(*mdx),
-                                                lower(modelName) + ".mdl"));
+        auto model = std::make_shared<Mdl>(Mdl::parse(std::move(*mdl), std::move(*mdx),
+                                                      lower(modelName) + ".mdl"));
+        std::set<std::string> seen;
+        seen.insert(lower(modelName));
+        std::string supermodel = model->supermodel();
+        for (int depth = 0; depth < 8; ++depth) {
+            const std::string key = lower(supermodel);
+            if (key.empty() || key == "null" || !seen.insert(key).second) {
+                break;
+            }
+            auto parentMdl = install.find(supermodel, resType(ResType::Mdl));
+            auto parentMdx = install.find(supermodel, resType(ResType::Mdx));
+            if (!parentMdl.has_value() || !parentMdx.has_value()) {
+                break;
+            }
+            try {
+                Mdl parent = Mdl::parse(std::move(*parentMdl), std::move(*parentMdx),
+                                        key + ".mdl");
+                supermodel = parent.supermodel();
+                model->mergeAnimations(parent);
+            } catch (const FormatError&) {
+                break;
+            }
+        }
+        return model;
     } catch (const FormatError& exception) {
         error = exception.what();
         return nullptr;

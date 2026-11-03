@@ -316,6 +316,8 @@ public:
     std::vector<MdlMeshTriangle> posedTriangles(const std::string& animation, float time) const;
 
     const std::string& name() const { return name_; }
+    const std::string& supermodel() const { return supermodel_; }
+    void mergeAnimations(const Mdl& supermodel);
     const std::vector<MdlAnimationInfo>& animations() const { return animations_; }
     int animationIndex(const std::string& name) const;
     float animationDuration(const std::string& name) const;
@@ -386,6 +388,7 @@ private:
     std::vector<Pose> poseWorld(const Animation* animation, float time) const;
 
     std::string name_;
+    std::string supermodel_;
     std::vector<std::uint8_t> mdl_;
     std::vector<std::uint8_t> mdx_;
     std::vector<Node> nodes_;

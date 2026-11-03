@@ -1426,6 +1426,14 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
         return 51;
     }
     check(bith->animations().size() >= 10, "bith_clip_count");
+    check(bith->supermodel() == "S_Male02", "bith_supermodel");
+    const std::optional<kotor::Mdl> supermodel = loadModel("S_Male02");
+    check(supermodel.has_value(), "bith_supermodel_loaded");
+    if (supermodel.has_value()) {
+        kotor::Mdl merged = *bith;
+        merged.mergeAnimations(*supermodel);
+        check(merged.animations().size() >= bith->animations().size(), "supermodel_merge");
+    }
     check(std::fabs(bith->animationDuration("pause1") - 3.0f) < 0.01f, "bith_pause1_duration");
     check(std::fabs(bith->animationDuration("walk") - 1.0f) < 0.01f, "bith_walk_duration");
     check(bith->skinnedNodeCount() >= 4, "bith_skin_nodes");

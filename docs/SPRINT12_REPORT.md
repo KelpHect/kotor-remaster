@@ -11,7 +11,7 @@ buffers from the posed mesh.
 
 ```text
 100% tests passed, 0 tests failed out of 36
-Total Test time (real) = 75.93 sec
+Total Test time (real) = 140.37 sec
 ```
 
 The new target is `kotor_animation`; all Sprint 11 targets still pass.
@@ -31,6 +31,8 @@ Python tools remain **143 tests, 0 failures, 7 skips**.
   - **36 scale** - one or three components.
 - Missing animation nodes leave the bind local transform; supernodes bind
   runtime nodes to animation nodes.
+- Local clips take precedence; supermodel clips are merged recursively with
+  cycle protection and name-level override.
 
 ## 3. Skinning
 
@@ -81,11 +83,12 @@ when `GameSession::animationRevision()` changes.
 Room geometry stays bind-only (0x21 trimesh) so the 235,038-vertex scene
 baseline is unchanged. Creature skins now contribute their real textures, so
 the scene texture count is **58** instead of the old skinned-mesh omission of
-53.
+53. A GL capture at frame 10 versus frame 70 differs in **12,937 of 79,200**
+3D-view pixels after excluding the HUD.
 
 ## 6. Regression
 
-- **CTest: 36/36 passed** (75.93 s).
+- **CTest: 36/36 passed** (140.37 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0300**, PASS.
@@ -104,6 +107,7 @@ the scene texture count is **58** instead of the old skinned-mesh omission of
 ## Evidence index
 
 - `docs/evidence/s12/animation.log`
+- `docs/evidence/s12/anim-frame-10.png`, `anim-frame-70.png`, `anim-diff.txt`
 - `docs/evidence/s12/ctest.log`
 - `docs/evidence/s12/all-modules.log`, `all-modules.json`
 - `docs/evidence/s12/vm-corpus.log`, `vm-parity.json`

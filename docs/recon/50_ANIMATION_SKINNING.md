@@ -50,7 +50,9 @@ lerp; orientation uses shortest-arc slerp. Position Bezier uses the stored
 value/out-tangent/in-tangent quadruple.
 
 Animation nodes bind to runtime nodes by **supernode** (`u16` at `+2`), not by
-array index. A missing animation node leaves the bind local transform.
+array index. A missing animation node leaves the bind local transform. Local
+clips take precedence; `Mdl::mergeAnimations` appends supermodel clips whose
+names are not already present (recursive, cycle-limited).
 
 ## 3. Skinning
 
