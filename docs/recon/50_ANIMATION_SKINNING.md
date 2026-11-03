@@ -92,7 +92,32 @@ the clip, recomputes the posed triangles and calls `refreshEntityMesh`.
 flags. `PlayAnimation` / `ActionPlayAnimation` (ids 300/40) resolve the clip
 and play it on `OBJECT_SELF`.
 
-## 5. Rendering refresh
+## 5. Weapon attachment
+
+`Equip_ItemList[].EquippedRes` is resolved through the UTI to `BaseItem`; the
+base item's `defaultmodel` is the weapon MDL. The first weapon becomes
+`Entity::weaponModel` on `Rhand_g`; a second becomes `offhandModel` on
+`Lhand_g`. Weapon meshes are separate `EntityMesh` records with the creature
+as `attachModel`; each animation refresh obtains the hand node world pose and
+transforms the weapon bind vertices into creature model space.
+
+## 6. Cutscene cameras
+
+GIT `CameraList` entries store `CameraID`, `Position`, `Orientation` WXYZ,
+`Pitch` (degrees), `Height` and `FieldOfView`. The verified formula is:
+
+```text
+eye     = Position + (0,0,Height)
+forward = R(orientation) * (0,sin(Pitch),-cos(Pitch))
+right   = R(orientation) * (1,0,0)
+up      = right x forward
+```
+
+DLG entry/reply `CameraID` selects a camera; while dialogue is active the
+session returns it from `camera()`. `CameraAnimation`, `CamVidEffect` and
+height offsets are parsed and retained for the later camera-clip work.
+
+## 7. Rendering refresh
 
 `EntityMesh` retains its `Mdl`, bind triangles and deformed vertices.
 `refreshEntityMesh` regroups the posed triangles by texture and updates
@@ -101,7 +126,7 @@ dynamic `glBufferData` for each changed entity mesh; Vulkan maps the existing
 host-visible vertex allocation and copies the new vertices. The application
 refreshes only when `GameSession::animationRevision()` changes.
 
-## 6. Validation
+## 8. Validation
 
 - `n_bith`: 10 clips, `pause1` 3.0 s, `walk` 1.0 s, 4 skinned nodes, bind
   error < 1e-3, posed vertices move and remain finite.
@@ -111,9 +136,16 @@ refreshes only when `GameSession::animationRevision()` changes.
   0.96 s; `animations.2da` row 6 is `pause1` and loops.
 - Script fixture `anim_script_test.ncs` calls `PlayAnimation(6,1,0)` on an
   NPC and the NPC's clip becomes `pause1`.
+- Endar Spire now has 19 attached weapon meshes and 65 scene textures; the
+  weapon gate checks hand hooks, models, finite vertices, parent linkage and
+  motion while the creature animates.
+- GIT `CameraList` loads; `cinematicCamera` matches the stored eye height and
+  unit forward; `dialogue_camera_apply` proves `camera()` uses an active
+  dialogue camera; `end_trask01` contains a non-negative `CameraID`.
 
-## 7. Limits
+## 9. Limits
 
-Animation blending/transitions, root motion, inverse kinematics, weapon
-attachment, cutscene cameras and dangly/saber simulation are outside Sprint 12.
-They consume this pose evaluator but are separate systems.
+Animation blending/transitions, root motion, inverse kinematics, camera
+animation clips, dangly/saber simulation, particle/light controllers and
+audio/cutscenes are outside Sprint 12. They consume this pose evaluator but are
+separate systems.

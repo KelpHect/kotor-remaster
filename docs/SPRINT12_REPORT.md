@@ -1,17 +1,18 @@
-# Sprint 12 report - creature animation and skinning
+# Sprint 12 report - creature animation, skinning, weapons and cutscene cameras
 
 Status: **complete - gate S12 met (2026-11-03)**. Sprint 11 closed combat,
 Force powers, alignment, the effect stack and content-specific abilities.
 Sprint 12 closes the bind-pose-only creature gap: shipped MDL clips are parsed,
 evaluated and played; skinned meshes deform on the CPU with the verified
-`qbone`/`tbone` bind-inverse data; and both renderers refresh entity vertex
+`qbone`/`tbone` bind-inverse data; equipped weapons follow hand hooks;
+dialogue camera ids play GIT cameras; and both renderers refresh entity vertex
 buffers from the posed mesh.
 
 ## 1. Build and test result
 
 ```text
 100% tests passed, 0 tests failed out of 36
-Total Test time (real) = 123.46 sec
+Total Test time (real) = 204.98 sec
 ```
 
 The new target is `kotor_animation`; all Sprint 11 targets still pass.
@@ -71,7 +72,40 @@ During playback the bind world transforms are replaced by the animated pose.
 The compiled fixture `engine/tests/fixtures/anim_script_test.ncs` validates the
 bridge: an NPC runs `PlayAnimation(6,1,0)` and its clip becomes `pause1`.
 
-## 5. Rendering
+## 5. Weapon attachment
+
+`Equip_ItemList[].EquippedRes` resolves through the UTI to the base item; the
+base item's `defaultmodel` becomes the rendered weapon model. The first
+weapon is attached to `Rhand_g` and a second to `Lhand_g`. Weapon meshes keep
+their own MDL and textures, and each animation update applies the parent
+creature's hand pose to the weapon's bind vertices before the renderer applies
+the entity transform.
+
+The Endar Spire scene now has **120 entity meshes** (101 creature/placeable
+meshes plus 19 weapon meshes) and **65 textures**. The animation gate checks
+`weapon_attachment`, `weapon_hand_hook`, `weapon_models`, `weapon_vertices`,
+`weapon_parent` and `weapon_follows_animation`.
+
+## 6. Cutscene cameras
+
+GIT `CameraList` now loads `CameraID`, `Position`, `Orientation` (WXYZ),
+`Pitch`, `Height` and `FieldOfView`. DLG entries/replies load `CameraID`,
+`CameraAnimation`, `CamVidEffect`, `CamHeightOffset` and `TarHeightOffset`.
+
+`GameSession::cinematicCamera` applies the verified camera formula:
+
+```text
+eye     = Position + (0, 0, Height)
+forward = R(orientation) * (0, sin(Pitch), -cos(Pitch))
+right   = R(orientation) * (1, 0, 0)
+up      = right x forward
+```
+
+While dialogue is active, a non-negative `CameraID` overrides the first-person
+camera. The gate checks `camera_catalog`, `camera_math`, `camera_height`,
+`camera_forward`, `dialogue_camera_apply` and `dlg_camera_field`.
+
+## 7. Rendering
 
 `EntityMesh` retains its `Mdl`, bind triangles and deformed vertices.
 `refreshEntityMesh` regroups posed triangles by texture and updates positions,
@@ -81,26 +115,24 @@ vertex allocation and copies the new vertices. The application refreshes only
 when `GameSession::animationRevision()` changes.
 
 Room geometry stays bind-only (0x21 trimesh) so the 235,038-vertex scene
-baseline is unchanged. Creature skins now contribute their real textures, so
-the scene texture count is **58** instead of the old skinned-mesh omission of
-53. A GL capture at frame 10 versus frame 70 differs in **12,937 of 79,200**
-3D-view pixels after excluding the HUD.
+baseline is unchanged. Creature skins and weapons contribute their real
+textures. A GL capture at frame 10 versus frame 70 differs in **12,937 of
+79,200** 3D-view pixels after excluding the HUD.
 
-## 6. Regression
+## 8. Regression
 
-- **CTest: 36/36 passed** (123.46 s).
+- **CTest: 36/36 passed** (204.98 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0300**, PASS.
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
-## 7. Outside Sprint 12
+## 9. Outside Sprint 12
 
-- Weapon attachment to hand hooks.
-- Cutscene camera playback and dialogue camera animation.
-- Dangly/saber vertex simulation, particle/light controllers.
+- Dangly/saber vertex simulation and particle/light controllers.
 - Animation blending/transitions, root motion and inverse kinematics.
+- Camera animation clips (`CameraAnimation`) and dialogue camera effects.
 - Audio/EAX, Bink movies, lip sync, full `.gui`, minigames, localization,
   mods/Override precedence and the P6 content checklist.
 
@@ -108,6 +140,7 @@ the scene texture count is **58** instead of the old skinned-mesh omission of
 
 - `docs/evidence/s12/animation.log`
 - `docs/evidence/s12/anim-frame-10.png`, `anim-frame-70.png`, `anim-diff.txt`
+- `docs/evidence/s12/weapon-attach.png` (GL hand-hook capture)
 - `docs/evidence/s12/ctest.log`
 - `docs/evidence/s12/all-modules.log`, `all-modules.json`
 - `docs/evidence/s12/vm-corpus.log`, `vm-parity.json`

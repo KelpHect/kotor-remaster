@@ -131,6 +131,27 @@ void addOrRefreshEffect(std::vector<kotor::ActiveEffect>& effects,
     effects.push_back(std::move(effect));
 }
 
+kotor::Vec3 rotateQuaternion(float w, float x, float y, float z, kotor::Vec3 value)
+{
+    const float n = w * w + x * x + y * y + z * z;
+    if (n <= 0.0f) {
+        return value;
+    }
+    const float s = 2.0f / n;
+    const float xx = x * x * s;
+    const float yy = y * y * s;
+    const float zz = z * z * s;
+    const float xy = x * y * s;
+    const float xz = x * z * s;
+    const float yz = y * z * s;
+    const float wx = w * x * s;
+    const float wy = w * y * s;
+    const float wz = w * z * s;
+    return {(1.0f - yy - zz) * value.x + (xy - wz) * value.y + (xz + wy) * value.z,
+            (xy + wz) * value.x + (1.0f - xx - zz) * value.y + (yz - wx) * value.z,
+            (xz - wy) * value.x + (yz + wx) * value.y + (1.0f - xx - yy) * value.z};
+}
+
 // Barycentric floor height at (x, y); the highest triangle below maxZ wins.
 bool floorHeight(const kotor::Scene& scene, float x, float y, float maxZ, float& out)
 {
@@ -366,6 +387,24 @@ void GameSession::updateAnimations(float dt)
             mesh.animationTime = std::fmod(mesh.animationTime, duration);
         } else {
             mesh.animationTime = std::min(mesh.animationTime, duration);
+        }
+        kotor::refreshEntityMesh(mesh);
+        ++animationRevision_;
+    }
+    for (kotor::EntityMesh& mesh : scene_.entityMeshes) {
+        if (!mesh.attachModel) {
+            continue;
+        }
+        const kotor::EntityMesh* parent = nullptr;
+        for (const kotor::EntityMesh& candidate : scene_.entityMeshes) {
+            if (candidate.entity == mesh.entity && !candidate.attachModel) {
+                parent = &candidate;
+                break;
+            }
+        }
+        if (parent != nullptr) {
+            mesh.attachAnimation = parent->animation;
+            mesh.attachTime = parent->animationTime;
         }
         kotor::refreshEntityMesh(mesh);
         ++animationRevision_;
@@ -1418,12 +1457,42 @@ void GameSession::update(float dt, const InputState& input)
 
 SceneCamera GameSession::camera() const
 {
+    if (dialogueView_.active && dialogueView_.cameraId >= 0) {
+        const SceneCamera camera = cinematicCamera(dialogueView_.cameraId);
+        if (camera.fovYDegrees > 0.0f) {
+            return camera;
+        }
+    }
     SceneCamera camera;
     camera.eye = {position_.x, position_.y, position_.z + kEyeHeight};
     camera.forward = {std::cos(pitch_) * std::cos(yaw_), std::cos(pitch_) * std::sin(yaw_),
                       std::sin(pitch_)};
     camera.up = {0.0f, 0.0f, 1.0f};
     return camera;
+}
+
+SceneCamera GameSession::cinematicCamera(std::int32_t cameraId) const
+{
+    for (const kotor::CameraDef& definition : scene_.cameras) {
+        if (static_cast<std::int32_t>(definition.id) != cameraId) {
+            continue;
+        }
+        SceneCamera camera;
+        camera.eye = {definition.position.x, definition.position.y,
+                      definition.position.z + definition.height};
+        const float pitch = definition.pitch * kPi / 180.0f;
+        camera.forward = rotateQuaternion(definition.qw, definition.qx, definition.qy,
+                                          definition.qz,
+                                          {0.0f, std::sin(pitch), -std::cos(pitch)});
+        const kotor::Vec3 right = rotateQuaternion(definition.qw, definition.qx, definition.qy,
+                                                   definition.qz, {1.0f, 0.0f, 0.0f});
+        camera.up = kotor::normalize(kotor::cross(right, camera.forward));
+        camera.fovYDegrees = definition.fov > 0.0f ? definition.fov : 60.0f;
+        return camera;
+    }
+    SceneCamera missing;
+    missing.fovYDegrees = 0.0f;
+    return missing;
 }
 
 const kotor::Entity* GameSession::nearestDoor(float maxDistance) const
@@ -1744,6 +1813,7 @@ void GameSession::showDialogueEntry(std::uint32_t entryIndex)
     dialogueView_.speaker = activeDialogue_->speaker;
     dialogueView_.text = entry.text.empty() ? "(No text)" : entry.text;
     dialogueView_.entry = entryIndex;
+    dialogueView_.cameraId = entry.cameraId;
     dialogueView_.options.clear();
     if (!entry.script.empty() && activeDialogue_->firedEntries.insert(entryIndex).second) {
         runScript(entry.script, activeDialogue_->npcObject, scriptWorld_.pc,
@@ -1794,6 +1864,9 @@ void GameSession::chooseDialogueOption(std::size_t optionIndex)
         || lower(reply.script).find("attack") != std::string::npos;
     if (startsCombat) {
         logEvent("dialogue triggers combat");
+    }
+    if (reply.cameraId >= 0) {
+        dialogueView_.cameraId = reply.cameraId;
     }
     if (!reply.entries.empty() && reply.entries.front() < activeDialogue_->dlg.entries.size()) {
         showDialogueEntry(reply.entries.front());

@@ -227,6 +227,7 @@ public:
     float number(const GffField& field) const;
     std::int32_t integer(const GffField& field) const;
     Vec3 vector3(const GffField& field) const;
+    std::array<float, 4> vector4(const GffField& field) const;
     std::vector<std::uint32_t> list(const GffField& field) const;
     std::uint32_t structIndex(const GffField& field) const;
     std::string locString(const GffField& field) const;
@@ -309,6 +310,11 @@ struct MdlAnimationInfo {
 // triangles and animation clips. Skinning is evaluated on the CPU.
 class Mdl {
 public:
+    struct Pose {
+        Mat3 rotation;
+        Vec3 translation;
+    };
+
     static Mdl parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std::string name);
 
     std::vector<MdlTriangle> triangles(Vec3 roomOrigin) const;
@@ -323,6 +329,8 @@ public:
     float animationDuration(const std::string& name) const;
     std::size_t skinnedNodeCount() const;
     float skinBindError() const;
+    std::optional<Pose> nodePose(const std::string& node, const std::string& animation,
+                                 float time) const;
 
 private:
     struct ControllerKey {
@@ -374,11 +382,6 @@ private:
         float duration = 0.0f;
         float transition = 0.0f;
         std::vector<Node> nodes;
-    };
-
-    struct Pose {
-        Mat3 rotation;
-        Vec3 translation;
     };
 
     std::vector<Node> parseNodes(std::uint32_t rootOffset) const;
@@ -457,6 +460,11 @@ struct DlgEntry {
     std::int32_t action[4]{};
     std::string comment;
     std::string sound;
+    std::int32_t cameraId = -1;
+    std::int32_t cameraAnimation = -1;
+    std::int32_t camVidEffect = -1;
+    float camHeightOffset = 0.0f;
+    float tarHeightOffset = 0.0f;
     std::vector<std::uint32_t> replies;
 };
 
@@ -468,6 +476,11 @@ struct DlgReply {
     std::int32_t action[4]{};
     std::string comment;
     std::string sound;
+    std::int32_t cameraId = -1;
+    std::int32_t cameraAnimation = -1;
+    std::int32_t camVidEffect = -1;
+    float camHeightOffset = 0.0f;
+    float tarHeightOffset = 0.0f;
     std::vector<std::uint32_t> entries;
 };
 
@@ -583,6 +596,18 @@ struct EncounterVolume {
     std::vector<EncounterSpawnPoint> spawnPoints;
 };
 
+struct CameraDef {
+    std::uint32_t id = 0;
+    Vec3 position;
+    float qw = 1.0f;
+    float qx = 0.0f;
+    float qy = 0.0f;
+    float qz = 0.0f;
+    float pitch = 0.0f;
+    float height = 0.0f;
+    float fov = 60.0f;
+};
+
 // ---- textures ------------------------------------------------------------------------------------------------------------
 
 Image decodeTpc(const std::vector<std::uint8_t>& data, const std::string& name);
@@ -648,6 +673,10 @@ struct Entity {
     float walkRate = 1.0f;
     bool ranged = false;
     float attackRange = 2.4f;
+    std::string weaponModel;
+    std::string offhandModel;
+    std::string weaponAttach = "Rhand_g";
+    std::string offhandAttach = "Lhand_g";
     float stunTimer = 0.0f;
     float fearTimer = 0.0f;
     float forceSuppressedTimer = 0.0f;
@@ -694,6 +723,10 @@ struct EntityMesh {
     std::string animation;
     float animationTime = 0.0f;
     bool animationLoop = true;
+    std::shared_ptr<Mdl> attachModel;
+    std::string attachNode;
+    std::string attachAnimation;
+    float attachTime = 0.0f;
     std::uint32_t revision = 0;
 };
 
@@ -752,6 +785,7 @@ struct Scene {
     std::vector<EntityMesh> entityMeshes;
     std::vector<TriggerVolume> triggers;
     std::vector<EncounterVolume> encounters;
+    std::vector<CameraDef> cameras;
     std::vector<LytRoom> rooms;
     std::vector<std::string> warnings;
     std::map<std::string, std::string> scripts;

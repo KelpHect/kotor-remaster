@@ -197,6 +197,18 @@ Vec3 Gff::vector3(const GffField& field) const
             readF32(fieldData_.data(), fieldData_.size(), field.data + 8u, "GFF vector3 z")};
 }
 
+std::array<float, 4> Gff::vector4(const GffField& field) const
+{
+    if (field.type != GffType::Vector4) {
+        return {1.0f, 0.0f, 0.0f, 0.0f};
+    }
+    requireRange(fieldData_.size(), field.data, 16, "GFF vector4");
+    return {readF32(fieldData_.data(), fieldData_.size(), field.data, "GFF vector4 x"),
+            readF32(fieldData_.data(), fieldData_.size(), field.data + 4u, "GFF vector4 y"),
+            readF32(fieldData_.data(), fieldData_.size(), field.data + 8u, "GFF vector4 z"),
+            readF32(fieldData_.data(), fieldData_.size(), field.data + 12u, "GFF vector4 w")};
+}
+
 std::vector<std::uint32_t> Gff::list(const GffField& field) const
 {
     if (field.type != GffType::List) {

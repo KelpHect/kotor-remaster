@@ -1,12 +1,15 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 12 (creature animation and skinning) complete - gate S12 met
-(2026-11-03).** Shipped MDL animation clips parse and evaluate (position,
-packed/float orientation, scale, Bezier position); skin meshes carry bones,
-weights, `qbone`/`tbone` bind-inverse data and CPU deformation; `GameSession`
-plays/loops per-entity clips with `pause1`/`pause` defaults; `animations.2da`
-and `PlayAnimation`/`ActionPlayAnimation` are wired; GL and Vulkan refresh
-entity vertex buffers from the posed mesh. **36/36 CTest targets** pass.
+Status: **Sprint 12 (creature animation, skinning, weapons and cutscene cameras)
+complete - gate S12 met (2026-11-03).** Shipped MDL animation clips parse and
+evaluate (position, packed/float orientation, scale, Bezier position); skin
+meshes carry bones, weights, `qbone`/`tbone` bind-inverse data and CPU
+deformation; `GameSession` plays/loops per-entity clips with `pause1`/`pause`
+defaults; equipped weapons attach to `Rhand_g`/`Lhand_g` and follow the hand
+pose; GIT cameras and DLG `CameraID` playback override the first-person camera
+during dialogue; `animations.2da` and `PlayAnimation`/`ActionPlayAnimation`
+are wired; GL and Vulkan refresh entity vertex buffers from the posed mesh.
+**36/36 CTest targets** pass.
 Sprint 11 remains complete (44 Force powers, 125 feat rows, combat/Force/
 alignment core, effect stack with Breach/Suppress/Immunity, Jedi Defense,
 Force Camouflage, passive formulas and save persistence). Sprint 10 remains
@@ -21,9 +24,10 @@ complete (7 stores/41 `keblastore` entries, 4 encounter volumes/8 spawns, 80%
 companion XP, systems UI); Sprint 6 remains complete (native script VM
 8,666/8,666 default and functional, 303,616 ACTION calls, dialogue entry 54,
 d20 rounds); Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255
-parity). Sprint 13+ remains: weapon attachment, cutscene cameras, audio/EAX,
-Bink/lip sync, full `.gui`, minigames, localization, mods/Override, KotOR 2
-world loading, faction reputation simulation and the P6 content checklist.
+parity). Sprint 13+ remains: animation blending/root motion, camera animation
+clips, dangly/saber simulation, audio/EAX, Bink/lip sync, full `.gui`,
+minigames, localization, mods/Override, KotOR 2 world loading, faction
+reputation simulation and the P6 content checklist.
 Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT12.md` and their
 `*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
 
@@ -166,11 +170,13 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   CTest **35/35**; 117-module sweep 0/0; VM parity 0; scene parity 0.0300; Python 143 tests /
   7 skips; install unchanged. See `docs/recon/49_COMBAT_FORCE.md` and
   `docs/SPRINT11_REPORT.md`.
-- Sprint 12 (animation/skinning): MDL animation table/clips/controllers,
-  packed and float orientations, Bezier position, skin headers, node-to-bone
-  maps, `qbone`/`tbone` bind-inverse data, MDX weights/bone ids, CPU skinning,
-  per-entity playback with `pause1`/`pause` defaults, `animations.2da` and
-  `PlayAnimation`/`ActionPlayAnimation`, GL/Vulkan dynamic vertex refresh.
+- Sprint 12 (animation/skinning/weapons/cameras): MDL animation table/clips/
+  controllers, packed and float orientations, Bezier position, skin headers,
+  node-to-bone maps, `qbone`/`tbone` bind-inverse data, MDX weights/bone ids,
+  CPU skinning, per-entity playback with `pause1`/`pause` defaults,
+  `animations.2da` and `PlayAnimation`/`ActionPlayAnimation`, equipped weapon
+  models on hand hooks, GIT cameras with DLG `CameraID` playback, GL/Vulkan
+  dynamic vertex refresh.
   CTest **36/36**; 117-module sweep 0/0; VM parity 0; scene parity 0.0300;
   Python 143 tests / 7 skips; install unchanged. See
   `docs/recon/50_ANIMATION_SKINNING.md` and `docs/SPRINT12_REPORT.md`.
