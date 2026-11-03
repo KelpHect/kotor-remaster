@@ -579,6 +579,12 @@ int runScriptTest(GameSession& game)
     }
     check(scriptLogHas(game, "hook ScriptHeartbeat"), "heartbeat_hook_ran");
 
+    // Door interaction hook: end_door16 carries a shipped OnOpen script.
+    check(game.runHookForTest("OnOpen", "end_door16"), "door_hook_ran");
+    check(scriptLogHas(game, "hook OnOpen end_door16"), "door_hook_logged");
+    check(scriptLogHas(game, "script k_pend_door16 status=returned"), "door_script_ran");
+    game.endDialogue();
+
     // Area enter with a real entering object. GetIsPC must be 1 for the script
     // to take its player branch.
     game.runScript("k_pend_area01", game.scriptWorld().pc, game.scriptWorld().pc,

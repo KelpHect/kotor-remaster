@@ -117,6 +117,10 @@ public:
                                            std::uint32_t caller = 0,
                                            std::uint32_t trigger = 0);
     std::uint32_t objectForTag(const std::string& tag) const;
+    // Test hook invocation without moving the player; returns false if the
+    // entity or hook is absent.
+    bool runHookForTest(const std::string& hook, const std::string& tag,
+                        std::uint32_t entering = 0);
 
     std::optional<std::vector<script::Value>> action(
         std::uint16_t actionId, const std::vector<std::vector<script::Value>>& args,

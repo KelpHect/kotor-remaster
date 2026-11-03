@@ -95,8 +95,10 @@ on a kill; and the module `Mod_OnPlrDying`/`Mod_OnPlrDeath` hooks. Actions that 
 
 Measured on `end_m01aa`: **284 hooks on 54 entities** plus 3 scene hooks; the load executes 25
 shipped scripts (`k_hen_spawn01`, `k_pdan_trask_9`, `k_def_spawn01`, `k_pend_room3_02`,
-`k_pend_sith_9`, `k_pend_weld02`, `k_pend_bridge01`, `k_pend_area01`, ...). The trigger, heartbeat,
-area branch and death hook each ran in `--script-test` (`docs/evidence/s6/script.log`).
+`k_pend_sith_9`, `k_pend_weld02`, `k_pend_bridge01`, `k_pend_area01`, ...). `end_door16` carries a
+real `OnOpen` script (`k_pend_door16`); `--script-test` invokes it, enters the trigger, advances a
+heartbeat, runs the area `OnEnter` player branch and kills a hostile for `ScriptDeath`
+(`docs/evidence/s6/script.log`).
 
 ## 4. Dialogue conditions
 
