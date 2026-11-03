@@ -655,6 +655,20 @@ bool Mdl::hasNonPoseControllers() const
     return false;
 }
 
+bool Mdl::hasControllerType(std::int32_t type) const
+{
+    for (const Animation& animation : animationData_) {
+        for (const Node& node : animation.nodes) {
+            for (const Controller& controller : node.controllers) {
+                if (controller.type == type) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 float Mdl::skinBindError() const
 {
     float maxError = 0.0f;

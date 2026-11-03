@@ -29,10 +29,10 @@ complete (7 stores/41 `keblastore` entries, 4 encounter volumes/8 spawns, 80%
 companion XP, systems UI); Sprint 6 remains complete (native script VM
 8,666/8,666 default and functional, 303,616 ACTION calls, dialogue entry 54,
 d20 rounds); Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255
-parity). Sprint 13+ remains: non-default `CamVidEffect` semantics,
-particle/light controllers, audio/EAX, Bink/lip sync, full `.gui`, minigames,
-localization, mods/Override, KotOR 2 world loading, faction reputation
-simulation and the P6 content checklist.
+parity). Sprint 13+ remains: non-default `CamVidEffect` semantics (none in the
+K1 corpus), particle/light simulation, audio/EAX, Bink/lip sync, full `.gui`,
+minigames, localization, mods/Override, KotOR 2 world loading, faction
+reputation simulation and the P6 content checklist.
 Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT12.md` and their
 `*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
 

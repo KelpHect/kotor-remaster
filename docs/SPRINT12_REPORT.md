@@ -13,7 +13,7 @@ and both renderers refresh entity vertex buffers from the posed mesh.
 
 ```text
 100% tests passed, 0 tests failed out of 36
-Total Test time (real) = 149.33 sec
+Total Test time (real) = 210.49 sec
 ```
 
 The new target is `kotor_animation`; all Sprint 11 targets still pass.
@@ -137,13 +137,19 @@ have stable expected values.
 Saber nodes use the SaberHeader's static vertex/UV/normal arrays. The shipped
 22 saber MDLs carry no per-vertex constraints, springs or dynamic blade data
 (stride 0 trimesh header; 352 SaberHeader vertices / 24 faces), so dynamic
-saber physics is evidence-based re-scoped rather than invented. `CamVidEffect`
-is likewise **-1/0 only** across the Endar Spire DLGs; no non-default effect
-semantics exist to implement there.
+saber physics is evidence-based re-scoped rather than invented.
+
+`fx_flame01` proves the non-pose controller path is parsed: controller types
+**76/80/84/88/380/392** are present and exposed without being simulated. A
+corpus scan of **1,135 DLGs** found **45,396** `CamVidEffect=-1` and **39**
+`CamVidEffect=0`, with **0** non-default values; non-default effect semantics
+therefore have no shipped K1 data to implement.
 
 Gate assertions: `dangly_loaded`, `dangly_nodes`, `dangly_mesh`,
 `dangly_finite`, `dangly_vertices`, `saber_loaded`, `saber_static_geometry`,
-`saber_no_dangly`, `saber_no_skin`.
+`saber_no_dangly`, `saber_no_skin`, `fx_loaded`, `fx_controllers_present`,
+`fx_controller_types`, `fx_no_skin`, `camvid_defaults`,
+`camvid_corpus_dlgs`, `camvid_corpus_defaults`.
 
 ## 8. Rendering
 
@@ -162,7 +168,7 @@ pixels after excluding the HUD.
 
 ## 9. Regression
 
-- **CTest: 36/36 passed** (149.33 s).
+- **CTest: 36/36 passed** (210.49 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0300**, PASS.
@@ -171,8 +177,10 @@ pixels after excluding the HUD.
 
 ## 10. Outside Sprint 12
 
-- `CamVidEffect` values beyond the shipped -1/0 defaults.
-- Particle/light controllers and emitter simulation.
+- Particle/light **simulation** (controllers are parsed and asserted; no
+  emitter/light rendering is implemented).
+- `CamVidEffect` values beyond the shipped -1/0 defaults (none exist in the
+  1,135-DLG corpus).
 - Audio/EAX, Bink movies, lip sync, full `.gui`, minigames, localization,
   mods/Override precedence and the P6 content checklist.
 

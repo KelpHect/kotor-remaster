@@ -42,18 +42,21 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
    clip, then the preset, then the static camera.
 7. **Dangly and saber meshes** - dangly headers and per-vertex constraints
    drive a deterministic damped settle; saber headers expose their static
-   vertex/UV/normal arrays. Saber nodes carry no dynamic vertex constraints,
-   which is recorded as shipped-data evidence rather than invented physics.
+   vertex/UV/normal arrays. Non-pose controller types are parsed and exposed
+   (`fx_flame01` 76/80/84/88/380/392) without particle/light simulation.
 8. **Script bridge** - `animations.2da` names and flags load; `PlayAnimation`
    and `ActionPlayAnimation` map an animation id to a clip and play it on
    `OBJECT_SELF`.
 9. **Rendering** - both GL and Vulkan refresh entity vertex buffers when the
    animation revision changes; room geometry and bind-pose topology stay
    stable.
-10. **Regression** - **36/36** CTest, 117/117 modules, VM 8,666/8,666 with
+10. **CamVidEffect scope** - a 1,135-DLG corpus assertion records 45,396
+    `-1`, 39 `0` and 0 non-default values; there are no shipped K1 non-default
+    semantics to implement.
+11. **Regression** - **36/36** CTest, 117/117 modules, VM 8,666/8,666 with
    0 mismatches, scene parity 0.0300, Python 143 tests / 7 skips, install
    sentinel 0 session changes.
-11. **Evidence and docs** - report, technical note, fixture and logs.
+12. **Evidence and docs** - report, technical note, fixture and logs.
 
 ## Lanes
 
@@ -70,8 +73,9 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
 
 ## Outside this sprint
 
-- `CamVidEffect` values beyond the shipped -1/0 defaults.
-- Particle/light controllers and emitter simulation.
+- Particle/light **simulation** (controllers are parsed and asserted; no
+  emitter/light rendering is implemented).
+- Non-default `CamVidEffect` semantics (none exist in the 1,135-DLG corpus).
 - Audio/EAX, Bink movies, lip sync, full `.gui`, minigames, localization,
   mods/Override runtime precedence and the P6 content checklist.
 

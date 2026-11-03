@@ -337,6 +337,7 @@ public:
     std::size_t skinnedNodeCount() const;
     std::size_t danglyNodeCount() const;
     bool hasNonPoseControllers() const;
+    bool hasControllerType(std::int32_t type) const;
     float skinBindError() const;
     std::optional<Pose> nodePose(const std::string& node, const std::string& animation,
                                  float time) const;
