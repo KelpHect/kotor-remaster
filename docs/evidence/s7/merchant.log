@@ -1,0 +1,37 @@
+[INFO] KotOR module tar_m02ac area m02ac from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 22 vertices: 203949 indices: 203949 batches: 51
+[INFO]   textures: 72 collision vertices: 653 facets: 955
+[INFO]   entities: 143 (door 9, placeable 30, creature 26, waypoint 54, store 7, encounter 0)
+[INFO]   encounter volumes: 0
+[INFO]   entry: 188.055, 80.304, 0
+[INFO]   entity meshes: 65 triggers: 10 warnings: 0
+[INFO]   script hooks: 294 on 34 entities; scene hooks: 2; script runs: 24
+[INFO]   entity mesh 0 tar02_labdoor verts=3864 local=-4.12784,-0.300233,-0.263713 .. 4.12786,0.300244,4
+[INFO]   entity mesh 1 tar02_cantdoor verts=3864 local=-4.12784,-0.300233,-0.263713 .. 4.12786,0.300244,4
+[INFO]   entity mesh 2 UpperNorth verts=3864 local=-4.12784,-0.300233,-0.263713 .. 4.12786,0.300244,4
+[INFO]   creature mesh Zelka021 verts=3246 local=-0.606384,-0.151653,-0.00207151 .. 0.610334,0.167699,1.58298
+[INFO]   bounds: -542.429, -592.429, -465.383 .. 842.429, 792.429, 539.617
+[INFO] merchant test: stores_loaded=1
+[INFO] merchant test: seven_stores=1
+[INFO] merchant test: store keblastore stock=41 markup=100 markdown=40 flag=3
+[INFO] merchant test: stock_41=1
+[INFO] merchant test: buy_and_sell=1
+[INFO] merchant test: store_open=1
+[INFO] merchant test: stock g_w_vbroshort01 cost=100 buy=100 remaining=1
+[INFO] merchant test: item_cost=1
+[INFO] merchant test: buy_price_math=1
+[INFO] merchant test: buy_item=1
+[INFO] merchant test: buy_gold=1
+[INFO] merchant test: buy_inventory=1
+[INFO] merchant test: buy_stock_decrement=1
+[INFO] merchant test: save_written=1
+[INFO] merchant test: save_loaded=1
+[INFO] merchant test: stock_roundtrip=1
+[INFO] merchant test: gold_roundtrip=1
+[INFO] merchant test: inventory_roundtrip=1
+[INFO] merchant test: sell_price_math=1
+[INFO] merchant test: sell_item=1
+[INFO] merchant test: sell_gold=1
+[INFO] merchant test: sell_inventory=1
+[INFO] merchant test: PASS

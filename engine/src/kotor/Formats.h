@@ -445,6 +445,60 @@ struct TriggerTemplate {
     std::string scriptOnExit;
 };
 
+struct ItemTemplate {
+    std::string resref;
+    std::string tag;
+    std::string name;
+    std::int32_t baseItem = 0;
+    std::int32_t cost = 0;
+    std::int32_t stackSize = 1;
+    bool identified = true;
+};
+
+struct StoreTemplate {
+    std::string resref;
+    std::string tag;
+    std::string name;
+    std::int32_t markUp = 100;
+    std::int32_t markDown = 40;
+    std::int32_t buySellFlag = 3;
+    std::vector<std::pair<std::string, bool>> items; // resref, infinite
+};
+
+struct EncounterCreature {
+    std::string resref;
+    std::int32_t appearance = 0;
+    float challengeRating = 0.0f;
+    bool singleSpawn = false;
+};
+
+struct EncounterTemplate {
+    std::string resref;
+    std::string tag;
+    std::int32_t maxCreatures = 0;
+    std::int32_t recCreatures = 0;
+    std::int32_t resetTime = 0;
+    std::int32_t respawns = 0;
+    std::int32_t spawnOption = 0;
+    std::int32_t difficulty = 0;
+    bool active = true;
+    std::vector<EncounterCreature> creatures;
+};
+
+struct EncounterSpawnPoint {
+    Vec3 position;
+    float bearing = 0.0f;
+};
+
+struct EncounterVolume {
+    std::uint32_t entity = 0;
+    std::string templateResref;
+    EncounterTemplate templateData;
+    std::vector<Vec3> vertices;
+    std::vector<std::uint32_t> indices;
+    std::vector<EncounterSpawnPoint> spawnPoints;
+};
+
 // ---- textures ------------------------------------------------------------------------------------------------------------
 
 Image decodeTpc(const std::vector<std::uint8_t>& data, const std::string& name);
@@ -494,6 +548,11 @@ struct Entity {
     bool hostile = false;
     bool dead = false;
     bool useable = false;
+    // Merchant template data for Store entities.
+    std::int32_t storeMarkUp = 100;
+    std::int32_t storeMarkDown = 40;
+    std::int32_t storeBuySell = 3;
+    std::vector<std::pair<std::string, bool>> storeItems;
     // Hook name (ScriptSpawn, OnOpen, ...) to script resref. Template values
     // are loaded first; non-empty GIT instance values override them.
     std::map<std::string, std::string> scripts;
@@ -573,6 +632,7 @@ struct Scene {
     std::vector<Entity> entities;
     std::vector<EntityMesh> entityMeshes;
     std::vector<TriggerVolume> triggers;
+    std::vector<EncounterVolume> encounters;
     std::vector<LytRoom> rooms;
     std::vector<std::string> warnings;
     std::map<std::string, std::string> scripts;
@@ -590,6 +650,15 @@ Scene loadModule(Install& install, const std::string& moduleStem);
 // Used for ARE/IFO module hooks and GIT instance overrides.
 void collectScriptHooks(const Gff& gff, std::uint32_t structure,
                         std::map<std::string, std::string>& scripts);
+
+// Load one UTI item template (type 2025) from the install.
+std::optional<ItemTemplate> loadItemTemplate(Install& install, const std::string& resref);
+
+// Append one creature from a UTC template at a world position. Builds its mesh
+// and hook map; returns the new entity index or -1 on failure. Used by the
+// encounter spawner.
+std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utcResref,
+                          Vec3 position, float bearing);
 
 // Resolves GIT templates, model geometry and trigger polygons after the base
 // module has been loaded. Kept separate from loadModule so the room pass stays

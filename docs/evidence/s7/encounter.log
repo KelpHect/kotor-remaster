@@ -1,0 +1,26 @@
+[INFO] KotOR module tar_m03aa area m03aa from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 15 vertices: 261018 indices: 261018 batches: 26
+[INFO]   textures: 46 collision vertices: 603 facets: 858
+[INFO]   entities: 126 (door 13, placeable 23, creature 27, waypoint 38, store 0, encounter 4)
+[INFO]   encounter volumes: 4
+[INFO]   entry: 322.533, 221.152, 8.24649
+[INFO]   entity meshes: 60 triggers: 11 warnings: 3
+[INFO]   script hooks: 344 on 46 entities; scene hooks: 4; script runs: 36
+[INFO]   entity mesh 0 tar04_elevdoor verts=474 local=-2.7,-0.348874,-0.050824 .. 2.7,0.307532,3.10583
+[INFO]   entity mesh 1 tar04_elevdoor verts=474 local=-2.7,-0.348874,-0.050824 .. 2.7,0.307532,3.10583
+[INFO]   entity mesh 2 tar03_blkdoor verts=3864 local=-4.12784,-0.300233,-0.263713 .. 4.12786,0.300244,4
+[INFO]   creature mesh SithPatrol031 verts=3528 local=-0.606354,-0.167402,-0.00207151 .. 0.610364,0.167699,1.81487
+[WARN]   model warning: PLC_StmVentI: 
+[WARN]   model warning: PLC_StmVentC: 
+[WARN]   model warning: PLC_DripWatr: 
+[INFO]   bounds: 0, 0, -35.6289 .. 529.066, 272.958, 77.4183
+[INFO] encounter test: volumes=4 states=4
+[INFO] encounter test: volume_count=1
+[INFO] encounter test: spawned=8
+[INFO] encounter test: creatures_spawned=1
+[INFO] encounter test: first tar03_vulkaptenc hp=18 hostile=1 mesh=1
+[INFO] encounter test: spawned_hostile=1
+[INFO] encounter test: spawned_mesh=1
+[INFO] encounter test: spawned_hp=1
+[INFO] encounter test: PASS

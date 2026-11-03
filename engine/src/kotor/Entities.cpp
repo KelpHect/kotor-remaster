@@ -32,6 +32,8 @@ const std::vector<std::string>& scriptHookLabels()
         "OnMeleeAttacked", "OnOpen", "OnSpellCastAt", "OnTrapTriggered", "OnUnlock",
         "OnUserDefined", "OnClick", "OnFailToOpen", "OnUsed", "OnInvDisturbed",
         "ScriptOnEnter", "ScriptOnExit", "ScriptUserDefine",
+        "OnOpenStore", "OnOpen", "OnClose",
+        "OnEntered", "OnExhausted",
         // Area (ARE)
         "OnEnter", "OnExit", "OnUserDefined",
         // Module (IFO)
@@ -219,8 +221,7 @@ std::string creatureModel(const TwoDa& appearances, std::uint32_t appearance, st
 }
 
 void addTriggerGeometry(Scene& scene, const Gff& git)
-{
-    std::size_t triggerOrdinal = 0;
+{    std::size_t triggerOrdinal = 0;
     for (const std::uint32_t structure : [&]() {
              const GffField* field = git.field(git.rootIndex(), "TriggerList");
              return field != nullptr ? git.list(*field) : std::vector<std::uint32_t>{};
@@ -263,6 +264,93 @@ void addTriggerGeometry(Scene& scene, const Gff& git)
     }
 }
 
+void addEncounterGeometry(Scene& scene, Install& install, const Gff& git)
+{
+    std::size_t encounterOrdinal = 0;
+    for (const std::uint32_t structure : [&]() {
+             const GffField* field = git.field(git.rootIndex(), "Encounter List");
+             return field != nullptr ? git.list(*field) : std::vector<std::uint32_t>{};
+         }()) {
+        std::size_t entityIndex = scene.entities.size();
+        std::size_t seen = 0;
+        for (std::size_t i = 0; i < scene.entities.size(); ++i) {
+            if (scene.entities[i].kind != EntityKind::Encounter) {
+                continue;
+            }
+            if (seen++ == encounterOrdinal) {
+                entityIndex = i;
+                break;
+            }
+        }
+        ++encounterOrdinal;
+        if (entityIndex >= scene.entities.size()) {
+            continue;
+        }
+        const Entity& entity = scene.entities[entityIndex];
+        EncounterVolume volume;
+        volume.entity = static_cast<std::uint32_t>(entityIndex);
+        volume.templateResref = entity.templateResref;
+
+        auto data = install.find(entity.templateResref, 2040); // UTE
+        if (!data.has_value()) {
+            continue;
+        }
+        try {
+            Gff ute = Gff::parse(std::move(*data), entity.templateResref + ".ute");
+            EncounterTemplate& encounter = volume.templateData;
+            encounter.resref = entity.templateResref;
+            encounter.tag = textField(ute, ute.rootIndex(), "Tag");
+            encounter.active = intField(ute, ute.rootIndex(), "Active", 1) != 0;
+            encounter.difficulty = intField(ute, ute.rootIndex(), "Difficulty", 0);
+            encounter.maxCreatures = intField(ute, ute.rootIndex(), "MaxCreatures", 0);
+            encounter.recCreatures = intField(ute, ute.rootIndex(), "RecCreatures", 0);
+            encounter.resetTime = intField(ute, ute.rootIndex(), "ResetTime", 0);
+            encounter.respawns = intField(ute, ute.rootIndex(), "Respawns", 0);
+            encounter.spawnOption = intField(ute, ute.rootIndex(), "SpawnOption", 0);
+            if (const GffField* list = ute.field(ute.rootIndex(), "CreatureList"); list != nullptr) {
+                for (const std::uint32_t creatureStruct : ute.list(*list)) {
+                    EncounterCreature creature;
+                    creature.resref = textField(ute, creatureStruct, "ResRef");
+                    creature.appearance = intField(ute, creatureStruct, "Appearance", 0);
+                    creature.challengeRating = numberField(ute, creatureStruct, "CR", 0.0f);
+                    creature.singleSpawn = intField(ute, creatureStruct, "SingleSpawn", 0) != 0;
+                    if (!creature.resref.empty()) {
+                        encounter.creatures.push_back(std::move(creature));
+                    }
+                }
+            }
+        } catch (const FormatError&) {
+            continue;
+        }
+
+        if (const GffField* geometryField = git.field(structure, "Geometry");
+            geometryField != nullptr) {
+            for (const std::uint32_t point : git.list(*geometryField)) {
+                volume.vertices.push_back({entity.position.x + numberField(git, point, "X"),
+                                           entity.position.y + numberField(git, point, "Y"),
+                                           entity.position.z + numberField(git, point, "Z")});
+            }
+            if (volume.vertices.size() >= 3) {
+                for (std::size_t i = 1; i + 1 < volume.vertices.size(); ++i) {
+                    volume.indices.push_back(0);
+                    volume.indices.push_back(static_cast<std::uint32_t>(i));
+                    volume.indices.push_back(static_cast<std::uint32_t>(i + 1));
+                }
+            }
+        }
+        if (const GffField* spawnField = git.field(structure, "SpawnPointList");
+            spawnField != nullptr) {
+            for (const std::uint32_t point : git.list(*spawnField)) {
+                volume.spawnPoints.push_back({
+                    {numberField(git, point, "X"), numberField(git, point, "Y"),
+                     numberField(git, point, "Z")},
+                    numberField(git, point, "Orientation", 0.0f)});
+            }
+        }
+        scene.encounters.push_back(std::move(volume));
+    }
+}
+
 } // namespace
 
 void collectScriptHooks(const Gff& gff, std::uint32_t structure,
@@ -280,6 +368,96 @@ void collectScriptHooks(const Gff& gff, std::uint32_t structure,
         if (!resref.empty()) {
             scripts[label] = resref;
         }
+    }
+}
+
+std::optional<ItemTemplate> loadItemTemplate(Install& install, const std::string& resref)
+{
+    auto data = install.find(resref, 2025); // UTI
+    if (!data.has_value()) {
+        return std::nullopt;
+    }
+    try {
+        Gff uti = Gff::parse(std::move(*data), resref + ".uti");
+        ItemTemplate item;
+        item.resref = resref;
+        item.tag = textField(uti, uti.rootIndex(), "Tag");
+        item.baseItem = intField(uti, uti.rootIndex(), "BaseItem", 0);
+        item.cost = intField(uti, uti.rootIndex(), "Cost", 0);
+        item.stackSize = std::max(1, intField(uti, uti.rootIndex(), "StackSize", 1));
+        item.identified = intField(uti, uti.rootIndex(), "Identified", 1) != 0;
+        const std::optional<Tlk> tlk = loadTlk(install);
+        item.name = locField(uti, uti.rootIndex(), "LocalizedName", tlk ? &*tlk : nullptr);
+        return item;
+    } catch (const FormatError&) {
+        return std::nullopt;
+    }
+}
+
+std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utcResref,
+                          Vec3 position, float bearing)
+{
+    auto data = install.find(utcResref, 2027); // UTC
+    if (!data.has_value()) {
+        return static_cast<std::size_t>(-1);
+    }
+    try {
+        Gff utc = Gff::parse(std::move(*data), utcResref + ".utc");
+        const std::uint32_t root = utc.rootIndex();
+        const std::optional<Tlk> tlk = loadTlk(install);
+        const std::optional<TwoDa> appearances = loadTable(install, "appearance");
+
+        Entity entity;
+        entity.kind = EntityKind::Creature;
+        entity.sourceStructure = root;
+        entity.templateResref = utcResref;
+        entity.position = position;
+        entity.bearing = bearing;
+        entity.tag = textField(utc, root, "Tag");
+        if (entity.tag.empty()) {
+            entity.tag = utcResref;
+        }
+        entity.name = locField(utc, root, "FirstName", tlk ? &*tlk : nullptr);
+        entity.conversation = textField(utc, root, "Conversation");
+        entity.appearance = static_cast<std::uint32_t>(
+            intField(utc, root, "Appearance_Type", 0));
+        entity.faction = static_cast<std::uint32_t>(intField(utc, root, "FactionID", 0));
+        entity.hitPoints = intField(utc, root, "HitPoints", 1);
+        entity.maxHitPoints = intField(utc, root, "MaxHitPoints", entity.hitPoints);
+        if (entity.maxHitPoints <= 0) {
+            entity.maxHitPoints = 1;
+        }
+        entity.hitPoints = std::max(1, std::min(entity.hitPoints, entity.maxHitPoints));
+        const std::int32_t dexterity = intField(utc, root, "Dex", 10);
+        entity.defense = 10 + (dexterity - 10) / 2 + intField(utc, root, "NaturalAC", 0);
+        entity.attackBonus = 2 + std::max(0, static_cast<int>(numberField(utc, root,
+                                                                        "ChallengeRating", 0.0f)));
+        entity.damageMin = 1;
+        entity.damageMax = 6;
+        entity.scriptDialogue = textField(utc, root, "ScriptDialogue");
+        entity.scriptOnEnter = textField(utc, root, "ScriptOnNotice");
+        entity.walkRate = 3.0f + numberField(utc, root, "WalkRate", 7.0f) * 0.15f;
+        entity.hostile = entity.faction == 4;
+        collectScriptHooks(utc, root, entity.scripts);
+        if (appearances.has_value()) {
+            std::string texture;
+            entity.model = creatureModel(*appearances, entity.appearance, texture);
+            entity.texture = texture;
+        }
+        scene.entities.push_back(std::move(entity));
+        const std::size_t index = scene.entities.size() - 1;
+        if (!scene.entities[index].model.empty()) {
+            std::vector<MdlTriangle> triangles;
+            std::string error;
+            if (loadModel(install, scene.entities[index].model, triangles, error)) {
+                buildMesh(scene, install, static_cast<std::uint32_t>(index), triangles);
+            } else {
+                scene.warnings.push_back(scene.entities[index].model + ": " + error);
+            }
+        }
+        return index;
+    } catch (const FormatError&) {
+        return static_cast<std::size_t>(-1);
     }
 }
 
@@ -377,6 +555,42 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                 } catch (const FormatError&) {
                 }
             }
+        } else if (entity.kind == EntityKind::Store) {
+            auto data = install.find(entity.templateResref, 2051); // UTM
+            if (data.has_value()) {
+                try {
+                    Gff utm = Gff::parse(std::move(*data), entity.templateResref + ".utm");
+                    collectScriptHooks(utm, utm.rootIndex(), entity.scripts);
+                    entity.tag = textField(utm, utm.rootIndex(), "Tag");
+                    entity.name = locField(utm, utm.rootIndex(), "LocName", tlk ? &*tlk : nullptr);
+                    entity.storeMarkUp = intField(utm, utm.rootIndex(), "MarkUp", 100);
+                    entity.storeMarkDown = intField(utm, utm.rootIndex(), "MarkDown", 40);
+                    entity.storeBuySell = intField(utm, utm.rootIndex(), "BuySellFlag", 3);
+                    entity.useable = true;
+                    if (const GffField* list = utm.field(utm.rootIndex(), "ItemList"); list != nullptr) {
+                        for (const std::uint32_t itemStruct : utm.list(*list)) {
+                            const std::string resref = textField(utm, itemStruct, "InventoryRes");
+                            if (!resref.empty()) {
+                                entity.storeItems.emplace_back(
+                                    resref, intField(utm, itemStruct, "Infinite", 0) != 0);
+                            }
+                        }
+                    }
+                } catch (const FormatError&) {
+                }
+            }
+        } else if (entity.kind == EntityKind::Encounter) {
+            auto data = install.find(entity.templateResref, 2040); // UTE
+            if (data.has_value()) {
+                try {
+                    Gff ute = Gff::parse(std::move(*data), entity.templateResref + ".ute");
+                    collectScriptHooks(ute, ute.rootIndex(), entity.scripts);
+                    entity.tag = textField(ute, ute.rootIndex(), "Tag");
+                    entity.name = locField(ute, ute.rootIndex(), "LocalizedName",
+                                           tlk ? &*tlk : nullptr);
+                } catch (const FormatError&) {
+                }
+            }
         }
         collectScriptHooks(git, structure, entity.scripts);
         if (!entity.model.empty()
@@ -392,6 +606,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
         }
     }
     addTriggerGeometry(scene, git);
+    addEncounterGeometry(scene, install, git);
 }
 
 } // namespace ke::kotor

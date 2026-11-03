@@ -17,6 +17,7 @@ namespace ke {
 
 struct InventoryItem {
     std::string resref;
+    std::string name;
     std::int32_t baseItem = 0;
     std::int32_t cost = 0;
     std::int32_t stack = 1;
@@ -54,6 +55,34 @@ struct AttackResult {
     bool hit = false;
     bool critical = false;
     std::int32_t damage = 0;
+};
+
+struct MerchantStockItem {
+    InventoryItem item;
+    bool infinite = false;
+    std::int32_t remaining = 1;
+};
+
+struct MerchantState {
+    std::size_t entity = 0;
+    std::string resref;
+    std::string name;
+    std::int32_t markUp = 100;
+    std::int32_t markDown = 40;
+    std::int32_t buySellFlag = 3;
+    std::vector<MerchantStockItem> stock;
+};
+
+struct EncounterState {
+    bool spawned = false;
+    std::int32_t spawnedCount = 0;
+    std::vector<std::size_t> entities;
+};
+
+struct CompanionState {
+    std::string tag;
+    CharacterSheet sheet;
+    bool active = true;
 };
 
 // Read-only rules facade. One instance per install; tables are loaded once.

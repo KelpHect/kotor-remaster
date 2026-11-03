@@ -1,0 +1,14 @@
+[INFO] KotOR module tar_m02ac area m02ac from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 22 vertices: 203949 indices: 203949 batches: 51
+[INFO]   textures: 72 collision vertices: 653 facets: 955
+[INFO]   entities: 143 (door 9, placeable 30, creature 26, waypoint 54, store 7, encounter 0)
+[INFO]   encounter volumes: 0
+[INFO]   entry: 188.055, 80.304, 0
+[INFO]   entity meshes: 65 triggers: 10 warnings: 0
+[INFO]   script hooks: 294 on 34 entities; scene hooks: 2; script runs: 24
+[INFO]   entity mesh 0 tar02_labdoor verts=3864 local=-4.12784,-0.300233,-0.263713 .. 4.12786,0.300244,4
+[INFO]   entity mesh 1 tar02_cantdoor verts=3864 local=-4.12784,-0.300233,-0.263713 .. 4.12786,0.300244,4
+[INFO]   entity mesh 2 UpperNorth verts=3864 local=-4.12784,-0.300233,-0.263713 .. 4.12786,0.300244,4
+[INFO]   creature mesh Zelka021 verts=3246 local=-0.606384,-0.151653,-0.00207151 .. 0.610334,0.167699,1.58298
+[INFO]   bounds: -542.429, -592.429, -465.383 .. 842.429, 792.429, 539.617

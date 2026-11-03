@@ -81,6 +81,9 @@ void addEntities(const Gff& git, std::uint32_t root, const char* listLabel, Enti
         entity.kind = kind;
         entity.sourceStructure = structure;
         entity.templateResref = text(git, structure, "TemplateResRef");
+        if (entity.templateResref.empty()) {
+            entity.templateResref = text(git, structure, "ResRef");
+        }
         entity.tag = text(git, structure, "Tag");
         entity.linkedModule = text(git, structure, "LinkedToModule");
         entity.linkedTo = text(git, structure, "LinkedTo");

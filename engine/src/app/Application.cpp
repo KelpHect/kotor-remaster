@@ -178,6 +178,123 @@ void drawDebugUi(const RuntimeState& state, std::uint64_t frames, double frameMs
     }
 }
 
+void drawSystemsUi(GameSession& game)
+{
+    if (game.activePanel() == UiPanel::None) {
+        return;
+    }
+    ImGui::SetNextWindowPos(ImVec2(520.0f, 16.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(520.0f, 520.0f), ImGuiCond_FirstUseEver);
+    const std::string title = std::string("Systems - ") + uiPanelName(game.activePanel());
+    ImGui::Begin(title.c_str(), nullptr, ImGuiWindowFlags_NoCollapse);
+
+    const CharacterSheet& sheet = game.character();
+    switch (game.activePanel()) {
+    case UiPanel::Character: {
+        ImGui::Text("%s  %s %d", sheet.name.c_str(), game.rules().className(sheet.classId).c_str(),
+                    sheet.level);
+        ImGui::Text("XP %d   HP %d/%d   Gold %d", sheet.xp, sheet.hp, sheet.maxHp, game.gold());
+        ImGui::Separator();
+        ImGui::Text("STR %d  DEX %d  CON %d", sheet.str, sheet.dex, sheet.con);
+        ImGui::Text("INT %d  WIS %d  CHA %d", sheet.intel, sheet.wis, sheet.cha);
+        ImGui::Text("AC %d  Attack +%d  Skill points %d  Feat points %d",
+                    game.rules().armorClass(sheet), game.rules().attackBonus(sheet),
+                    sheet.skillPoints, sheet.featPoints);
+        ImGui::Separator();
+        ImGui::TextUnformatted("Skills");
+        for (const auto& [name, rank] : sheet.skills) {
+            ImGui::Text("%s: %d", name.c_str(), rank);
+        }
+        if (!sheet.feats.empty()) {
+            ImGui::TextUnformatted("Feats");
+            for (const std::int32_t feat : sheet.feats) {
+                ImGui::Text("#%d", feat);
+            }
+        }
+        break;
+    }
+    case UiPanel::Inventory:
+        ImGui::Text("Gold: %d   Items: %zu", game.gold(), game.inventory().size());
+        ImGui::Separator();
+        for (std::size_t i = 0; i < game.inventory().size(); ++i) {
+            const InventoryItem& item = game.inventory()[i];
+            const std::string label = item.name.empty() ? item.resref : item.name;
+            ImGui::Text("%s  cost=%d  x%d%s", label.c_str(), item.cost, item.stack,
+                        item.equipped ? "  [equipped]" : "");
+            ImGui::SameLine();
+            if (ImGui::Button((std::string("Equip##") + std::to_string(i)).c_str())) {
+                game.equipItem(item.resref);
+            }
+        }
+        break;
+    case UiPanel::Party:
+        ImGui::Text("Party roster: %zu", game.companions().size());
+        ImGui::Separator();
+        for (std::size_t i = 0; i < game.companions().size(); ++i) {
+            const CompanionState& companion = game.companions()[i];
+            ImGui::Text("%s  %s %d  HP %d/%d  XP %d", companion.tag.c_str(),
+                        companion.sheet.name.c_str(), companion.sheet.level,
+                        companion.sheet.hp, companion.sheet.maxHp, companion.sheet.xp);
+            ImGui::SameLine();
+            if (ImGui::Button((std::string("Select##") + std::to_string(i)).c_str())) {
+                game.selectCompanion(static_cast<int>(i));
+            }
+        }
+        if (game.companions().empty()) {
+            ImGui::TextUnformatted("No companions in the party.");
+        }
+        break;
+    case UiPanel::Journal:
+        ImGui::Text("Journal entries: %zu", game.journal().size());
+        ImGui::Separator();
+        for (const auto& [plot, state] : game.journal()) {
+            ImGui::Text("%s = %d", plot.c_str(), state);
+        }
+        break;
+    case UiPanel::Merchant:
+        ImGui::Text("Gold: %d", game.gold());
+        ImGui::Separator();
+        for (std::size_t i = 0; i < game.merchants().size(); ++i) {
+            const MerchantState& merchant = game.merchants()[i];
+            ImGui::Text("%s (%s)  stock=%zu", merchant.name.c_str(), merchant.resref.c_str(),
+                        merchant.stock.size());
+            ImGui::SameLine();
+            if (ImGui::Button((std::string("Open##") + std::to_string(i)).c_str())) {
+                game.openStore(merchant.entity);
+            }
+        }
+        if (game.activeMerchant() >= 0) {
+            const MerchantState& merchant =
+                game.merchants()[static_cast<std::size_t>(game.activeMerchant())];
+            ImGui::Separator();
+            ImGui::Text("Buy from %s", merchant.resref.c_str());
+            for (std::size_t i = 0; i < merchant.stock.size(); ++i) {
+                const MerchantStockItem& stock = merchant.stock[i];
+                ImGui::Text("%s  %d gp  %s", stock.item.resref.c_str(), game.buyPrice(i),
+                            stock.infinite || stock.remaining > 0 ? "" : "sold");
+                ImGui::SameLine();
+                if (ImGui::Button((std::string("Buy##") + std::to_string(i)).c_str())) {
+                    game.buyMerchantItem(i);
+                }
+            }
+            ImGui::Separator();
+            ImGui::TextUnformatted("Sell");
+            for (std::size_t i = 0; i < game.inventory().size(); ++i) {
+                const InventoryItem& item = game.inventory()[i];
+                ImGui::Text("%s  %d gp", item.resref.c_str(), game.sellPrice(i));
+                ImGui::SameLine();
+                if (ImGui::Button((std::string("Sell##") + std::to_string(i)).c_str())) {
+                    game.sellInventoryItem(i);
+                }
+            }
+        }
+        break;
+    case UiPanel::None:
+        break;
+    }
+    ImGui::End();
+}
+
 void drawGameUi(GameSession& game, float fps, const std::string& prompt)
 {
     ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
@@ -230,6 +347,8 @@ void drawGameUi(GameSession& game, float fps, const std::string& prompt)
         }
         ImGui::End();
     }
+
+    drawSystemsUi(game);
 
     const ImGuiIO& io = ImGui::GetIO();
     if (io.DisplaySize.x > 0.0f && io.DisplaySize.y > 0.0f) {
@@ -775,6 +894,220 @@ int runSystemsTest(GameSession& game)
     return ok ? 0 : 10;
 }
 
+int runMerchantTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("merchant test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    check(!game.merchants().empty(), "stores_loaded");
+    check(game.merchants().size() == 7, "seven_stores");
+    if (game.merchants().empty()) {
+        return 9;
+    }
+    std::size_t merchantIndex = static_cast<std::size_t>(-1);
+    for (std::size_t i = 0; i < game.merchants().size(); ++i) {
+        if (game.merchants()[i].resref == "keblastore") {
+            merchantIndex = i;
+            break;
+        }
+    }
+    if (merchantIndex == static_cast<std::size_t>(-1)) {
+        merchantIndex = 0;
+    }
+    const MerchantState merchant = game.merchants()[merchantIndex];
+    logInfo(concat("merchant test: store ", merchant.resref, " stock=", merchant.stock.size(),
+                   " markup=", merchant.markUp, " markdown=", merchant.markDown,
+                   " flag=", merchant.buySellFlag));
+    check(merchant.stock.size() >= 40, "stock_41");
+    check(merchant.buySellFlag == 3, "buy_and_sell");
+    if (!game.openStore(merchant.entity)) {
+        logError("merchant test: open failed");
+        return 10;
+    }
+    check(game.activeMerchant() >= 0, "store_open");
+
+    std::size_t stockIndex = static_cast<std::size_t>(-1);
+    for (std::size_t i = 0; i < merchant.stock.size(); ++i) {
+        if (!merchant.stock[i].infinite && merchant.stock[i].item.cost > 0) {
+            stockIndex = i;
+            break;
+        }
+    }
+    if (stockIndex == static_cast<std::size_t>(-1)) {
+        stockIndex = 0;
+    }
+    const MerchantStockItem stock = game.merchants()[merchantIndex].stock[stockIndex];
+    const std::int32_t buyPrice = game.buyPrice(stockIndex);
+    logInfo(concat("merchant test: stock ", stock.item.resref, " cost=", stock.item.cost,
+                   " buy=", buyPrice, " remaining=", stock.remaining));
+    check(stock.item.cost > 0, "item_cost");
+    check(buyPrice == std::max<std::int32_t>(1, stock.item.cost * merchant.markUp / 100),
+          "buy_price_math");
+
+    script::Vm dummy({});
+    std::vector<std::vector<script::Value>> goldArgs = {
+        {script::Value::makeObject(game.scriptWorld().pc)}, {script::Value::makeInt(5000)}};
+    game.action(322, goldArgs, game.scriptWorld(), dummy);
+    const std::int32_t goldBefore = game.gold();
+    const std::size_t inventoryBefore = game.inventory().size();
+    check(game.buyMerchantItem(stockIndex), "buy_item");
+    check(game.gold() == goldBefore - buyPrice, "buy_gold");
+    check(game.inventory().size() == inventoryBefore + 1, "buy_inventory");
+    if (!stock.infinite) {
+        check(game.merchants()[merchantIndex].stock[stockIndex].remaining == stock.remaining - 1,
+              "buy_stock_decrement");
+    }
+
+    const std::filesystem::path savePath =
+        std::filesystem::temp_directory_path() / "kotor_engine_s7_merchant.save";
+    check(game.save(savePath), "save_written");
+    {
+        GameSession restored(game.installPath(), game.module());
+        check(restored.load(savePath), "save_loaded");
+        std::int32_t restoredRemaining = -1;
+        for (const MerchantState& restoredMerchant : restored.merchants()) {
+            if (restoredMerchant.resref == merchant.resref
+                && stockIndex < restoredMerchant.stock.size()) {
+                restoredRemaining = restoredMerchant.stock[stockIndex].remaining;
+            }
+        }
+        check(restoredRemaining == game.merchants()[merchantIndex].stock[stockIndex].remaining,
+              "stock_roundtrip");
+        check(restored.gold() == game.gold(), "gold_roundtrip");
+        check(restored.inventory().size() == game.inventory().size(), "inventory_roundtrip");
+    }
+
+    const std::int32_t goldAfterBuy = game.gold();
+    const std::int32_t sellExpected = std::max<std::int32_t>(
+        1, stock.item.cost * merchant.markDown / 100);
+    check(game.sellPrice(game.inventory().size() - 1) == sellExpected, "sell_price_math");
+    check(game.sellInventoryItem(game.inventory().size() - 1), "sell_item");
+    check(game.gold() > goldAfterBuy, "sell_gold");
+    check(game.inventory().size() == inventoryBefore, "sell_inventory");
+    game.closeStore();
+    logInfo(ok ? "merchant test: PASS" : "merchant test: FAIL");
+    return ok ? 0 : 11;
+}
+
+int runEncounterTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("encounter test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    logInfo(concat("encounter test: volumes=", game.scene().encounters.size(),
+                   " states=", game.encounters().size()));
+    check(game.scene().encounters.size() >= 4, "volume_count");
+    std::int32_t total = 0;
+    std::size_t firstEntity = static_cast<std::size_t>(-1);
+    for (const EncounterState& state : game.encounters()) {
+        total += state.spawnedCount;
+        if (firstEntity == static_cast<std::size_t>(-1) && !state.entities.empty()) {
+            firstEntity = state.entities.front();
+        }
+    }
+    logInfo(concat("encounter test: spawned=", total));
+    check(total > 0, "creatures_spawned");
+    if (firstEntity == static_cast<std::size_t>(-1)
+        || firstEntity >= game.scene().entities.size()) {
+        logError("encounter test: no spawned entity");
+        return 10;
+    }
+    const kotor::Entity& entity = game.scene().entities[firstEntity];
+    bool hasMesh = false;
+    for (const kotor::EntityMesh& mesh : game.scene().entityMeshes) {
+        if (mesh.entity == firstEntity) {
+            hasMesh = true;
+            break;
+        }
+    }
+    logInfo(concat("encounter test: first ", entity.tag, " hp=", entity.hitPoints,
+                   " hostile=", entity.hostile ? 1 : 0, " mesh=", hasMesh ? 1 : 0));
+    check(entity.hostile, "spawned_hostile");
+    check(hasMesh, "spawned_mesh");
+    check(entity.hitPoints > 0, "spawned_hp");
+    logInfo(ok ? "encounter test: PASS" : "encounter test: FAIL");
+    return ok ? 0 : 11;
+}
+
+int runPartyTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("party test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    const std::size_t carth = game.findEntity("Carth");
+    if (carth == static_cast<std::size_t>(-1)) {
+        logError("party test: Carth missing");
+        return 9;
+    }
+    check(game.addPartyMember("Carth"), "join");
+    check(game.companions().size() == 1, "companion_sheet");
+    if (!game.companions().empty()) {
+        const CompanionState& companion = game.companions().front();
+        logInfo(concat("party test: ", companion.tag, " name=", companion.sheet.name,
+                       " hp=", companion.sheet.hp, "/", companion.sheet.maxHp,
+                       " level=", companion.sheet.level));
+        check(!companion.sheet.name.empty(), "companion_name");
+        check(companion.sheet.maxHp > 0, "companion_hp");
+    }
+    const std::int32_t xpBefore = game.character().xp;
+    game.giveXp(1000);
+    check(game.character().xp == xpBefore + 1000, "pc_full_xp");
+    if (!game.companions().empty()) {
+        logInfo(concat("party test: companion xp=", game.companions().front().sheet.xp));
+        check(game.companions().front().sheet.xp == 800, "companion_80_percent");
+    }
+    game.selectCompanion(0);
+    check(game.selectedCompanion() == 0, "selected");
+
+    const std::filesystem::path savePath =
+        std::filesystem::temp_directory_path() / "kotor_engine_s7_party.save";
+    check(game.save(savePath), "save_written");
+    GameSession restored(game.installPath(), game.module());
+    check(restored.load(savePath), "save_loaded");
+    check(restored.companions().size() == game.companions().size(), "companion_roundtrip");
+    check(restored.partyTags().size() == game.partyTags().size(), "party_roundtrip");
+    if (!restored.companions().empty()) {
+        check(restored.companions().front().sheet.xp == 800, "companion_xp_roundtrip");
+    }
+
+    check(game.removePartyMember("Carth"), "leave");
+    check(game.companions().empty(), "companion_removed");
+    logInfo(ok ? "party test: PASS" : "party test: FAIL");
+    return ok ? 0 : 10;
+}
+
+int runUiTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("ui test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    check(game.activePanel() == UiPanel::None, "starts_closed");
+    game.toggleUiPanel(UiPanel::Character);
+    check(game.activePanel() == UiPanel::Character, "character_open");
+    game.toggleUiPanel(UiPanel::Inventory);
+    check(game.activePanel() == UiPanel::Inventory, "inventory_open");
+    game.toggleUiPanel(UiPanel::Inventory);
+    check(game.activePanel() == UiPanel::None, "toggle_closes");
+    game.setUiPanel(UiPanel::Party);
+    check(std::string(uiPanelName(game.activePanel())) == "party", "party_name");
+    game.setUiPanel(UiPanel::Journal);
+    check(std::string(uiPanelName(game.activePanel())) == "journal", "journal_name");
+    game.setUiPanel(UiPanel::Merchant);
+    check(std::string(uiPanelName(game.activePanel())) == "merchant", "merchant_name");
+    game.setUiPanel(UiPanel::None);
+    check(std::string(uiPanelName(game.activePanel())) == "none", "none_name");
+    logInfo(ok ? "ui test: PASS" : "ui test: FAIL");
+    return ok ? 0 : 10;
+}
+
 } // namespace
 
 int runVmCorpus(const Options& options)
@@ -867,7 +1200,10 @@ int runApplication(const Options& options)
             logInfo(concat("  entities: ", loaded.entities.size(), " (door ", countKind(ke::kotor::EntityKind::Door),
                            ", placeable ", countKind(ke::kotor::EntityKind::Placeable),
                            ", creature ", countKind(ke::kotor::EntityKind::Creature),
-                           ", waypoint ", countKind(ke::kotor::EntityKind::Waypoint), ")"));
+                           ", waypoint ", countKind(ke::kotor::EntityKind::Waypoint),
+                           ", store ", countKind(ke::kotor::EntityKind::Store),
+                           ", encounter ", countKind(ke::kotor::EntityKind::Encounter), ")"));
+            logInfo(concat("  encounter volumes: ", loaded.encounters.size()));
             logInfo(concat("  entry: ", loaded.entry.x, ", ", loaded.entry.y, ", ", loaded.entry.z));
             logInfo(concat("  entity meshes: ", loaded.entityMeshes.size(), " triggers: ",
                            loaded.triggers.size(), " warnings: ", loaded.warnings.size()));
@@ -882,6 +1218,28 @@ int runApplication(const Options& options)
             logInfo(concat("  script hooks: ", hookCount, " on ", entitiesWithHooks,
                            " entities; scene hooks: ", loaded.scripts.size(),
                            "; script runs: ", game->scriptLog().size()));
+            if (!options.panel.empty()) {
+                UiPanel panel = UiPanel::None;
+                if (options.panel == "character") panel = UiPanel::Character;
+                else if (options.panel == "inventory") panel = UiPanel::Inventory;
+                else if (options.panel == "party") panel = UiPanel::Party;
+                else if (options.panel == "journal") panel = UiPanel::Journal;
+                else if (options.panel == "merchant") panel = UiPanel::Merchant;
+                game->setUiPanel(panel);
+                if (panel == UiPanel::Merchant && !game->merchants().empty()) {
+                    std::size_t preferred = 0;
+                    for (std::size_t i = 0; i < game->merchants().size(); ++i) {
+                        if (game->merchants()[i].resref == "keblastore") {
+                            preferred = i;
+                            break;
+                        }
+                    }
+                    game->openStore(game->merchants()[preferred].entity);
+                }
+                if (!options.addParty.empty()) {
+                    game->addPartyMember(options.addParty);
+                }
+            }
             for (std::size_t i = 0; i < loaded.entityMeshes.size() && i < 3; ++i) {
                 const ke::kotor::EntityMesh& mesh = loaded.entityMeshes[i];
                 if (mesh.vertices.empty() || mesh.entity >= loaded.entities.size()) {
@@ -974,6 +1332,18 @@ int runApplication(const Options& options)
             }
             if (options.systemsTest) {
                 return runSystemsTest(*game);
+            }
+            if (options.merchantTest) {
+                return runMerchantTest(*game);
+            }
+            if (options.encounterTest) {
+                return runEncounterTest(*game);
+            }
+            if (options.partyTest) {
+                return runPartyTest(*game);
+            }
+            if (options.uiTest) {
+                return runUiTest(*game);
             }
             if (options.combatTest) {
                 return runCombatTest(*game);
@@ -1257,6 +1627,16 @@ int runApplication(const Options& options)
                     mouseRelative = !mouseRelative;
                     SDL_SetWindowRelativeMouseMode(state.window, mouseRelative);
                     logInfo(mouseRelative ? "Mouse captured" : "Mouse released");
+                } else if (game && event.key.key == SDLK_C) {
+                    game->toggleUiPanel(UiPanel::Character);
+                } else if (game && event.key.key == SDLK_I) {
+                    game->toggleUiPanel(UiPanel::Inventory);
+                } else if (game && event.key.key == SDLK_P) {
+                    game->toggleUiPanel(UiPanel::Party);
+                } else if (game && event.key.key == SDLK_J) {
+                    game->toggleUiPanel(UiPanel::Journal);
+                } else if (game && event.key.key == SDLK_M) {
+                    game->toggleUiPanel(UiPanel::Merchant);
                 }
             }
         }

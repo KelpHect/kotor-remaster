@@ -13,6 +13,19 @@
 
 namespace ke {
 
+const char* uiPanelName(UiPanel panel)
+{
+    switch (panel) {
+    case UiPanel::Character: return "character";
+    case UiPanel::Inventory: return "inventory";
+    case UiPanel::Party: return "party";
+    case UiPanel::Journal: return "journal";
+    case UiPanel::Merchant: return "merchant";
+    case UiPanel::None: break;
+    }
+    return "none";
+}
+
 namespace {
 
 constexpr float kPi = 3.14159265358979323846f;
@@ -423,6 +436,209 @@ void GameSession::syncScriptWorld()
     }
 }
 
+void GameSession::initMerchants()
+{
+    merchants_.clear();
+    activeMerchant_ = -1;
+    for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+        const kotor::Entity& entity = scene_.entities[i];
+        if (entity.kind != kotor::EntityKind::Store) {
+            continue;
+        }
+        MerchantState merchant;
+        merchant.entity = i;
+        merchant.resref = entity.templateResref;
+        merchant.name = entity.name.empty() ? entity.tag : entity.name;
+        merchant.markUp = entity.storeMarkUp;
+        merchant.markDown = entity.storeMarkDown;
+        merchant.buySellFlag = entity.storeBuySell;
+        for (const auto& [resref, infinite] : entity.storeItems) {
+            MerchantStockItem stock;
+            stock.item.resref = resref;
+            stock.infinite = infinite;
+            stock.remaining = infinite ? -1 : 1;
+            auto cached = itemTemplates_.find(resref);
+            if (cached == itemTemplates_.end()) {
+                if (auto item = kotor::loadItemTemplate(install_, resref); item.has_value()) {
+                    cached = itemTemplates_.emplace(resref, *item).first;
+                }
+            }
+            if (cached != itemTemplates_.end()) {
+                stock.item.baseItem = cached->second.baseItem;
+                stock.item.cost = cached->second.cost;
+                stock.item.stack = cached->second.stackSize;
+            }
+            if (stock.item.cost <= 0 && rules_.loaded()) {
+                stock.item.cost = rules_.itemCost(stock.item.baseItem);
+            }
+            merchant.stock.push_back(std::move(stock));
+        }
+        merchants_.push_back(std::move(merchant));
+    }
+}
+
+bool GameSession::openStore(std::size_t entityIndex)
+{
+    if (entityIndex >= scene_.entities.size()
+        || scene_.entities[entityIndex].kind != kotor::EntityKind::Store) {
+        return false;
+    }
+    for (std::size_t i = 0; i < merchants_.size(); ++i) {
+        if (merchants_[i].entity == entityIndex) {
+            activeMerchant_ = static_cast<int>(i);
+            runHook("OnOpenStore", entityIndex, scriptWorld_.pc);
+            logEvent("store " + merchants_[i].resref + " opened");
+            return true;
+        }
+    }
+    return false;
+}
+
+bool GameSession::openStoreByTag(const std::string& tag)
+{
+    const std::size_t index = findEntity(tag);
+    return index != static_cast<std::size_t>(-1) && openStore(index);
+}
+
+std::int32_t GameSession::buyPrice(std::size_t stockIndex) const
+{
+    if (activeMerchant_ < 0 || static_cast<std::size_t>(activeMerchant_) >= merchants_.size()) {
+        return 0;
+    }
+    const MerchantState& merchant = merchants_[static_cast<std::size_t>(activeMerchant_)];
+    if (stockIndex >= merchant.stock.size()) {
+        return 0;
+    }
+    return std::max<std::int32_t>(1, merchant.stock[stockIndex].item.cost
+                                        * std::max<std::int32_t>(1, merchant.markUp) / 100);
+}
+
+std::int32_t GameSession::sellPrice(std::size_t inventoryIndex) const
+{
+    if (activeMerchant_ < 0 || static_cast<std::size_t>(activeMerchant_) >= merchants_.size()
+        || inventoryIndex >= character_.inventory.size()) {
+        return 0;
+    }
+    const MerchantState& merchant = merchants_[static_cast<std::size_t>(activeMerchant_)];
+    return std::max<std::int32_t>(1, character_.inventory[inventoryIndex].cost
+                                        * std::max<std::int32_t>(1, merchant.markDown) / 100);
+}
+
+bool GameSession::buyMerchantItem(std::size_t stockIndex)
+{
+    if (activeMerchant_ < 0) {
+        return false;
+    }
+    MerchantState& merchant = merchants_[static_cast<std::size_t>(activeMerchant_)];
+    if (stockIndex >= merchant.stock.size() || (merchant.buySellFlag & 1) == 0) {
+        return false;
+    }
+    MerchantStockItem& stock = merchant.stock[stockIndex];
+    if (!stock.infinite && stock.remaining <= 0) {
+        return false;
+    }
+    const std::int32_t price = buyPrice(stockIndex);
+    if (price <= 0 || gold_ < price) {
+        return false;
+    }
+    if (!addInventoryItem(stock.item.resref, stock.item.baseItem, stock.item.stack,
+                          stock.item.cost)) {
+        return false;
+    }
+    gold_ -= price;
+    if (!stock.infinite) {
+        --stock.remaining;
+    }
+    logEvent("buy " + stock.item.resref + " for " + std::to_string(price));
+    return true;
+}
+
+bool GameSession::sellInventoryItem(std::size_t inventoryIndex)
+{
+    if (activeMerchant_ < 0 || inventoryIndex >= character_.inventory.size()) {
+        return false;
+    }
+    MerchantState& merchant = merchants_[static_cast<std::size_t>(activeMerchant_)];
+    if ((merchant.buySellFlag & 2) == 0) {
+        return false;
+    }
+    InventoryItem item = character_.inventory[inventoryIndex];
+    const std::int32_t price = sellPrice(inventoryIndex);
+    if (!removeInventoryItem(item.resref, item.stack)) {
+        return false;
+    }
+    gold_ += price;
+    logEvent("sell " + item.resref + " for " + std::to_string(price));
+    return true;
+}
+
+void GameSession::spawnEncounters()
+{
+    encounterStates_.assign(scene_.encounters.size(), EncounterState{});
+    for (std::size_t encounterIndex = 0; encounterIndex < scene_.encounters.size();
+         ++encounterIndex) {
+        const kotor::EncounterVolume& volume = scene_.encounters[encounterIndex];
+        const kotor::EncounterTemplate& encounter = volume.templateData;
+        if (!encounter.active || encounter.creatures.empty() || volume.spawnPoints.empty()) {
+            continue;
+        }
+        std::int32_t count = encounter.recCreatures > 0 ? encounter.recCreatures
+                                                        : encounter.maxCreatures;
+        if (count <= 0) {
+            count = static_cast<std::int32_t>(encounter.creatures.size());
+        }
+        if (encounter.maxCreatures > 0) {
+            count = std::min(count, encounter.maxCreatures);
+        }
+        std::set<std::string> singleSpawnUsed;
+        EncounterState& state = encounterStates_[encounterIndex];
+        for (std::int32_t i = 0; i < count; ++i) {
+            const kotor::EncounterCreature& creature =
+                encounter.creatures[static_cast<std::size_t>(i) % encounter.creatures.size()];
+            if (creature.singleSpawn && singleSpawnUsed.contains(creature.resref)) {
+                continue;
+            }
+            const kotor::EncounterSpawnPoint& point =
+                volume.spawnPoints[static_cast<std::size_t>(i) % volume.spawnPoints.size()];
+            const std::size_t entityIndex = kotor::spawnCreature(
+                scene_, install_, creature.resref, point.position, point.bearing);
+            if (entityIndex == static_cast<std::size_t>(-1)) {
+                continue;
+            }
+            const kotor::Entity& spawned = scene_.entities[entityIndex];
+            scene_.entities[entityIndex].hostile = true;
+            script::GameObject& object =
+                scriptWorld_.addObject(spawned.tag, 100, 0, true);
+            object.position = {spawned.position.x, spawned.position.y, spawned.position.z};
+            object.hp = spawned.hitPoints;
+            object.attrs["ac"] = static_cast<std::int64_t>(spawned.defense);
+            object.attrs["fortitude"] = static_cast<std::int64_t>(0);
+            object.attrs["will"] = static_cast<std::int64_t>(0);
+            object.attrs["reflex"] = static_cast<std::int64_t>(0);
+            object.attrs["challenge_rating"] =
+                static_cast<std::int64_t>(creature.challengeRating);
+            object.attrs["movement_rate"] = static_cast<std::int64_t>(1);
+            object.attrs["good_evil"] = static_cast<std::int64_t>(50);
+            object.attrs["level"] = static_cast<std::int64_t>(std::max(1, static_cast<int>(creature.challengeRating)));
+            object.attrs["class_id"] = static_cast<std::int64_t>(0);
+            object.attrs["xp"] = static_cast<std::int64_t>(0);
+            entityObjects_.push_back(object.id);
+            if (creature.singleSpawn) {
+                singleSpawnUsed.insert(creature.resref);
+            }
+            state.spawnedCount += 1;
+            state.entities.push_back(entityIndex);
+            runHook("ScriptSpawn", entityIndex, scriptWorld_.pc);
+        }
+        state.spawned = state.spawnedCount > 0;
+        if (state.spawned) {
+            runHook("OnEntered", volume.entity, scriptWorld_.pc);
+            logEvent("encounter " + encounter.resref + " spawned "
+                     + std::to_string(state.spawnedCount));
+        }
+    }
+}
+
 void GameSession::initScriptWorld()
 {
     scriptWorld_.clearObjects();
@@ -463,7 +679,9 @@ void GameSession::initScriptWorld()
         }
     }
     syncScriptWorld();
+    initMerchants();
     runSpawnAndEnterScripts();
+    spawnEncounters();
 }
 
 void GameSession::runHook(const std::string& hook, std::size_t entityIndex,
@@ -705,6 +923,16 @@ bool GameSession::interact()
         }
         logEvent("door " + door->tag + ": no transition");
         return true;
+    }
+    for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+        const kotor::Entity& entity = scene_.entities[i];
+        if (entity.kind != kotor::EntityKind::Store) {
+            continue;
+        }
+        if (distance2D(position_, entity.position) < 3.0f && openStore(i)) {
+            setUiPanel(UiPanel::Merchant);
+            return true;
+        }
     }
     for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
         const kotor::Entity& entity = scene_.entities[i];
@@ -1249,7 +1477,7 @@ bool GameSession::removeJournalEntry(const std::string& plotId)
 }
 
 bool GameSession::addInventoryItem(const std::string& resref, std::int32_t baseItem,
-                                   std::int32_t stack)
+                                   std::int32_t stack, std::int32_t cost)
 {
     if (resref.empty() || stack <= 0) {
         return false;
@@ -1258,6 +1486,24 @@ bool GameSession::addInventoryItem(const std::string& resref, std::int32_t baseI
     item.resref = resref;
     item.baseItem = baseItem;
     item.stack = stack;
+    auto cached = itemTemplates_.find(resref);
+    if (cached == itemTemplates_.end()) {
+        if (auto templ = kotor::loadItemTemplate(install_, resref); templ.has_value()) {
+            cached = itemTemplates_.emplace(resref, *templ).first;
+        }
+    }
+    if (cached != itemTemplates_.end()) {
+        item.name = cached->second.name;
+        if (item.baseItem == 0) {
+            item.baseItem = cached->second.baseItem;
+        }
+        if (item.cost <= 0) {
+            item.cost = cached->second.cost;
+        }
+    }
+    if (cost > 0) {
+        item.cost = cost;
+    }
     character_.inventory.push_back(item);
     script::GameObject& object = scriptWorld_.addObject(resref, 100, baseItem, true);
     object.attrs["item_value"] = static_cast<std::int64_t>(item.cost);
@@ -1330,6 +1576,26 @@ bool GameSession::addPartyMember(const std::string& tag)
         }
     }
     partyTags_.push_back(tag);
+    const std::size_t entityIndex = findEntity(tag);
+    CompanionState companion;
+    companion.tag = tag;
+    if (rules_.loaded()) {
+        companion.sheet = rules_.createCharacter(0, std::max<std::int32_t>(1, character_.level),
+                                                 character_.xp);
+    }
+    companion.sheet.name = tag;
+    if (entityIndex != static_cast<std::size_t>(-1)) {
+        const kotor::Entity& entity = scene_.entities[entityIndex];
+        if (!entity.name.empty()) {
+            companion.sheet.name = entity.name;
+        }
+        companion.sheet.maxHp = std::max<std::int32_t>(1, entity.maxHitPoints);
+        companion.sheet.hp = std::max<std::int32_t>(1, entity.hitPoints);
+    }
+    companions_.push_back(std::move(companion));
+    if (selectedCompanion_ < 0) {
+        selectedCompanion_ = 0;
+    }
     const std::uint32_t object = objectForTag(tag);
     if (object != script::kObjectInvalid) {
         std::erase(scriptWorld_.party, object);
@@ -1345,6 +1611,14 @@ bool GameSession::removePartyMember(const std::string& tag)
     std::erase_if(partyTags_, [&](const std::string& existing) {
         return lower(existing) == lower(tag);
     });
+    std::erase_if(companions_, [&](const CompanionState& companion) {
+        return lower(companion.tag) == lower(tag);
+    });
+    if (companions_.empty()) {
+        selectedCompanion_ = -1;
+    } else if (selectedCompanion_ >= static_cast<int>(companions_.size())) {
+        selectedCompanion_ = 0;
+    }
     const std::uint32_t object = objectForTag(tag);
     if (object != script::kObjectInvalid) {
         std::erase(scriptWorld_.party, object);
@@ -1370,6 +1644,19 @@ void GameSession::giveXp(std::int32_t amount)
         playerMaxHp_ = character_.maxHp;
         playerHp_ = playerMaxHp_;
         logEvent("level up " + std::to_string(level));
+    }
+    for (CompanionState& companion : companions_) {
+        const std::int32_t share = amount * 80 / 100;
+        companion.sheet.xp += share;
+        if (rules_.loaded()) {
+            const std::int32_t companionLevel = rules_.levelForXp(companion.sheet.xp);
+            if (companionLevel > companion.sheet.level) {
+                companion.sheet.level = companionLevel;
+                companion.sheet.maxHp = rules_.maxHitPoints(companion.sheet.classId,
+                                                            companionLevel, companion.sheet.con);
+                companion.sheet.hp = companion.sheet.maxHp;
+            }
+        }
     }
     logEvent("xp +" + std::to_string(amount) + " = " + std::to_string(character_.xp));
 }
@@ -1669,7 +1956,7 @@ bool GameSession::save(const std::filesystem::path& path) const
     if (!file) {
         return false;
     }
-    file << "schema=kotor.engine.player/2\n";
+    file << "schema=kotor.engine.player/3\n";
     file << "module=" << module_ << "\n";
     file << "x=" << position_.x << "\ny=" << position_.y << "\nz=" << position_.z << "\n";
     file << "yaw=" << yaw_ << "\npitch=" << pitch_ << "\n";
@@ -1687,6 +1974,21 @@ bool GameSession::save(const std::filesystem::path& path) const
     }
     for (const std::string& tag : partyTags_) {
         file << "party=" << tag << "\n";
+    }
+    for (const CompanionState& companion : companions_) {
+        file << "companion=" << companion.tag << "|" << companion.sheet.name << "|"
+             << companion.sheet.classId << "|" << companion.sheet.level << "|"
+             << companion.sheet.xp << "|" << companion.sheet.hp << "|"
+             << companion.sheet.maxHp << "\n";
+    }
+    for (const MerchantState& merchant : merchants_) {
+        for (std::size_t i = 0; i < merchant.stock.size(); ++i) {
+            const MerchantStockItem& stock = merchant.stock[i];
+            if (!stock.infinite) {
+                file << "merchant=" << merchant.resref << "|" << i << "|"
+                     << stock.remaining << "\n";
+            }
+        }
     }
     for (const InventoryItem& item : character_.inventory) {
         file << "item=" << item.resref << "|" << item.baseItem << "|" << item.cost << "|"
@@ -1738,6 +2040,22 @@ bool GameSession::load(const std::filesystem::path& path)
     std::vector<std::string> party;
     std::vector<InventoryItem> inventory;
     std::map<std::string, script::Value> globals;
+    struct MerchantDelta {
+        std::string store;
+        std::size_t index = 0;
+        std::int32_t remaining = 0;
+    };
+    std::vector<MerchantDelta> merchantDeltas;
+    struct CompanionSave {
+        std::string tag;
+        std::string name;
+        std::int32_t classId = 0;
+        std::int32_t level = 1;
+        std::int32_t xp = 0;
+        std::int32_t hp = 1;
+        std::int32_t maxHp = 1;
+    };
+    std::vector<CompanionSave> companionSaves;
     struct LocalRecord {
         std::string tag;
         std::string name;
@@ -1755,7 +2073,7 @@ bool GameSession::load(const std::filesystem::path& path)
         const std::string value = line.substr(eq + 1);
         try {
             if (key == "schema") {
-                schema2 = value == "kotor.engine.player/2";
+                schema2 = value == "kotor.engine.player/2" || value == "kotor.engine.player/3";
             } else if (key == "module") {
                 module = value;
             } else if (key == "x") {
@@ -1799,6 +2117,36 @@ bool GameSession::load(const std::filesystem::path& path)
                 }
             } else if (key == "party") {
                 party.push_back(value);
+            } else if (key == "companion") {
+                std::vector<std::string> parts;
+                std::size_t start = 0;
+                while (start <= value.size()) {
+                    const std::size_t bar = value.find('|', start);
+                    parts.push_back(value.substr(start, bar == std::string::npos
+                                                            ? std::string::npos
+                                                            : bar - start));
+                    if (bar == std::string::npos) {
+                        break;
+                    }
+                    start = bar + 1;
+                }
+                if (parts.size() >= 7) {
+                    companionSaves.push_back({parts[0], parts[1], std::stoi(parts[2]),
+                                              std::stoi(parts[3]), std::stoi(parts[4]),
+                                              std::stoi(parts[5]), std::stoi(parts[6])});
+                }
+            } else if (key == "merchant") {
+                const std::size_t first = value.find('|');
+                const std::size_t second = value.find('|', first == std::string::npos
+                                                              ? first
+                                                              : first + 1);
+                if (first != std::string::npos && second != std::string::npos) {
+                    merchantDeltas.push_back({value.substr(0, first),
+                                              static_cast<std::size_t>(
+                                                  std::stoul(value.substr(first + 1,
+                                                                          second - first - 1))),
+                                              std::stoi(value.substr(second + 1))});
+                }
             } else if (key == "item") {
                 std::vector<std::string> parts;
                 std::size_t start = 0;
@@ -1876,7 +2224,25 @@ bool GameSession::load(const std::filesystem::path& path)
         playerHp_ = std::min(playerHp_, playerMaxHp_);
         gold_ = gold;
         journal_ = std::move(journal);
-        partyTags_ = std::move(party);
+        partyTags_.clear();
+        companions_.clear();
+        selectedCompanion_ = -1;
+        for (const std::string& tag : party) {
+            addPartyMember(tag);
+        }
+        for (const CompanionSave& saved : companionSaves) {
+            for (CompanionState& companion : companions_) {
+                if (lower(companion.tag) != lower(saved.tag)) {
+                    continue;
+                }
+                companion.sheet.name = saved.name;
+                companion.sheet.classId = saved.classId;
+                companion.sheet.level = saved.level;
+                companion.sheet.xp = saved.xp;
+                companion.sheet.hp = saved.hp;
+                companion.sheet.maxHp = saved.maxHp;
+            }
+        }
         scriptWorld_.party.clear();
         scriptWorld_.party.push_back(scriptWorld_.pc);
         for (const std::string& tag : partyTags_) {
@@ -1886,7 +2252,33 @@ bool GameSession::load(const std::filesystem::path& path)
                 scriptWorld_.party.push_back(id);
             }
         }
+        for (const MerchantDelta& delta : merchantDeltas) {
+            for (MerchantState& merchant : merchants_) {
+                if (lower(merchant.resref) != lower(delta.store)) {
+                    continue;
+                }
+                if (delta.index < merchant.stock.size()) {
+                    merchant.stock[delta.index].infinite = false;
+                    merchant.stock[delta.index].remaining = delta.remaining;
+                }
+            }
+        }
         character_.inventory = std::move(inventory);
+        for (InventoryItem& item : character_.inventory) {
+            if (!item.name.empty()) {
+                continue;
+            }
+            auto cached = itemTemplates_.find(item.resref);
+            if (cached == itemTemplates_.end()) {
+                if (auto templ = kotor::loadItemTemplate(install_, item.resref);
+                    templ.has_value()) {
+                    cached = itemTemplates_.emplace(item.resref, *templ).first;
+                }
+            }
+            if (cached != itemTemplates_.end()) {
+                item.name = cached->second.name;
+            }
+        }
         for (const auto& [name, value] : globals) {
             scriptWorld_.globals[name] = value;
         }

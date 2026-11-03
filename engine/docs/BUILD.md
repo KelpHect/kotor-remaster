@@ -81,6 +81,10 @@ build\msvc-release\kotor_engine.exe --module end_m01aa --script-test --null --he
 build\msvc-release\kotor_engine.exe --module end_m01aa --dialogue-test --null --headless
 build\msvc-release\kotor_engine.exe --module end_m01aa --rules-test --null --headless
 build\msvc-release\kotor_engine.exe --module end_m01aa --systems-test --null --headless
+build\msvc-release\kotor_engine.exe --module tar_m02ac --merchant-test --null --headless
+build\msvc-release\kotor_engine.exe --module tar_m03aa --encounter-test --null --headless
+build\msvc-release\kotor_engine.exe --module end_m01aa --party-test --null --headless
+build\msvc-release\kotor_engine.exe --module end_m01aa --ui-test --null --headless
 ```
 
 `kotor_vm_corpus` runs the native VM over the extracted 8,666-script corpus and

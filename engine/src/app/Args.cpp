@@ -157,6 +157,38 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.systemsTest = true;
             continue;
         }
+        if (arg == "--merchant-test") {
+            result.options.merchantTest = true;
+            continue;
+        }
+        if (arg == "--encounter-test") {
+            result.options.encounterTest = true;
+            continue;
+        }
+        if (arg == "--party-test") {
+            result.options.partyTest = true;
+            continue;
+        }
+        if (arg == "--ui-test") {
+            result.options.uiTest = true;
+            continue;
+        }
+        if (arg == "--panel") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--panel requires a panel name");
+            }
+            result.options.panel = value;
+            continue;
+        }
+        if (arg == "--add-party") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--add-party requires a tag");
+            }
+            result.options.addParty = value;
+            continue;
+        }
         if (arg == "--demo-dialogue") {
             result.options.demoDialogue = true;
             continue;
@@ -341,6 +373,12 @@ void printUsage()
         << "  --script-test         Run the shipped script hooks and assert their effects\n"
         << "  --rules-test          Assert the 2DA-driven character and d20 rules\n"
         << "  --systems-test        Assert party, inventory, journal and save/load\n"
+        << "  --merchant-test       Assert store stock, markup and buy/sell\n"
+        << "  --encounter-test      Assert encounter volumes and deterministic spawns\n"
+        << "  --party-test          Assert companion sheets and 80% XP sharing\n"
+        << "  --ui-test             Assert the systems UI panel state\n"
+        << "  --panel <name>        Open character|inventory|party|journal|merchant at startup\n"
+        << "  --add-party <tag>     Add a scene creature to the party at startup\n"
         << "  --demo-dialogue       Position at Trask and open the real dialogue UI\n"
         << "  --demo-combat         Position at a hostile creature and start combat\n"
         << "  --screenshot <path>   Write a BMP after the requested frames\n"
