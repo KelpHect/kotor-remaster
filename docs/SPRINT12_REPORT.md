@@ -13,7 +13,7 @@ and both renderers refresh entity vertex buffers from the posed mesh.
 
 ```text
 100% tests passed, 0 tests failed out of 36
-Total Test time (real) = 197.92 sec
+Total Test time (real) = 197.24 sec
 ```
 
 The new target is `kotor_animation`; all Sprint 11 targets still pass.
@@ -139,13 +139,27 @@ Saber nodes use the SaberHeader's static vertex/UV/normal arrays. The shipped
 (stride 0 trimesh header; 352 SaberHeader vertices / 24 faces), so dynamic
 saber physics is evidence-based re-scoped rather than invented.
 
-`fx_flame01` and room light nodes evaluate light/emitter controllers 76/80/84/
-88/380/392 and emit deterministic billboard quads. The full controller
-catalog is asserted: `fx_flame01` exposes 30+ controller types (including
-80/84/132/144/380/392) and room lights expose 76/88/140. Room light quads are
-added to the room mesh; entity effect quads use a separate refreshed FX mesh,
-so the existing GL/Vulkan path renders them without a new pipeline. The
-particle positions are a deterministic function of time, not random state.
+Every light/emitter controller family is sampled into `FxNodeParameters` at a
+given time: colour (76, 380, 392, 284), alpha (80, 84, 132, 216), size (144,
+148, 152, 156, 172, 176, 232, 236, 252), light radius/shadow/multiplier/
+vertical displacement (88, 96, 100, 140), and the complete emitter set
+(birth rate 88, fps 104, frame bounds 108/112, life 120, mass 124, Bezier
+128/132, rotation 136, random velocity 140, spread 160, threshold 164,
+velocity 168, blur 180, lightning 184-200, percentages 220-228, random birth
+240, bounce 92, combine 96, drag 100, gravity 116).
+
+`fx_flame01` exposes **33 catalogued types** across its 3 FX nodes; room lights
+expose 76/88/140. The parameter model is deterministic: two samples at the
+same time are identical, every value is finite, and the modelled type set
+equals the parsed catalogue. Billboard geometry consumes the model: lights get
+additive colour/radius/multiplier/vertical-displacement quads; emitters grow
+from `sizeStart` to `sizeEnd` with alpha/colour curves, birth-rate particle
+counts, lifetime phases, velocity/gravity/drag/mass motion, spread/random
+velocity offsets, Bezier/lightning offsets, blur stretching and threshold
+culling. Room light quads are added to the room mesh; entity effects use a
+separate refreshed FX mesh, so the existing GL/Vulkan path renders them
+without a new pipeline. Particle positions are a deterministic function of
+time, not random state.
 
 A corpus scan of **1,135 DLGs** found **45,396** `CamVidEffect=-1` and **39**
 `CamVidEffect=0`, with **0** non-default values; non-default effect semantics
@@ -156,10 +170,18 @@ Gate assertions: `dangly_loaded`, `dangly_nodes`, `dangly_mesh`,
 `saber_no_dangly`, `saber_no_skin`, `fx_loaded`, `fx_controllers_present`,
 `fx_controller_types`, `fx_controller_catalog`, `fx_controller_families`,
 `fx_no_skin`, `fx_nodes`, `fx_geometry`, `fx_finite`,
-`fx_animated`, `fx_additive_batches`, `fx_alpha_batches`, `scene_additive_batches`,
-`scene_opaque_batches`, `entity_alpha_batches`, `room_light_loaded`,
-`room_light_nodes`, `room_light_geometry`, `room_light_controllers`,
-`camvid_defaults`, `camvid_corpus_dlgs`, `camvid_corpus_defaults`.
+`fx_animated`, `fx_additive_batches`, `fx_alpha_batches`,
+`fx_parameter_textures`, `fx_param_nodes`, `fx_param_node_stable`,
+`fx_param_finite`, `fx_param_deterministic`, `fx_param_all_types`,
+`fx_param_count`, `fx_param_80`, `fx_param_84`, `fx_param_132`,
+`fx_param_144`, `fx_param_380`, `fx_param_392`,
+`fx_param_remaining_families`, `fx_param_alpha_curve`,
+`scene_additive_batches`, `scene_opaque_batches`, `entity_alpha_batches`,
+`room_light_loaded`, `room_light_nodes`, `room_light_geometry`,
+`room_light_controllers`, `room_light_param_nodes`,
+`room_light_param_finite`, `room_light_param_stable`,
+`room_light_param_types`, `camvid_defaults`, `camvid_corpus_dlgs`,
+`camvid_corpus_defaults`.
 
 ## 8. Rendering
 
@@ -172,7 +194,7 @@ when `GameSession::animationRevision()` changes.
 
 Room geometry keeps the 0x21 trimesh path and now also includes room light
 quads. Creature skins, weapons, sabers and FX contribute their real textures:
-Endar Spire now has **143 entity meshes**, **83 textures**, **239,178**
+Endar Spire now has **142 entity meshes**, **84 textures**, **237,594**
 vertices and **49 batches**. A GL capture at frame 10 versus frame 70 differs
 in **12,937 of 79,200** 3D-view pixels after excluding the HUD.
 
@@ -182,15 +204,15 @@ Batches carry `BlendMode::{Opaque, Alpha, Additive}`. OpenGL enables
 blending for opaque batches. Vulkan creates `alphaPipeline_` and
 `additivePipeline_` next to the base pipeline and binds the matching one per
 batch. Scene evidence: **14 additive** room-light batches, **1 alpha** and
-**34 opaque** room batches, and **21 alpha** entity FX batches. Both renderers
-report the same live counts (`alpha batches 22`, `additive batches 17`), and
+**34 opaque** room batches, and **23 alpha** entity FX batches. Both renderers
+report the same live counts (`alpha batches 24`, `additive batches 17`), and
 the Vulkan log confirms `alpha pipeline ready` and `additive pipeline ready`.
 A 960x540 GL/Vulkan capture of the 3D view differs by **0.0196/255** mean
 absolute channel value.
 
 ## 9. Regression
 
-- **CTest: 36/36 passed** (197.92 s).
+- **CTest: 36/36 passed** (197.24 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0449**, PASS.
@@ -199,8 +221,6 @@ absolute channel value.
 
 ## 10. Outside Sprint 12
 
-- Light/emitter animation scaling for exotic controller families beyond the
-  shipped billboard path; the evaluated `fx_flame01`/room-light path is in.
 - `CamVidEffect` values beyond the shipped -1/0 defaults (none exist in the
   1,135-DLG corpus).
 - Audio/EAX, Bink movies, lip sync, full `.gui`, minigames, localization,
@@ -212,6 +232,7 @@ absolute channel value.
 - `docs/evidence/s12/anim-frame-10.png`, `anim-frame-70.png`, `anim-diff.txt`
 - `docs/evidence/s12/weapon-attach.png` (GL hand-hook capture)
 - `docs/evidence/s12/blend-gl.png`, `blend-vk.png` (alpha/additive FX captures)
+- `docs/evidence/s12/fx-param-gl.png`, `fx-param-vk.png` (controller-driven FX captures)
 - `docs/evidence/s12/ctest.log`
 - `docs/evidence/s12/all-modules.log`, `all-modules.json`
 - `docs/evidence/s12/vm-corpus.log`, `vm-parity.json`

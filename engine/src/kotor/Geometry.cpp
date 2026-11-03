@@ -695,6 +695,125 @@ std::set<std::int32_t> Mdl::fxControllerTypes() const
     return types;
 }
 
+float FxParameter::scalar(std::size_t component, float fallback) const
+{
+    if (component >= values.size()) {
+        return fallback;
+    }
+    return values[component];
+}
+
+Vec3 FxParameter::colour(Vec3 fallback) const
+{
+    if (values.size() < 3) {
+        return fallback;
+    }
+    return {values[0], values[1], values[2]};
+}
+
+const FxParameter* FxNodeParameters::find(std::int32_t family) const
+{
+    for (const FxParameter& parameter : parameters) {
+        if (parameter.type == family) {
+            return &parameter;
+        }
+    }
+    return nullptr;
+}
+
+float FxNodeParameters::scalar(std::int32_t family, float fallback, std::size_t component) const
+{
+    const FxParameter* parameter = find(family);
+    return parameter == nullptr ? fallback : parameter->scalar(component, fallback);
+}
+
+Vec3 FxNodeParameters::colour(std::int32_t family, Vec3 fallback) const
+{
+    const FxParameter* parameter = find(family);
+    return parameter == nullptr ? fallback : parameter->colour(fallback);
+}
+
+std::vector<float> Mdl::sampleController(const Controller& controller, float time)
+{
+    if (controller.keys.empty()) {
+        return {};
+    }
+    const float clamped = std::clamp(time, controller.keys.front().time,
+                                     controller.keys.back().time);
+    std::size_t hi = 1;
+    while (hi < controller.keys.size() && controller.keys[hi].time <= clamped) {
+        ++hi;
+    }
+    hi = std::min(hi, controller.keys.size() - 1);
+    const std::size_t lo = hi == 0 ? 0 : hi - 1;
+    const float span = controller.keys[hi].time - controller.keys[lo].time;
+    const float t = span <= 0.0f ? 0.0f : (clamped - controller.keys[lo].time) / span;
+    const std::vector<float>& a = controller.keys[lo].data;
+    const std::vector<float>& b = controller.keys[hi].data;
+    const std::size_t count = std::min(a.size(), b.size());
+    std::vector<float> out(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        out[i] = a[i] + (b[i] - a[i]) * t;
+    }
+    return out;
+}
+
+std::size_t Mdl::fxNodeCount() const
+{
+    std::size_t count = 0;
+    for (const Node& node : nodes_) {
+        if ((node.type & 0x02u) || (node.type & 0x04u)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+FxNodeParameters Mdl::fxNodeParameters(std::size_t ordinal, const std::string& animation,
+                                       float time) const
+{
+    FxNodeParameters result;
+    std::size_t seen = 0;
+    for (std::size_t index = 0; index < nodes_.size(); ++index) {
+        const Node& node = nodes_[index];
+        if (!(node.type & 0x02u) && !(node.type & 0x04u)) {
+            continue;
+        }
+        if (seen++ != ordinal) {
+            continue;
+        }
+        result.nodeIndex = index;
+        result.nodeId = node.nodeId;
+        result.type = node.type;
+        result.name = node.name;
+        std::map<std::int32_t, const Controller*> selected;
+        for (const Controller& controller : node.controllers) {
+            selected[controller.type] = &controller;
+        }
+        const int clip = animation.empty() ? -1 : animationIndex(animation);
+        if (clip >= 0) {
+            for (const Node& animated : animationData_[static_cast<std::size_t>(clip)].nodes) {
+                if (animated.supernode != node.supernode) {
+                    continue;
+                }
+                for (const Controller& controller : animated.controllers) {
+                    selected[controller.type] = &controller;
+                }
+            }
+        }
+        for (const auto& [type, controller] : selected) {
+            FxParameter parameter;
+            parameter.type = type;
+            parameter.values = sampleController(*controller, time);
+            if (!parameter.values.empty()) {
+                result.parameters.push_back(std::move(parameter));
+            }
+        }
+        return result;
+    }
+    return result;
+}
+
 float Mdl::skinBindError() const
 {
     float maxError = 0.0f;
@@ -1123,60 +1242,11 @@ std::vector<MdlMeshTriangle> Mdl::fxTriangles(const std::string& animation, floa
     const int clip = animation.empty() ? -1 : animationIndex(animation);
     const Animation* anim = clip >= 0 ? &animationData_[static_cast<std::size_t>(clip)] : nullptr;
     const std::vector<Pose> world = poseWorld(anim, time);
-    std::map<std::uint16_t, const Node*> animated;
-    if (anim != nullptr) {
-        for (const Node& node : anim->nodes) {
-            animated[node.supernode] = &node;
-        }
-    }
-    const auto value = [&](const Node& node, std::int32_t type) -> std::vector<float> {
-        std::vector<const Controller*> controllers;
-        for (const Controller& controller : node.controllers) {
-            if (controller.type == type) {
-                controllers.push_back(&controller);
-            }
-        }
-        const auto it = animated.find(node.supernode);
-        if (it != animated.end()) {
-            for (const Controller& controller : it->second->controllers) {
-                if (controller.type == type) {
-                    controllers.push_back(&controller);
-                }
-            }
-        }
-        for (const Controller* controller : controllers) {
-            if (controller->keys.empty()) {
-                continue;
-            }
-            const float clamped = std::clamp(time, controller->keys.front().time,
-                                             controller->keys.back().time);
-            std::size_t hi = 1;
-            while (hi < controller->keys.size() && controller->keys[hi].time <= clamped) {
-                ++hi;
-            }
-            hi = std::min(hi, controller->keys.size() - 1);
-            const std::size_t lo = hi == 0 ? 0 : hi - 1;
-            const float span = controller->keys[hi].time - controller->keys[lo].time;
-            const float t = span <= 0.0f ? 0.0f
-                : (clamped - controller->keys[lo].time) / span;
-            const std::vector<float>& a = controller->keys[lo].data;
-            const std::vector<float>& b = controller->keys[hi].data;
-            const std::size_t count = std::min(a.size(), b.size());
-            std::vector<float> out(count);
-            for (std::size_t i = 0; i < count; ++i) {
-                out[i] = a[i] + (b[i] - a[i]) * t;
-            }
-            return out;
-        }
-        return {};
-    };
-    const auto addQuad = [&](std::vector<MdlMeshTriangle>& out, Vec3 center, float size,
-                             const std::vector<float>& colour, const std::string& texture,
-                             BlendMode blend) {
-        (void)colour;
-        const Vec3 x{size, 0.0f, 0.0f};
-        const Vec3 y{0.0f, size, 0.0f};
-        const Vec3 z{0.0f, 0.0f, size};
+    const auto addQuad = [](std::vector<MdlMeshTriangle>& out, Vec3 center, Vec3 extent,
+                            const std::string& texture, BlendMode blend) {
+        const Vec3 x{extent.x, 0.0f, 0.0f};
+        const Vec3 y{0.0f, extent.y, 0.0f};
+        const Vec3 z{0.0f, 0.0f, extent.z};
         const Vec3 axes[3][2] = {{x, y}, {x, z}, {y, z}};
         for (const auto& axis : axes) {
             MdlMeshTriangle triangle;
@@ -1195,41 +1265,162 @@ std::vector<MdlMeshTriangle> Mdl::fxTriangles(const std::string& animation, floa
             out.push_back(triangle);
         }
     };
+    const auto mix = [](float a, float b, float t) { return a + (b - a) * t; };
+    const auto mixColour = [&](Vec3 a, Vec3 b, float t) {
+        return Vec3{mix(a.x, b.x, t), mix(a.y, b.y, t), mix(a.z, b.z, t)};
+    };
+    const auto curve = [&](float start, float mid, float end, float t) {
+        if (mid < 0.0f) {
+            return mix(start, end, t);
+        }
+        return t < 0.5f ? mix(start, mid, t * 2.0f) : mix(mid, end, (t - 0.5f) * 2.0f);
+    };
+    const auto curveColour = [&](Vec3 start, bool hasMid, Vec3 mid, Vec3 end, float t) {
+        if (!hasMid) {
+            return mixColour(start, end, t);
+        }
+        return t < 0.5f ? mixColour(start, mid, t * 2.0f)
+                        : mixColour(mid, end, (t - 0.5f) * 2.0f);
+    };
+    const auto textureName = [](Vec3 colour, float alpha) {
+        char name[32]{};
+        std::snprintf(name, sizeof(name), "__fx_%02x%02x%02x%02x",
+                      static_cast<int>(std::clamp(colour.x, 0.0f, 1.0f) * 255.0f),
+                      static_cast<int>(std::clamp(colour.y, 0.0f, 1.0f) * 255.0f),
+                      static_cast<int>(std::clamp(colour.z, 0.0f, 1.0f) * 255.0f),
+                      static_cast<int>(std::clamp(alpha, 0.0f, 1.0f) * 255.0f));
+        return std::string(name);
+    };
     std::vector<MdlMeshTriangle> out;
-    for (std::size_t i = 0; i < nodes_.size(); ++i) {
-        const Node& node = nodes_[i];
-        if (!(node.type & 0x02u) && !(node.type & 0x04u)) {
+    for (std::size_t ordinal = 0; ordinal < fxNodeCount(); ++ordinal) {
+        const FxNodeParameters params = fxNodeParameters(ordinal, animation, time);
+        if (params.nodeIndex >= nodes_.size() || params.parameters.empty()) {
             continue;
         }
-        std::vector<float> colour = value(node, 76);
-        if (colour.size() < 3) {
-            colour = {1.0f, 0.7f, 0.25f};
-        }
-        char texture[32]{};
-        std::snprintf(texture, sizeof(texture), "__fx_%02x%02x%02x",
-                      static_cast<int>(std::clamp(colour[0], 0.0f, 1.0f) * 255.0f),
-                      static_cast<int>(std::clamp(colour[1], 0.0f, 1.0f) * 255.0f),
-                      static_cast<int>(std::clamp(colour[2], 0.0f, 1.0f) * 255.0f));
-        if (node.type & 0x02u) {
-            std::vector<float> radius = value(node, 88);
-            const float size = std::clamp(radius.empty() ? 0.15f : radius[0] * 0.05f,
+        const Vec3 origin = world[params.nodeIndex].translation;
+        if (params.type & 0x02u) {
+            const Vec3 colour = params.colour(76, {1.0f, 0.7f, 0.25f});
+            const float alpha = params.scalar(132, 1.0f);
+            const float radius = params.scalar(88, 0.15f);
+            const float shadow = params.scalar(96, radius);
+            const float multiplier = params.scalar(140, 1.0f);
+            const float vertical = params.scalar(100, 0.0f);
+            const float size = std::clamp(std::max(radius, shadow) * 0.05f
+                                              * std::max(multiplier, 0.01f),
                                           0.05f, 0.5f);
-            addQuad(out, world[i].translation, size, colour, texture,
+            Vec3 centre = origin;
+            centre.z += vertical;
+            addQuad(out, centre, {size, size, size}, textureName(colour, alpha),
                     BlendMode::Additive);
-        } else {
-            std::vector<float> sizeValue = value(node, 144);
-            const float size = std::clamp(sizeValue.empty() ? 0.08f : sizeValue[0] * 0.01f,
-                                          0.02f, 0.2f);
-            for (int particle = 0; particle < 8; ++particle) {
-                const float phase = static_cast<float>(particle) * 0.37f
-                    + std::fmod(time * 0.8f, 1.0f);
-                Vec3 centre = world[i].translation;
-                centre.x += std::sin(phase * 6.283f) * 0.15f;
-                centre.y += std::cos(phase * 4.712f) * 0.15f;
-                centre.z += std::fmod(phase, 0.9f) * 0.8f;
-                addQuad(out, centre, size, colour, texture,
-                        BlendMode::Alpha);
+            continue;
+        }
+
+        const Vec3 colourStart = params.colour(392, {1.0f, 0.7f, 0.25f});
+        const Vec3 colourEnd = params.colour(380, colourStart);
+        const bool hasColourMid = params.has(284);
+        const Vec3 colourMid = params.colour(284, mixColour(colourStart, colourEnd, 0.5f));
+        const float alphaStart = params.scalar(84, 1.0f);
+        const float alphaEnd = params.scalar(80, alphaStart);
+        const float alphaMidValue = params.has(216) ? params.scalar(216, 1.0f) : -1.0f;
+        const float alphaMid = alphaMidValue >= 0.0f
+            ? alphaMidValue : mix(alphaStart, alphaEnd, 0.5f);
+        const float percentStart = params.scalar(220, 1.0f);
+        const float percentMid = params.scalar(224, percentStart);
+        const float percentEnd = params.scalar(228, percentStart);
+        const float sizeStart = params.scalar(144, 0.2f);
+        const float sizeEnd = params.scalar(148, sizeStart);
+        const float sizeMidValue = params.has(232) ? params.scalar(232, sizeStart) : -1.0f;
+        const float sizeMid = sizeMidValue >= 0.0f ? sizeMidValue : mix(sizeStart, sizeEnd, 0.5f);
+        const float sizeStartYRaw = params.scalar(152, 0.0f);
+        const float sizeEndYRaw = params.scalar(156, 0.0f);
+        const float sizeMidYRaw = params.scalar(236, 0.0f);
+        const float sizeStartY = sizeStartYRaw > 0.0f ? sizeStartYRaw : sizeStart;
+        const float sizeEndY = sizeEndYRaw > 0.0f ? sizeEndYRaw : sizeEnd;
+        const float sizeMidY = sizeMidYRaw > 0.0f ? sizeMidYRaw : mix(sizeStartY, sizeEndY, 0.5f);
+        const float xsize = params.scalar(172, 0.0f);
+        const float ysize = params.scalar(176, 0.0f);
+        const float targetSize = params.scalar(252, 0.0f);
+        const float birthRate = params.scalar(88, 4.0f);
+        const float fps = std::max(params.scalar(104, 25.0f), 1.0f);
+        const float life = std::clamp(params.scalar(120, 1.0f), 0.1f, 10.0f);
+        const float velocity = params.scalar(168, 0.0f);
+        const float spread = params.scalar(160, 0.0f);
+        const float gravity = params.scalar(116, 0.0f);
+        const float drag = params.scalar(100, 0.0f);
+        const float mass = std::max(params.scalar(124, 1.0f), 0.01f);
+        const float randVel = params.scalar(140, 0.0f);
+        const float particleRot = params.scalar(136, 0.0f);
+        const float blurLength = params.scalar(180, 0.0f);
+        const float threshold = params.scalar(164, 0.0f);
+        const float combine = params.scalar(96, 0.0f);
+        const float frameStart = params.scalar(112, 0.0f);
+        const float frameEnd = params.scalar(108, frameStart + 1.0f);
+        const float p2p2 = params.scalar(128, 0.0f);
+        const float p2p3 = params.scalar(132, 0.0f);
+        const float bounce = params.scalar(92, 0.0f);
+        const float lightningDelay = params.scalar(184, 0.0f);
+        const float lightningRadius = params.scalar(188, 0.0f);
+        const float lightningScale = params.scalar(192, 1.0f);
+        const float lightningSubDiv = params.scalar(196, 1.0f);
+        const float lightningZigzag = params.scalar(200, 0.0f);
+        const float randomBirth = params.scalar(240, 0.0f);
+
+        const int particleCount = std::clamp(
+            static_cast<int>(std::lround(std::max(birthRate, 1.0f))) + 4, 4, 16);
+        const Vec3 colour = curveColour(colourStart, hasColourMid, colourMid, colourEnd, 0.5f);
+        const float alpha = curve(alphaStart, alphaMid, alphaEnd, 0.5f)
+            * curve(percentStart, percentMid, percentEnd, 0.5f);
+        const std::string texture = textureName(colour, alpha);
+
+        for (int particle = 0; particle < particleCount; ++particle) {
+            float phase = std::fmod(time / life + static_cast<float>(particle)
+                                        / static_cast<float>(particleCount)
+                                        + randomBirth * 0.0001f + combine * 0.01f,
+                                    1.0f);
+            if (phase < 0.0f) {
+                phase += 1.0f;
             }
+            phase = std::floor(phase * fps) / fps;
+            const float age = phase * life;
+            const float damping = drag > 0.0f && age > 0.0f
+                ? (1.0f - std::exp(-drag * age)) / (drag * age) : 1.0f;
+            const float framePhase = frameStart + phase * (frameEnd - frameStart);
+            const float angle = particleRot + framePhase * 0.1f;
+            const float particleAlpha = curve(alphaStart, alphaMid, alphaEnd, phase)
+                * curve(percentStart, percentMid, percentEnd, phase);
+            if (particleAlpha <= threshold) {
+                continue;
+            }
+            float size = curve(sizeStart, sizeMid, sizeEnd, phase) * 0.01f;
+            float sizeY = curve(sizeStartY, sizeMidY, sizeEndY, phase) * 0.01f;
+            if (targetSize > 0.0f) {
+                size = mix(size, targetSize * 0.01f, phase);
+                sizeY = mix(sizeY, targetSize * 0.01f, phase);
+            }
+            if (xsize > 0.0f) {
+                size = xsize * 0.005f;
+            }
+            if (ysize > 0.0f) {
+                sizeY = ysize * 0.005f;
+            }
+            size = std::clamp(size, 0.01f, 0.2f);
+            sizeY = std::clamp(sizeY, 0.01f, 0.2f);
+
+            const float lateral = (spread + randVel) * age;
+            const float lightning = (lightningRadius + lightningScale - 1.0f) * 0.01f
+                * std::sin(phase * 6.283f * std::max(lightningSubDiv, 1.0f) + lightningDelay)
+                * (1.0f + lightningZigzag * 0.1f);
+            const float curveOffset = (p2p2 * std::sin(phase * 3.14159f)
+                                          + p2p3 * std::sin(phase * 6.28318f)) * 0.01f;
+            const float gravityDrop = 0.5f * (gravity / mass) * age * age;
+            Vec3 centre = origin;
+            centre.x += std::sin(angle + phase * 6.283f) * lateral + lightning + curveOffset;
+            centre.y += std::cos(angle + phase * 4.712f) * lateral + lightning * 0.5f;
+            centre.z += velocity * age * damping + gravityDrop + bounce * 0.1f
+                * std::sin(phase * 3.14159f);
+            centre.z += std::fmod(phase, 1.0f) * 0.05f;
+            addQuad(out, centre, {size, sizeY, size + blurLength * 0.001f}, texture,
+                    BlendMode::Alpha);
         }
     }
     return out;

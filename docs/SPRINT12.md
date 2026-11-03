@@ -42,9 +42,10 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
    clip, then the preset, then the static camera.
 7. **Dangly, saber and FX meshes** - dangly headers and per-vertex constraints
    drive a deterministic damped settle; saber headers expose their static
-   vertex/UV/normal arrays; light and emitter controllers are cataloged and
-   evaluated, emitting deterministic billboard quads (room lights and
-   `fx_flame01`).
+   vertex/UV/normal arrays; every light/emitter controller family is sampled
+   into `FxNodeParameters` and drives deterministic billboard quads (colour,
+   alpha, size, birth rate, lifetime, velocity, spread, gravity, drag, mass,
+   lightning, Bezier and percentage curves) for room lights and `fx_flame01`.
 8. **Script bridge** - `animations.2da` names and flags load; `PlayAnimation`
    and `ActionPlayAnimation` map an animation id to a clip and play it on
    `OBJECT_SELF`.
@@ -77,8 +78,6 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
 ## Outside this sprint
 
 - Non-default `CamVidEffect` semantics (none exist in the 1,135-DLG corpus).
-- Light/emitter **animation scaling for every exotic controller family**; the
-  shipped light/emitter billboard path is implemented.
 - Audio/EAX, Bink movies, lip sync, full `.gui`, minigames, localization,
   mods/Override runtime precedence and the P6 content checklist.
 

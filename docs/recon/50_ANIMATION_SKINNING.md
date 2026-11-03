@@ -145,11 +145,29 @@ headers but valid 352-vertex / 24-face SaberHeader geometry. They contain no
 constraints or springs, so they render as static blade geometry; dynamic saber
 physics is re-scoped with this shipped-data evidence.
 
-Light nodes (`type & 0x02`) and emitter nodes (`type & 0x04`) evaluate their
-controller arrays (notably 76 colour, 88 radius, 144 size, 380/392 colour
-ends) and emit deterministic billboard quads. Room lights are appended to the
-room mesh; entity effects are separate refreshed `EntityMesh` records. The
-particle positions are a deterministic function of time, not random state.
+Light nodes (`type & 0x02`) and emitter nodes (`type & 0x04`) evaluate every
+controller family through `Mdl::fxNodeParameters(ordinal, animation, time)`.
+Each `FxParameter` keeps the controller's native width and is sampled by
+clamped linear interpolation between keys. The model covers:
+
+- light: 76 colour, 88 radius, 96 shadow radius, 100 vertical displacement,
+  132 alpha, 140 multiplier;
+- emitter: 80/84/216/220-228 alpha and percentage curves, 88 birth rate,
+  92 bounce, 96 combine time, 100 drag, 104 fps, 108/112 frame bounds,
+  116 gravity, 120 life expectancy, 124 mass, 128/132 Bezier, 136 rotation,
+  140 random velocity, 144/148/152/156/232/236 sizes, 160 spread,
+  164 threshold, 168 velocity, 172/176 xy size, 180 blur length, 184-200
+  lightning, 240 random birth rate, 252 target size, 284 colour mid,
+  380/392 colour end/start.
+
+`fxTriangles` consumes the model: light nodes emit additive quads using
+colour/radius/shadow/multiplier/vertical displacement; emitter nodes emit
+alpha quads with birth-rate particle count, lifetime phase, alpha/colour/size
+curves, velocity/gravity/drag/mass motion, spread/random-velocity offsets,
+Bezier/lightning offsets, blur stretching and threshold culling. Room lights
+are appended to the room mesh; entity effects are separate refreshed
+`EntityMesh` records. Particle positions are a deterministic function of
+time, not random state.
 
 FX triangles carry `BlendMode::{Opaque, Alpha, Additive}` through
 `TextureBatch`. Lights are additive (`SRC_ALPHA, ONE`), emitters are alpha
@@ -164,7 +182,7 @@ positions/normals/UVs; topology and texture batches are stable. GL issues a
 dynamic `glBufferData` for each changed entity mesh; Vulkan maps the existing
 host-visible vertex allocation and copies the new vertices. The application
 refreshes only when `GameSession::animationRevision()` changes. Both renderers
-report the live blend inventory (22 alpha, 17 additive batches on Endar
+report the live blend inventory (24 alpha, 17 additive batches on Endar
 Spire); Vulkan creates and binds its alpha/additive pipelines successfully.
 
 ## 9. Validation
@@ -177,7 +195,7 @@ Spire); Vulkan creates and binds its alpha/additive pipelines successfully.
   0.96 s; `animations.2da` row 6 is `pause1` and loops.
 - Script fixture `anim_script_test.ncs` calls `PlayAnimation(6,1,0)` on an
   NPC and the NPC's clip becomes `pause1`.
-- Endar Spire now has **143 entity meshes**, **83 textures**, **239,178**
+- Endar Spire now has **142 entity meshes**, **84 textures**, **237,594**
   vertices and **49 batches**; the weapon gate checks hand hooks, models,
   finite vertices, parent linkage and motion while the creature animates.
 - GIT `CameraList` loads; `cinematicCamera` matches the stored eye height and
@@ -191,10 +209,12 @@ Spire); Vulkan creates and binds its alpha/additive pipelines successfully.
 - `CameraAngle` 1/2/3 presets compute finite, unit-forward cameras.
 - Corpus scan of 1,135 DLGs: 45,396 `CamVidEffect=-1`, 39 `CamVidEffect=0`,
   0 non-default.
-- `fx_flame01` exposes 30+ controller types (including 80/84/132/144/380/392)
-  and room lights expose 76/88/140; FX triangles are finite and animated, and
-  `m01aa_01a` room lights produce FX geometry. Non-default `CamVidEffect` is 0
-  across the 1,135-DLG corpus.
+- `fx_flame01` exposes 33 controller types across 3 FX nodes; the parameter
+  model returns exactly that set, all finite and deterministic at equal sample
+  times. The 80/84/132/144/380/392 families are asserted individually, and
+  room lights (`m01aa_01a`) expose 76/88/140 with stable parameter values.
+  FX triangles are finite and animated. Non-default `CamVidEffect` is 0 across
+  the 1,135-DLG corpus.
 - `blendedTriangles` produces finite cross-fade vertices; `rootMotion` is
   unchanged between sampled frames (root-in-place); `hasNonPoseControllers`
   is false for the sampled pose clips (no IK controllers).

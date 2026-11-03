@@ -108,15 +108,19 @@ void addEntities(const Gff& git, std::uint32_t root, const char* listLabel, Enti
 
 Image fxTexture(const std::string& name)
 {
-    int r = 255, g = 255, b = 255;
+    int r = 255, g = 255, b = 255, a = 255;
     if (name.size() >= 11) {
         try {
             r = std::stoi(name.substr(5, 2), nullptr, 16);
             g = std::stoi(name.substr(7, 2), nullptr, 16);
             b = std::stoi(name.substr(9, 2), nullptr, 16);
+            if (name.size() >= 13) {
+                a = std::stoi(name.substr(11, 2), nullptr, 16);
+            }
         } catch (const std::exception&) {
         }
     }
+    const float baseAlpha = static_cast<float>(a) / 255.0f;
     Image image;
     image.width = 8;
     image.height = 8;
@@ -130,13 +134,14 @@ Image fxTexture(const std::string& name)
             image.rgba[o] = static_cast<std::uint8_t>(r);
             image.rgba[o + 1] = static_cast<std::uint8_t>(g);
             image.rgba[o + 2] = static_cast<std::uint8_t>(b);
-            image.rgba[o + 3] = static_cast<std::uint8_t>(alpha * 255.0f);
+            image.rgba[o + 3] = static_cast<std::uint8_t>(alpha * baseAlpha * 255.0f);
         }
     }
     return image;
 }
 
-void addCameras(const Gff& git, std::uint32_t root, Scene& scene){
+void addCameras(const Gff& git, std::uint32_t root, Scene& scene)
+{
     const GffField* listField = git.field(root, "CameraList");
     if (listField == nullptr || listField->type != GffType::List) {
         return;
