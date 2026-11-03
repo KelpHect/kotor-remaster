@@ -10,7 +10,7 @@ alignment/FP/feats/powers persist in both engine and original saves.
 
 ```text
 100% tests passed, 0 tests failed out of 35
-Total Test time (real) =  48.47 sec
+Total Test time (real) =  59.37 sec
 ```
 
 The new target is `kotor_combat_force`. All Sprint 10 save/profile/delayed
@@ -54,14 +54,32 @@ Combat feats now have effects:
 - Flurry/Improved/Master: extra attack, attack -4/-2/0.
 - Critical Strike/Improved/Master: attack -2, threat 19/18/17.
 - Whirlwind: attack -4, adjacent AoE.
-- Toughness/Improved/Master: +2/+4/+6 HP per level.
-- Weapon Focus: +1 attack; Weapon Specialization: +2 damage.
+- Toughness: +1 HP/level; Improved adds 2-point damage reduction; Master adds
+  a second +1 HP/level while retaining the reduction.
+- Weapon Focus: one +1 attack bonus; Weapon Specialization: one +2 damage bonus.
 - Dueling/Advanced/Master: +1/+2/+3 attack.
 - Two-Weapon Fighting/Advanced/Mastery: -6/-4/-2/0 attack with two weapons.
+- Caution/Empathy/Gear Head: +1/+2/+3 to their skill groups.
+- Conditioning/Improved/Master: +1/+2/+3 all saving throws.
+- Force Focus/Improved/Master: +1/+2/+4 Force save DC.
+- Scoundrel's Luck and Jedi Sense tiers: +2/+4/+6 defense.
+- Sneak Attack I-X: +1d6..+10d6 against stunned/fear-immobilized targets.
+- Improved/Master Toughness: +1 HP/level and 2-point damage reduction.
+- Wookiee Toughness: +2 HP/level and 2-point damage reduction.
+- Armor/weapon proficiency is enforced from `baseitems.reqfeat0..4`; classes
+  receive their starting proficiencies.
 
 Flurry adds an attack in the round, Whirlwind hits adjacent hostiles, and
 stunned/feared creatures skip movement and attacks. Force armor adds AC, Force
-shield absorbs damage, Force speed multiplies movement.
+shield absorbs damage, Force speed multiplies movement. Armor and weapon
+proficiencies are enforced from `baseitems.reqfeat0..4`; classes receive their
+starting proficiencies.
+
+Deterministic assertions include `caution_1/2/3`, `empathy_1`, `gear_head_1`,
+`conditioning_1/2/3`, `force_focus_1/2/4`, `scoundrel_luck_2/4/6`,
+`jedi_sense_2`, `knight_sense_4`, `master_sense_6`, `sneak_1/2`,
+`wookiee_endurance_dr/hp`, proficiency checks, `effect_engine_roundtrip` and
+`effect_original_roundtrip`.
 
 ## 5. Alignment and script bridge
 
@@ -83,17 +101,21 @@ parity is unchanged.
 
 ## 6. Persistence
 
-- Engine text save: `alignment`, `force_points`, `max_force_points`.
-- Original save: PC `GoodEvil`, `CurrentForce`, `MaxForcePoints`.
+- Engine text save: `alignment`, `force_points`, `max_force_points`, and every
+  live `ActiveEffect` plus `force_suppressed`.
+- Original save: PC `GoodEvil`, `CurrentForce`, `MaxForcePoints`, and the
+  `EffectList`/`ForceSuppressed` fields.
 - Feats use `feat=` and the original `FeatList`; powers use `power=` and the
   original `LvlStatList[].KnownList0[].Spell` list.
+- The gate applies Force Armor, saves/reloads both formats, and checks the
+  effect label and computed armor bonus survive.
 
 The gate round-trips alignment 25 and the current FP through both paths and
 reloads the original slot.
 
 ## 7. Regression
 
-- **CTest: 35/35 passed** (48.47 s).
+- **CTest: 35/35 passed** (59.37 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0300**, PASS.
@@ -102,9 +124,9 @@ reloads the original slot.
 
 ## 8. Not in Sprint 11
 
-- Exact original formulas/animations for non-combat feats (crafting, skill
-  focus, gear feats) and content-specific scripted exceptions.
-- Persisting the live `ActiveEffect` stack across save/load.
+- Content-specific abilities that need absent presentation/subsystems:
+  Battle Meditation (large-scale only), Jedi Defense projectile deflection,
+  Force Camouflage (stealth presentation) and Force Jump (navigation presentation).
 - Cutscenes, animation/skinning, audio/EAX, Bink/lip sync, full `.gui`,
   minigames, localization, mods/Override, KotOR 2 world loading and P6 content.
 

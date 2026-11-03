@@ -117,6 +117,7 @@ public:
     std::int32_t xpForLevel(std::int32_t level) const;
     std::int32_t baseAttackBonus(std::int32_t classId, std::int32_t level) const;
     std::int32_t savingThrow(std::int32_t classId, std::int32_t level, int which) const;
+    std::int32_t savingThrow(const CharacterSheet& sheet, int which) const;
     std::int32_t maxHitPoints(std::int32_t classId, std::int32_t level,
                               std::int32_t constitution) const;
     std::int32_t skillPointsForLevel(std::int32_t classId, std::int32_t intelligence) const;
@@ -136,6 +137,9 @@ public:
     std::int32_t featDamageBonus(const CharacterSheet& sheet) const;
     std::int32_t twoWeaponPenalty(const CharacterSheet& sheet) const;
     std::int32_t toughnessBonus(const CharacterSheet& sheet) const;
+    std::int32_t damageReduction(const CharacterSheet& sheet) const;
+    std::int32_t sneakAttackDice(const CharacterSheet& sheet) const;
+    std::int32_t skillBonus(const CharacterSheet& sheet, const std::string& skill) const;
     bool hasFeatLabel(const CharacterSheet& sheet, const std::string& needle) const;
 
     int equipSlotFor(std::int32_t baseItem) const;

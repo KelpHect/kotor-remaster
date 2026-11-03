@@ -121,6 +121,24 @@ CharacterSheet Rules::createCharacter(std::int32_t classId, std::int32_t level,
         sheet.cha = cellInt(*classes_, row, "cha", 10);
         sheet.name = classes_->cell(row, "label");
     }
+    switch (classId) {
+    case 0: // Soldier
+        sheet.feats = {4, 5, 6, 39, 40, 42, 44};
+        break;
+    case 1: // Scout
+        sheet.feats = {5, 39, 40, 44};
+        break;
+    case 2: // Scoundrel
+        sheet.feats = {5, 39, 44};
+        break;
+    case 3:
+    case 4:
+    case 5: // Jedi Guardian/Consular/Sentinel
+        sheet.feats = {5, 43, 44, 55, 116};
+        break;
+    default:
+        break;
+    }
     sheet.maxHp = maxHitPoints(sheet.classId, sheet.level, sheet.con);
     sheet.hp = sheet.maxHp;
     sheet.alignment = 50;
@@ -195,7 +213,21 @@ std::int32_t Rules::savingThrow(std::int32_t classId, std::int32_t level, int wh
         return 0;
     }
     const char* column = which == 0 ? "fortsave" : which == 1 ? "refsave" : "willsave";
-    return cellInt(it->second, std::to_string(std::max(1, std::min(level, 20)) - 1), column, 0);
+    return cellInt(it->second, std::to_string(std::max(1, std::min(level, 20)) - 1),
+                   column, 0);
+}
+
+std::int32_t Rules::savingThrow(const CharacterSheet& sheet, int which) const
+{
+    std::int32_t bonus = savingThrow(sheet.classId, sheet.level, which);
+    if (hasFeatLabel(sheet, "MASTER_CONDITIONING")) {
+        bonus += 3;
+    } else if (hasFeatLabel(sheet, "IMPROVED_CONDITIONING")) {
+        bonus += 2;
+    } else if (hasFeatLabel(sheet, "CONDITIONING")) {
+        bonus += 1;
+    }
+    return bonus;
 }
 
 std::int32_t Rules::maxHitPoints(std::int32_t classId, std::int32_t level,
@@ -350,8 +382,16 @@ std::int32_t Rules::maxForcePoints(std::int32_t classId, std::int32_t level,
 
 std::int32_t Rules::forcePowerSaveDC(const CharacterSheet& sheet) const
 {
+    std::int32_t focus = 0;
+    if (hasFeatLabel(sheet, "FORCE_FOCUS_MASTERY")) {
+        focus = 4;
+    } else if (hasFeatLabel(sheet, "FORCE_FOCUS_ADVANCED")) {
+        focus = 2;
+    } else if (hasFeatLabel(sheet, "FORCE_FOCUS")) {
+        focus = 1;
+    }
     return 10 + sheet.level / 2
-        + static_cast<std::int32_t>(abilityModifier(sheet.wis));
+        + static_cast<std::int32_t>(abilityModifier(sheet.wis)) + focus;
 }
 
 bool Rules::hasFeatLabel(const CharacterSheet& sheet, const std::string& needle) const
@@ -396,17 +436,63 @@ std::int32_t Rules::featDamageBonus(const CharacterSheet& sheet) const
 std::int32_t Rules::toughnessBonus(const CharacterSheet& sheet) const
 {
     std::int32_t perLevel = 0;
-    for (const std::int32_t feat : sheet.feats) {
-        const std::string label = featName(feat);
-        if (label == "TOUGHNESS") {
-            perLevel = std::max<std::int32_t>(perLevel, 2);
-        } else if (label == "IMPROVED_TOUGHNESS") {
-            perLevel = std::max<std::int32_t>(perLevel, 4);
-        } else if (label == "MASTER_TOUGHNESS") {
-            perLevel = std::max<std::int32_t>(perLevel, 6);
-        }
+    if (hasFeatLabel(sheet, "TOUGHNESS")) {
+        perLevel = 1;
+    }
+    if (hasFeatLabel(sheet, "MASTER_TOUGHNESS")) {
+        perLevel = 2;
+    }
+    if (hasFeatLabel(sheet, "WOOKIE_ENDURANCE")) {
+        perLevel += 2;
     }
     return perLevel * sheet.level;
+}
+
+std::int32_t Rules::damageReduction(const CharacterSheet& sheet) const
+{
+    if (hasFeatLabel(sheet, "IMPROVED_TOUGHNESS")
+        || hasFeatLabel(sheet, "MASTER_TOUGHNESS")
+        || hasFeatLabel(sheet, "WOOKIE_ENDURANCE")) {
+        return 2;
+    }
+    return 0;
+}
+
+std::int32_t Rules::sneakAttackDice(const CharacterSheet& sheet) const
+{
+    for (std::int32_t dice = 10; dice >= 1; --dice) {
+        if (hasFeatLabel(sheet, "SNEAK_ATTACK_" + std::to_string(dice) + "D6")) {
+            return dice;
+        }
+    }
+    return 0;
+}
+
+std::int32_t Rules::skillBonus(const CharacterSheet& sheet, const std::string& skill) const
+{
+    const std::string name = lower(skill);
+    std::int32_t bonus = 0;
+    const auto tier = [&](const char* base, const char* improved, const char* master,
+                          const char* spelledMaster) {
+        if (hasFeatLabel(sheet, master) || (spelledMaster != nullptr
+                                            && hasFeatLabel(sheet, spelledMaster))) {
+            return 3;
+        }
+        if (hasFeatLabel(sheet, improved)) {
+            return 2;
+        }
+        return hasFeatLabel(sheet, base) ? 1 : 0;
+    };
+    if (name == "demolitions" || name == "stealth") {
+        bonus = std::max(bonus, tier("CAUTIOUS", "IMPROVED_CAUTION", "MASTER_CAUTION", nullptr));
+    }
+    if (name == "persuade" || name == "awareness" || name == "treatinjury") {
+        bonus = std::max(bonus, tier("EMPATHY", "IMPROVED_EMPATHY", "MASTER__EMPATHY", nullptr));
+    }
+    if (name == "repair" || name == "security" || name == "computeruse") {
+        bonus = std::max(bonus, tier("GEAR_HEAD", "GEAR_HEAD_ADEPT", "GEAR_HEAD_MASTER", nullptr));
+    }
+    return bonus;
 }
 
 int Rules::equipSlotFor(std::int32_t baseItem) const
@@ -458,8 +544,23 @@ InventoryItem Rules::makeItem(const std::string& resref, std::int32_t baseItem) 
 
 bool Rules::canEquip(const CharacterSheet& sheet, const InventoryItem& item) const
 {
-    (void)sheet;
-    return item.slot >= 0 || equipSlotFor(item.baseItem) >= 0;
+    if (item.slot < 0 && equipSlotFor(item.baseItem) < 0) {
+        return false;
+    }
+    if (!baseitems_) {
+        return true;
+    }
+    const std::string row = std::to_string(item.baseItem);
+    if (baseitems_->rowIndex(row) < 0) {
+        return true;
+    }
+    for (const char* column : {"reqfeat0", "reqfeat1", "reqfeat2", "reqfeat3", "reqfeat4"}) {
+        const std::int32_t required = cellInt(*baseitems_, row, column, -1);
+        if (required >= 0 && !sheet.feats.contains(required)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 std::int32_t Rules::armorClass(const CharacterSheet& sheet) const
@@ -471,6 +572,20 @@ std::int32_t Rules::armorClass(const CharacterSheet& sheet) const
         }
         const std::string row = std::to_string(item.baseItem);
         ac += cellInt(*baseitems_, row, "baseac", 0);
+    }
+    if (hasFeatLabel(sheet, "MASTER_SCOUNDRELS_LUCK")) {
+        ac += 6;
+    } else if (hasFeatLabel(sheet, "IMPROVED_SCOUNDRELS_LUCK")) {
+        ac += 4;
+    } else if (hasFeatLabel(sheet, "SCOUNDRELS_LUCK")) {
+        ac += 2;
+    }
+    if (hasFeatLabel(sheet, "MASTER_SENSE")) {
+        ac += 6;
+    } else if (hasFeatLabel(sheet, "KNIGHT_SENSE")) {
+        ac += 4;
+    } else if (hasFeatLabel(sheet, "JEDI_SENSE")) {
+        ac += 2;
     }
     return ac;
 }
