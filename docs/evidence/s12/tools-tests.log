@@ -144,7 +144,7 @@ test_306_unused_actions_dispatch (test_unused_actions.UnusedActionTests.test_306
 test_category_groups (test_unused_actions.UnusedActionTests.test_category_groups) ... ok
 
 ----------------------------------------------------------------------
-Ran 143 tests in 2.120s
+Ran 143 tests in 2.028s
 
 OK (skipped=7)
 

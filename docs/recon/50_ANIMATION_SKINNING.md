@@ -124,8 +124,8 @@ up      = right x forward
 DLG `CameraAngle` 1/2/3 uses `CamHeightOffset`/`TarHeightOffset` and the
 verified speaker/target framing formulas. `camera()` prefers the animated
 clip, then a preset, then a static `CameraID`, then first-person.
-`CamVidEffect` is -1/0 only in the Endar Spire DLGs, so non-default effect
-semantics are evidence-based out of scope.
+`CamVidEffect` is -1/0 only in the 1,135-DLG corpus (45,396 / 39, 0
+non-default), so non-default effect semantics are evidence-based out of scope.
 
 ## 7. Dangly and saber meshes
 
@@ -144,6 +144,12 @@ vertex/UV/normal offsets. The 22 shipped saber MDLs have stride 0 trimesh
 headers but valid 352-vertex / 24-face SaberHeader geometry. They contain no
 constraints or springs, so they render as static blade geometry; dynamic saber
 physics is re-scoped with this shipped-data evidence.
+
+Light nodes (`type & 0x02`) and emitter nodes (`type & 0x04`) evaluate their
+controller arrays (notably 76 colour, 88 radius, 144 size, 380/392 colour
+ends) and emit deterministic billboard quads. Room lights are appended to the
+room mesh; entity effects are separate refreshed `EntityMesh` records. The
+particle positions are a deterministic function of time, not random state.
 
 ## 8. Rendering refresh
 
@@ -164,9 +170,9 @@ refreshes only when `GameSession::animationRevision()` changes.
   0.96 s; `animations.2da` row 6 is `pause1` and loops.
 - Script fixture `anim_script_test.ncs` calls `PlayAnimation(6,1,0)` on an
   NPC and the NPC's clip becomes `pause1`.
-- Endar Spire now has 21 attached weapon meshes and 67 scene textures; the
-  weapon gate checks hand hooks, models, finite vertices, parent linkage and
-  motion while the creature animates.
+- Endar Spire now has **143 entity meshes**, **83 textures**, **239,178**
+  vertices and **49 batches**; the weapon gate checks hand hooks, models,
+  finite vertices, parent linkage and motion while the creature animates.
 - GIT `CameraList` loads; `cinematicCamera` matches the stored eye height and
   unit forward; `dialogue_camera_apply` proves `camera()` uses an active
   dialogue camera; `end_trask01` contains a non-negative `CameraID`.
@@ -178,14 +184,14 @@ refreshes only when `GameSession::animationRevision()` changes.
 - `CameraAngle` 1/2/3 presets compute finite, unit-forward cameras.
 - Corpus scan of 1,135 DLGs: 45,396 `CamVidEffect=-1`, 39 `CamVidEffect=0`,
   0 non-default.
-- `fx_flame01` exposes non-pose controller types 76/80/84/88/380/392; they are
-  parsed but not simulated.
+- `fx_flame01` exposes controller types 76/80/84/88/380/392 and its FX
+  triangles are finite and animated; `m01aa_01a` room lights produce FX
+  geometry. Non-default `CamVidEffect` is 0 across the 1,135-DLG corpus.
 - `blendedTriangles` produces finite cross-fade vertices; `rootMotion` is
   unchanged between sampled frames (root-in-place); `hasNonPoseControllers`
   is false for the sampled pose clips (no IK controllers).
 
 ## 10. Limits
 
-Particle/light **simulation** and non-default `CamVidEffect` semantics are
-outside Sprint 12; both are asserted at the data boundary above. Audio and
-cutscenes are separate systems.
+Exotic light/emitter controller families beyond the implemented billboard path,
+non-default `CamVidEffect` semantics and audio/cutscenes are outside Sprint 12.

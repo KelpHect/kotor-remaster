@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <functional>
 #include <sstream>
@@ -421,6 +422,7 @@ Mdl Mdl::parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std
                 node.skin = std::move(skin);
             }
         }
+        node.controllers = model.parseControllers(static_cast<std::uint32_t>(a));
         model.nodeByOffset_[offset] = model.nodes_.size();
         model.nodeById_[node.nodeId] = model.nodes_.size();
         for (const std::uint32_t child : node.children) {
@@ -1077,6 +1079,129 @@ std::vector<MdlMeshTriangle> Mdl::trianglesFromPose(const std::vector<Pose>& wor
                 triangle.v[k].node = static_cast<std::int32_t>(nodeIndex);
             }
             out.push_back(std::move(triangle));
+        }
+    }
+    return out;
+}
+
+bool Mdl::hasFxNodes() const
+{
+    for (const Node& node : nodes_) {
+        if ((node.type & 0x02u) || (node.type & 0x04u)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::vector<MdlMeshTriangle> Mdl::fxTriangles(const std::string& animation, float time) const
+{
+    const int clip = animation.empty() ? -1 : animationIndex(animation);
+    const Animation* anim = clip >= 0 ? &animationData_[static_cast<std::size_t>(clip)] : nullptr;
+    const std::vector<Pose> world = poseWorld(anim, time);
+    std::map<std::uint16_t, const Node*> animated;
+    if (anim != nullptr) {
+        for (const Node& node : anim->nodes) {
+            animated[node.supernode] = &node;
+        }
+    }
+    const auto value = [&](const Node& node, std::int32_t type) -> std::vector<float> {
+        std::vector<const Controller*> controllers;
+        for (const Controller& controller : node.controllers) {
+            if (controller.type == type) {
+                controllers.push_back(&controller);
+            }
+        }
+        const auto it = animated.find(node.supernode);
+        if (it != animated.end()) {
+            for (const Controller& controller : it->second->controllers) {
+                if (controller.type == type) {
+                    controllers.push_back(&controller);
+                }
+            }
+        }
+        for (const Controller* controller : controllers) {
+            if (controller->keys.empty()) {
+                continue;
+            }
+            const float clamped = std::clamp(time, controller->keys.front().time,
+                                             controller->keys.back().time);
+            std::size_t hi = 1;
+            while (hi < controller->keys.size() && controller->keys[hi].time <= clamped) {
+                ++hi;
+            }
+            hi = std::min(hi, controller->keys.size() - 1);
+            const std::size_t lo = hi == 0 ? 0 : hi - 1;
+            const float span = controller->keys[hi].time - controller->keys[lo].time;
+            const float t = span <= 0.0f ? 0.0f
+                : (clamped - controller->keys[lo].time) / span;
+            const std::vector<float>& a = controller->keys[lo].data;
+            const std::vector<float>& b = controller->keys[hi].data;
+            const std::size_t count = std::min(a.size(), b.size());
+            std::vector<float> out(count);
+            for (std::size_t i = 0; i < count; ++i) {
+                out[i] = a[i] + (b[i] - a[i]) * t;
+            }
+            return out;
+        }
+        return {};
+    };
+    const auto addQuad = [&](std::vector<MdlMeshTriangle>& out, Vec3 center, float size,
+                             const std::vector<float>& colour, const std::string& texture) {
+        (void)colour;
+        const Vec3 x{size, 0.0f, 0.0f};
+        const Vec3 y{0.0f, size, 0.0f};
+        const Vec3 z{0.0f, 0.0f, size};
+        const Vec3 axes[3][2] = {{x, y}, {x, z}, {y, z}};
+        for (const auto& axis : axes) {
+            MdlMeshTriangle triangle;
+            triangle.texture = texture;
+            triangle.v[0].position = center - axis[0] - axis[1];
+            triangle.v[1].position = center + axis[0] - axis[1];
+            triangle.v[2].position = center + axis[0] + axis[1];
+            triangle.v[0].normal = {0.0f, 0.0f, 1.0f};
+            triangle.v[1].normal = {0.0f, 0.0f, 1.0f};
+            triangle.v[2].normal = {0.0f, 0.0f, 1.0f};
+            out.push_back(triangle);
+            triangle.v[0].position = center - axis[0] - axis[1];
+            triangle.v[1].position = center + axis[0] + axis[1];
+            triangle.v[2].position = center - axis[0] + axis[1];
+            out.push_back(triangle);
+        }
+    };
+    std::vector<MdlMeshTriangle> out;
+    for (std::size_t i = 0; i < nodes_.size(); ++i) {
+        const Node& node = nodes_[i];
+        if (!(node.type & 0x02u) && !(node.type & 0x04u)) {
+            continue;
+        }
+        std::vector<float> colour = value(node, 76);
+        if (colour.size() < 3) {
+            colour = {1.0f, 0.7f, 0.25f};
+        }
+        char texture[32]{};
+        std::snprintf(texture, sizeof(texture), "__fx_%02x%02x%02x",
+                      static_cast<int>(std::clamp(colour[0], 0.0f, 1.0f) * 255.0f),
+                      static_cast<int>(std::clamp(colour[1], 0.0f, 1.0f) * 255.0f),
+                      static_cast<int>(std::clamp(colour[2], 0.0f, 1.0f) * 255.0f));
+        if (node.type & 0x02u) {
+            std::vector<float> radius = value(node, 88);
+            const float size = std::clamp(radius.empty() ? 0.15f : radius[0] * 0.05f,
+                                          0.05f, 0.5f);
+            addQuad(out, world[i].translation, size, colour, texture);
+        } else {
+            std::vector<float> sizeValue = value(node, 144);
+            const float size = std::clamp(sizeValue.empty() ? 0.08f : sizeValue[0] * 0.01f,
+                                          0.02f, 0.2f);
+            for (int particle = 0; particle < 8; ++particle) {
+                const float phase = static_cast<float>(particle) * 0.37f
+                    + std::fmod(time * 0.8f, 1.0f);
+                Vec3 centre = world[i].translation;
+                centre.x += std::sin(phase * 6.283f) * 0.15f;
+                centre.y += std::cos(phase * 4.712f) * 0.15f;
+                centre.z += std::fmod(phase, 0.9f) * 0.8f;
+                addQuad(out, centre, size, colour, texture);
+            }
         }
     }
     return out;

@@ -1,15 +1,15 @@
 [INFO] KotOR module end_m01aa area m01aa from E:/SteamLibrary/steamapps/common/swkotor
 [INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
-[INFO]   rooms: 15 vertices: 235038 indices: 235038 batches: 34
-[INFO]   textures: 67 collision vertices: 850 facets: 1365
+[INFO]   rooms: 15 vertices: 239178 indices: 239178 batches: 49
+[INFO]   textures: 83 collision vertices: 850 facets: 1365
 [INFO]   entities: 218 (door 15, placeable 60, creature 26, waypoint 58, store 0, encounter 0)
 [INFO]   encounter volumes: 0
 [INFO]   entry: 15.4248, 20.1215, -1.275
-[INFO]   entity meshes: 122 triggers: 13 warnings: 0
+[INFO]   entity meshes: 143 triggers: 13 warnings: 0
 [INFO]   script hooks: 284 on 54 entities; scene hooks: 3; script runs: 25
 [INFO]   entity mesh 0 end_door05 verts=564 local=-3.07263,-0.121998,-0.047403 .. 3.08736,0.123205,3.00955
 [INFO]   entity mesh 1 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
-[INFO]   entity mesh 2 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   entity mesh 2 end_door06 verts=720 local=-1.3001,-0.349784,1.35653 .. 1.46981,2.32183,2.41811
 [INFO]   creature mesh Carth verts=8208 local=-0.612183,-0.286822,-0.00207151 .. 0.612183,0.167699,1.5574
 [INFO]   bounds: -170.51, -32.6442, -204.652 .. 238.793, 471.187, 291.201
 [INFO] animation test: bith_loaded=1
@@ -45,6 +45,13 @@
 [INFO] animation test: fx_controllers_present=1
 [INFO] animation test: fx_controller_types=1
 [INFO] animation test: fx_no_skin=1
+[INFO] animation test: fx_nodes=1
+[INFO] animation test: fx_geometry=1
+[INFO] animation test: fx_finite=1
+[INFO] animation test: fx_animated=1
+[INFO] animation test: room_light_loaded=1
+[INFO] animation test: room_light_nodes=1
+[INFO] animation test: room_light_geometry=1
 [INFO] animation test: animation_2da_name=1
 [INFO] animation test: animation_2da_loop=1
 [INFO] animation test: default_animation=1

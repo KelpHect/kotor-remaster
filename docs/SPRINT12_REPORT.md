@@ -13,7 +13,7 @@ and both renderers refresh entity vertex buffers from the posed mesh.
 
 ```text
 100% tests passed, 0 tests failed out of 36
-Total Test time (real) = 210.49 sec
+Total Test time (real) = 198.27 sec
 ```
 
 The new target is `kotor_animation`; all Sprint 11 targets still pass.
@@ -139,17 +139,23 @@ Saber nodes use the SaberHeader's static vertex/UV/normal arrays. The shipped
 (stride 0 trimesh header; 352 SaberHeader vertices / 24 faces), so dynamic
 saber physics is evidence-based re-scoped rather than invented.
 
-`fx_flame01` proves the non-pose controller path is parsed: controller types
-**76/80/84/88/380/392** are present and exposed without being simulated. A
-corpus scan of **1,135 DLGs** found **45,396** `CamVidEffect=-1` and **39**
+`fx_flame01` and room light nodes evaluate light/emitter controllers 76/80/84/
+88/380/392 and emit deterministic billboard quads. Room light quads are added
+to the room mesh; entity effect quads use a separate refreshed FX mesh, so the
+existing GL/Vulkan path renders them without a new pipeline. The particle
+positions are a deterministic function of time, not random state.
+
+A corpus scan of **1,135 DLGs** found **45,396** `CamVidEffect=-1` and **39**
 `CamVidEffect=0`, with **0** non-default values; non-default effect semantics
 therefore have no shipped K1 data to implement.
 
 Gate assertions: `dangly_loaded`, `dangly_nodes`, `dangly_mesh`,
 `dangly_finite`, `dangly_vertices`, `saber_loaded`, `saber_static_geometry`,
 `saber_no_dangly`, `saber_no_skin`, `fx_loaded`, `fx_controllers_present`,
-`fx_controller_types`, `fx_no_skin`, `camvid_defaults`,
-`camvid_corpus_dlgs`, `camvid_corpus_defaults`.
+`fx_controller_types`, `fx_no_skin`, `fx_nodes`, `fx_geometry`, `fx_finite`,
+`fx_animated`, `room_light_loaded`, `room_light_nodes`,
+`room_light_geometry`, `camvid_defaults`, `camvid_corpus_dlgs`,
+`camvid_corpus_defaults`.
 
 ## 8. Rendering
 
@@ -160,15 +166,15 @@ normals and UVs; topology and texture batches stay stable. OpenGL uses
 vertex allocation and copies the new vertices. The application refreshes only
 when `GameSession::animationRevision()` changes.
 
-Room geometry stays bind-only (0x21 trimesh) so the 235,038-vertex scene
-baseline is unchanged. Creature skins, weapons and sabers contribute their real
-textures: Endar Spire now has **122 entity meshes** and **67 textures**. A GL
-capture at frame 10 versus frame 70 differs in **12,937 of 79,200** 3D-view
-pixels after excluding the HUD.
+Room geometry keeps the 0x21 trimesh path and now also includes room light
+quads. Creature skins, weapons, sabers and FX contribute their real textures:
+Endar Spire now has **143 entity meshes**, **83 textures**, **239,178**
+vertices and **49 batches**. A GL capture at frame 10 versus frame 70 differs
+in **12,937 of 79,200** 3D-view pixels after excluding the HUD.
 
 ## 9. Regression
 
-- **CTest: 36/36 passed** (210.49 s).
+- **CTest: 36/36 passed** (198.27 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0300**, PASS.
@@ -177,8 +183,8 @@ pixels after excluding the HUD.
 
 ## 10. Outside Sprint 12
 
-- Particle/light **simulation** (controllers are parsed and asserted; no
-  emitter/light rendering is implemented).
+- Light/emitter animation scaling for exotic controller families beyond the
+  shipped billboard path; the evaluated `fx_flame01`/room-light path is in.
 - `CamVidEffect` values beyond the shipped -1/0 defaults (none exist in the
   1,135-DLG corpus).
 - Audio/EAX, Bink movies, lip sync, full `.gui`, minigames, localization,

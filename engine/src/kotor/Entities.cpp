@@ -144,6 +144,36 @@ std::uint32_t ensureTexture(Scene& scene, Install& install, const std::string& r
         }
     }
     std::uint32_t type = 0;
+    if (name.rfind("__fx_", 0) == 0 && name.size() >= 11) {
+        int r = 255, g = 255, b = 255;
+        try {
+            r = std::stoi(name.substr(5, 2), nullptr, 16);
+            g = std::stoi(name.substr(7, 2), nullptr, 16);
+            b = std::stoi(name.substr(9, 2), nullptr, 16);
+        } catch (const std::exception&) {
+        }
+        Image image;
+        image.width = 8;
+        image.height = 8;
+        image.rgba.resize(8 * 8 * 4);
+        for (int y = 0; y < 8; ++y) {
+            for (int x = 0; x < 8; ++x) {
+                const float dx = (x - 3.5f) / 3.5f;
+                const float dy = (y - 3.5f) / 3.5f;
+                const float alpha = std::clamp(1.0f - std::sqrt(dx * dx + dy * dy), 0.0f, 1.0f);
+                const std::size_t o = static_cast<std::size_t>((y * 8 + x) * 4);
+                image.rgba[o] = static_cast<std::uint8_t>(r);
+                image.rgba[o + 1] = static_cast<std::uint8_t>(g);
+                image.rgba[o + 2] = static_cast<std::uint8_t>(b);
+                image.rgba[o + 3] = static_cast<std::uint8_t>(alpha * 255.0f);
+            }
+        }
+        Texture texture;
+        texture.name = name;
+        texture.image = std::move(image);
+        scene.textures.push_back(std::move(texture));
+        return static_cast<std::uint32_t>(scene.textures.size() - 1);
+    }
     auto data = install.findTexture(name, &type);
     if (!data.has_value()) {
         return 0;
@@ -204,6 +234,8 @@ std::shared_ptr<Mdl> loadModel(Install& install, const std::string& modelName, s
 }
 
 void refreshEntityMeshImpl(EntityMesh& mesh);
+void buildFxMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
+                 const std::shared_ptr<Mdl>& model);
 
 void buildMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
                const std::shared_ptr<Mdl>& model,
@@ -252,12 +284,87 @@ void buildMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
             refreshEntityMeshImpl(mesh);
         }
         scene.entityMeshes.push_back(std::move(mesh));
+        if (!attachModel && model->hasFxNodes()) {
+            buildFxMesh(scene, install, entityIndex, model);
+        }
+    }
+}
+
+void buildFxMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
+                 const std::shared_ptr<Mdl>& model)
+{
+    std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
+    for (MdlMeshTriangle& triangle : model->fxTriangles({}, 0.0f)) {
+        std::string texture = lower(triangle.texture);
+        if (texture.empty()) {
+            texture = "__fx_ffffff";
+        }
+        byTexture[texture].push_back(std::move(triangle));
+    }
+    if (byTexture.empty()) {
+        return;
+    }
+    EntityMesh mesh;
+    mesh.entity = entityIndex;
+    mesh.model = model;
+    mesh.fx = true;
+    for (const auto& [textureName, list] : byTexture) {
+        const std::uint32_t texture = ensureTexture(scene, install, textureName);
+        TextureBatch batch;
+        batch.texture = texture;
+        batch.firstIndex = static_cast<std::uint32_t>(mesh.indices.size());
+        for (const MdlMeshTriangle& triangle : list) {
+            mesh.triangles.push_back(triangle);
+            for (int i = 0; i < 3; ++i) {
+                mesh.vertices.push_back({triangle.v[i].position, triangle.v[i].normal,
+                                         triangle.v[i].uv});
+                mesh.indices.push_back(static_cast<std::uint32_t>(mesh.vertices.size() - 1));
+            }
+        }
+        batch.indexCount = static_cast<std::uint32_t>(mesh.indices.size()) - batch.firstIndex;
+        if (batch.indexCount != 0) {
+            mesh.batches.push_back(batch);
+        }
+    }
+    if (!mesh.vertices.empty()) {
+        scene.entityMeshes.push_back(std::move(mesh));
     }
 }
 
 void refreshEntityMeshImpl(EntityMesh& mesh)
 {
     if (!mesh.model) {
+        return;
+    }
+    if (mesh.fx) {
+        std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
+        for (MdlMeshTriangle& triangle : mesh.model->fxTriangles(mesh.animation,
+                                                                 mesh.animationTime)) {
+            std::string texture = lower(triangle.texture);
+            if (texture.empty()) {
+                texture = "__fx_ffffff";
+            }
+            byTexture[texture].push_back(std::move(triangle));
+        }
+        mesh.triangles.clear();
+        mesh.vertices.clear();
+        for (const auto& [textureName, list] : byTexture) {
+            (void)textureName;
+            for (const MdlMeshTriangle& triangle : list) {
+                mesh.triangles.push_back(triangle);
+                for (int i = 0; i < 3; ++i) {
+                    mesh.vertices.push_back({triangle.v[i].position, triangle.v[i].normal,
+                                             triangle.v[i].uv});
+                }
+            }
+        }
+        if (mesh.indices.size() != mesh.vertices.size()) {
+            mesh.indices.clear();
+            for (std::uint32_t i = 0; i < mesh.vertices.size(); ++i) {
+                mesh.indices.push_back(i);
+            }
+        }
+        ++mesh.revision;
         return;
     }
     if (mesh.attachModel) {

@@ -325,6 +325,8 @@ public:
     std::vector<MdlMeshTriangle> blendedTriangles(const std::string& animationA, float timeA,
                                                   const std::string& animationB, float timeB,
                                                   float blend, float danglyTime = -1.0f) const;
+    std::vector<MdlMeshTriangle> fxTriangles(const std::string& animation, float time) const;
+    bool hasFxNodes() const;
     Vec3 rootMotion(const std::string& animation, float time) const;
 
     const std::string& name() const { return name_; }
@@ -758,6 +760,7 @@ struct EntityMesh {
     float blendDuration = 0.0f;
     float blendRemaining = 0.0f;
     float danglyTime = 0.0f;
+    bool fx = false;
     std::shared_ptr<Mdl> attachModel;
     std::string attachNode;
     std::string attachAnimation;
