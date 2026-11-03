@@ -4,7 +4,7 @@ Status: **complete - gate S4 met (2026-11-03).** Hydra Engine `12.3-hydra.6` and
 `0.8.0` record a real 32-bit KotOR process end to end: four build-bound hooks, a live pump into
 the engine, zero capture gaps, and an engine aligned diff that proves the deterministic
 351-action prefix of two independent runs identical. Every tool fault found on the way is fixed
-in Hydralysis `sprint4/live-trace` (`d150b9b` + `0f4e102` + `b502214`, pushed to origin).
+in Hydralysis `sprint4/live-trace` (`d150b9b` + `0f4e102` + `b502214` + `cda7baf`, pushed to origin).
 
 Baseline: Hydra `12.3-hydra.6`, Hydralysis `0.8.0` (21 tools, catalog epoch 5), Sprint 0-3
 closure `bb2b92e`: 228/228 source-level recompiles, 0 ABI, 8,666/8,666 raw exact, 10,849
@@ -14,7 +14,7 @@ functions / 565 handlers reconciled.
 
 | # | Criterion | Result | Evidence |
 |---:|---|---|---|
-| 1 | Trace tool stack green | **met** - offline **339/339**; live recorder **12/12**; every M1 test passes: **12/13** in one class run, with the 100k-frame failure-mode test passing alone in **122.7 s**. The class process hit `MemoryError` on accumulated stress captures after 12 tests; that is the in-process test harness, not the recorder (the production path uses a separate worker) | `artifacts/tests/hydralysis_trace_suite5.log`; `artifacts/tests/trace_capture_live3.log`; `artifacts/tests/trace_e2e_m1_final3.log`; `artifacts/tests/trace_failure_modes_alone.log` |
+| 1 | Trace tool stack green | **met** - offline **339/339**; live recorder **12/12**; live M1 **13/13 in one class run, 71.0 s** | `artifacts/tests/hydralysis_trace_suite5.log`; `artifacts/tests/trace_capture_live3.log`; `artifacts/tests/trace_e2e_m1_final5.log` |
 | 2 | Build-bound KotOR profile | **met** - `kotor/1`, SHA `8e887fb0...`, both `0290889e...` and `280ba024...` verify **4/4** hooks; detour alternatives accepted | `tools/traces/kotor/swkotor-1.0.3.toml`; profile binaries |
 | 3 | Real 32-bit live trace | **met** - live-04 `tr_d4036f0998a9`: **27,796 records / 27,714 semantic events**, 0 gaps, 0 dropped, 4/4 probes; live-05 `tr_82bfe0d0e41c`: 5,277 / 5,195, 0 gaps | `artifacts/lanes/s4-trace/s4-kotor-live-04.log`, `...-05.log`; `artifacts/lanes/s4-trace/live-0{4,5}-semantic.jsonl` |
 | 4 | Real diff | **met** - common prefix **351 actions**, **35 groups, all `same`**, scanned 351/351, 0 unmatched, 0 gaps | `artifacts/lanes/s4-trace/diff-bounded-live04-05.json`; `tools/harness/s4_trace_bounded_diff.py` |
@@ -27,18 +27,16 @@ offline trace suite     339 tests, 70 tasks, 8 workers; 0 failed alone, 0 failed
                          artifacts/tests/hydralysis_trace_suite5.log
 live recorder class      12 tests, 42.1 s; OK
                          artifacts/tests/trace_capture_live3.log
-live M1 class            12/13 in one class run (artifacts/tests/trace_e2e_m1_final3.log);
-                         the 100k-frame failure-mode test passes alone (122.7 s, trace_failure_modes_alone.log)
+live M1 class            13 tests, 71.0 s; OK
+                         artifacts/tests/trace_e2e_m1_final5.log
 profile + prologue       35 tests; OK (tests.test_trace_profiles, tests.test_trace_capture.PrologueAlternatives)
 ```
 
 The 339-test suite includes the new `PrologueAlternatives` tests (wildcard parsing, the
 detour-tail rule, and the two-part kind refusal) and the corrected start/stop delegation test
-(runtime owner token plus resume). The M1 class shares one Python process across its stress
-captures; after the 12th test the accumulated Frida/recorder arenas make the 100k-frame test hit
-`MemoryError` in the in-process agent. The same test passes alone in 122.7 s, and the production
-runtime uses a separate worker process, so this is a test-harness memory ceiling, not a trace
-writer fault.
+(runtime owner token plus resume). The M1 class now releases each test's in-process agent and
+`TraceSource` before the next test, and `frameloop` has a configurable watchdog for the
+failure-mode test; the complete class passes in one interpreter in 71 s.
 
 ## Live KotOR trace
 
@@ -89,7 +87,7 @@ diff path independently of the two-run match (`artifacts/lanes/s4-trace/diff-sel
 
 ## Tool faults fixed
 
-All fixes are in the Hydralysis repository, branch `sprint4/live-trace`, commits `d150b9b`, `0f4e102` and `b502214`
+All fixes are in the Hydralysis repository, branch `sprint4/live-trace`, commits `d150b9b`, `0f4e102`, `b502214` and `cda7baf`
 (pushed `origin/sprint4/live-trace`), plus the KotOR profile and harness scripts in this repo.
 
 | Fault | Fix |
@@ -102,6 +100,7 @@ All fixes are in the Hydralysis repository, branch `sprint4/live-trace`, commits
 | A game that exited before `trace stop` left the session open because detach raised | `_stop` records each failure, always drains the pump, always closes the session |
 | Late lifetime query at stop counted `script has been destroyed` as a probe fault | recorded as a coverage refusal (`lifetimes-unavailable`); `fault_free` stays about probes |
 | A site whose stride reset to 1 could emit its next kept record as `exact`, so no kept event carried the `sampled` label | `Site.thinned` is sticky and drives `F_SAMPLED` in both record paths; the M1 class closes each test's targets and uses a 1,000/s budget for the adaptive test and checks every record from a thinned site |
+| The M1 class kept each test's in-process agent/`TraceSource` alive, so accumulated stress captures exhausted memory at the 100k-frame test; the failure-mode fixture could finish or hit its own watchdog before the stop | `Live.close` drops the agent's trace/script references and `tearDown` collects; `frameloop --watchdog=` is configurable and the failure-mode test uses a slow 60k×10 ms producer |
 | Live tests attached to the venv launcher instead of the real interpreter | watchdog and recorder tests spawn `sys._base_executable` |
 
 ## Safety and scope
