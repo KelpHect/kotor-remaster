@@ -1,0 +1,101 @@
+[profile]
+id = "kotor/1"
+domain = "game"
+description = "Star Wars: Knights of the Old Republic 1.0.3.0 semantic trace: script execution, script actions, queued commands and the main-loop thunk."
+
+[target]
+bitness = 32
+modules = ["swkotor.exe"]
+
+[[target.builds]]
+module = "swkotor.exe"
+image_sha256 = "0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6"
+label = "1.0.3.0"
+
+[[target.builds]]
+module = "swkotor.exe"
+image_sha256 = "280ba024d7410933ef1dad5ed829e9bef428c07e7ae47d8a6ad7a3a9420d49e3"
+label = "1.0.3.0-windowed-1280"
+
+[host]
+fault_policy = "tolerant"
+record_handler_chain = true
+
+[[event_kinds]]
+name = "kotor.exec"
+extends = "core.function.enter"
+description = "The engine entered ExecuteCode with a bytecode program."
+[event_kinds.payload]
+program = "va"
+length = "u32"
+
+[[event_kinds]]
+name = "kotor.action"
+extends = "core.function.enter"
+description = "The engine dispatched an NWScript action id."
+[event_kinds.payload]
+action = "u32"
+
+[[event_kinds]]
+name = "kotor.command"
+extends = "core.function.enter"
+description = "The engine ran a queued command (RunCommand)."
+[event_kinds.payload]
+command = "va"
+
+[[event_kinds]]
+name = "kotor.frame"
+extends = "core.marker"
+description = "The main-loop thunk ran."
+
+# ExecuteCode: thiscall(vm, int *ip, byte *program, int length).
+# ECX = vm; [esp+4] = ip, [esp+8] = program, [esp+0xc] = length.
+[[hooks]]
+id = "execute-code"
+event = "kotor.exec"
+module = "swkotor.exe"
+rva = "0x1d2bd0"
+required = true
+prologue = ["6A FF 64 A1 00 00 00 00 68 81 3E 72 00 50 64 89", "E9 ?? ?? ?? ?? 0F 1F 00 68 81 3E 72 00 50 64 89"]
+nargs = 3
+capture = ["program:va@1", "length:u32@2"]
+stack = 8
+
+# NWScript action dispatcher: thiscall(vm, int action_id); ECX = vm, [esp+4] = action id.
+[[hooks]]
+id = "script-action"
+event = "kotor.action"
+module = "swkotor.exe"
+rva = "0x12c0d0"
+required = true
+prologue = ["8B 54 24 04 81 FA 04 03 00 00 7D 17 8B 41 0C 8B", "E9 ?? ?? ?? ?? 0F 1F 00 00 00 7D 17 8B 41 0C 8B"]
+nargs = 1
+capture = ["action:u32@0"]
+stack = 8
+
+# RunCommand: thiscall(situation, int *command, int a2, int a3, int a4).
+# ECX = situation; [esp+4] = command pointer.
+[[hooks]]
+id = "run-command"
+event = "kotor.command"
+module = "swkotor.exe"
+rva = "0x1d45d0"
+required = true
+prologue = ["53 55 56 57 8B 7C 24 14 33 ED 3B FD 8B F1 0F 84", "E9 ?? ?? ?? ?? 0F 1F 00 33 ED 3B FD 8B F1 0F 84"]
+nargs = 4
+capture = ["command:va@0"]
+stack = 8
+
+# Main-loop thunk: mov ecx,[ecx+4]; jmp FUN_004babb0. Called from the two main-loop sites.
+[[hooks]]
+id = "frame"
+event = "kotor.frame"
+module = "swkotor.exe"
+rva = "0x0ae860"
+required = false
+prologue = ["8B 49 04 E9 48 C3 00 00"]
+nargs = 0
+stack = 4
+
+[diff]
+group_by = ["kind", "function", "payload.action"]
