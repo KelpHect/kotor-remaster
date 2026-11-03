@@ -175,14 +175,17 @@ refreshes only when `GameSession::animationRevision()` changes.
 - `c_rakghoul` has a dangly node whose constraints move vertices and remain
   finite; `w_lghtsbr_001` loads static SaberHeader geometry with no dangly or
   skin nodes.
-- `CameraAngle` 1/2/3 presets compute finite, unit-forward cameras; all
-  `CamVidEffect` values in the Endar Spire DLGs are -1/0.
+- `CameraAngle` 1/2/3 presets compute finite, unit-forward cameras.
+- Corpus scan of 1,135 DLGs: 45,396 `CamVidEffect=-1`, 39 `CamVidEffect=0`,
+  0 non-default.
+- `fx_flame01` exposes non-pose controller types 76/80/84/88/380/392; they are
+  parsed but not simulated.
 - `blendedTriangles` produces finite cross-fade vertices; `rootMotion` is
   unchanged between sampled frames (root-in-place); `hasNonPoseControllers`
-  is false for the sampled clips (no IK controllers).
+  is false for the sampled pose clips (no IK controllers).
 
 ## 10. Limits
 
-Non-default `CamVidEffect` semantics, particle/light controllers and
-audio/cutscenes are outside Sprint 12. They consume this pose evaluator but are
-separate systems.
+Particle/light **simulation** and non-default `CamVidEffect` semantics are
+outside Sprint 12; both are asserted at the data boundary above. Audio and
+cutscenes are separate systems.

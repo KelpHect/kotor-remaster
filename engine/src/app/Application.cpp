@@ -1530,6 +1530,17 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
         check(saberModel->skinnedNodeCount() == 0, "saber_no_skin");
     }
 
+    const std::optional<kotor::Mdl> fxModel = loadModel("fx_flame01");
+    check(fxModel.has_value(), "fx_loaded");
+    if (fxModel.has_value()) {
+        check(fxModel->hasNonPoseControllers(), "fx_controllers_present");
+        check(fxModel->hasControllerType(76) && fxModel->hasControllerType(80)
+                  && fxModel->hasControllerType(84) && fxModel->hasControllerType(88)
+                  && fxModel->hasControllerType(380) && fxModel->hasControllerType(392),
+              "fx_controller_types");
+        check(fxModel->skinnedNodeCount() == 0, "fx_no_skin");
+    }
+
     check(game.rules().animationName(6) == "pause1", "animation_2da_name");
     check(game.rules().animationLooping(6), "animation_2da_loop");
 
@@ -1787,6 +1798,46 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
             check(false, "dlg_camera_field");
         }
     }
+
+    int camVidDlgs = 0;
+    bool camVidNonDefault = false;
+    std::map<std::int32_t, int> camVidValues;
+    const std::filesystem::path modulesPath = std::filesystem::path(game.installPath()) / "modules";
+    std::error_code directoryError;
+    for (const std::filesystem::directory_entry& item :
+         std::filesystem::directory_iterator(modulesPath, directoryError)) {
+        if (!item.is_regular_file() || item.path().extension() != ".rim") {
+            continue;
+        }
+        try {
+            const kotor::Archive archive = kotor::Archive::open(item.path());
+            for (const kotor::ArchiveEntry& entry : archive.entries()) {
+                if (entry.type != 2029) {
+                    continue;
+                }
+                try {
+                    kotor::Gff dlgGff = kotor::Gff::parse(archive.read(entry), entry.resref + ".dlg");
+                    const kotor::Dlg dlg = kotor::Dlg::parse(dlgGff, nullptr, entry.resref);
+                    ++camVidDlgs;
+                    for (const kotor::DlgEntry& dialogueEntry : dlg.entries) {
+                        ++camVidValues[dialogueEntry.camVidEffect];
+                        camVidNonDefault = camVidNonDefault || dialogueEntry.camVidEffect > 0;
+                    }
+                    for (const kotor::DlgReply& reply : dlg.replies) {
+                        ++camVidValues[reply.camVidEffect];
+                        camVidNonDefault = camVidNonDefault || reply.camVidEffect > 0;
+                    }
+                } catch (const kotor::FormatError&) {
+                }
+            }
+        } catch (const kotor::FormatError&) {
+        }
+    }
+    check(camVidDlgs > 0, "camvid_corpus_dlgs");
+    check(!camVidNonDefault, "camvid_corpus_defaults");
+    logInfo(concat("animation test: camvid_corpus dlgs=", camVidDlgs,
+                   " nonDefault=", camVidNonDefault ? 1 : 0,
+                   " values=", camVidValues[-1], "/", camVidValues[0]));
 
     if (!scriptPath.empty()) {
         std::ifstream scriptFile(scriptPath, std::ios::binary | std::ios::ate);
