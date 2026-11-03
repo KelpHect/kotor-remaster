@@ -1,0 +1,27 @@
+Test project E:/Projects/kotor-remaster/kotor-remaster/engine/build/msvc-release
+      Start  1: kotor_formats
+ 1/11 Test  #1: kotor_formats ....................   Passed    0.02 sec
+      Start  2: smoke_null_headless
+ 2/11 Test  #2: smoke_null_headless ..............   Passed    0.06 sec
+      Start  3: smoke_imgui_selftest
+ 3/11 Test  #3: smoke_imgui_selftest .............   Passed    0.02 sec
+      Start  4: kotor_scene_stats
+ 4/11 Test  #4: kotor_scene_stats ................   Passed    0.24 sec
+      Start  5: kotor_door_transition
+ 5/11 Test  #5: kotor_door_transition ............   Passed    0.28 sec
+      Start  6: kotor_walk_collision
+ 6/11 Test  #6: kotor_walk_collision .............   Passed    0.32 sec
+      Start  7: kotor_dialogue
+ 7/11 Test  #7: kotor_dialogue ...................   Passed    0.29 sec
+      Start  8: kotor_combat
+ 8/11 Test  #8: kotor_combat .....................   Passed    0.27 sec
+      Start  9: kotor_playthrough
+ 9/11 Test  #9: kotor_playthrough ................   Passed    0.95 sec
+      Start 10: kotor_landmark
+10/11 Test #10: kotor_landmark ...................   Passed    0.24 sec
+      Start 11: kotor_save_load
+11/11 Test #11: kotor_save_load ..................   Passed    0.45 sec
+
+100% tests passed, 0 tests failed out of 11
+
+Total Test time (real) =   3.16 sec

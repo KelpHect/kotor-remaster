@@ -1,13 +1,17 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 4 (semantic trace and the KotOR game profile) complete - gate S4 met
-(2026-11-03).** Hydra 12.3-hydra.6 / Hydralysis 0.8.0 record real 32-bit KotOR processes; two
-independent live runs are gap-free and the engine's aligned diff proves the deterministic
-351-action prefix identical. Sprint 3 remains complete (228/228 source-level recompiles, 0 ABI,
-8,666/8,666 raw exact). There is still no playable engine build; P4/P5 renderer and gameplay work
-continues on the frozen data foundation and the executable NCS runtime. Sprint plans/reports:
-`docs/SPRINT1.md` / `docs/SPRINT1_REPORT.md`, `docs/SPRINT2.md` / `docs/SPRINT2_REPORT.md`,
-`docs/SPRINT3.md` / `docs/SPRINT3_REPORT.md`, and `docs/SPRINT4.md` / `docs/SPRINT4_REPORT.md`;
+Status: **Sprint 5 (playable KotOR P4 vertical slice) complete - gate S5 met (2026-11-03).** The
+engine's own C++23 runtime loads a user-owned KotOR 1.0.3.0 install directly and plays the
+`end_m01aa` slice on Vulkan 1.4 and OpenGL 4.5: room/entity models, textures, collision, doors,
+triggers, dialogue, basic combat, save/load, and a minimal HUD. The deterministic 1800-second gate
+passes, the scene parity check is 0.03/255, and 11/11 CTest targets pass. Sprint 4 remains
+complete: Hydra 12.3-hydra.6 / Hydralysis 0.8.0 record real 32-bit KotOR processes; two independent
+live runs are gap-free and the engine's aligned diff proves the deterministic 351-action prefix
+identical. Sprint 3 remains complete (228/228 source-level recompiles, 0 ABI, 8,666/8,666 raw
+exact). Full P5/P6 systems parity, all 117 areas, animation, and original-save compatibility remain
+open. Sprint plans/reports: `docs/SPRINT1.md` / `docs/SPRINT1_REPORT.md`,
+`docs/SPRINT2.md` / `docs/SPRINT2_REPORT.md`, `docs/SPRINT3.md` / `docs/SPRINT3_REPORT.md`,
+`docs/SPRINT4.md` / `docs/SPRINT4_REPORT.md`, and `docs/SPRINT5.md` / `docs/SPRINT5_REPORT.md`;
 the P0 gate and handoff remain in `docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It

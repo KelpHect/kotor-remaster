@@ -1,0 +1,13 @@
+[INFO] KotOR module end_m01aa area m01aa from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 15 vertices: 235038 indices: 235038 batches: 34
+[INFO]   textures: 53 collision vertices: 850 facets: 1365
+[INFO]   entities: 218 (door 15, placeable 60, creature 26, waypoint 58)
+[INFO]   entry: 15.4248, 20.1215, -1.275
+[INFO]   entity meshes: 101 triggers: 13 warnings: 0
+[INFO]   entity mesh 0 end_door05 verts=564 local=-3.07263,-0.121998,-0.047403 .. 3.08736,0.123205,3.00955
+[INFO]   entity mesh 1 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   entity mesh 2 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   creature mesh Carth verts=3276 local=-0.606384,-0.151653,-0.00207151 .. 0.610334,0.167699,1.54884
+[INFO]   bounds: -170.51, -32.6442, -204.652 .. 238.793, 471.187, 291.201
+[INFO] combat test: end_darkjedi01 dead=1 hp=-3/8 player=94/100 steps=110

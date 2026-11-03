@@ -1,0 +1,10 @@
+install sentinel OK: swkotor.exe sha256 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+modules: 4 (expected 117)
+[  1/4] end_m01aa      area=m01aa      triaged      hard=0 triage=33 codes=T_ANCHOR_OFF_WALKMESH,T_DOOR_NO_HOOK,T_ROOM_NO_WOK
+[  2/4] end_m01ab      area=m01ab      triaged      hard=0 triage=9 codes=T_ANCHOR_OFF_WALKMESH,T_DOOR_NO_HOOK
+[  3/4] tar_m02af      area=m02af      triaged      hard=0 triage=2 codes=T_DOOR_NO_HOOK,T_ROOM_NO_WOK
+[  4/4] tar_m02aa      area=m02aa      triaged      hard=0 triage=10 codes=T_ANCHOR_OFF_WALKMESH,T_DOOR_NO_HOOK,T_ROOM_NO_WOK
+
+clean=0 triaged=4 hard_failed=0 of 4 modules in 3.97s
+summary -> artifacts/lanes/s5-mapvalidate\summary.json
+codes: T_ANCHOR_OFF_WALKMESH=24, T_DOOR_NO_HOOK=26, T_ROOM_NO_WOK=4

@@ -1,5 +1,7 @@
 #include "render/BackendFactory.h"
 #include "render/Backend.h"
+#include "render/Bmp.h"
+#include "render/VulkanScene.h"
 #include "core/Log.h"
 
 #include "imgui.h"
@@ -178,6 +180,18 @@ public:
             return false;
         }
 
+        std::string sceneError;
+        if (sceneRenderer_.initialize(device_, physicalDevice_, commandPool_, graphicsQueue_, format_, sceneError)) {
+            sceneReady_ = true;
+            std::string resizeError;
+            sceneRenderer_.resize(extent_, resizeError);
+            if (!resizeError.empty()) {
+                logError(concat("Vulkan scene depth initialization failed: ", resizeError));
+            }
+        } else {
+            logWarn(concat("Vulkan scene renderer unavailable; HUD-only: ", sceneError));
+        }
+
         info_.name = "vulkan";
         info_.apiVersion = concat("instance ", apiVersionString(instanceApiVersion_), " / device ",
                                   apiVersionString(deviceApiVersion_));
@@ -237,6 +251,120 @@ public:
         }
     }
 
+    void setScene(const kotor::Scene* scene) override
+    {
+        scene_ = scene;
+        if (scene_ != nullptr && sceneReady_) {
+            std::string uploadError;
+            if (!sceneRenderer_.upload(*scene_, uploadError)) {
+                logError(concat("Vulkan scene upload failed: ", uploadError));
+            }
+        }
+    }
+
+    void setCamera(const SceneCamera& camera) override { camera_ = camera; }
+
+    bool screenshot(const std::filesystem::path& path) override
+    {
+        if (!initialized_ || swapchain_ == VK_NULL_HANDLE || lastImageIndex_ >= swapchainImages_.size()) {
+            return false;
+        }
+        vkDeviceWaitIdle(device_);
+        const VkDeviceSize bytes = static_cast<VkDeviceSize>(extent_.width) * extent_.height * 4u;
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = bytes;
+        bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VkBuffer buffer = VK_NULL_HANDLE;
+        if (vkCreateBuffer(device_, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+            return false;
+        }
+        VkMemoryRequirements requirements{};
+        vkGetBufferMemoryRequirements(device_, buffer, &requirements);
+        VkMemoryAllocateInfo allocate{};
+        allocate.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        allocate.allocationSize = requirements.size;
+        allocate.memoryTypeIndex = findMemoryType(requirements.memoryTypeBits,
+                                                  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        if (vkAllocateMemory(device_, &allocate, nullptr, &memory) != VK_SUCCESS) {
+            vkDestroyBuffer(device_, buffer, nullptr);
+            return false;
+        }
+        vkBindBufferMemory(device_, buffer, memory, 0);
+
+        VkCommandBufferAllocateInfo commandInfo{};
+        commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        commandInfo.commandPool = commandPool_;
+        commandInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+        commandInfo.commandBufferCount = 1;
+        VkCommandBuffer command = VK_NULL_HANDLE;
+        if (vkAllocateCommandBuffers(device_, &commandInfo, &command) != VK_SUCCESS) {
+            vkDestroyBuffer(device_, buffer, nullptr);
+            vkFreeMemory(device_, memory, nullptr);
+            return false;
+        }
+        VkCommandBufferBeginInfo begin{};
+        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        vkBeginCommandBuffer(command, &begin);
+        VkImageMemoryBarrier toTransfer{};
+        toTransfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        toTransfer.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        toTransfer.image = swapchainImages_[lastImageIndex_];
+        toTransfer.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        toTransfer.srcAccessMask = 0;
+        toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0,
+                             nullptr, 0, nullptr, 1, &toTransfer);
+        VkBufferImageCopy copy{};
+        copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+        copy.imageExtent = {extent_.width, extent_.height, 1};
+        vkCmdCopyImageToBuffer(command, swapchainImages_[lastImageIndex_], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                               buffer, 1, &copy);
+        toTransfer.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+        toTransfer.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        toTransfer.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+        toTransfer.dstAccessMask = 0;
+        vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0,
+                             nullptr, 0, nullptr, 1, &toTransfer);
+        vkEndCommandBuffer(command);
+        VkSubmitInfo submit{};
+        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &command;
+        vkQueueSubmit(graphicsQueue_, 1, &submit, VK_NULL_HANDLE);
+        vkQueueWaitIdle(graphicsQueue_);
+        vkFreeCommandBuffers(device_, commandPool_, 1, &command);
+
+        void* mapped = nullptr;
+        std::vector<std::uint8_t> rgba(static_cast<std::size_t>(bytes), 0u);
+        if (vkMapMemory(device_, memory, 0, bytes, 0, &mapped) == VK_SUCCESS) {
+            std::memcpy(rgba.data(), mapped, static_cast<std::size_t>(bytes));
+            vkUnmapMemory(device_, memory);
+        }
+        // The preferred swapchain is BGRA; the BMP writer consumes RGBA.
+        if (format_ == VK_FORMAT_B8G8R8A8_UNORM || format_ == VK_FORMAT_B8G8R8A8_SRGB) {
+            for (std::size_t i = 0; i + 3 < rgba.size(); i += 4) {
+                std::swap(rgba[i], rgba[i + 2]);
+            }
+        }
+        // Vulkan images are top-down; BMP stores rows bottom-up.
+        const std::size_t rowBytes = static_cast<std::size_t>(extent_.width) * 4u;
+        for (std::uint32_t y = 0; y < extent_.height / 2u; ++y) {
+            std::uint8_t* top = rgba.data() + static_cast<std::size_t>(y) * rowBytes;
+            std::uint8_t* bottom = rgba.data() + static_cast<std::size_t>(extent_.height - 1u - y) * rowBytes;
+            std::swap_ranges(top, top + rowBytes, bottom);
+        }
+        vkDestroyBuffer(device_, buffer, nullptr);
+        vkFreeMemory(device_, memory, nullptr);
+        return writeBmp(path, static_cast<int>(extent_.width), static_cast<int>(extent_.height), rgba);
+    }
+
     FrameStatus renderFrame(std::string& error) override
     {
         if (!initialized_ || device_ == VK_NULL_HANDLE || swapchain_ == VK_NULL_HANDLE) {
@@ -281,6 +409,7 @@ public:
             error = concat("vkAcquireNextImageKHR failed: ", resultName(result));
             return FrameStatus::Fatal;
         }
+        lastImageIndex_ = imageIndex;
 
         if (vkResetFences(device_, 1, &frameFence) != VK_SUCCESS) {
             error = "vkResetFences failed";
@@ -350,6 +479,12 @@ public:
             ImGui_ImplSDL3_Shutdown();
             platformInitialized_ = false;
         }
+
+        if (sceneReady_) {
+            sceneRenderer_.shutdown();
+            sceneReady_ = false;
+        }
+        scene_ = nullptr;
 
         destroySwapchain();
 
@@ -762,9 +897,13 @@ private:
 
         VkSurfaceFormatKHR chosenFormat = formats.front();
         bool formatFound = false;
+        // Classic parity: the reference GL path writes texture-space values
+        // straight to the default framebuffer. Prefer a UNORM swapchain here
+        // too; an SRGB swapchain would encode the already-sRGB texels a second
+        // time and wash the whole scene out.
         constexpr std::array<VkFormat, 4> preferredFormats{
-            VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_R8G8B8A8_SRGB, VK_FORMAT_B8G8R8A8_UNORM,
-            VK_FORMAT_R8G8B8A8_UNORM};
+            VK_FORMAT_B8G8R8A8_UNORM, VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_B8G8R8A8_SRGB,
+            VK_FORMAT_R8G8B8A8_SRGB};
         for (const VkFormat preferred : preferredFormats) {
             for (const VkSurfaceFormatKHR& candidate : formats) {
                 if (candidate.format == preferred) {
@@ -890,6 +1029,14 @@ private:
             }
         }
 
+        if (sceneReady_) {
+            std::string resizeError;
+            sceneRenderer_.resize(extent_, resizeError);
+            if (!resizeError.empty()) {
+                logError(concat("Vulkan scene depth resize failed: ", resizeError));
+            }
+        }
+
         info_.swapchain =
             concat(formatName(format_), " ", extent_.width, "x", extent_.height, ", ",
                    swapchainImages_.size(), " images, ", presentModeName(presentMode_));
@@ -964,6 +1111,9 @@ private:
         vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
                              VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, nullptr, 0,
                              nullptr, 1, &toColor);
+        if (sceneReady_) {
+            sceneRenderer_.prepareDepth(commandBuffer);
+        }
 
         const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(frameIndex_) * 0.02f);
         VkClearValue clearValue{};
@@ -977,6 +1127,14 @@ private:
         colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         colorAttachment.clearValue = clearValue;
 
+        VkRenderingAttachmentInfo depthAttachment{};
+        depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+        depthAttachment.imageView = sceneRenderer_.depthView();
+        depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+        depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        depthAttachment.clearValue.depthStencil = {1.0f, 0};
+
         VkRenderingInfo renderingInfo{};
         renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
         renderingInfo.renderArea.offset = {0, 0};
@@ -984,6 +1142,7 @@ private:
         renderingInfo.layerCount = 1;
         renderingInfo.colorAttachmentCount = 1;
         renderingInfo.pColorAttachments = &colorAttachment;
+        renderingInfo.pDepthAttachment = (sceneReady_ && depthAttachment.imageView != VK_NULL_HANDLE) ? &depthAttachment : nullptr;
 
         vkCmdBeginRendering(commandBuffer, &renderingInfo);
 
@@ -997,6 +1156,10 @@ private:
         VkRect2D scissor{};
         scissor.extent = extent_;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+        if (sceneReady_ && scene_ != nullptr) {
+            sceneRenderer_.draw(commandBuffer, camera_, extent_);
+        }
 
         if (ImDrawData* drawData = ImGui::GetDrawData(); drawData != nullptr) {
             ImGui_ImplVulkan_RenderDrawData(drawData, commandBuffer);
@@ -1018,6 +1181,19 @@ private:
             return false;
         }
         return true;
+    }
+
+    std::uint32_t findMemoryType(std::uint32_t typeBits, VkMemoryPropertyFlags properties) const
+    {
+        VkPhysicalDeviceMemoryProperties memory{};
+        vkGetPhysicalDeviceMemoryProperties(physicalDevice_, &memory);
+        for (std::uint32_t i = 0; i < memory.memoryTypeCount; ++i) {
+            if ((typeBits & (1u << i)) != 0
+                && (memory.memoryTypes[i].propertyFlags & properties) == properties) {
+                return i;
+            }
+        }
+        return 0;
     }
 
     SDL_Window* window_ = nullptr;
@@ -1057,6 +1233,11 @@ private:
     bool initialized_ = false;
     bool platformInitialized_ = false;
     bool imguiInitialized_ = false;
+    bool sceneReady_ = false;
+    const kotor::Scene* scene_ = nullptr;
+    SceneCamera camera_;
+    VulkanScene sceneRenderer_;
+    std::uint32_t lastImageIndex_ = 0;
 
     std::string deviceName_ = "unknown";
     std::string deviceTypeName_ = "unknown";

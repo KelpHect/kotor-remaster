@@ -1,5 +1,6 @@
 #include "render/BackendFactory.h"
 #include "render/Backend.h"
+#include "render/GlScene.h"
 #include "core/Log.h"
 
 #include "imgui.h"
@@ -128,6 +129,11 @@ public:
         }
 
         initialized_ = true;
+        if (!sceneRenderer_.initialize(error)) {
+            logWarn(concat("Scene renderer unavailable; HUD-only OpenGL: ", error));
+        } else {
+            sceneReady_ = true;
+        }
         return true;
     }
 
@@ -156,6 +162,30 @@ public:
         }
     }
 
+    void setScene(const kotor::Scene* scene) override
+    {
+        scene_ = scene;
+        if (scene_ != nullptr && sceneReady_) {
+            std::string uploadError;
+            if (!sceneRenderer_.upload(*scene_, uploadError)) {
+                logError(concat("Scene upload failed: ", uploadError));
+            }
+        }
+    }
+
+    void setCamera(const SceneCamera& camera) override { camera_ = camera; }
+
+    bool screenshot(const std::filesystem::path& path) override
+    {
+        if (!sceneReady_ || scene_ == nullptr || window_ == nullptr) {
+            return false;
+        }
+        int width = 0;
+        int height = 0;
+        SDL_GetWindowSizeInPixels(window_, &width, &height);
+        return sceneRenderer_.screenshot(path, width, height);
+    }
+
     FrameStatus renderFrame(std::string& error) override
     {
         if (!initialized_ || window_ == nullptr) {
@@ -171,9 +201,13 @@ public:
         }
 
         glViewport_(0, 0, width, height);
-        const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(frameIndex_) * 0.02f);
-        glClearColor_(0.06f, 0.07f + 0.05f * pulse, 0.10f + 0.08f * pulse, 1.0f);
-        glClear_(kGlColorBufferBit);
+        if (sceneReady_ && scene_ != nullptr) {
+            sceneRenderer_.render(camera_, width, height);
+        } else {
+            const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(frameIndex_) * 0.02f);
+            glClearColor_(0.06f, 0.07f + 0.05f * pulse, 0.10f + 0.08f * pulse, 1.0f);
+            glClear_(kGlColorBufferBit);
+        }
 
         if (ImDrawData* drawData = ImGui::GetDrawData(); drawData != nullptr) {
             ImGui_ImplOpenGL3_RenderDrawData(drawData);
@@ -194,6 +228,11 @@ public:
             ImGui_ImplSDL3_Shutdown();
             platformInitialized_ = false;
         }
+        if (sceneReady_) {
+            sceneRenderer_.shutdown();
+            sceneReady_ = false;
+        }
+        scene_ = nullptr;
         if (context_ != nullptr) {
             SDL_GL_DestroyContext(context_);
             context_ = nullptr;
@@ -211,6 +250,10 @@ private:
     bool initialized_ = false;
     bool platformInitialized_ = false;
     bool imguiInitialized_ = false;
+    bool sceneReady_ = false;
+    const kotor::Scene* scene_ = nullptr;
+    SceneCamera camera_;
+    GlScene sceneRenderer_;
     std::uint64_t frameIndex_ = 0;
 
     GlClearColorFn glClearColor_ = nullptr;
