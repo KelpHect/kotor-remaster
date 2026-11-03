@@ -117,5 +117,5 @@ python tools\harness\s4_trace_bounded_diff.py --a <a>.jsonl --b <b>.jsonl --out 
 ```
 
 Artifacts: `artifacts/lanes/s4-trace/` (runs, timelines, frames, summaries, extracted events,
-diff JSON), `artifacts/tests/hydralysis_trace_suite5.log`, `artifacts/tests/trace_capture_live3.log`,
+diff JSON), `artifacts/tests/hydralysis_trace_suite6.log`, `artifacts/tests/trace_capture_live3.log`,
 `artifacts/tests/trace_e2e_m1_final5.log`.

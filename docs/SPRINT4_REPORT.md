@@ -14,7 +14,7 @@ functions / 565 handlers reconciled.
 
 | # | Criterion | Result | Evidence |
 |---:|---|---|---|
-| 1 | Trace tool stack green | **met** - offline **339/339**; live recorder **12/12**; live M1 **13/13 in one class run, 71.0 s** | `artifacts/tests/hydralysis_trace_suite5.log`; `artifacts/tests/trace_capture_live3.log`; `artifacts/tests/trace_e2e_m1_final5.log` |
+| 1 | Trace tool stack green | **met** - offline **339/339**; live recorder **12/12**; live M1 **13/13 in one class run, 71.0 s** | `artifacts/tests/hydralysis_trace_suite6.log`; `artifacts/tests/trace_capture_live3.log`; `artifacts/tests/trace_e2e_m1_final5.log` |
 | 2 | Build-bound KotOR profile | **met** - `kotor/1`, SHA `8e887fb0...`, both `0290889e...` and `280ba024...` verify **4/4** hooks; detour alternatives accepted | `tools/traces/kotor/swkotor-1.0.3.toml`; profile binaries |
 | 3 | Real 32-bit live trace | **met** - live-04 `tr_d4036f0998a9`: **27,796 records / 27,714 semantic events**, 0 gaps, 0 dropped, 4/4 probes; live-05 `tr_82bfe0d0e41c`: 5,277 / 5,195, 0 gaps | `artifacts/lanes/s4-trace/s4-kotor-live-04.log`, `...-05.log`; `artifacts/lanes/s4-trace/live-0{4,5}-semantic.jsonl` |
 | 4 | Real diff | **met** - common prefix **351 actions**, **35 groups, all `same`**, scanned 351/351, 0 unmatched, 0 gaps | `artifacts/lanes/s4-trace/diff-bounded-live04-05.json`; `tools/harness/s4_trace_bounded_diff.py` |
@@ -24,7 +24,7 @@ functions / 565 handlers reconciled.
 
 ```text
 offline trace suite     339 tests, 70 tasks, 8 workers; 0 failed alone, 0 failed only under load; OK
-                         artifacts/tests/hydralysis_trace_suite5.log
+                         artifacts/tests/hydralysis_trace_suite6.log
 live recorder class      12 tests, 42.1 s; OK
                          artifacts/tests/trace_capture_live3.log
 live M1 class            13 tests, 71.0 s; OK
