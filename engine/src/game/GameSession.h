@@ -194,6 +194,9 @@ public:
     bool forceSuppressed() const { return character_.forceSuppressedTimer > 0.0f; }
     std::int32_t forceJumpBonus() const { return forceJumpBonus_; }
     bool canStealth() const { return rules_.loaded() && rules_.allowsStealth(character_); }
+    bool enterStealth();
+    void leaveStealth();
+    bool stealthActive() const { return stealthActive_; }
     // Test hook invocation without moving the player; returns false if the
     // entity or hook is absent.
     bool runHookForTest(const std::string& hook, const std::string& tag,
@@ -282,6 +285,7 @@ private:
     float combatModeTimer_ = 0.0f;
     std::int32_t lastForcePower_ = -1;
     bool lastForcePowerSuccess_ = false;
+    bool stealthActive_ = false;
     std::int32_t forceJumpBonus_ = 0;
     std::vector<float> npcAttackTimers_;
     std::vector<bool> triggerInside_;

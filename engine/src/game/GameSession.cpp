@@ -265,6 +265,29 @@ bool GameSession::hasEffect(const std::string& label) const
     return hasEffectLabel(character_.effects, label);
 }
 
+bool GameSession::enterStealth()
+{
+    if (!canStealth() || playerDead_ || dialogueView_.active) {
+        return false;
+    }
+    if (stealthActive_) {
+        return true;
+    }
+    stealthActive_ = true;
+    combatTarget_ = UINT32_MAX;
+    logEvent("stealth enter");
+    return true;
+}
+
+void GameSession::leaveStealth()
+{
+    if (!stealthActive_) {
+        return;
+    }
+    stealthActive_ = false;
+    logEvent("stealth exit");
+}
+
 GameSession::GameSession(std::string installPath, std::string module)
     : installPath_(std::move(installPath))
     , install_(installPath_)
@@ -1686,6 +1709,7 @@ void GameSession::endDialogue()
 
 void GameSession::attackNearestHostile()
 {
+    leaveStealth();
     std::size_t best = static_cast<std::size_t>(-1);
     float bestDistance = 20.0f;
     for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
@@ -1855,6 +1879,10 @@ void GameSession::npcAttack(std::size_t attacker)
 void GameSession::updateCombat(float dt)
 {
     if (playerDead_ || dialogueView_.active) {
+        return;
+    }
+    if (stealthActive_) {
+        combatTarget_ = UINT32_MAX;
         return;
     }
     if (npcAttackTimers_.size() != scene_.entities.size()) {
@@ -2270,6 +2298,7 @@ bool GameSession::useFeat(std::int32_t featId, std::uint32_t target)
     }
     combatModeRank_ = label.find("MASTER") != std::string::npos ? 3
         : label.find("IMPROVED") != std::string::npos ? 2 : 1;
+    leaveStealth();
     combatModeTimer_ = 30.0f;
     logEvent("feat " + label);
     return true;
@@ -2340,6 +2369,7 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
         return false;
     }
     character_.fp -= info->cost;
+    leaveStealth();
     lastForcePower_ = powerId;
     lastForcePowerSuccess_ = true;
     const auto roll = [&]() { return 1 + static_cast<std::int32_t>(random() % 20u); };

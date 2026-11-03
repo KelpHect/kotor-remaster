@@ -7,7 +7,7 @@ implements Force Immunity, Force Breach, Suppress Force and save/load persistenc
 have active modes (Power Attack/Power Blast, Flurry, Critical Strike, Whirlwind, Force Jump) and
 passive formulas (Toughness/Wookiee DR, Weapon Focus/Specialization, Dueling, Two-Weapon tiers,
 Caution/Empathy/Gear Head, Conditioning, Force Focus, Scoundrel's Luck/Jedi Sense, Sneak Attack,
-Jedi Defense deflection, Force Camouflage stealth data, armor/weapon proficiency); the script
+Jedi Defense deflection, Force Camouflage stealth entry, armor/weapon proficiency); the script
 bridge covers feats, spells, talents, FP, alignment and
 talent type/id queries; engine and original saves round-trip alignment/FP/effects. **35/35 CTest
 targets** pass.
@@ -160,7 +160,7 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   Suppress Force and save/load persistence; 125 feat rows; Power Attack/Power Blast, Flurry,
   Critical Strike, Whirlwind, Force Jump and Jedi Defense deflection; exact skill/conditioning/
   Force Focus/Sense/Scoundrel's Luck/Sneak Attack/Toughness/Wookiee formulas; Force Camouflage
-  stealth data; armor/weapon proficiency; script action/talent bridge; alignment, FP and effects
+  stealth entry; armor/weapon proficiency; script action/talent bridge; alignment, FP and effects
   round-trip in engine and original saves.
   CTest **35/35**; 117-module sweep 0/0; VM parity 0; scene parity 0.0300; Python 143 tests /
   7 skips; install unchanged. See `docs/recon/49_COMBAT_FORCE.md` and

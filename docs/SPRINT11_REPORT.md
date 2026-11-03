@@ -10,7 +10,7 @@ alignment/FP/feats/powers persist in both engine and original saves.
 
 ```text
 100% tests passed, 0 tests failed out of 35
-Total Test time (real) =  77.84 sec
+Total Test time (real) =  59.09 sec
 ```
 
 The new target is `kotor_combat_force`. All Sprint 10 save/profile/delayed
@@ -72,7 +72,8 @@ Combat feats now have effects:
   to 2 m and adds +0/+2/+4 to the first strike.
 - Jedi Defense / Advanced / Master: lightsaber deflection rolls with +0/+3/+6
   and returned bolts on a 10-point margin.
-- Force Camouflage: `allowsStealth` data ability; full stealth AI is later.
+- Force Camouflage: grants stealth entry; hostiles do not acquire a stealthed
+  player and any attack or Force power breaks stealth.
 
 Flurry adds an attack in the round, Whirlwind hits adjacent hostiles, and
 stunned/feared creatures skip movement and attacks. Force armor adds AC, Force
@@ -85,8 +86,8 @@ Deterministic assertions include `caution_1/2/3`, `empathy_1`, `gear_head_1`,
 `jedi_sense_2`, `knight_sense_4`, `master_sense_6`, `sneak_1/2`,
 `wookiee_endurance_dr/hp`, proficiency checks, `ranged_entities_detected`,
 `jedi_defense_6`, `jedi_deflect_yes/no`, `jedi_deflect_integration`,
-`force_camouflage_stealth`, `effect_engine_roundtrip` and
-`effect_original_roundtrip`.
+`force_camouflage_stealth`, `stealth_enter/active/no_combat_target/broken_by_attack`,
+`effect_engine_roundtrip` and `effect_original_roundtrip`.
 
 ## 5. Alignment and script bridge
 
@@ -122,7 +123,7 @@ reloads the original slot.
 
 ## 7. Regression
 
-- **CTest: 35/35 passed** (77.84 s).
+- **CTest: 35/35 passed** (59.09 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0300**, PASS.
@@ -134,8 +135,8 @@ reloads the original slot.
 - Battle Meditation is **re-scoped out by shipped data**: its TLK description
   says it is for large fleets/armies and "not applicable to small-scale
   combat", so there is no small-scale rule to implement.
-- Force Camouflage exposes `allowsStealth`; full stealth perception/presentation
-  remains later work.
+- Force Camouflage grants stealth entry; hostiles do not acquire a stealthed
+  player and attacking or using a Force power breaks stealth.
 - Cutscenes, animation/skinning, audio/EAX, Bink/lip sync, full `.gui`,
   minigames, localization, mods/Override, KotOR 2 world loading and P6 content.
 
