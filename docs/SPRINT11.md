@@ -9,7 +9,7 @@ round-trip the new state.
 
 Baseline: Sprint 10 `34/34` CTest, 117/117 modules, VM 8,666/8,666, scene parity
 0.0300, Python 143 tests / 7 skips, install unchanged. Sprint 11 result:
-`35/35` CTest, 64.78 s.
+`35/35` CTest, 48.47 s.
 
 ## Gate S11
 
@@ -21,14 +21,20 @@ Baseline: Sprint 10 `34/34` CTest, 117/117 modules, VM 8,666/8,666, scene parity
    - lightning/shock/storm/death-field/drain/wound/kill/choke/plague/affliction/
      saber-throw/push/wave/whirlwind damage with reflex/fortitude/will saves,
    - stun/stasis/slow/droid-stun and fear/horror/insanity timers,
-   - Force armor/shield/resist/immunity and valor/speed buffs.
+   - Force armor/shield/resist and valor/speed buffs through a shared
+     `ActiveEffect` stack,
+   - Force Immunity (blocks Force powers), Force Breach (removes dispellable
+     effects, including Immunity), and Suppress Force (removes effects and
+     blocks further Force powers for 15 s).
    FP is spent, dark/light alignment shifts by the `goodevil` field, and the
    power is logged.
 3. **Feats** - all **125** `feat.2da` rows load. Combat-relevant feats have
-   effects: Power Attack/Improved/Master, Flurry/Improved/Master, Critical
-   Strike/Improved/Master, Whirlwind, Toughness/Improved/Master, Weapon
-   Focus/Specialization and Dueling. Modes modify attack/damage/critical
-   threat; Flurry adds an attack; Whirlwind hits adjacent hostiles.
+   effects: Power Attack/Improved/Master, Power Blast/Improved/Master,
+   Flurry/Improved/Master, Critical Strike/Improved/Master, Whirlwind,
+   Toughness/Improved/Master, Weapon Focus/Specialization, Dueling and
+   Two-Weapon Fighting/Advanced/Mastery. Modes modify attack/damage/critical
+   threat; Flurry adds an attack; Whirlwind hits adjacent hostiles; two-weapon
+   penalties are -6/-4/-2/0 by tier.
 4. **Alignment** - `CharacterSheet::alignment` is 0 dark .. 50 neutral ..
    100 light. Script get/set/adjust (`GetGoodEvilValue`,
    `GetAlignmentGoodEvil`, `SetGoodEvilValue`, `AdjustAlignment`) and party
@@ -40,7 +46,7 @@ Baseline: Sprint 10 `34/34` CTest, 117/117 modules, VM 8,666/8,666, scene parity
    compiled NCS fixture.
 6. **Persistence** - engine saves and original `SAVEGAME.sav` slots round-trip
    alignment, current/max Force points, feats and powers.
-7. **Regression** - **35/35** CTest (64.78 s), 117/117 modules with 0 failures /
+7. **Regression** - **35/35** CTest (48.47 s), 117/117 modules with 0 failures /
    0 warnings, VM corpus 8,666/8,666 with 0 mismatches, scene parity 0.0300,
    Python 143 tests / 7 skips, install sentinel 0 session changes.
 8. **Evidence and docs** - report, technical note, fixtures and logs.
@@ -60,6 +66,7 @@ Baseline: Sprint 10 `34/34` CTest, 117/117 modules, VM 8,666/8,666, scene parity
 
 - Exact original formulas/animations for every non-combat feat (crafting,
    skill focus, gear feats) and content-specific scripted ability exceptions.
+- Persisting active Force effects across save/load; the stack is live state.
 - `ActionWait`/closure persistence across save, cutscenes, animation, audio/EAX,
    Bink/lip sync, full `.gui`, minigames, localization, mods/Override, KotOR 2
    world loading and P6 content.

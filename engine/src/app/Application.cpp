@@ -197,8 +197,8 @@ void drawSystemsUi(GameSession& game)
                     sheet.level);
         ImGui::Text("XP %d   HP %d/%d   FP %d/%d   Gold %d", sheet.xp, sheet.hp,
                     sheet.maxHp, sheet.fp, sheet.maxFp, game.gold());
-        ImGui::Text("Alignment %d (0 dark .. 100 light)   Combat mode %s",
-                    sheet.alignment, combatModeName(game.combatMode()));
+        ImGui::Text("Alignment %d (0 dark .. 100 light)   Combat mode %s   Effects %zu",
+                    sheet.alignment, combatModeName(game.combatMode()), sheet.effects.size());
         ImGui::Separator();
         ImGui::Text("STR %d  DEX %d  CON %d", sheet.str, sheet.dex, sheet.con);
         ImGui::Text("INT %d  WIS %d  CHA %d", sheet.intel, sheet.wis, sheet.cha);
@@ -1391,21 +1391,26 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     CharacterSheet sheet = game.rules().createCharacter(3, 5);
     sheet.maxHp = game.rules().maxHitPoints(3, 5, sheet.con);
     sheet.hp = 20;
-    sheet.fp = 200;
-    sheet.maxFp = 200;
+    sheet.fp = 400;
+    sheet.maxFp = 400;
     sheet.alignment = 50;
     sheet.featPoints = 10;
     sheet.feats.insert(28); // POWER_ATTACK
     sheet.feats.insert(11); // FLURRY
+    sheet.feats.insert(29); // POWER_BLAST
     sheet.feats.insert(36); // WEAPON_FOCUS_LIGHTSABER
     sheet.feats.insert(50); // WEAPON_SPEC_LIGHTSABER
     sheet.powers.insert(28); // FORCE_POWER_HEAL
     sheet.powers.insert(35); // FORCE_POWER_LIGHTNING
     sheet.powers.insert(17); // FORCE_POWER_FORCE_ARMOR
     sheet.powers.insert(46); // FORCE_POWER_STUN
+    sheet.powers.insert(20); // FORCE_POWER_FORCE_IMMUNITY
+    sheet.powers.insert(19); // FORCE_POWER_FORCE_BREACH
+    sheet.powers.insert(48); // FORCE_POWER_SUPRESS_FORCE
+    sheet.powers.insert(24); // FORCE_POWER_FORCE_SHIELD
     game.setCharacterForTest(sheet);
 
-    check(game.maxForcePoints() == 200, "jedi_force_points");
+    check(game.maxForcePoints() == 400, "jedi_force_points");
     int forcePowerCount = 0;
     for (std::int32_t id = 0; id < 200; ++id) {
         if (game.rules().forcePower(id).has_value()) {
@@ -1414,6 +1419,19 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     }
     check(forcePowerCount == 44, "force_catalog_44");
     check(game.rules().featCount() == 125, "feat_catalog_125");
+    CharacterSheet dual = sheet;
+    InventoryItem mainHand = game.rules().makeItem("main", 2);
+    mainHand.equipped = true;
+    InventoryItem offHand = game.rules().makeItem("off", 8);
+    offHand.equipped = true;
+    dual.inventory = {mainHand, offHand};
+    check(game.rules().twoWeaponPenalty(dual) == -6, "two_weapon_penalty");
+    dual.feats.insert(3);
+    check(game.rules().twoWeaponPenalty(dual) == -4, "two_weapon_fighting");
+    dual.feats.insert(9);
+    check(game.rules().twoWeaponPenalty(dual) == -2, "two_weapon_advanced");
+    dual.feats.insert(85);
+    check(game.rules().twoWeaponPenalty(dual) == 0, "two_weapon_mastery");
     const std::size_t hostile = firstHostile(game);
     check(hostile != static_cast<std::size_t>(-1), "hostile_found");
     if (hostile == static_cast<std::size_t>(-1)) {
@@ -1449,9 +1467,46 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     check(target.stunTimer > 0.0f, "stun_applied");
     check(game.alignment() == 54, "stun_light_side");
 
+    check(game.useForcePower(20, targetObject), "immunity_used");
+    const auto targetHasImmunity = [&]() {
+        return std::any_of(target.effects.begin(), target.effects.end(),
+                           [](const kotor::ActiveEffect& effect) {
+                               return effect.remaining > 0.0f
+                                   && effect.label.find("FORCE_IMMUNITY") != std::string::npos;
+                           });
+    };
+    check(targetHasImmunity(), "immunity_effect");
+    const std::int32_t fpBeforeImmuneBlock = game.forcePoints();
+    check(!game.useForcePower(35, targetObject), "immunity_blocks_power");
+    check(game.forcePoints() == fpBeforeImmuneBlock, "immunity_no_cost");
+    check(game.useForcePower(19, targetObject), "breach_used");
+    check(!targetHasImmunity(), "breach_removes_immunity");
+    check(game.useForcePower(35, targetObject), "lightning_after_breach");
+
+    check(game.useForcePower(17, 0), "armor_before_suppress");
+    check(game.forceArmorBonus() > 0, "armor_before_suppress_effect");
+    check(game.useForcePower(24, 0), "shield_before_breach");
+    check(game.forceShield() > 0, "shield_effect");
+    check(game.useForcePower(19, 0), "breach_self");
+    check(game.forceArmorBonus() == 0 && game.forceShield() == 0,
+          "breach_removes_buffs");
+    check(game.useForcePower(48, 0), "suppress_used");
+    check(game.forceSuppressed(), "suppress_effect");
+    const std::int32_t fpBeforeSuppressBlock = game.forcePoints();
+    check(!game.useForcePower(35, targetObject), "suppress_blocks_power");
+    check(game.forcePoints() == fpBeforeSuppressBlock, "suppress_no_cost");
+    InputState idle;
+    for (int i = 0; i < 200; ++i) {
+        game.update(0.08f, idle);
+    }
+    check(!game.forceSuppressed(), "suppress_expires");
+    check(game.useForcePower(35, targetObject), "lightning_after_suppress");
+
     const std::int32_t hpBeforeFeat = game.character().maxHp;
     check(game.useFeat(28, targetObject), "power_attack_used");
     check(game.combatMode() == CombatMode::PowerAttack, "power_attack_mode");
+    check(game.useFeat(29, targetObject), "power_blast_used");
+    check(game.combatMode() == CombatMode::PowerAttack, "power_blast_mode");
     check(game.useFeat(11, targetObject), "flurry_used");
     check(game.combatMode() == CombatMode::Flurry, "flurry_mode");
     check(game.learnFeat(84), "toughness_learned");
@@ -1480,7 +1535,7 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
         check(scriptLocal("1") == 1, "script_has_feat");
         check(scriptLocal("2") == 1, "script_has_spell");
         check(scriptLocal("3") == fpBeforeScript, "script_force_points");
-        check(scriptLocal("4") == 200, "script_max_force_points");
+        check(scriptLocal("4") == game.maxForcePoints(), "script_max_force_points");
         check(scriptLocal("5") == 1, "script_talent_type");
         check(scriptLocal("6") == 35, "script_talent_id");
         check(game.combatMode() == CombatMode::PowerAttack, "script_action_feat");
