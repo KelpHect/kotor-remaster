@@ -1546,6 +1546,85 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
                   && fxTypes.contains(144) && fxTypes.contains(380)
                   && fxTypes.contains(392),
               "fx_controller_families");
+
+        const auto parameterModel = [&](const kotor::Mdl& model, float time) {
+            std::vector<kotor::FxNodeParameters> nodes;
+            for (std::size_t ordinal = 0; ordinal < model.fxNodeCount(); ++ordinal) {
+                nodes.push_back(model.fxNodeParameters(ordinal, {}, time));
+            }
+            return nodes;
+        };
+        const auto hasParameter = [](const std::vector<kotor::FxNodeParameters>& nodes,
+                                     std::int32_t type) {
+            for (const kotor::FxNodeParameters& node : nodes) {
+                if (node.has(type)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        const std::vector<kotor::FxNodeParameters> fxParams0 = parameterModel(*fxModel, 0.0f);
+        const std::vector<kotor::FxNodeParameters> fxParams1 = parameterModel(*fxModel, 1.0f);
+        check(fxParams0.size() >= 3, "fx_param_nodes");
+        check(fxParams0.size() == fxParams1.size(), "fx_param_node_stable");
+        std::set<std::int32_t> modelledTypes;
+        std::size_t parameterCount = 0;
+        bool parameterFinite = true;
+        bool parameterDeterministic = true;
+        for (std::size_t n = 0; n < fxParams0.size() && n < fxParams1.size(); ++n) {
+            const kotor::FxNodeParameters& a = fxParams0[n];
+            const kotor::FxNodeParameters& b = fxParams1[n];
+            parameterDeterministic = parameterDeterministic
+                && a.nodeId == b.nodeId && a.parameters.size() == b.parameters.size();
+            for (std::size_t p = 0; p < a.parameters.size(); ++p) {
+                const kotor::FxParameter& pa = a.parameters[p];
+                const kotor::FxParameter& pb = b.parameters[p];
+                modelledTypes.insert(pa.type);
+                ++parameterCount;
+                parameterDeterministic = parameterDeterministic && pa.type == pb.type
+                    && pa.values.size() == pb.values.size();
+                for (float value : pa.values) {
+                    parameterFinite = parameterFinite && std::isfinite(value);
+                }
+                if (p < b.parameters.size()) {
+                    for (std::size_t c = 0; c < pa.values.size()
+                         && c < pb.values.size(); ++c) {
+                        parameterDeterministic = parameterDeterministic
+                            && std::fabs(pa.values[c] - pb.values[c]) < 0.0001f;
+                    }
+                }
+            }
+        }
+        check(parameterFinite, "fx_param_finite");
+        check(parameterDeterministic, "fx_param_deterministic");
+        check(modelledTypes == fxTypes, "fx_param_all_types");
+        check(parameterCount >= 30, "fx_param_count");
+        check(hasParameter(fxParams0, 80), "fx_param_80");
+        check(hasParameter(fxParams0, 84), "fx_param_84");
+        check(hasParameter(fxParams0, 132), "fx_param_132");
+        check(hasParameter(fxParams0, 144), "fx_param_144");
+        check(hasParameter(fxParams0, 380), "fx_param_380");
+        check(hasParameter(fxParams0, 392), "fx_param_392");
+        std::size_t remainingFamilies = 0;
+        for (const std::int32_t family : fxTypes) {
+            if (hasParameter(fxParams0, family)) {
+                ++remainingFamilies;
+            } else {
+                logWarn(concat("animation test: missing FX parameter family ",
+                               family));
+            }
+        }
+        check(remainingFamilies == fxTypes.size(), "fx_param_remaining_families");
+        bool parameterAlpha = false;
+        for (const kotor::FxNodeParameters& node : fxParams0) {
+            const kotor::FxParameter* start = node.find(84);
+            const kotor::FxParameter* end = node.find(80);
+            if (start != nullptr && end != nullptr && start->scalar(0, 0.0f) > 0.0f
+                && end->scalar(0, 1.0f) <= start->scalar(0, 0.0f)) {
+                parameterAlpha = true;
+            }
+        }
+        check(parameterAlpha, "fx_param_alpha_curve");
         const std::vector<kotor::MdlMeshTriangle> fx0 = fxModel->fxTriangles({}, 0.0f);
         const std::vector<kotor::MdlMeshTriangle> fx1 = fxModel->fxTriangles({}, 1.0f);
         check(!fx0.empty() && fx0.size() == fx1.size(), "fx_geometry");
@@ -1574,6 +1653,13 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
         }
         check(additive, "fx_additive_batches");
         check(alpha, "fx_alpha_batches");
+        bool parameterTextures = !fx0.empty();
+        for (const kotor::MdlMeshTriangle& triangle : fx0) {
+            parameterTextures = parameterTextures
+                && triangle.texture.rfind("__fx_", 0) == 0
+                && triangle.texture.size() == 13;
+        }
+        check(parameterTextures, "fx_parameter_textures");
     }
     std::size_t sceneAdditive = 0;
     std::size_t sceneAlpha = 0;
@@ -1612,6 +1698,33 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
         check(roomTypes.contains(76) && roomTypes.contains(88) && roomTypes.contains(140),
               "room_light_controllers");
         check(!roomFx->fxTriangles({}, 0.0f).empty(), "room_light_geometry");
+        check(roomFx->fxNodeCount() >= 13, "room_light_param_nodes");
+        bool roomParameterFinite = true;
+        bool roomParameterStable = true;
+        std::size_t roomParameterTypes = 0;
+        for (std::size_t ordinal = 0; ordinal < roomFx->fxNodeCount(); ++ordinal) {
+            const kotor::FxNodeParameters a = roomFx->fxNodeParameters(ordinal, {}, 0.0f);
+            const kotor::FxNodeParameters b = roomFx->fxNodeParameters(ordinal, {}, 1.0f);
+            roomParameterStable = roomParameterStable
+                && a.parameters.size() == b.parameters.size();
+            for (const kotor::FxParameter& parameter : a.parameters) {
+                ++roomParameterTypes;
+                for (float value : parameter.values) {
+                    roomParameterFinite = roomParameterFinite && std::isfinite(value);
+                }
+            }
+            for (std::size_t p = 0; p < a.parameters.size() && p < b.parameters.size(); ++p) {
+                for (std::size_t c = 0; c < a.parameters[p].values.size()
+                     && c < b.parameters[p].values.size(); ++c) {
+                    roomParameterStable = roomParameterStable
+                        && std::fabs(a.parameters[p].values[c]
+                                     - b.parameters[p].values[c]) < 0.0001f;
+                }
+            }
+        }
+        check(roomParameterFinite, "room_light_param_finite");
+        check(roomParameterStable, "room_light_param_stable");
+        check(roomParameterTypes >= 39, "room_light_param_types");
     }
 
     check(game.rules().animationName(6) == "pause1", "animation_2da_name");
@@ -2661,14 +2774,14 @@ int runApplication(const Options& options)
             }
             if (options.sceneAssert) {
                 const bool ok = loaded.rooms.size() == 15
-                    && loaded.vertices.size() == 239178
-                    && loaded.indices.size() == 239178
+                    && loaded.vertices.size() == 237594
+                    && loaded.indices.size() == 237594
                     && loaded.batches.size() == 49
-                    && loaded.textures.size() == 83
+                    && loaded.textures.size() == 84
                     && loaded.collisionVertices.size() == 850
                     && loaded.collision.size() == 1365
                     && loaded.entities.size() == 218
-                    && loaded.entityMeshes.size() == 143
+                    && loaded.entityMeshes.size() == 142
                     && loaded.cameras.size() == 40
                     && loaded.triggers.size() == 13
                     && loaded.warnings.empty();

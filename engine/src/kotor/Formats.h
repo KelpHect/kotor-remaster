@@ -314,6 +314,30 @@ struct MdlAnimationInfo {
     float transition = 0.0f;
 };
 
+// One sampled MDL controller. `values` keeps the controller's native width so
+// scalar, colour and vector families share a single deterministic model.
+struct FxParameter {
+    std::int32_t type = -1;
+    std::vector<float> values;
+
+    float scalar(std::size_t component = 0, float fallback = 0.0f) const;
+    Vec3 colour(Vec3 fallback) const;
+};
+
+// All controller families that affect one light/emitter node at a given time.
+struct FxNodeParameters {
+    std::size_t nodeIndex = 0;
+    std::uint16_t nodeId = 0;
+    std::uint16_t type = 0;
+    std::string name;
+    std::vector<FxParameter> parameters;
+
+    const FxParameter* find(std::int32_t family) const;
+    bool has(std::int32_t family) const { return find(family) != nullptr; }
+    float scalar(std::int32_t family, float fallback, std::size_t component = 0) const;
+    Vec3 colour(std::int32_t family, Vec3 fallback) const;
+};
+
 // Minimal MDL/MDX parser: node hierarchy, trimesh/skin nodes, world-space
 // triangles and animation clips. Skinning is evaluated on the CPU.
 class Mdl {
@@ -348,6 +372,9 @@ public:
     bool hasNonPoseControllers() const;
     bool hasControllerType(std::int32_t type) const;
     std::set<std::int32_t> fxControllerTypes() const;
+    std::size_t fxNodeCount() const;
+    FxNodeParameters fxNodeParameters(std::size_t ordinal, const std::string& animation,
+                                      float time) const;
     float skinBindError() const;
     std::optional<Pose> nodePose(const std::string& node, const std::string& animation,
                                  float time) const;
@@ -421,6 +448,7 @@ private:
 
     std::vector<Node> parseNodes(std::uint32_t rootOffset) const;
     std::vector<Controller> parseControllers(std::uint32_t nodeHeader) const;
+    static std::vector<float> sampleController(const Controller& controller, float time);
     Animation parseAnimation(std::uint32_t offset) const;
     std::map<std::uint16_t, const Node*> animationNodes(const Animation& animation) const;
     std::vector<Pose> poseWorld(const Animation* animation, float time) const;

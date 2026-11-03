@@ -9,9 +9,10 @@ defaults; equipped weapons attach to `Rhand_g`/`Lhand_g` and follow the hand
 pose; GIT cameras and DLG `CameraID`/`CameraAnimation`/`CameraAngle` playback
 override the first-person camera during dialogue, with camera-MDL `CUT###W`
 clips evaluated through `camerahook` and height-offset presets; dangly
-constraints settle deterministically; saber header geometry renders; light
-and emitter controllers emit deterministic billboard quads with per-batch
-opaque/alpha/additive blending in GL and Vulkan; clip
+constraints settle deterministically; saber header geometry renders; every
+light/emitter controller family is sampled into a deterministic parameter
+model that drives billboard colour, alpha, size, birth/life and motion, with
+per-batch opaque/alpha/additive blending in GL and Vulkan; clip
 changes cross-fade over the MDL transition, root motion is extracted and
 shipped clips are root-in-place; `animations.2da` and
 `PlayAnimation`/`ActionPlayAnimation`
@@ -32,9 +33,9 @@ companion XP, systems UI); Sprint 6 remains complete (native script VM
 8,666/8,666 default and functional, 303,616 ACTION calls, dialogue entry 54,
 d20 rounds); Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255
 parity). Sprint 13+ remains: non-default `CamVidEffect` semantics (none in the
-K1 corpus), exotic light/emitter controller families, audio/EAX, Bink/lip
-sync, full `.gui`, minigames, localization, mods/Override, KotOR 2 world
-loading, faction reputation simulation and the P6 content checklist.
+K1 corpus), audio/EAX, Bink/lip sync, full `.gui`, minigames, localization,
+mods/Override, KotOR 2 world loading, faction reputation simulation and the
+P6 content checklist.
 Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT12.md` and their
 `*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
 
