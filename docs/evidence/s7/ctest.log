@@ -1,0 +1,47 @@
+Test project E:/Projects/kotor-remaster/kotor-remaster/engine/build/msvc-release
+      Start  1: kotor_formats
+ 1/21 Test  #1: kotor_formats ....................   Passed    0.01 sec
+      Start  2: smoke_null_headless
+ 2/21 Test  #2: smoke_null_headless ..............   Passed    0.05 sec
+      Start  3: smoke_imgui_selftest
+ 3/21 Test  #3: smoke_imgui_selftest .............   Passed    0.02 sec
+      Start  4: kotor_scene_stats
+ 4/21 Test  #4: kotor_scene_stats ................   Passed    0.29 sec
+      Start  5: kotor_scene_assert
+ 5/21 Test  #5: kotor_scene_assert ...............   Passed    0.28 sec
+      Start  6: kotor_door_transition
+ 6/21 Test  #6: kotor_door_transition ............   Passed    0.39 sec
+      Start  7: kotor_taris_transition
+ 7/21 Test  #7: kotor_taris_transition ...........   Passed    0.38 sec
+      Start  8: kotor_walk_collision
+ 8/21 Test  #8: kotor_walk_collision .............   Passed    0.27 sec
+      Start  9: kotor_dialogue
+ 9/21 Test  #9: kotor_dialogue ...................   Passed    0.27 sec
+      Start 10: kotor_combat
+10/21 Test #10: kotor_combat .....................   Passed    0.26 sec
+      Start 11: kotor_script
+11/21 Test #11: kotor_script .....................   Passed    0.27 sec
+      Start 12: kotor_rules
+12/21 Test #12: kotor_rules ......................   Passed    0.26 sec
+      Start 13: kotor_systems
+13/21 Test #13: kotor_systems ....................   Passed    0.50 sec
+      Start 14: kotor_merchant
+14/21 Test #14: kotor_merchant ...................   Passed    0.88 sec
+      Start 15: kotor_encounter
+15/21 Test #15: kotor_encounter ..................   Passed    0.37 sec
+      Start 16: kotor_party
+16/21 Test #16: kotor_party ......................   Passed    0.52 sec
+      Start 17: kotor_ui
+17/21 Test #17: kotor_ui .........................   Passed    0.26 sec
+      Start 18: kotor_playthrough
+18/21 Test #18: kotor_playthrough ................   Passed    1.06 sec
+      Start 19: kotor_landmark
+19/21 Test #19: kotor_landmark ...................   Passed    0.28 sec
+      Start 20: kotor_save_load
+20/21 Test #20: kotor_save_load ..................   Passed    0.51 sec
+      Start 21: kotor_vm_corpus
+21/21 Test #21: kotor_vm_corpus ..................   Passed    3.48 sec
+
+100% tests passed, 0 tests failed out of 21
+
+Total Test time (real) =  10.62 sec

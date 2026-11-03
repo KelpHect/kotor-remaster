@@ -1,0 +1,72 @@
+[INFO] KotOR module end_m01aa area m01aa from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 15 vertices: 235038 indices: 235038 batches: 34
+[INFO]   textures: 53 collision vertices: 850 facets: 1365
+[INFO]   entities: 218 (door 15, placeable 60, creature 26, waypoint 58, store 0, encounter 0)
+[INFO]   encounter volumes: 0
+[INFO]   entry: 15.4248, 20.1215, -1.275
+[INFO]   entity meshes: 101 triggers: 13 warnings: 0
+[INFO]   script hooks: 284 on 54 entities; scene hooks: 3; script runs: 25
+[INFO]   entity mesh 0 end_door05 verts=564 local=-3.07263,-0.121998,-0.047403 .. 3.08736,0.123205,3.00955
+[INFO]   entity mesh 1 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   entity mesh 2 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   creature mesh Carth verts=3276 local=-0.606384,-0.151653,-0.00207151 .. 0.610334,0.167699,1.54884
+[INFO]   bounds: -170.51, -32.6442, -204.652 .. 238.793, 471.187, 291.201
+[INFO] kotor_engine 0.1.0 starting (SDL 3.4.18)
+[INFO] SDL video driver: windows
+[INFO] Trying backend: OpenGL
+[INFO] Backend ready: opengl
+[INFO]   API:       4.5.0 Core Profile Context 26.10.1.261008
+[INFO]   Device:    ATI Technologies Inc. / AMD Radeon RX 9070 XT
+[INFO]   Swapchain: double-buffered SDL window
+[INFO] ImGui 1.93.0 renderer initialized
+[INFO] ImGui draw data at frame 0: 1 list(s), 8 vertices
+[INFO] Scene frame: eye 15.4248, 20.1215, 0.351596 meshes 102/102 textures 53
+[INFO] Screenshot: E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s7-parity\parity-gl.bmp
+[INFO] Exit: frame limit reached (3)
+[INFO] Frames: 3 in 0.0190297 s (avg 6.34323 ms/frame)
+[INFO] Backend summary: opengl | 4.5.0 Core Profile Context 26.10.1.261008 | double-buffered SDL window
+[INFO] KotOR module end_m01aa area m01aa from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 15 vertices: 235038 indices: 235038 batches: 34
+[INFO]   textures: 53 collision vertices: 850 facets: 1365
+[INFO]   entities: 218 (door 15, placeable 60, creature 26, waypoint 58, store 0, encounter 0)
+[INFO]   encounter volumes: 0
+[INFO]   entry: 15.4248, 20.1215, -1.275
+[INFO]   entity meshes: 101 triggers: 13 warnings: 0
+[INFO]   script hooks: 284 on 54 entities; scene hooks: 3; script runs: 25
+[INFO]   entity mesh 0 end_door05 verts=564 local=-3.07263,-0.121998,-0.047403 .. 3.08736,0.123205,3.00955
+[INFO]   entity mesh 1 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   entity mesh 2 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   creature mesh Carth verts=3276 local=-0.606384,-0.151653,-0.00207151 .. 0.610334,0.167699,1.54884
+[INFO]   bounds: -170.51, -32.6442, -204.652 .. 238.793, 471.187, 291.201
+[INFO] kotor_engine 0.1.0 starting (SDL 3.4.18)
+[INFO] SDL video driver: windows
+[INFO] Trying backend: Vulkan
+[INFO] Vulkan instance created (requested API 1.4.0, loader 1.4.357)
+[INFO] Vulkan candidate: 'AMD Radeon RX 9070 XT' API 1.4.359 score 120
+[INFO] Selected Vulkan device: AMD Radeon RX 9070 XT (discrete GPU, API 1.4.359)
+[INFO] Vulkan swapchain: VK_FORMAT_B8G8R8A8_UNORM 960x540, 3 images, FIFO
+[INFO] Backend ready: vulkan
+[INFO]   API:       instance 1.4.0 / device 1.4.359
+[INFO]   Device:    AMD Radeon RX 9070 XT [discrete GPU]
+[INFO]   Swapchain: VK_FORMAT_B8G8R8A8_UNORM 960x540, 3 images, FIFO
+[INFO] ImGui 1.93.0 renderer initialized
+[INFO] ImGui draw data at frame 0: 1 list(s), 8 vertices
+[INFO] Vulkan scene draw: meshes 102/102 textures 53 eye 15.4248, 20.1215, 0.351596
+[INFO] Screenshot: E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s7-parity\parity-vulkan.bmp
+[INFO] Exit: frame limit reached (3)
+[INFO] Frames: 3 in 0.0168248 s (avg 5.60827 ms/frame)
+[INFO] Backend summary: vulkan | instance 1.4.0 / device 1.4.359 | VK_FORMAT_B8G8R8A8_UNORM 960x540, 3 images, FIFO
++ E:\Projects\kotor-remaster\kotor-remaster\engine\build\msvc-release\kotor_engine.exe --module end_m01aa --gl --width 960 --height 540 --frames 3 --screenshot E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s7-parity\parity-gl.bmp
++ E:\Projects\kotor-remaster\kotor-remaster\engine\build\msvc-release\kotor_engine.exe --module end_m01aa --vulkan --width 960 --height 540 --frames 3 --screenshot E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s7-parity\parity-vulkan.bmp
+module=end_m01aa
+resolution=960x540
+scene_region=(499, 118, 940, 520)
+gl_capture=E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s7-parity\parity-gl.png
+vulkan_capture=E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s7-parity\parity-vk.png
+mean_abs_channel_diff=0.0300
+rms_channel_diff=1.8755
+threshold=1.0000
+verdict=PASS
+

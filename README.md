@@ -1,20 +1,19 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 6 (P5 script runtime and systems core) complete - gate S6 met (2026-11-03).** The
-engine now runs the shipped NWScript corpus on its own C++ VM (8,666/8,666 exact against the
-regenerated oracle, 303,616 ACTION calls in the functional run), executes the real module script
-hooks, selects dialogue entries from `StartingList.Active`, and owns 2DA-driven character, d20
-combat-round, party, inventory, journal and XP state. Sprint 5 remains complete: the runtime plays
-the `end_m01aa` slice on Vulkan 1.4 and OpenGL 4.5, the deterministic 1800-second gate passes, the
-scene parity check is 0.03/255, and all 17 CTest targets pass. Sprint 4 remains complete (Hydra
-12.3-hydra.6 / Hydralysis 0.8.0, gap-free live runs, identical 351-action prefix). Sprint 3 remains
-complete (228/228 source-level recompiles, 0 ABI, 8,666/8,666 raw exact). Full P5/P6 systems parity,
-all 117 areas, animation, original-save compatibility, merchants, encounters and minigames remain
-open. Sprint plans/reports: `docs/SPRINT1.md` / `docs/SPRINT1_REPORT.md`,
-`docs/SPRINT2.md` / `docs/SPRINT2_REPORT.md`, `docs/SPRINT3.md` / `docs/SPRINT3_REPORT.md`,
-`docs/SPRINT4.md` / `docs/SPRINT4_REPORT.md`, `docs/SPRINT5.md` / `docs/SPRINT5_REPORT.md`, and
-`docs/SPRINT6.md` / `docs/SPRINT6_REPORT.md`; the P0 gate and handoff remain in
-`docs/P0_REPORT.md`.
+Status: **Sprint 7 (P5 systems parity II) complete - gate S7 met (2026-11-03).** The engine now
+loads the shipped UTM/UTI merchant data and trades stock (7 stores in `tar_m02ac`, 41 entries in
+`keblastore`), spawns UTE encounters in `tar_m03aa` (4 volumes, 8 creatures), gives companions
+real sheets with the 80% XP share, and exposes character/inventory/party/journal/merchant panels.
+All 21 CTest targets pass. Sprint 6 remains complete: native script VM 8,666/8,666 default and
+functional parity, 303,616 ACTION calls, real script hooks, dialogue entry 54 and d20 rounds.
+Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255 scene parity); Sprint 4 remains
+complete (Hydra 12.3-hydra.6 / Hydralysis 0.8.0, gap-free live runs); Sprint 3 remains complete
+(228/228 source-level recompiles, 8,666/8,666 raw exact). Original-save compatibility, animation,
+cutscene cameras, audio/movies, minigames and all 117 areas remain open. Sprint plans/reports:
+`docs/SPRINT1.md` / `docs/SPRINT1_REPORT.md`, `docs/SPRINT2.md` / `docs/SPRINT2_REPORT.md`,
+`docs/SPRINT3.md` / `docs/SPRINT3_REPORT.md`, `docs/SPRINT4.md` / `docs/SPRINT4_REPORT.md`,
+`docs/SPRINT5.md` / `docs/SPRINT5_REPORT.md`, `docs/SPRINT6.md` / `docs/SPRINT6_REPORT.md`, and
+`docs/SPRINT7.md` / `docs/SPRINT7_REPORT.md`; the P0 gate remains in `docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
 does not ship, download, extract, or redistribute game assets, and it does not require or execute
@@ -113,6 +112,14 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   and save/load of the character and script state. `ctest`: **17/17 passed**; Python tools: **143
   tests, 7 skips**; install sentinel: 15,380 files unchanged.
   See `docs/recon/43_SCRIPT_AND_RULES.md` and `docs/SPRINT6_REPORT.md`.
+- Sprint 7 (P5 systems parity II): UTM/UTI merchant data with **7 stores** in `tar_m02ac`
+  (`keblastore` 41 entries, MarkUp/MarkDown 100/40), stock-aware buy/sell and merchant save deltas;
+  GIT/UTE encounters with **4 volumes** and **8 spawned creatures** in `tar_m03aa` (meshes,
+  scripts, hostile combat stats); companion sheets with the **80% XP share**; character, inventory,
+  party, journal and merchant ImGui panels with real Vulkan captures; save schema 3. `ctest`:
+  **21/21 passed**; Python tools: **143 tests, 7 skips**; VM parity still 0 mismatches; scene
+  parity 0.03/255; install 15,380 files unchanged.
+  See `docs/recon/44_SYSTEMS_UI.md` and `docs/SPRINT7_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -159,6 +166,9 @@ Start with:
 - [`docs/SPRINT5.md`](docs/SPRINT5.md) - Sprint 5 plan: gate S5, lanes, non-goals
 - [`docs/SPRINT6_REPORT.md`](docs/SPRINT6_REPORT.md) - Sprint 6 (P5 script runtime and systems core) exit report
 - [`docs/SPRINT6.md`](docs/SPRINT6.md) - Sprint 6 plan: gate S6, lanes, non-goals
+- [`docs/SPRINT7_REPORT.md`](docs/SPRINT7_REPORT.md) - Sprint 7 (P5 systems parity II) exit report
+- [`docs/SPRINT7.md`](docs/SPRINT7.md) - Sprint 7 plan: gate S7, lanes, non-goals
+- [`docs/recon/44_SYSTEMS_UI.md`](docs/recon/44_SYSTEMS_UI.md) - UTM/UTI stores, UTE encounters, companions and panels
 - [`docs/recon/43_SCRIPT_AND_RULES.md`](docs/recon/43_SCRIPT_AND_RULES.md) - native NCS VM parity, hooks, dialogue conditions, 2DA rules, save state
 - [`docs/recon/41_SEMANTIC_TRACE.md`](docs/recon/41_SEMANTIC_TRACE.md) - live KotOR trace, hook map, tool fixes and the bounded diff
 - [`docs/recon/30_UNUSED_ACTIONS.md`](docs/recon/30_UNUSED_ACTIONS.md) - 306 corpus-unused action conformance

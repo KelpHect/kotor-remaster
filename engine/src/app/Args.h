@@ -25,6 +25,12 @@ struct Options {
     bool scriptTest = false;
     bool rulesTest = false;
     bool systemsTest = false;
+    bool merchantTest = false;
+    bool encounterTest = false;
+    bool partyTest = false;
+    bool uiTest = false;
+    std::string panel;
+    std::string addParty;
     bool demoDialogue = false;
     bool demoCombat = false;
     int width = 1280;

@@ -43,6 +43,9 @@ struct DialogueView {
     std::uint32_t entry = UINT32_MAX;
 };
 
+enum class UiPanel { None, Character, Inventory, Party, Journal, Merchant };
+const char* uiPanelName(UiPanel panel);
+
 // One loaded module plus the player state. All KotOR data comes through the
 // C++ kotor::Install/VFS; this class never calls an external tool. Scripts run
 // on the engine's own NCS VM and mutate the same world the renderer uses.
@@ -96,13 +99,30 @@ public:
     CharacterSheet& character() { return character_; }
     std::int32_t gold() const { return gold_; }
     const std::vector<InventoryItem>& inventory() const { return character_.inventory; }
+    const std::vector<MerchantState>& merchants() const { return merchants_; }
+    const std::vector<EncounterState>& encounters() const { return encounterStates_; }
+    int activeMerchant() const { return activeMerchant_; }
+    bool openStore(std::size_t entityIndex);
+    bool openStoreByTag(const std::string& tag);
+    void closeStore() { activeMerchant_ = -1; }
+    std::int32_t buyPrice(std::size_t stockIndex) const;
+    std::int32_t sellPrice(std::size_t inventoryIndex) const;
+    bool buyMerchantItem(std::size_t stockIndex);
+    bool sellInventoryItem(std::size_t inventoryIndex);
     const std::vector<std::string>& partyTags() const { return partyTags_; }
+    const std::vector<CompanionState>& companions() const { return companions_; }
+    int selectedCompanion() const { return selectedCompanion_; }
+    void selectCompanion(int index) { selectedCompanion_ = index; }
+    UiPanel activePanel() const { return activePanel_; }
+    void setUiPanel(UiPanel panel) { activePanel_ = panel; }
+    void toggleUiPanel(UiPanel panel) { activePanel_ = activePanel_ == panel ? UiPanel::None : panel; }
     std::int32_t journalState(const std::string& plotId) const;
     std::size_t journalSize() const { return journal_.size(); }
+    const std::map<std::string, std::int32_t>& journal() const { return journal_; }
     bool addJournalEntry(const std::string& plotId, std::int32_t state);
     bool removeJournalEntry(const std::string& plotId);
     bool addInventoryItem(const std::string& resref, std::int32_t baseItem,
-                          std::int32_t stack = 1);
+                          std::int32_t stack = 1, std::int32_t cost = 0);
     bool removeInventoryItem(const std::string& resref, std::int32_t stack = 1);
     bool equipItem(const std::string& resref);
     bool addPartyMember(const std::string& tag);
@@ -162,6 +182,8 @@ private:
 
     void initScriptWorld();
     void syncScriptWorld();
+    void initMerchants();
+    void spawnEncounters();
     std::uint32_t objectForEntity(std::size_t index) const;
     void runHook(const std::string& hook, std::size_t entityIndex,
                  std::uint32_t entering = 0);
@@ -202,8 +224,15 @@ private:
     Rules rules_;
     CharacterSheet character_;
     std::vector<std::string> partyTags_;
+    std::vector<CompanionState> companions_;
+    int selectedCompanion_ = -1;
+    UiPanel activePanel_ = UiPanel::None;
     std::map<std::string, std::int32_t> journal_;
     std::int32_t gold_ = 0;
+    std::vector<MerchantState> merchants_;
+    std::vector<EncounterState> encounterStates_;
+    int activeMerchant_ = -1;
+    std::map<std::string, kotor::ItemTemplate> itemTemplates_;
 
     script::World scriptWorld_;
     std::unique_ptr<script::ActionRuntime> runtime_;
