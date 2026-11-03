@@ -373,6 +373,9 @@ std::optional<script::Value> GameSession::runScript(const std::string& resref,
         line << " error=" << result.error;
     }
     scriptLog_.push_back(line.str());
+    if (scriptLog_.size() > 8192) {
+        scriptLog_.erase(scriptLog_.begin(), scriptLog_.begin() + 4096);
+    }
     syncScriptWorld();
     if (result.top.has_value()) {
         return result.top;

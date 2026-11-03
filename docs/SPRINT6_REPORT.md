@@ -18,10 +18,10 @@ folder is [docs/evidence/s6](../evidence/s6/).
 ## 1. Build and test result
 
 ```text
-17/17 Test #17: kotor_vm_corpus ..................   Passed    2.16 sec
+17/17 Test #17: kotor_vm_corpus ..................   Passed    2.25 sec
 
 100% tests passed, 0 tests failed out of 17
-Total Test time (real) =   5.30 sec
+Total Test time (real) =   4.92 sec
 ```
 
 The 13 Sprint 5 targets still pass; four new targets were added: `kotor_script`, `kotor_rules`,
