@@ -315,7 +315,7 @@ const kotor::EntityMesh* findEntityMesh(const kotor::Scene& scene, std::size_t e
 bool GameSession::playAnimation(std::size_t entityIndex, const std::string& name, bool loop)
 {
     kotor::EntityMesh* mesh = findEntityMesh(scene_, entityIndex);
-    if (mesh == nullptr || !mesh->model || mesh->model->animationDuration(name) <= 0.0f) {
+    if (mesh == nullptr || !mesh->model || mesh->model->animationIndex(name) < 0) {
         return false;
     }
     mesh->animation = name;
