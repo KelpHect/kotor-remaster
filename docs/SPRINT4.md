@@ -17,9 +17,8 @@ inventory at 10,849 functions / 565 handlers.
 
 ## Exit criteria (gate S4)
 
-1. **Trace tool stack green** - the offline trace suite and the live recorder class pass, and every
-   live M1 test passes; the 100k-frame stress test is measured in its own process because the M1
-   class shares one process across captures. No regressions in the Sprint 0-3 lanes.
+1. **Trace tool stack green** - the offline trace suite, the live recorder class and the live M1
+   end-to-end class pass (13/13 in one interpreter). No regressions in the Sprint 0-3 lanes.
 2. **Build-bound KotOR profile** - a TOML profile binds the four verified hooks to both the stock
    build and the lane's windowed copy, arms only on exact bytes, and can coexist with another
    instrumenter that has already detoured a site.

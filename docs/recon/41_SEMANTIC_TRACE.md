@@ -94,6 +94,7 @@ deterministic path matches.
 | A game that exits before `trace stop` left the trace session open (detach raised) | stop captures each failure, always drains the pump and always closes the session | `trace.py` |
 | Late lifetime query at stop counted `script has been destroyed` as a probe fault | recorded as a coverage refusal (`lifetimes-unavailable`) | `runtime_trace.py` |
 | A site whose stride reset to 1 emitted its next kept record as `exact`, so no kept event carried the `sampled` label | `Site.thinned` sticky flag drives `F_SAMPLED` in both record paths; per-test target cleanup and a 1,000/s budget make the adaptive test deterministic | `runtime_agents.py`, `test_trace_e2e.py` |
+| The M1 class retained each test's in-process agent/`TraceSource`; accumulated captures exhausted memory at the 100k-frame test, whose fixture could also finish or hit its own watchdog before the stop | `Live.close` drops the agent trace/script references and `tearDown` collects; `frameloop --watchdog=` is configurable and the failure-mode test uses a slow 60k×10 ms producer | `tests/trace_live.py`, `tests/test_trace_e2e.py`, `tests/fixtures/frameloop.c` |
 | Live tests attached to the venv launcher instead of the real interpreter | spawn `sys._base_executable` in the watchdog and recorder tests | `test_trace_extras.py`, `test_trace_capture.py` |
 
 ## Reproduction
@@ -117,4 +118,4 @@ python tools\harness\s4_trace_bounded_diff.py --a <a>.jsonl --b <b>.jsonl --out 
 
 Artifacts: `artifacts/lanes/s4-trace/` (runs, timelines, frames, summaries, extracted events,
 diff JSON), `artifacts/tests/hydralysis_trace_suite5.log`, `artifacts/tests/trace_capture_live3.log`,
-`artifacts/tests/trace_e2e_m1_final2.log`.
+`artifacts/tests/trace_e2e_m1_final5.log`.
