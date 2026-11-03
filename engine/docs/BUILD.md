@@ -85,6 +85,7 @@ build\msvc-release\kotor_engine.exe --module tar_m02ac --merchant-test --null --
 build\msvc-release\kotor_engine.exe --module tar_m03aa --encounter-test --null --headless
 build\msvc-release\kotor_engine.exe --module end_m01aa --party-test --null --headless
 build\msvc-release\kotor_engine.exe --module end_m01aa --ui-test --null --headless
+build\msvc-release\kotor_engine.exe --module danm13 --loot-test --null --headless
 build\msvc-release\kotor_engine.exe --module tar_m03ab --encounter-reset-test --null --headless
 ```
 

@@ -23,6 +23,7 @@ struct InventoryItem {
     std::int32_t stack = 1;
     std::int32_t slot = -1; // baseitems.2da equipableslots bit index, -1 = carried
     bool equipped = false;
+    bool identified = true;
 };
 
 struct CharacterSheet {
@@ -70,6 +71,7 @@ struct MerchantState {
     std::int32_t markUp = 100;
     std::int32_t markDown = 40;
     std::int32_t buySellFlag = 3;
+    std::int32_t gold = 0;
     std::vector<MerchantStockItem> stock;
 };
 
@@ -87,6 +89,7 @@ struct CompanionState {
     std::string tag;
     CharacterSheet sheet;
     bool active = true;
+    float attackTimer = 0.0f;
 };
 
 // Read-only rules facade. One instance per install; tables are loaded once.

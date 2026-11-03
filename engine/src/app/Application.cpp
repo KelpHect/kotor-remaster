@@ -285,7 +285,8 @@ void drawSystemsUi(GameSession& game)
             const MerchantState& merchant =
                 game.merchants()[static_cast<std::size_t>(game.activeMerchant())];
             ImGui::Separator();
-            ImGui::Text("Buy from %s", merchant.resref.c_str());
+            ImGui::Text("Buy from %s  (store gold %d)", merchant.resref.c_str(),
+                        merchant.gold);
             for (std::size_t i = 0; i < merchant.stock.size(); ++i) {
                 const MerchantStockItem& stock = merchant.stock[i];
                 ImGui::Text("%s  %d gp  %s", stock.item.resref.c_str(), game.buyPrice(i),
@@ -299,12 +300,35 @@ void drawSystemsUi(GameSession& game)
             ImGui::TextUnformatted("Sell");
             for (std::size_t i = 0; i < game.inventory().size(); ++i) {
                 const InventoryItem& item = game.inventory()[i];
-                ImGui::Text("%s  %d gp", item.resref.c_str(), game.sellPrice(i));
+                ImGui::Text("%s  %d gp%s", item.resref.c_str(), game.sellPrice(i),
+                            item.identified ? "" : "  unidentified");
                 ImGui::SameLine();
                 if (ImGui::Button((std::string("Sell##") + std::to_string(i)).c_str())) {
                     game.sellInventoryItem(i);
                 }
+                if (!item.identified) {
+                    ImGui::SameLine();
+                    if (ImGui::Button((std::string("Identify##") + std::to_string(i)).c_str())) {
+                        game.identifyInventoryItem(i);
+                    }
+                }
             }
+        }
+        break;
+    case UiPanel::Loot:
+        ImGui::Text("Loot (%zu)", game.loot().size());
+        ImGui::Separator();
+        for (std::size_t i = 0; i < game.loot().size(); ++i) {
+            const InventoryItem& item = game.loot()[i];
+            ImGui::Text("%s  cost=%d  x%d", (item.name.empty() ? item.resref : item.name).c_str(),
+                        item.cost, item.stack);
+            ImGui::SameLine();
+            if (ImGui::Button((std::string("Take##") + std::to_string(i)).c_str())) {
+                game.takeLootItem(i);
+            }
+        }
+        if (ImGui::Button("Take All")) {
+            game.takeAllLoot();
         }
         break;
     case UiPanel::None:
@@ -978,10 +1002,17 @@ int runMerchantTest(GameSession& game)
         {script::Value::makeObject(game.scriptWorld().pc)}, {script::Value::makeInt(5000)}};
     game.action(322, goldArgs, game.scriptWorld(), dummy);
     const std::int32_t goldBefore = game.gold();
+    const std::int32_t storeGoldBefore = game.merchants()[merchantIndex].gold;
     const std::size_t inventoryBefore = game.inventory().size();
     check(game.buyMerchantItem(stockIndex), "buy_item");
     check(game.gold() == goldBefore - buyPrice, "buy_gold");
+    check(game.merchants()[merchantIndex].gold == storeGoldBefore + buyPrice, "store_gold_buy");
     check(game.inventory().size() == inventoryBefore + 1, "buy_inventory");
+    game.character().inventory.back().identified = false;
+    const std::int32_t goldBeforeIdentify = game.gold();
+    check(game.identifyInventoryItem(game.inventory().size() - 1), "identify_item");
+    check(game.character().inventory.back().identified, "identified");
+    check(game.gold() < goldBeforeIdentify, "identify_gold");
     if (!stock.infinite) {
         check(game.merchants()[merchantIndex].stock[stockIndex].remaining == stock.remaining - 1,
               "buy_stock_decrement");
@@ -1004,6 +1035,16 @@ int runMerchantTest(GameSession& game)
               "stock_roundtrip");
         check(restored.gold() == game.gold(), "gold_roundtrip");
         check(restored.inventory().size() == game.inventory().size(), "inventory_roundtrip");
+        bool merchantGoldMatch = false;
+        for (const MerchantState& restoredMerchant : restored.merchants()) {
+            if (restoredMerchant.resref == merchant.resref
+                && restoredMerchant.gold == game.merchants()[merchantIndex].gold) {
+                merchantGoldMatch = true;
+            }
+        }
+        check(merchantGoldMatch, "merchant_gold_roundtrip");
+        check(!restored.inventory().empty() && restored.inventory().back().identified,
+              "identified_roundtrip");
     }
 
     const std::int32_t goldAfterBuy = game.gold();
@@ -1154,6 +1195,28 @@ int runPartyTest(GameSession& game)
         logInfo(concat("party test: follower distance ", before, " -> ", after));
         check(after < before, "formation_follow");
     }
+    {
+        const std::size_t hostile = firstHostile(game);
+        if (hostile != static_cast<std::size_t>(-1)) {
+            kotor::Entity& target = game.scene().entities[hostile];
+            target.hitPoints = 100;
+            target.maxHitPoints = 100;
+            target.damageMin = 0;
+            target.damageMax = 0;
+            target.attackBonus = -100;
+            const std::size_t carthEntity = game.findEntity("Carth");
+            if (carthEntity != static_cast<std::size_t>(-1)) {
+                game.scene().entities[carthEntity].position = {
+                    target.position.x + 1.0f, target.position.y, target.position.z};
+            }
+            game.setPositionForTest({target.position.x + 1.0f, target.position.y, target.position.z});
+            game.attackNearestHostile();
+            for (int i = 0; i < 600 && !hasEvent(game, "Carth hits"); ++i) {
+                game.update(0.05f, InputState{});
+            }
+            check(hasEvent(game, "Carth hits"), "companion_attacks");
+        }
+    }
 
     const std::filesystem::path savePath =
         std::filesystem::temp_directory_path() / "kotor_engine_s7_party.save";
@@ -1171,6 +1234,39 @@ int runPartyTest(GameSession& game)
     check(game.removePartyMember("Carth"), "leave");
     check(game.companions().empty(), "companion_removed");
     logInfo(ok ? "party test: PASS" : "party test: FAIL");
+    return ok ? 0 : 10;
+}
+
+int runLootTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("loot test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    std::size_t container = static_cast<std::size_t>(-1);
+    for (std::size_t i = 0; i < game.scene().entities.size(); ++i) {
+        if (game.scene().entities[i].kind == kotor::EntityKind::Placeable
+            && !game.scene().entities[i].lootItems.empty()) {
+            container = i;
+            break;
+        }
+    }
+    if (container == static_cast<std::size_t>(-1)) {
+        logError("loot test: no container with items");
+        return 9;
+    }
+    const kotor::Entity& entity = game.scene().entities[container];
+    const std::size_t expected = entity.lootItems.size();
+    const std::size_t inventoryBefore = game.inventory().size();
+    logInfo(concat("loot test: container ", entity.tag, " items=", expected));
+    game.setPositionForTest(entity.position);
+    check(game.usePlaceable(container), "container_used");
+    check(game.loot().size() == expected, "loot_opened");
+    game.takeAllLoot();
+    check(game.loot().empty(), "loot_taken");
+    check(game.inventory().size() == inventoryBefore + expected, "inventory_gained");
+    logInfo(ok ? "loot test: PASS" : "loot test: FAIL");
     return ok ? 0 : 10;
 }
 
@@ -1439,6 +1535,9 @@ int runApplication(const Options& options)
             }
             if (options.uiTest) {
                 return runUiTest(*game);
+            }
+            if (options.lootTest) {
+                return runLootTest(*game);
             }
             if (options.combatTest) {
                 return runCombatTest(*game);
