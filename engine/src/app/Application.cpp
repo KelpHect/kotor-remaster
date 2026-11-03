@@ -1651,6 +1651,40 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
               "dialogue_camera_apply");
         game.endDialogue();
     }
+    const auto cameraDlgData = install.find("m01aa_c01", 2029);
+    check(cameraDlgData.has_value(), "camera_dialogue");
+    if (cameraDlgData.has_value()) {
+        try {
+            kotor::Gff dlgGff = kotor::Gff::parse(*cameraDlgData, "m01aa_c01.dlg");
+            const kotor::Dlg dlg = kotor::Dlg::parse(dlgGff, nullptr, "m01aa_c01.dlg");
+            check(dlg.cameraModel == "m01aa_c01_cam", "camera_model");
+            std::int32_t animatedValue = -1;
+            for (const kotor::DlgEntry& entry : dlg.entries) {
+                if (entry.cameraAngle == 4 && entry.cameraAnimation >= 1200) {
+                    animatedValue = entry.cameraAnimation;
+                    break;
+                }
+            }
+            check(animatedValue >= 0, "camera_animation_field");
+            check(game.setDialogueCameraAnimationForTest(dlg.cameraModel, "CUT001W"),
+                  "camera_clip_load");
+            const SceneCamera frame0 = game.camera();
+            check(std::isfinite(frame0.eye.x) && std::isfinite(frame0.eye.y)
+                      && std::isfinite(frame0.eye.z)
+                      && std::fabs(kotor::length(frame0.forward) - 1.0f) < 0.01f,
+                  "camera_clip_pose");
+            InputState idle;
+            game.update(1.0f, idle);
+            const SceneCamera frame1 = game.camera();
+            const float dx = frame1.eye.x - frame0.eye.x;
+            const float dy = frame1.eye.y - frame0.eye.y;
+            const float dz = frame1.eye.z - frame0.eye.z;
+            check(std::sqrt(dx * dx + dy * dy + dz * dz) > 0.001f, "camera_clip_advance");
+            game.endDialogue();
+        } catch (const kotor::FormatError&) {
+            check(false, "camera_dialogue");
+        }
+    }
     const auto dlgData = install.find("end_trask01", 2029);
     if (dlgData.has_value()) {
         try {
