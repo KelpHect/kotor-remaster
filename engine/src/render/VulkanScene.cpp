@@ -310,6 +310,27 @@ bool VulkanScene::createPipeline(std::string& error)
     info.pDynamicState = &dynamic;
     info.layout = pipelineLayout_;
     const VkResult result = vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &info, nullptr, &pipeline_);
+    auto createBlend = [&](VkPipeline& target, VkBlendFactor source, VkBlendFactor destination) {
+        VkPipelineColorBlendAttachmentState attachment = blendAttachment;
+        attachment.blendEnable = VK_TRUE;
+        attachment.srcColorBlendFactor = source;
+        attachment.dstColorBlendFactor = destination;
+        attachment.colorBlendOp = VK_BLEND_OP_ADD;
+        attachment.srcAlphaBlendFactor = source;
+        attachment.dstAlphaBlendFactor = destination;
+        attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+        VkPipelineColorBlendStateCreateInfo blendState = blend;
+        blendState.pAttachments = &attachment;
+        VkGraphicsPipelineCreateInfo variant = info;
+        variant.pColorBlendState = &blendState;
+        return vkCreateGraphicsPipelines(device_, VK_NULL_HANDLE, 1, &variant, nullptr, &target);
+    };
+    const VkResult alphaResult = createBlend(alphaPipeline_, VK_BLEND_FACTOR_SRC_ALPHA,
+                                             VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA);
+    const VkResult additiveResult = createBlend(additivePipeline_, VK_BLEND_FACTOR_SRC_ALPHA,
+                                                VK_BLEND_FACTOR_ONE);
+    (void)alphaResult;
+    (void)additiveResult;
     vkDestroyShaderModule(device_, fragment, nullptr);
     vkDestroyShaderModule(device_, vertex, nullptr);
     if (result != VK_SUCCESS) {
@@ -738,6 +759,15 @@ void VulkanScene::draw(VkCommandBuffer commandBuffer, const SceneCamera& camera,
             if (batch.texture >= textures_.size() || batch.indexCount == 0) {
                 continue;
             }
+            VkPipeline activePipeline = pipeline_;
+            if (batch.blend == kotor::BlendMode::Additive
+                && additivePipeline_ != VK_NULL_HANDLE) {
+                activePipeline = additivePipeline_;
+            } else if (batch.blend == kotor::BlendMode::Alpha
+                       && alphaPipeline_ != VK_NULL_HANDLE) {
+                activePipeline = alphaPipeline_;
+            }
+            vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline);
             vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, 1,
                                     &textures_[batch.texture].descriptor, 0, nullptr);
             vkCmdDrawIndexed(commandBuffer, batch.indexCount, 1, batch.firstIndex, 0, 0);
@@ -747,8 +777,23 @@ void VulkanScene::draw(VkCommandBuffer commandBuffer, const SceneCamera& camera,
     static bool logged = false;
     if (!logged) {
         logged = true;
+        std::size_t alphaBatches = 0;
+        std::size_t additiveBatches = 0;
+        for (const GpuMesh& mesh : meshes_) {
+            for (const kotor::TextureBatch& batch : mesh.batches) {
+                if (batch.blend == kotor::BlendMode::Alpha) {
+                    ++alphaBatches;
+                } else if (batch.blend == kotor::BlendMode::Additive) {
+                    ++additiveBatches;
+                }
+            }
+        }
         logInfo(concat("Vulkan scene draw: meshes ", drawnMeshes, "/", meshes_.size(),
-                       " textures ", textures_.size(),
+                       " textures ", textures_.size(), " alpha batches ", alphaBatches,
+                       " additive batches ", additiveBatches, " alpha pipeline ",
+                       alphaPipeline_ != VK_NULL_HANDLE ? "ready" : "missing",
+                       " additive pipeline ",
+                       additivePipeline_ != VK_NULL_HANDLE ? "ready" : "missing",
                        " eye ", camera.eye.x, ", ", camera.eye.y, ", ", camera.eye.z));
     }
 }
@@ -772,6 +817,14 @@ void VulkanScene::shutdown()
     if (pipeline_ != VK_NULL_HANDLE) {
         vkDestroyPipeline(device_, pipeline_, nullptr);
         pipeline_ = VK_NULL_HANDLE;
+    }
+    if (alphaPipeline_ != VK_NULL_HANDLE) {
+        vkDestroyPipeline(device_, alphaPipeline_, nullptr);
+        alphaPipeline_ = VK_NULL_HANDLE;
+    }
+    if (additivePipeline_ != VK_NULL_HANDLE) {
+        vkDestroyPipeline(device_, additivePipeline_, nullptr);
+        additivePipeline_ = VK_NULL_HANDLE;
     }
     if (pipelineLayout_ != VK_NULL_HANDLE) {
         vkDestroyPipelineLayout(device_, pipelineLayout_, nullptr);

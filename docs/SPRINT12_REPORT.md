@@ -13,7 +13,7 @@ and both renderers refresh entity vertex buffers from the posed mesh.
 
 ```text
 100% tests passed, 0 tests failed out of 36
-Total Test time (real) = 196.89 sec
+Total Test time (real) = 197.92 sec
 ```
 
 The new target is `kotor_animation`; all Sprint 11 targets still pass.
@@ -156,9 +156,10 @@ Gate assertions: `dangly_loaded`, `dangly_nodes`, `dangly_mesh`,
 `saber_no_dangly`, `saber_no_skin`, `fx_loaded`, `fx_controllers_present`,
 `fx_controller_types`, `fx_controller_catalog`, `fx_controller_families`,
 `fx_no_skin`, `fx_nodes`, `fx_geometry`, `fx_finite`,
-`fx_animated`, `room_light_loaded`, `room_light_nodes`,
-`room_light_geometry`, `room_light_controllers`, `camvid_defaults`, `camvid_corpus_dlgs`,
-`camvid_corpus_defaults`.
+`fx_animated`, `fx_additive_batches`, `fx_alpha_batches`, `scene_additive_batches`,
+`scene_opaque_batches`, `entity_alpha_batches`, `room_light_loaded`,
+`room_light_nodes`, `room_light_geometry`, `room_light_controllers`,
+`camvid_defaults`, `camvid_corpus_dlgs`, `camvid_corpus_defaults`.
 
 ## 8. Rendering
 
@@ -175,12 +176,24 @@ Endar Spire now has **143 entity meshes**, **83 textures**, **239,178**
 vertices and **49 batches**. A GL capture at frame 10 versus frame 70 differs
 in **12,937 of 79,200** 3D-view pixels after excluding the HUD.
 
+Batches carry `BlendMode::{Opaque, Alpha, Additive}`. OpenGL enables
+`GL_BLEND` with `glBlendFunc(GL_SRC_ALPHA, GL_ONE)` for additive and
+`glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)` for alpha, then disables
+blending for opaque batches. Vulkan creates `alphaPipeline_` and
+`additivePipeline_` next to the base pipeline and binds the matching one per
+batch. Scene evidence: **14 additive** room-light batches, **1 alpha** and
+**34 opaque** room batches, and **21 alpha** entity FX batches. Both renderers
+report the same live counts (`alpha batches 22`, `additive batches 17`), and
+the Vulkan log confirms `alpha pipeline ready` and `additive pipeline ready`.
+A 960x540 GL/Vulkan capture of the 3D view differs by **0.0196/255** mean
+absolute channel value.
+
 ## 9. Regression
 
-- **CTest: 36/36 passed** (196.89 s).
+- **CTest: 36/36 passed** (197.92 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
-- **GL/Vulkan parity: 0.0300**, PASS.
+- **GL/Vulkan parity: 0.0449**, PASS.
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
@@ -198,6 +211,7 @@ in **12,937 of 79,200** 3D-view pixels after excluding the HUD.
 - `docs/evidence/s12/animation.log`
 - `docs/evidence/s12/anim-frame-10.png`, `anim-frame-70.png`, `anim-diff.txt`
 - `docs/evidence/s12/weapon-attach.png` (GL hand-hook capture)
+- `docs/evidence/s12/blend-gl.png`, `blend-vk.png` (alpha/additive FX captures)
 - `docs/evidence/s12/ctest.log`
 - `docs/evidence/s12/all-modules.log`, `all-modules.json`
 - `docs/evidence/s12/vm-corpus.log`, `vm-parity.json`

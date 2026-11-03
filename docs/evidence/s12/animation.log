@@ -51,6 +51,12 @@
 [INFO] animation test: fx_geometry=1
 [INFO] animation test: fx_finite=1
 [INFO] animation test: fx_animated=1
+[INFO] animation test: fx_additive_batches=1
+[INFO] animation test: fx_alpha_batches=1
+[INFO] animation test: blend batches room additive=14 alpha=1 opaque=34 entity alpha=21
+[INFO] animation test: scene_additive_batches=1
+[INFO] animation test: scene_opaque_batches=1
+[INFO] animation test: entity_alpha_batches=1
 [INFO] animation test: room_light_loaded=1
 [INFO] animation test: room_light_nodes=1
 [INFO] animation test: room_light_controllers=1

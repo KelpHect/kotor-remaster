@@ -49,13 +49,15 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
    and `ActionPlayAnimation` map an animation id to a clip and play it on
    `OBJECT_SELF`.
 9. **Rendering** - both GL and Vulkan refresh entity vertex buffers when the
-   animation revision changes; room geometry and bind-pose topology stay
-   stable.
+   animation revision changes; batches carry explicit Opaque/Alpha/Additive
+   blend states. GL issues `glBlendFunc` per batch; Vulkan binds matching
+   base/alpha/additive pipelines. Room lights are additive, emitters are
+   alpha-blended, static geometry stays opaque.
 10. **CamVidEffect scope** - a 1,135-DLG corpus assertion records 45,396
     `-1`, 39 `0` and 0 non-default values; there are no shipped K1 non-default
     semantics to implement.
 11. **Regression** - **36/36** CTest, 117/117 modules, VM 8,666/8,666 with
-   0 mismatches, scene parity 0.0300, Python 143 tests / 7 skips, install
+   0 mismatches, scene parity 0.0449, Python 143 tests / 7 skips, install
    sentinel 0 session changes.
 12. **Evidence and docs** - report, technical note, fixture and logs.
 

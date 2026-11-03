@@ -151,6 +151,11 @@ ends) and emit deterministic billboard quads. Room lights are appended to the
 room mesh; entity effects are separate refreshed `EntityMesh` records. The
 particle positions are a deterministic function of time, not random state.
 
+FX triangles carry `BlendMode::{Opaque, Alpha, Additive}` through
+`TextureBatch`. Lights are additive (`SRC_ALPHA, ONE`), emitters are alpha
+(`SRC_ALPHA, ONE_MINUS_SRC_ALPHA`), and static geometry stays opaque. OpenGL
+sets `glBlendFunc` per batch; Vulkan binds base/alpha/additive pipelines.
+
 ## 8. Rendering refresh
 
 `EntityMesh` retains its `Mdl`, bind triangles and deformed vertices.
@@ -158,7 +163,9 @@ particle positions are a deterministic function of time, not random state.
 positions/normals/UVs; topology and texture batches are stable. GL issues a
 dynamic `glBufferData` for each changed entity mesh; Vulkan maps the existing
 host-visible vertex allocation and copies the new vertices. The application
-refreshes only when `GameSession::animationRevision()` changes.
+refreshes only when `GameSession::animationRevision()` changes. Both renderers
+report the live blend inventory (22 alpha, 17 additive batches on Endar
+Spire); Vulkan creates and binds its alpha/additive pipelines successfully.
 
 ## 9. Validation
 

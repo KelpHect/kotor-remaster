@@ -62,6 +62,7 @@ struct GlApi {
     void(KE_GLAPI* DrawElements)(GlEnum, GlSizei, GlEnum, const void*) = nullptr;
     void(KE_GLAPI* Enable)(GlEnum) = nullptr;
     void(KE_GLAPI* Disable)(GlEnum) = nullptr;
+    void(KE_GLAPI* BlendFunc)(GlEnum, GlEnum) = nullptr;
     void(KE_GLAPI* DepthFunc)(GlEnum) = nullptr;
     void(KE_GLAPI* ClearDepth)(double) = nullptr;
     void(KE_GLAPI* ClearColor)(GlFloat, GlFloat, GlFloat, GlFloat) = nullptr;

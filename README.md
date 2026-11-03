@@ -10,7 +10,8 @@ pose; GIT cameras and DLG `CameraID`/`CameraAnimation`/`CameraAngle` playback
 override the first-person camera during dialogue, with camera-MDL `CUT###W`
 clips evaluated through `camerahook` and height-offset presets; dangly
 constraints settle deterministically; saber header geometry renders; light
-and emitter controllers emit deterministic billboard quads; clip
+and emitter controllers emit deterministic billboard quads with per-batch
+opaque/alpha/additive blending in GL and Vulkan; clip
 changes cross-fade over the MDL transition, root motion is extracted and
 shipped clips are root-in-place; `animations.2da` and
 `PlayAnimation`/`ActionPlayAnimation`
@@ -182,11 +183,11 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   CPU skinning, per-entity playback with `pause1`/`pause` defaults,
   `animations.2da` and `PlayAnimation`/`ActionPlayAnimation`, equipped weapon
   models on hand hooks, dangly constraint settle, SaberHeader geometry and
-  light/emitter billboard quads, transition cross-fade and root-motion
-  extraction, GIT cameras with DLG `CameraID` fallback, `CameraAnimation` →
-  `CUT###W` camera-MDL playback and `CameraAngle` height presets, GL/Vulkan
-  dynamic vertex refresh.
-  CTest **36/36**; 117-module sweep 0/0; VM parity 0; scene parity 0.0300;
+  light/emitter billboard quads with opaque/alpha/additive batch blending in
+  GL and Vulkan, transition cross-fade and root-motion extraction, GIT cameras
+  with DLG `CameraID` fallback, `CameraAnimation` → `CUT###W` camera-MDL
+  playback and `CameraAngle` height presets, GL/Vulkan dynamic vertex refresh.
+  CTest **36/36**; 117-module sweep 0/0; VM parity 0; scene parity 0.0449;
   Python 143 tests / 7 skips; install unchanged. See
   `docs/recon/50_ANIMATION_SKINNING.md` and `docs/SPRINT12_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache

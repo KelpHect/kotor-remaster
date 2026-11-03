@@ -266,6 +266,7 @@ Scene loadModule(Install& install, const std::string& moduleStem)
             }
             out.normal = normalize(cross(out.p[1] - out.p[0], out.p[2] - out.p[0]));
             out.texture = triangle.texture;
+            out.blend = triangle.blend;
             std::string texture = lower(out.texture);
             if (texture.empty()) {
                 texture = "__fx_ffffff";
@@ -312,6 +313,9 @@ Scene loadModule(Install& install, const std::string& moduleStem)
         const std::uint32_t texture = textureIndex[name];
         TextureBatch batch;
         batch.texture = texture;
+        if (!triangles.empty()) {
+            batch.blend = triangles.front().blend;
+        }
         batch.firstIndex = static_cast<std::uint32_t>(scene.indices.size());
         for (const MdlTriangle& triangle : triangles) {
             for (int i = 0; i < 3; ++i) {

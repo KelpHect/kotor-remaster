@@ -1171,7 +1171,8 @@ std::vector<MdlMeshTriangle> Mdl::fxTriangles(const std::string& animation, floa
         return {};
     };
     const auto addQuad = [&](std::vector<MdlMeshTriangle>& out, Vec3 center, float size,
-                             const std::vector<float>& colour, const std::string& texture) {
+                             const std::vector<float>& colour, const std::string& texture,
+                             BlendMode blend) {
         (void)colour;
         const Vec3 x{size, 0.0f, 0.0f};
         const Vec3 y{0.0f, size, 0.0f};
@@ -1180,6 +1181,7 @@ std::vector<MdlMeshTriangle> Mdl::fxTriangles(const std::string& animation, floa
         for (const auto& axis : axes) {
             MdlMeshTriangle triangle;
             triangle.texture = texture;
+            triangle.blend = blend;
             triangle.v[0].position = center - axis[0] - axis[1];
             triangle.v[1].position = center + axis[0] - axis[1];
             triangle.v[2].position = center + axis[0] + axis[1];
@@ -1212,7 +1214,8 @@ std::vector<MdlMeshTriangle> Mdl::fxTriangles(const std::string& animation, floa
             std::vector<float> radius = value(node, 88);
             const float size = std::clamp(radius.empty() ? 0.15f : radius[0] * 0.05f,
                                           0.05f, 0.5f);
-            addQuad(out, world[i].translation, size, colour, texture);
+            addQuad(out, world[i].translation, size, colour, texture,
+                    BlendMode::Additive);
         } else {
             std::vector<float> sizeValue = value(node, 144);
             const float size = std::clamp(sizeValue.empty() ? 0.08f : sizeValue[0] * 0.01f,
@@ -1224,7 +1227,8 @@ std::vector<MdlMeshTriangle> Mdl::fxTriangles(const std::string& animation, floa
                 centre.x += std::sin(phase * 6.283f) * 0.15f;
                 centre.y += std::cos(phase * 4.712f) * 0.15f;
                 centre.z += std::fmod(phase, 0.9f) * 0.8f;
-                addQuad(out, centre, size, colour, texture);
+                addQuad(out, centre, size, colour, texture,
+                        BlendMode::Alpha);
             }
         }
     }
