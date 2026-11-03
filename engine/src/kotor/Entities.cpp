@@ -303,9 +303,18 @@ void refreshEntityMeshImpl(EntityMesh& mesh)
         return;
     }
     std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
-    for (MdlMeshTriangle& triangle : mesh.model->posedTriangles(mesh.animation,
-                                                                mesh.animationTime,
-                                                                mesh.danglyTime)) {
+    std::vector<MdlMeshTriangle> posedTriangles;
+    if (mesh.blendRemaining > 0.0f && !mesh.previousAnimation.empty()
+        && mesh.blendDuration > 0.0f) {
+        const float blend = 1.0f - mesh.blendRemaining / mesh.blendDuration;
+        posedTriangles = mesh.model->blendedTriangles(
+            mesh.previousAnimation, mesh.previousAnimationTime, mesh.animation,
+            mesh.animationTime, blend, mesh.danglyTime);
+    } else {
+        posedTriangles = mesh.model->posedTriangles(mesh.animation, mesh.animationTime,
+                                                    mesh.danglyTime);
+    }
+    for (MdlMeshTriangle& triangle : posedTriangles) {
         std::string texture = lower(triangle.texture);
         if (texture.empty()) {
             texture = "__default";

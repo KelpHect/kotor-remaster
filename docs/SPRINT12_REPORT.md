@@ -13,7 +13,7 @@ and both renderers refresh entity vertex buffers from the posed mesh.
 
 ```text
 100% tests passed, 0 tests failed out of 36
-Total Test time (real) = 168.86 sec
+Total Test time (real) = 149.33 sec
 ```
 
 The new target is `kotor_animation`; all Sprint 11 targets still pass.
@@ -66,6 +66,13 @@ During playback the bind world transforms are replaced by the animated pose.
   `animationTime` and `animationRevision`.
 - Per-entity default clip: `pause1`, `pause`, `cpause1`, then `default`.
 - `updateAnimations` advances and loops clips, then refreshes the mesh.
+- Clip changes use the target clip's MDL `transition` duration. The previous
+  and current poses are blended by matrix interpolation and re-orthonormalized
+  per node, so the cross-fade is deterministic and ends exactly at the target.
+- `Mdl::rootMotion` extracts the root-node world translation. Sampled shipped
+  clips (`n_bith`, `c_bantha`, `dor_lhr01`) are root-in-place; child bone motion
+  stays in the pose. Shipped clips use only controller types 8/20/36/132, so
+  there is no IK controller data to interpret.
 - `animations.2da` loads names plus `stationary`/`looping` flags.
 - `PlayAnimation` and `ActionPlayAnimation` resolve the id and play on
   `OBJECT_SELF`.
@@ -155,7 +162,7 @@ pixels after excluding the HUD.
 
 ## 9. Regression
 
-- **CTest: 36/36 passed** (168.86 s).
+- **CTest: 36/36 passed** (149.33 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0300**, PASS.
@@ -164,7 +171,6 @@ pixels after excluding the HUD.
 
 ## 10. Outside Sprint 12
 
-- Animation blending/transitions, root motion and inverse kinematics.
 - `CamVidEffect` values beyond the shipped -1/0 defaults.
 - Particle/light controllers and emitter simulation.
 - Audio/EAX, Bink movies, lip sync, full `.gui`, minigames, localization,

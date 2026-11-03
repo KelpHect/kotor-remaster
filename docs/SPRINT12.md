@@ -26,7 +26,11 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
 4. **Playback** - `GameSession` owns per-entity animation name/time/loop state,
    defaults creatures to `pause1`/`pause`/`cpause1`/`default`, advances clips
    in `update`, and exposes `playAnimation`/`stopAnimation` plus name/time/
-   revision accessors.
+   revision accessors. Clip changes use the MDL `transition` duration for a
+   deterministic matrix-blended cross-fade; root motion is extracted from the
+   root node. Shipped clips are root-in-place and use only pose controllers
+   (8/20/36/132), which is recorded as shipped-data evidence for the root/IK
+   scope.
 5. **Weapon attachment** - `EquippedRes` resolves through the UTI to
    `baseitems.defaultmodel`; weapon meshes attach to `Rhand_g`/`Lhand_g` and
    follow the animated hand pose.
@@ -66,7 +70,6 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
 
 ## Outside this sprint
 
-- Animation blending, transitions, root motion and inverse kinematics.
 - `CamVidEffect` values beyond the shipped -1/0 defaults.
 - Particle/light controllers and emitter simulation.
 - Audio/EAX, Bink movies, lip sync, full `.gui`, minigames, localization,

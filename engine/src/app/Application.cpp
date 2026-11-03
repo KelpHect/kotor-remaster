@@ -1439,6 +1439,7 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
     check(std::fabs(bith->animationDuration("pause1") - 3.0f) < 0.01f, "bith_pause1_duration");
     check(std::fabs(bith->animationDuration("walk") - 1.0f) < 0.01f, "bith_walk_duration");
     check(bith->skinnedNodeCount() >= 4, "bith_skin_nodes");
+    check(!bith->hasNonPoseControllers(), "no_ik_controllers");
     check(bith->skinBindError() < 0.001f, "bith_skin_bind");
 
     const std::vector<kotor::MdlMeshTriangle> bind = bith->meshTriangles();
@@ -1461,6 +1462,22 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
     }
     check(finite, "bith_pose_finite");
     check(moved > 0, "bith_pose_moves");
+    const std::vector<kotor::MdlMeshTriangle> blended =
+        bith->blendedTriangles("pause1", 0.0f, "walk", 0.5f, 0.5f);
+    check(blended.size() == walk.size(), "blend_mesh");
+    bool blendFinite = !blended.empty();
+    for (const kotor::MdlMeshTriangle& triangle : blended) {
+        for (const kotor::MdlMeshVertex& vertex : triangle.v) {
+            blendFinite = blendFinite && std::isfinite(vertex.position.x)
+                && std::isfinite(vertex.position.y) && std::isfinite(vertex.position.z);
+        }
+    }
+    check(blendFinite, "blend_finite");
+    const kotor::Vec3 rootA = bith->rootMotion("walk", 0.0f);
+    const kotor::Vec3 rootB = bith->rootMotion("walk", 0.5f);
+    check(std::fabs(rootA.x - rootB.x) < 0.0001f && std::fabs(rootA.y - rootB.y) < 0.0001f
+              && std::fabs(rootA.z - rootB.z) < 0.0001f,
+          "root_motion_in_place");
 
     const std::optional<kotor::Mdl> bantha = loadModel("c_bantha");
     check(bantha.has_value(), "bantha_loaded");
@@ -1585,6 +1602,23 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
         }
         check(movedVertices > 0, "playback_vertices");
         check(game.animationName(playbackIndex) == playbackClip, "playback_name");
+        if (mesh != nullptr && mesh->model) {
+            for (const kotor::MdlAnimationInfo& info : mesh->model->animations()) {
+                if (info.name == playbackClip || info.transition <= 0.0f) {
+                    continue;
+                }
+                check(game.playAnimation(playbackIndex, info.name, true), "blend_start");
+                check(mesh->blendRemaining > 0.0f, "blend_active");
+                InputState blendIdle;
+                game.update(0.05f, blendIdle);
+                check(mesh->blendRemaining < info.transition, "blend_progress");
+                for (int i = 0; i < 20; ++i) {
+                    game.update(0.08f, blendIdle);
+                }
+                check(mesh->blendRemaining == 0.0f, "blend_finish");
+                break;
+            }
+        }
     }
 
     const kotor::EntityMesh* weaponMesh = nullptr;

@@ -612,6 +612,12 @@ float Mdl::animationDuration(const std::string& name) const
     return index < 0 ? 0.0f : animations_[static_cast<std::size_t>(index)].duration;
 }
 
+float Mdl::animationTransition(const std::string& name) const
+{
+    const int index = animationIndex(name);
+    return index < 0 ? 0.0f : animations_[static_cast<std::size_t>(index)].transition;
+}
+
 std::size_t Mdl::skinnedNodeCount() const
 {
     std::size_t count = 0;
@@ -632,6 +638,21 @@ std::size_t Mdl::danglyNodeCount() const
         }
     }
     return count;
+}
+
+bool Mdl::hasNonPoseControllers() const
+{
+    for (const Animation& animation : animationData_) {
+        for (const Node& node : animation.nodes) {
+            for (const Controller& controller : node.controllers) {
+                if (controller.type != 8 && controller.type != 20 && controller.type != 36
+                    && controller.type != 132) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }
 
 float Mdl::skinBindError() const
@@ -837,7 +858,75 @@ std::vector<MdlMeshTriangle> Mdl::posedTriangles(const std::string& animation, f
 {
     const int clip = animation.empty() ? -1 : animationIndex(animation);
     const Animation* anim = clip >= 0 ? &animationData_[static_cast<std::size_t>(clip)] : nullptr;
+    return trianglesFromPose(anim != nullptr ? poseWorld(anim, time) : bindWorld_, danglyTime);
+}
+
+std::vector<MdlMeshTriangle> Mdl::blendedTriangles(const std::string& animationA, float timeA,
+                                                   const std::string& animationB, float timeB,
+                                                   float blend, float danglyTime) const
+{
+    const int clipA = animationIndex(animationA);
+    const int clipB = animationIndex(animationB);
+    const std::vector<Pose> worldA = clipA >= 0
+        ? poseWorld(&animationData_[static_cast<std::size_t>(clipA)], timeA) : bindWorld_;
+    const std::vector<Pose> worldB = clipB >= 0
+        ? poseWorld(&animationData_[static_cast<std::size_t>(clipB)], timeB) : bindWorld_;
+    const float t = std::clamp(blend, 0.0f, 1.0f);
+    std::vector<Pose> blended = worldA;
+    for (std::size_t i = 0; i < blended.size() && i < worldB.size(); ++i) {
+        blended[i].translation = {worldA[i].translation.x
+                                      + (worldB[i].translation.x - worldA[i].translation.x) * t,
+                                  worldA[i].translation.y
+                                      + (worldB[i].translation.y - worldA[i].translation.y) * t,
+                                  worldA[i].translation.z
+                                      + (worldB[i].translation.z - worldA[i].translation.z) * t};
+        Mat3 rotation{};
+        for (int r = 0; r < 3; ++r) {
+            for (int c = 0; c < 3; ++c) {
+                rotation.m[r][c] = worldA[i].rotation.m[r][c] * (1.0f - t)
+                    + worldB[i].rotation.m[r][c] * t;
+            }
+        }
+        // Gram-Schmidt keeps the blended rotation orthonormal.
+        Vec3 x{rotation.m[0][0], rotation.m[1][0], rotation.m[2][0]};
+        x = normalize(x);
+        Vec3 y{rotation.m[0][1], rotation.m[1][1], rotation.m[2][1]};
+        y = normalize(y - x * dot(x, y));
+        Vec3 z = normalize(cross(x, y));
+        blended[i].rotation.m[0][0] = x.x;
+        blended[i].rotation.m[1][0] = x.y;
+        blended[i].rotation.m[2][0] = x.z;
+        blended[i].rotation.m[0][1] = y.x;
+        blended[i].rotation.m[1][1] = y.y;
+        blended[i].rotation.m[2][1] = y.z;
+        blended[i].rotation.m[0][2] = z.x;
+        blended[i].rotation.m[1][2] = z.y;
+        blended[i].rotation.m[2][2] = z.z;
+    }
+    return trianglesFromPose(blended, danglyTime);
+}
+
+Vec3 Mdl::rootMotion(const std::string& animation, float time) const
+{
+    const int clip = animation.empty() ? -1 : animationIndex(animation);
+    const Animation* anim = clip >= 0 ? &animationData_[static_cast<std::size_t>(clip)] : nullptr;
     const std::vector<Pose> world = anim != nullptr ? poseWorld(anim, time) : bindWorld_;
+    for (std::size_t i = 0; i < nodes_.size(); ++i) {
+        if (lowerAscii(nodes_[i].name) == "root" && i < world.size()) {
+            return world[i].translation;
+        }
+    }
+    for (std::size_t i = 0; i < nodes_.size(); ++i) {
+        if (nodes_[i].parent == 0 && i < world.size()) {
+            return world[i].translation;
+        }
+    }
+    return {};
+}
+
+std::vector<MdlMeshTriangle> Mdl::trianglesFromPose(const std::vector<Pose>& world,
+                                                    float danglyTime) const
+{
     const std::vector<Pose>& bind = bindWorld_;
     std::vector<MdlMeshTriangle> out;
     for (std::size_t nodeIndex = 0; nodeIndex < nodes_.size(); ++nodeIndex) {
