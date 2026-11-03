@@ -45,6 +45,11 @@ struct Options {
     std::string screenshot;
     std::string savePath;
     bool loadSave = false;
+    std::string originalSaveLoad;
+    std::string originalSaveRoundtrip;
+    std::string originalSaveCreate;
+    std::string originalSaveOut;
+    std::string profileInfo;
     // Script runtime verification (no game module needed).
     std::string vmCorpus;
     std::string vmOut;

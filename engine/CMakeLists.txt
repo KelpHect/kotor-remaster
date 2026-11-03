@@ -75,8 +75,11 @@ add_library(kotor_data STATIC
     src/kotor/Archive.cpp
     src/kotor/Entities.cpp
     src/kotor/Gff.cpp
+    src/kotor/GffWrite.cpp
     src/kotor/Geometry.cpp
     src/kotor/Install.cpp
+    src/kotor/Profile.cpp
+    src/kotor/SaveGame.cpp
     src/kotor/Scene.cpp
     src/kotor/Texture.cpp
     src/kotor/Tlk.cpp
@@ -207,17 +210,71 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                  COMMAND kotor_engine --module end_m01aa --landmark-test --null --headless)
         add_test(NAME kotor_save_load
                  COMMAND kotor_engine --module end_m01aa --walk-test --save "${CMAKE_BINARY_DIR}/engine-save.txt" --null --headless)
+        set(KOTOR_SAVE_FIXTURE "${CMAKE_SOURCE_DIR}/../artifacts/lanes/06-dynamic/profile/saves/000000 - QUICKSAVE")
+        if(EXISTS "${KOTOR_SAVE_FIXTURE}/SAVEGAME.sav")
+            add_test(NAME kotor_original_save_load
+                     COMMAND kotor_engine --original-save-load "${KOTOR_SAVE_FIXTURE}" --null --headless)
+            add_test(NAME kotor_original_save_roundtrip
+                     COMMAND kotor_engine --original-save-roundtrip "${KOTOR_SAVE_FIXTURE}"
+                             --original-save-out "${CMAKE_BINARY_DIR}/000009 - ENGINE" --null --headless)
+            set_tests_properties(kotor_original_save_load kotor_original_save_roundtrip
+                                 PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+        endif()
+        add_test(NAME kotor_original_save_create
+                 COMMAND kotor_engine --module end_m01aa
+                         --original-save-create "${CMAKE_BINARY_DIR}/000010 - ENGINE" --null --headless)
+        set(KOTOR_SAVE_PARTY_FIXTURE "${CMAKE_SOURCE_DIR}/../artifacts/lanes/06-dynamic/profile/saves/000006 - TARISLC")
+        if(EXISTS "${KOTOR_SAVE_PARTY_FIXTURE}/SAVEGAME.sav")
+            add_test(NAME kotor_original_save_party_roundtrip
+                     COMMAND kotor_engine --original-save-roundtrip "${KOTOR_SAVE_PARTY_FIXTURE}"
+                             --original-save-out "${CMAKE_BINARY_DIR}/000011 - ENGINE" --null --headless)
+            set_tests_properties(kotor_original_save_party_roundtrip
+                                 PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+        endif()
+        add_test(NAME kotor_profile_k1
+                 COMMAND kotor_engine --profile-info "${KOTOR_TEST_INSTALL}" --null --headless)
+        set(KOTOR2_TEST_INSTALL "$ENV{KOTOR2_INSTALL}")
+        if(NOT KOTOR2_TEST_INSTALL)
+            set(KOTOR2_TEST_INSTALL "E:/SteamLibrary/steamapps/common/Knights of the Old Republic II")
+        endif()
+        if(EXISTS "${KOTOR2_TEST_INSTALL}/swkotor2.exe")
+            add_test(NAME kotor_profile_k2
+                     COMMAND kotor_engine --profile-info "${KOTOR2_TEST_INSTALL}" --null --headless)
+        endif()
         set_tests_properties(kotor_scene_stats kotor_scene_assert kotor_door_transition
                              kotor_taris_transition kotor_walk_collision kotor_dialogue
                              kotor_combat kotor_script kotor_rules kotor_systems
                              kotor_merchant kotor_encounter kotor_encounter_reset kotor_party kotor_ui kotor_loot
-                             kotor_playthrough kotor_landmark kotor_save_load
+                             kotor_playthrough kotor_landmark kotor_save_load kotor_original_save_create kotor_profile_k1
             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
-
+        if(EXISTS "${KOTOR2_TEST_INSTALL}/swkotor2.exe")
+            set_tests_properties(kotor_profile_k2 PROPERTIES TIMEOUT 30)
+        endif()
         # Native VM parity against the verified Python oracle. The corpus and
         # oracles live under artifacts/ (not shipped); skip the test when a
         # checkout has no research artifacts.
         find_package(Python3 COMPONENTS Interpreter QUIET)
+        if(Python3_Interpreter_FOUND)
+            add_test(NAME kotor_original_save_validate_create
+                     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/../tools/resources/kotor_save.py
+                             validate "${CMAKE_BINARY_DIR}/000010 - ENGINE")
+            set_tests_properties(kotor_original_save_validate_create PROPERTIES
+                                 DEPENDS kotor_original_save_create TIMEOUT 120)
+            if(EXISTS "${KOTOR_SAVE_FIXTURE}/SAVEGAME.sav")
+                add_test(NAME kotor_original_save_validate_roundtrip
+                         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/../tools/resources/kotor_save.py
+                                 validate "${CMAKE_BINARY_DIR}/000009 - ENGINE")
+                set_tests_properties(kotor_original_save_validate_roundtrip PROPERTIES
+                                     DEPENDS kotor_original_save_roundtrip TIMEOUT 120)
+            endif()
+            if(EXISTS "${KOTOR_SAVE_PARTY_FIXTURE}/SAVEGAME.sav")
+                add_test(NAME kotor_original_save_validate_party
+                         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/../tools/resources/kotor_save.py
+                                 validate "${CMAKE_BINARY_DIR}/000011 - ENGINE")
+                set_tests_properties(kotor_original_save_validate_party PROPERTIES
+                                     DEPENDS kotor_original_save_party_roundtrip TIMEOUT 120)
+            endif()
+        endif()
         set(KOTOR_VM_CORPUS "${CMAKE_SOURCE_DIR}/../artifacts/lanes/04-ncs/extracted/unique")
         set(KOTOR_VM_DEFAULT_ORACLE "${CMAKE_SOURCE_DIR}/../artifacts/lanes/s6-01-vm/default_oracle_s6.json")
         set(KOTOR_VM_FUNCTIONAL_ORACLE "${CMAKE_SOURCE_DIR}/../artifacts/lanes/s6-02-actions/functional_oracle_s6.json")

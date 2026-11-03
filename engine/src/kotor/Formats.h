@@ -5,6 +5,8 @@
 // the read-only research tools in tools/resources and tools/formats; those
 // tools remain oracles only.
 
+#include "kotor/Profile.h"
+
 #include <cstdint>
 #include <cmath>
 #include <filesystem>
@@ -208,17 +210,20 @@ public:
     std::uint32_t rootIndex() const { return rootIndex_; }
     std::size_t structureCount() const { return structures_.size(); }
     const GffStruct& structure(std::uint32_t index) const;
+    const GffField& fieldAt(std::size_t row) const { return fields_.at(row); }
+    const std::vector<std::uint8_t>& fieldData() const { return fieldData_; }
     const GffField* field(const GffStruct& structure, const std::string& label) const;
     const GffField* field(std::uint32_t structureIndex, const std::string& label) const;
 
     std::string text(const GffField& field) const;
+    std::uint32_t locStringStrref(const GffField& field) const;
+    std::vector<std::pair<std::uint32_t, std::string>> locStringParts(const GffField& field) const;
     float number(const GffField& field) const;
     std::int32_t integer(const GffField& field) const;
     Vec3 vector3(const GffField& field) const;
     std::vector<std::uint32_t> list(const GffField& field) const;
     std::uint32_t structIndex(const GffField& field) const;
     std::string locString(const GffField& field) const;
-    std::uint32_t locStringStrref(const GffField& field) const;
 
 private:
     std::string name_;
@@ -548,6 +553,8 @@ struct Entity {
     bool hostile = false;
     bool dead = false;
     bool useable = false;
+    bool open = false;
+    bool locked = false;
     // Merchant template data for Store entities.
     std::int32_t storeMarkUp = 100;
     std::int32_t storeMarkDown = 40;
@@ -596,6 +603,7 @@ public:
 
     const std::filesystem::path& root() const { return root_; }
     const std::string& buildSha256() const { return buildSha256_; }
+    const GameProfile& profile() const { return profile_; }
     const KeyFile& key() const { return key_; }
 
     void bindModule(const std::string& stem);
@@ -610,6 +618,7 @@ private:
     std::filesystem::path bifPath(const std::string& keyName) const;
 
     std::filesystem::path root_;
+    GameProfile profile_;
     std::string buildSha256_;
     KeyFile key_;
     std::unordered_map<std::uint32_t, BifFile> bifs_;

@@ -234,30 +234,35 @@ std::string Gff::locString(const GffField& field) const
     if (field.type != GffType::LocString) {
         return {};
     }
+    const auto parts = locStringParts(field);
+    for (const auto& [language, text] : parts) {
+        if (language == 0) {
+            return text;
+        }
+    }
+    return parts.empty() ? std::string{} : parts.front().second;
+}
+
+std::vector<std::pair<std::uint32_t, std::string>> Gff::locStringParts(const GffField& field) const
+{
+    std::vector<std::pair<std::uint32_t, std::string>> out;
+    if (field.type != GffType::LocString) {
+        return out;
+    }
     requireRange(fieldData_.size(), field.data, 12, "GFF locstring header");
-    const std::uint32_t total = readU32(fieldData_.data(), fieldData_.size(), field.data, "GFF locstring total");
-    const std::uint32_t strref = readU32(fieldData_.data(), fieldData_.size(), field.data + 4u, "GFF locstring strref");
     const std::uint32_t count = readU32(fieldData_.data(), fieldData_.size(), field.data + 8u, "GFF locstring count");
     std::size_t cursor = field.data + 12u;
-    std::string fallback;
     for (std::uint32_t i = 0; i < count; ++i) {
         requireRange(fieldData_.size(), cursor, 8, "GFF locstring substring header");
         const std::uint32_t language = readU32(fieldData_.data(), fieldData_.size(), cursor, "GFF locstring language");
         const std::uint32_t length = readU32(fieldData_.data(), fieldData_.size(), cursor + 4u, "GFF locstring length");
         cursor += 8u;
         requireRange(fieldData_.size(), cursor, length, "GFF locstring bytes");
-        const std::string text = readCString(fieldData_.data(), fieldData_.size(), cursor, length, "GFF locstring text");
-        if (fallback.empty()) {
-            fallback = text;
-        }
-        if (language == 0) {
-            return text;
-        }
+        out.emplace_back(language,
+                         readCString(fieldData_.data(), fieldData_.size(), cursor, length, "GFF locstring text"));
         cursor += length;
     }
-    (void)total;
-    (void)strref;
-    return fallback;
+    return out;
 }
 
 std::uint32_t Gff::locStringStrref(const GffField& field) const

@@ -2,10 +2,12 @@
 
 #include "game/Rules.h"
 #include "kotor/Formats.h"
+#include "kotor/SaveGame.h"
 #include "render/SceneView.h"
 #include "script/ActionRuntime.h"
 #include "script/World.h"
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <map>
@@ -68,6 +70,13 @@ public:
     bool testTransition(std::string& from, std::string& to);
     bool save(const std::filesystem::path& path) const;
     bool load(const std::filesystem::path& path);
+    // Original KotOR save folder (SAVEGAME.sav + sidecars). The reader maps
+    // the saved player/party/inventory/globals and overlays the saved GIT
+    // object state; the writer emits a complete original slot.
+    bool loadOriginalSave(const std::filesystem::path& folder);
+    bool saveOriginalSave(const std::filesystem::path& folder,
+                          const std::string& saveName = "Engine Save");
+    const kotor::GameProfile& gameProfile() const { return install_.profile(); }
 
     kotor::Vec3 position() const { return position_; }
     float yaw() const { return yaw_; }
@@ -242,6 +251,14 @@ private:
     std::string leaderTag_ = "PC";
     UiPanel activePanel_ = UiPanel::None;
     std::map<std::string, std::int32_t> journal_;
+    std::map<std::string, std::string> globalKinds_; // KotOR GVT category
+    std::map<std::string, std::array<float, 6>> locationGlobals_;
+    std::string originalAreaName_;
+    std::string originalPortrait_;
+    std::int32_t originalTimePlayed_ = 0;
+    std::vector<std::uint8_t> originalRepute_;
+    std::vector<kotor::SavedResource> originalOuterExtras_;
+    std::vector<kotor::SavedResource> originalPreservedModules_;
     std::int32_t gold_ = 0;
     std::vector<MerchantState> merchants_;
     std::vector<EncounterState> encounterStates_;

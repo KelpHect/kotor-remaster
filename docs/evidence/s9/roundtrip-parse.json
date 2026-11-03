@@ -1,0 +1,5788 @@
+{
+  "folder": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s9\\saves\\000009 - ENGINE",
+  "folder_name": "000009 - ENGINE",
+  "slot": 9,
+  "label": "ENGINE",
+  "kind": "manual",
+  "autosave": false,
+  "files": [
+    {
+      "name": "GLOBALVARS.res",
+      "size": 57112,
+      "canonical": "globalvars.res"
+    },
+    {
+      "name": "PARTYTABLE.res",
+      "size": 1790,
+      "canonical": "partytable.res"
+    },
+    {
+      "name": "SAVEGAME.sav",
+      "size": 76403,
+      "canonical": "savegame.sav"
+    },
+    {
+      "name": "savenfo.res",
+      "size": 633,
+      "canonical": "savenfo.res"
+    },
+    {
+      "name": "Screen.tga",
+      "size": 196626,
+      "canonical": "screen.tga"
+    }
+  ],
+  "validation": {
+    "errors": [],
+    "warnings": [],
+    "infos": []
+  },
+  "nfo": {
+    "present": true,
+    "file": "savenfo.res",
+    "size": 633,
+    "check_errors": [],
+    "checks": [],
+    "file_type": "NFO",
+    "magic": "NFO ",
+    "version": "V3.2",
+    "struct_count": 1,
+    "field_count": 15,
+    "label_count": 15,
+    "labels": [
+      "AREANAME",
+      "LASTMODULE",
+      "TIMEPLAYED",
+      "CHEATUSED",
+      "SAVEGAMENAME",
+      "GAMEPLAYHINT",
+      "STORYHINT",
+      "LIVE1",
+      "LIVE2",
+      "LIVE3",
+      "LIVE4",
+      "LIVE5",
+      "LIVE6",
+      "LIVECONTENT",
+      "PORTRAIT0"
+    ],
+    "list_counts": {},
+    "expected_file_type": "NFO",
+    "magic_ok": true,
+    "area_name": "Taris - Hideout",
+    "last_module": "tar_m02af",
+    "save_game_name": "QUICKSAVE",
+    "pc_name": null,
+    "time_played": 4911,
+    "timestamp_filetime": null,
+    "timestamp_unix": null,
+    "cheat_used": false,
+    "gameplay_hint": 0,
+    "story_hint": 0,
+    "portraits": [
+      "po_pmhc4",
+      null,
+      null
+    ],
+    "screenshot": null,
+    "live": [
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ]
+  },
+  "party_table": {
+    "present": true,
+    "file": "PARTYTABLE.res",
+    "size": 1790,
+    "check_errors": [],
+    "checks": [],
+    "file_type": "PT",
+    "magic": "PT  ",
+    "version": "V3.2",
+    "struct_count": 16,
+    "field_count": 57,
+    "label_count": 29,
+    "labels": [
+      "PT_GOLD",
+      "PT_XP_POOL",
+      "PT_PLAYEDSECONDS",
+      "PT_CONTROLLED_NP",
+      "PT_SOLOMODE",
+      "PT_CHEAT_USED",
+      "PT_NUM_MEMBERS",
+      "PT_MEMBERS",
+      "PT_AVAIL_NPCS",
+      "PT_AISTATE",
+      "PT_FOLLOWSTATE",
+      "GlxyMap",
+      "PT_PAZAAKCARDS",
+      "PT_PAZSIDELIST",
+      "PT_TUT_WND_SHOWN",
+      "PT_LAST_GUI_PNL",
+      "PT_FB_MSG_LIST",
+      "PT_DLG_MSG_LIST",
+      "PT_COST_MULT_LIS",
+      "JNL_SortOrder",
+      "JNL_Entries"
+    ],
+    "list_counts": {
+      "PT_MEMBERS": 1,
+      "PT_AVAIL_NPCS": 9,
+      "PT_PAZAAKCARDS": 0,
+      "PT_PAZSIDELIST": 0,
+      "PT_FB_MSG_LIST": 0,
+      "PT_DLG_MSG_LIST": 0,
+      "PT_COST_MULT_LIS": 0,
+      "JNL_Entries": 4
+    },
+    "expected_file_type": "PT",
+    "magic_ok": true,
+    "gold": 51,
+    "member_count": 1,
+    "members": [
+      {
+        "leader": true,
+        "member_id": 0
+      }
+    ],
+    "available_npc_count": 1,
+    "selectable_npc_count": 9,
+    "influence_count": 0,
+    "journal_count": 4,
+    "journal_states": {
+      "1": 2,
+      "10": 1,
+      "99": 1
+    },
+    "journal_sample": [
+      {
+        "plot_id": "end_attack",
+        "state": 99,
+        "date": 0,
+        "time": 0
+      },
+      {
+        "plot_id": "k_swg_carthtalk",
+        "state": 10,
+        "date": 0,
+        "time": 0
+      },
+      {
+        "plot_id": "tar_bastsearch",
+        "state": 1,
+        "date": 0,
+        "time": 0
+      },
+      {
+        "plot_id": "tar_planetinfo",
+        "state": 1,
+        "date": 0,
+        "time": 0
+      }
+    ],
+    "journal_truncated": false,
+    "chemical_count": null,
+    "component_count": null
+  },
+  "global_vars": {
+    "present": true,
+    "file": "GLOBALVARS.res",
+    "size": 57112,
+    "check_errors": [],
+    "checks": [],
+    "file_type": "GVT",
+    "magic": "GVT ",
+    "version": "V3.2",
+    "struct_count": 1188,
+    "field_count": 1195,
+    "label_count": 10,
+    "labels": [
+      "CatBoolean",
+      "CatNumber",
+      "CatLocation",
+      "CatString",
+      "ValBoolean",
+      "ValNumber",
+      "ValLocation",
+      "ValString"
+    ],
+    "list_counts": {
+      "CatBoolean": 809,
+      "CatNumber": 369,
+      "CatLocation": 5,
+      "CatString": 2,
+      "ValString": 2
+    },
+    "expected_file_type": "GVT",
+    "magic_ok": true,
+    "category_counts": {
+      "number": 369,
+      "boolean": 809,
+      "string": 2,
+      "location": 5
+    },
+    "val_number_bytes": 369,
+    "val_boolean_bytes": 102,
+    "val_location_bytes": 120,
+    "val_string_count": 2,
+    "boolean_true_count": 2,
+    "numbers": [
+      {
+        "name": "CARTH_ROM_END",
+        "value": 0
+      },
+      {
+        "name": "CUTSCENE_NPC_1",
+        "value": 0
+      },
+      {
+        "name": "CUTSCENE_NPC_2",
+        "value": 0
+      },
+      {
+        "name": "DAN_BASTILA_ZONE",
+        "value": 0
+      },
+      {
+        "name": "DAN_BLUE_STATE",
+        "value": 0
+      },
+      {
+        "name": "DAN_BOLOOK_ANGER",
+        "value": 0
+      },
+      {
+        "name": "DAN_BOLOOK_STATE",
+        "value": 0
+      },
+      {
+        "name": "DAN_CANDER_ZONE",
+        "value": 0
+      },
+      {
+        "name": "DAN_CARTH_ZONE",
+        "value": 0
+      },
+      {
+        "name": "DAN_CASUS_PLOT",
+        "value": 0
+      },
+      {
+        "name": "DAN_ELISE_PLOT",
+        "value": 0
+      },
+      {
+        "name": "DAN_EXTRA_XP",
+        "value": 0
+      },
+      {
+        "name": "DAN_EXTRA_XP2",
+        "value": 0
+      },
+      {
+        "name": "DAN_GREEN_STATE",
+        "value": 0
+      },
+      {
+        "name": "DAN_HAND_STATE",
+        "value": 0
+      },
+      {
+        "name": "DAN_IDROID_STATE",
+        "value": 0
+      },
+      {
+        "name": "DAN_JEDI_PLOT",
+        "value": 0
+      },
+      {
+        "name": "DAN_JON_STATE",
+        "value": 0
+      },
+      {
+        "name": "DAN_JUHANI_ANGER",
+        "value": 0
+      },
+      {
+        "name": "DAN_JUHANI_PLOT",
+        "value": 0
+      },
+      {
+        "name": "DAN_JUHANI_STATE",
+        "value": 0
+      },
+      {
+        "name": "DAN_LOCATION",
+        "value": 0
+      },
+      {
+        "name": "DAN_MAND_STATE",
+        "value": 0
+      },
+      {
+        "name": "DAN_MISSION_ZONE",
+        "value": 0
+      },
+      {
+        "name": "DAN_PATH_STATE",
+        "value": 0
+      },
+      {
+        "name": "DAN_PLANET_PLOT",
+        "value": 0
+      },
+      {
+        "name": "DAN_RAHASHIA_DARK",
+        "value": 0
+      },
+      {
+        "name": "DAN_RANDOM",
+        "value": 0
+      },
+      {
+        "name": "DAN_RICK_STATE",
+        "value": 0
+      },
+      {
+        "name": "DAN_ROMANCE_PLOT",
+        "value": 0
+      },
+      {
+        "name": "DAN_SOLAA_NUM",
+        "value": 0
+      },
+      {
+        "name": "DAN_YELLOW_STATE",
+        "value": 0
+      },
+      {
+        "name": "DAN_ZAALBAR_ZONE",
+        "value": 0
+      },
+      {
+        "name": "DUEL_TIMER",
+        "value": 0
+      },
+      {
+        "name": "Dan_DorakHistory",
+        "value": 0
+      },
+      {
+        "name": "EBO_GIZKA_PLOT",
+        "value": 0
+      },
+      {
+        "name": "EBO_LURARKA",
+        "value": 0
+      },
+      {
+        "name": "EBO_MYSTERY_BOX",
+        "value": 0
+      },
+      {
+        "name": "EBO_PC_RIDDLE",
+        "value": 0
+      },
+      {
+        "name": "EBO_SASHA_PLOT",
+        "value": 0
+      },
+      {
+        "name": "END_CARTH_DLG",
+        "value": 6
+      },
+      {
+        "name": "END_ROOM3_DEAD",
+        "value": 2
+      },
+      {
+        "name": "END_ROOM5_DEAD",
+        "value": 3
+      },
+      {
+        "name": "END_ROOM7_DEAD",
+        "value": 2
+      },
+      {
+        "name": "END_ROOM8_DEAD",
+        "value": 2
+      },
+      {
+        "name": "END_SITH_DEAD",
+        "value": 5
+      },
+      {
+        "name": "END_TRASK_DLG",
+        "value": 32
+      },
+      {
+        "name": "Ebn_Bast_ForceTalk",
+        "value": 0
+      },
+      {
+        "name": "Ebo_Sasha_State",
+        "value": 0
+      },
+      {
+        "name": "Ebo_TriggerCount",
+        "value": 0
+      },
+      {
+        "name": "Ebon_Vision",
+        "value": 0
+      },
+      {
+        "name": "End_TraskTalk",
+        "value": 1
+      },
+      {
+        "name": "G_CAND_PLOT",
+        "value": 0
+      },
+      {
+        "name": "G_CAND_STATE",
+        "value": 0
+      },
+      {
+        "name": "G_FinalChoice",
+        "value": 0
+      },
+      {
+        "name": "G_JUHANIC_NUM",
+        "value": 0
+      },
+      {
+        "name": "G_JUHANIH_STATE",
+        "value": 0
+      },
+      {
+        "name": "G_JUHANIP_STATE",
+        "value": 0
+      },
+      {
+        "name": "G_JUHANI_PLOT",
+        "value": 0
+      },
+      {
+        "name": "G_Party_Init_Trig",
+        "value": 0
+      },
+      {
+        "name": "GizkaMultiplier",
+        "value": 0
+      },
+      {
+        "name": "KAS_RULAN_NPC",
+        "value": 0
+      },
+      {
+        "name": "KOR33_SHAARDAN",
+        "value": 0
+      },
+      {
+        "name": "KOR38A_REPAIRDICE",
+        "value": 0
+      },
+      {
+        "name": "KOR38B_MEKEL_TORTURE",
+        "value": 0
+      },
+      {
+        "name": "KOR39_SITH_HOSTILE",
+        "value": 0
+      },
+      {
+        "name": "KOR_ASSASS_SFG",
+        "value": 0
+      },
+      {
+        "name": "KOR_BETRAYAL",
+        "value": 0
+      },
+      {
+        "name": "KOR_DANEL",
+        "value": 0
+      },
+      {
+        "name": "KOR_DOOR33A",
+        "value": 0
+      },
+      {
+        "name": "KOR_DOOR33B",
+        "value": 0
+      },
+      {
+        "name": "KOR_DOOR37",
+        "value": 0
+      },
+      {
+        "name": "KOR_DOOR38A",
+        "value": 0
+      },
+      {
+        "name": "KOR_DOOR38B",
+        "value": 0
+      },
+      {
+        "name": "KOR_DOOR39",
+        "value": 0
+      },
+      {
+        "name": "KOR_DROID_HINT",
+        "value": 0
+      },
+      {
+        "name": "KOR_DUEL_NUM",
+        "value": 0
+      },
+      {
+        "name": "KOR_END_DEAD",
+        "value": 0
+      },
+      {
+        "name": "KOR_FINAL_TEST",
+        "value": 0
+      },
+      {
+        "name": "KOR_FREIGHT_RAND",
+        "value": 0
+      },
+      {
+        "name": "KOR_HINT_COUNT",
+        "value": 0
+      },
+      {
+        "name": "KOR_KEL_DOUBT",
+        "value": 0
+      },
+      {
+        "name": "KOR_KNOW_ACADEMY",
+        "value": 0
+      },
+      {
+        "name": "KOR_KNOW_EXCAV",
+        "value": 0
+      },
+      {
+        "name": "KOR_KNOW_SHYRACK",
+        "value": 0
+      },
+      {
+        "name": "KOR_LASHOWE_PLOT",
+        "value": 0
+      },
+      {
+        "name": "KOR_MEKEL_KILLED",
+        "value": 0
+      },
+      {
+        "name": "KOR_PAZTOLL",
+        "value": 0
+      },
+      {
+        "name": "KOR_PILLARL",
+        "value": 0
+      },
+      {
+        "name": "KOR_PILLARM",
+        "value": 0
+      },
+      {
+        "name": "KOR_PILLARR",
+        "value": 0
+      },
+      {
+        "name": "KOR_PRESTIGE",
+        "value": 0
+      },
+      {
+        "name": "KOR_REBEL_SITH",
+        "value": 0
+      },
+      {
+        "name": "KOR_REMOVE_PC0",
+        "value": 0
+      },
+      {
+        "name": "KOR_REMOVE_PC1",
+        "value": 0
+      },
+      {
+        "name": "KOR_REMOVE_PC2",
+        "value": 0
+      },
+      {
+        "name": "KOR_REMOVE_PCS",
+        "value": 0
+      },
+      {
+        "name": "KOR_RENEGADE_DEAL",
+        "value": 0
+      },
+      {
+        "name": "KOR_RENSITH_DEAD",
+        "value": 0
+      },
+      {
+        "name": "KOR_ROGUE_DROID",
+        "value": 0
+      },
+      {
+        "name": "KOR_SHAARDAN_SWORD",
+        "value": 0
+      },
+      {
+        "name": "KOR_SITHJOIN",
+        "value": 0
+      },
+      {
+        "name": "KOR_SITHTEST",
+        "value": 0
+      },
+      {
+        "name": "KOR_SITH_CODE",
+        "value": 0
+      },
+      {
+        "name": "KOR_SITH_HOSTILE",
+        "value": 0
+      },
+      {
+        "name": "KOR_SITH_PRESTIGE",
+        "value": 0
+      },
+      {
+        "name": "KOR_SITH_TALK",
+        "value": 0
+      },
+      {
+        "name": "KOR_START_FINAL",
+        "value": 0
+      },
+      {
+        "name": "KOR_TALK_CZERKA",
+        "value": 0
+      },
+      {
+        "name": "KOR_TEREN_DEAD",
+        "value": 0
+      },
+      {
+        "name": "KOR_THRESHOLD",
+        "value": 0
+      },
+      {
+        "name": "KOR_THUG_DEATH",
+        "value": 0
+      },
+      {
+        "name": "KOR_TOMB_STATUE",
+        "value": 0
+      },
+      {
+        "name": "KOR_TORT_END",
+        "value": 0
+      },
+      {
+        "name": "KOR_TUKATA_DEAD",
+        "value": 0
+      },
+      {
+        "name": "KOR_WAR_DEAD",
+        "value": 0
+      },
+      {
+        "name": "KOR_WHO_DAK",
+        "value": 0
+      },
+      {
+        "name": "KOR_YUTHURA1",
+        "value": 0
+      },
+      {
+        "name": "KOR_YUTHURA2",
+        "value": 0
+      },
+      {
+        "name": "K_CAND_ITEMS",
+        "value": 0
+      },
+      {
+        "name": "K_CAPTURED_LEV",
+        "value": 0
+      },
+      {
+        "name": "K_COMBAT_TRACK",
+        "value": 0
+      },
+      {
+        "name": "K_CURRENT_PLANET",
+        "value": 10
+      },
+      {
+        "name": "K_CUTSCENE_TEST",
+        "value": 0
+      },
+      {
+        "name": "K_END_JEDI_LEFT",
+        "value": 0
+      },
+      {
+        "name": "K_END_MALAK_JEDI_USED",
+        "value": 0
+      },
+      {
+        "name": "K_FUTURE_PLANET",
+        "value": 0
+      },
+      {
+        "name": "K_JOLEE_ITEMS",
+        "value": 0
+      },
+      {
+        "name": "K_KALO_BANDON",
+        "value": 0
+      },
+      {
+        "name": "K_KOTOR_MASTER",
+        "value": 0
+      },
+      {
+        "name": "K_LastPlanet",
+        "value": 0
+      },
+      {
+        "name": "K_MISSION_ITEMS",
+        "value": 0
+      },
+      {
+        "name": "K_PARTY_STORE1",
+        "value": 0
+      },
+      {
+        "name": "K_PARTY_STORE2",
+        "value": 0
+      },
+      {
+        "name": "K_REAL_SELECTION",
+        "value": 0
+      },
+      {
+        "name": "K_STAR_MAP",
+        "value": 0
+      },
+      {
+        "name": "K_STA_HORDE",
+        "value": 0
+      },
+      {
+        "name": "K_SWG_BASTILA",
+        "value": 0
+      },
+      {
+        "name": "K_SWG_BASTILA_LEVEL",
+        "value": 0
+      },
+      {
+        "name": "K_SWG_CARTH",
+        "value": 1
+      },
+      {
+        "name": "K_SWG_CARTH_LEVEL",
+        "value": 0
+      },
+      {
+        "name": "K_SWG_HELENA",
+        "value": 0
+      },
+      {
+        "name": "K_SWG_HK47_DC",
+        "value": 0
+      },
+      {
+        "name": "K_SWG_HK47_FIX",
+        "value": 0
+      },
+      {
+        "name": "K_SWG_JOLEE",
+        "value": 0
+      },
+      {
+        "name": "K_SWG_JOLEE_LEVEL",
+        "value": 0
+      },
+      {
+        "name": "K_T3M4_ITEMS",
+        "value": 0
+      },
+      {
+        "name": "K_TURRET_SKYBOX",
+        "value": 0
+      },
+      {
+        "name": "K_XOR_AMBUSH",
+        "value": 0
+      },
+      {
+        "name": "K_ZAALBAR_ITEMS",
+        "value": 0
+      },
+      {
+        "name": "LEV_AIRLOCKOPEN",
+        "value": 0
+      },
+      {
+        "name": "LEV_ALIGNMENT",
+        "value": 0
+      },
+      {
+        "name": "LEV_BRIDGEDEFENSE",
+        "value": 0
+      },
+      {
+        "name": "LEV_ELEVATOR",
+        "value": 0
+      },
+      {
+        "name": "LEV_LEVEL",
+        "value": 0
+      },
+      {
+        "name": "LEV_RIOTS",
+        "value": 0
+      },
+      {
+        "name": "LEV_SPACEWALK",
+        "value": 0
+      },
+      {
+        "name": "LEV_SPIKES",
+        "value": 0
+      },
+      {
+        "name": "Lev_BastTalk",
+        "value": 0
+      },
+      {
+        "name": "Lev_Escape",
+        "value": 0
+      },
+      {
+        "name": "Lev_MalTalk",
+        "value": 0
+      },
+      {
+        "name": "Lev_MalakVision",
+        "value": 0
+      },
+      {
+        "name": "M12AB_START_SYNC",
+        "value": 0
+      },
+      {
+        "name": "MAIN_PLOT",
+        "value": 0
+      },
+      {
+        "name": "MAN_BEST_MIN",
+        "value": 0
+      },
+      {
+        "name": "MAN_BEST_MSEC",
+        "value": 0
+      },
+      {
+        "name": "MAN_BEST_SEC",
+        "value": 0
+      },
+      {
+        "name": "MAN_COMP_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_DAKOTA_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_DOCK_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_DUAN_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_GONTON",
+        "value": 0
+      },
+      {
+        "name": "MAN_INTER_NUM",
+        "value": 0
+      },
+      {
+        "name": "MAN_JENNA_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_JOLAN_NUM",
+        "value": 0
+      },
+      {
+        "name": "MAN_LIVEA_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_LIVEB_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_MIN_QUEED",
+        "value": 0
+      },
+      {
+        "name": "MAN_MISSING_PLOT",
+        "value": 0
+      },
+      {
+        "name": "MAN_MSEC_QUEED",
+        "value": 0
+      },
+      {
+        "name": "MAN_MURDER_PLOT",
+        "value": 0
+      },
+      {
+        "name": "MAN_PLANET_PLOT",
+        "value": 0
+      },
+      {
+        "name": "MAN_PRESS_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_QUESTION_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_RANDOM",
+        "value": 0
+      },
+      {
+        "name": "MAN_RODIAN_PLOT",
+        "value": 0
+      },
+      {
+        "name": "MAN_SEC_QUEED",
+        "value": 0
+      },
+      {
+        "name": "MAN_SELJUD1_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_SELJUD2_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_SELJUD3_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_SELJUD4_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_SELJUD5_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_SHOP",
+        "value": 0
+      },
+      {
+        "name": "MAN_SWOOP_MIN",
+        "value": 0
+      },
+      {
+        "name": "MAN_SWOOP_MSEC",
+        "value": 0
+      },
+      {
+        "name": "MAN_SWOOP_OPP",
+        "value": 0
+      },
+      {
+        "name": "MAN_SWOOP_SEC",
+        "value": 0
+      },
+      {
+        "name": "MAN_THRESHOLD",
+        "value": 0
+      },
+      {
+        "name": "MAN_TORTA_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_TORTB_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_TORTC_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_TRIAL_JUDNUM",
+        "value": 0
+      },
+      {
+        "name": "MAN_VIGLO_STATE",
+        "value": 0
+      },
+      {
+        "name": "MAN_VOLUME_A",
+        "value": 0
+      },
+      {
+        "name": "MAN_VOLUME_B",
+        "value": 0
+      },
+      {
+        "name": "MIN_RACE_GEAR",
+        "value": 0
+      },
+      {
+        "name": "MIN_TENTH_GEAR",
+        "value": 0
+      },
+      {
+        "name": "MIN_TIME_HOUR",
+        "value": 0
+      },
+      {
+        "name": "MIN_TIME_MIL",
+        "value": 0
+      },
+      {
+        "name": "MIN_TIME_MIN",
+        "value": 0
+      },
+      {
+        "name": "MIN_TIME_SEC",
+        "value": 0
+      },
+      {
+        "name": "Mis_MissionTalk",
+        "value": 0
+      },
+      {
+        "name": "NPC_INIT_PLANET_0",
+        "value": 0
+      },
+      {
+        "name": "NPC_INIT_PLANET_1",
+        "value": 0
+      },
+      {
+        "name": "NPC_INIT_PLANET_2",
+        "value": 0
+      },
+      {
+        "name": "NPC_INIT_PLANET_3",
+        "value": 0
+      },
+      {
+        "name": "NPC_INIT_PLANET_4",
+        "value": 0
+      },
+      {
+        "name": "NPC_INIT_PLANET_5",
+        "value": 0
+      },
+      {
+        "name": "NPC_INIT_PLANET_6",
+        "value": 0
+      },
+      {
+        "name": "NPC_INIT_PLANET_7",
+        "value": 0
+      },
+      {
+        "name": "NPC_INIT_PLANET_8",
+        "value": 0
+      },
+      {
+        "name": "PTAT_SPN_TUSKAN",
+        "value": 0
+      },
+      {
+        "name": "STA_ASSASSIN_DROID",
+        "value": 0
+      },
+      {
+        "name": "STA_DOOR45A",
+        "value": 0
+      },
+      {
+        "name": "STA_DOOR45B",
+        "value": 0
+      },
+      {
+        "name": "STA_DOOR45C",
+        "value": 0
+      },
+      {
+        "name": "STA_DOOR45D",
+        "value": 0
+      },
+      {
+        "name": "STA_GENERATORS",
+        "value": 0
+      },
+      {
+        "name": "STA_JEDI_ATTACK",
+        "value": 0
+      },
+      {
+        "name": "STA_MALAK_JEDI",
+        "value": 0
+      },
+      {
+        "name": "STA_MALAK_TALK",
+        "value": 0
+      },
+      {
+        "name": "STA_MARK2_DROID",
+        "value": 0
+      },
+      {
+        "name": "STA_MARK4_DROID",
+        "value": 0
+      },
+      {
+        "name": "STA_PROBE_DROID",
+        "value": 0
+      },
+      {
+        "name": "STA_SITH_DEAD",
+        "value": 0
+      },
+      {
+        "name": "STA_SPYDER_DROID",
+        "value": 0
+      },
+      {
+        "name": "STA_WAR_DROID",
+        "value": 0
+      },
+      {
+        "name": "Sta_BastConversion",
+        "value": 0
+      },
+      {
+        "name": "Sta_BastTalk",
+        "value": 0
+      },
+      {
+        "name": "TAR_ARENANPC0",
+        "value": 0
+      },
+      {
+        "name": "TAR_ARENANPC1",
+        "value": 0
+      },
+      {
+        "name": "TAR_ARENANPCS",
+        "value": 0
+      },
+      {
+        "name": "TAR_CALOBARFIGHT",
+        "value": 0
+      },
+      {
+        "name": "TAR_CANDMEET",
+        "value": 0
+      },
+      {
+        "name": "TAR_DAVGAS",
+        "value": 0
+      },
+      {
+        "name": "TAR_GAMMOREANS_RUN",
+        "value": 0
+      },
+      {
+        "name": "TAR_GHOULSPAWNS",
+        "value": 0
+      },
+      {
+        "name": "TAR_HENDAR",
+        "value": 0
+      },
+      {
+        "name": "TAR_OUT_DISEASE",
+        "value": 0
+      },
+      {
+        "name": "TAR_RANDOM_TALK",
+        "value": 0
+      },
+      {
+        "name": "TAR_SITHARMORPLOT",
+        "value": 0
+      },
+      {
+        "name": "TAR_SWOOP_ACCEL",
+        "value": 0
+      },
+      {
+        "name": "TAR_SWOOP_MIN",
+        "value": 0
+      },
+      {
+        "name": "TAR_SWOOP_MIN_BEAT",
+        "value": 0
+      },
+      {
+        "name": "TAR_SWOOP_MSEC",
+        "value": 0
+      },
+      {
+        "name": "TAR_SWOOP_MSEC_BEAT",
+        "value": 0
+      },
+      {
+        "name": "TAR_SWOOP_SEC",
+        "value": 0
+      },
+      {
+        "name": "TAR_SWOOP_SEC_BEAT",
+        "value": 0
+      },
+      {
+        "name": "TAR_TRASHTRAPON",
+        "value": 0
+      },
+      {
+        "name": "TAT_BEST_MIN",
+        "value": 0
+      },
+      {
+        "name": "TAT_BEST_MSEC",
+        "value": 0
+      },
+      {
+        "name": "TAT_BEST_SEC",
+        "value": 0
+      },
+      {
+        "name": "TAT_SWOOP_MIN",
+        "value": 0
+      },
+      {
+        "name": "TAT_SWOOP_MSEC",
+        "value": 0
+      },
+      {
+        "name": "TAT_SWOOP_OPP",
+        "value": 0
+      },
+      {
+        "name": "TAT_SWOOP_SEC",
+        "value": 0
+      },
+      {
+        "name": "T_CURLEV",
+        "value": 0
+      },
+      {
+        "name": "T_JUHANIL",
+        "value": 0
+      },
+      {
+        "name": "T_JUHANIS",
+        "value": 0
+      },
+      {
+        "name": "T_LEVC",
+        "value": 0
+      },
+      {
+        "name": "T_LEVH",
+        "value": 0
+      },
+      {
+        "name": "T_LEVP",
+        "value": 0
+      },
+      {
+        "name": "T_SIGNAL",
+        "value": 0
+      },
+      {
+        "name": "T_STARMAP_NUM",
+        "value": 0
+      },
+      {
+        "name": "Tar_BenBount",
+        "value": 0
+      },
+      {
+        "name": "Tar_BenChall",
+        "value": 0
+      },
+      {
+        "name": "Tar_BullMerc",
+        "value": 0
+      },
+      {
+        "name": "Tar_Canderous",
+        "value": 0
+      },
+      {
+        "name": "Tar_Carth",
+        "value": 2
+      },
+      {
+        "name": "Tar_Christya",
+        "value": 0
+      },
+      {
+        "name": "Tar_Dia",
+        "value": 0
+      },
+      {
+        "name": "Tar_Duel",
+        "value": 0
+      },
+      {
+        "name": "Tar_DuelAnTk",
+        "value": 0
+      },
+      {
+        "name": "Tar_Gana",
+        "value": 0
+      },
+      {
+        "name": "Tar_GaroukDl",
+        "value": 0
+      },
+      {
+        "name": "Tar_Gelrood",
+        "value": 0
+      },
+      {
+        "name": "Tar_GortonBoun",
+        "value": 0
+      },
+      {
+        "name": "Tar_Holdan",
+        "value": 0
+      },
+      {
+        "name": "Tar_JaniceDro",
+        "value": 0
+      },
+      {
+        "name": "Tar_Jergan",
+        "value": 0
+      },
+      {
+        "name": "Tar_LargoBoun",
+        "value": 0
+      },
+      {
+        "name": "Tar_LastHolo",
+        "value": 0
+      },
+      {
+        "name": "Tar_Matrik",
+        "value": 0
+      },
+      {
+        "name": "Tar_MissLook",
+        "value": 0
+      },
+      {
+        "name": "Tar_Mission",
+        "value": 0
+      },
+      {
+        "name": "Tar_PazGel",
+        "value": 0
+      },
+      {
+        "name": "Tar_PazLow",
+        "value": 0
+      },
+      {
+        "name": "Tar_PazNik",
+        "value": 0
+      },
+      {
+        "name": "Tar_PazUp",
+        "value": 0
+      },
+      {
+        "name": "Tar_PazVulk",
+        "value": 0
+      },
+      {
+        "name": "Tar_RakSerum",
+        "value": 0
+      },
+      {
+        "name": "Tar_Rukil",
+        "value": 0
+      },
+      {
+        "name": "Tar_Sarna",
+        "value": 0
+      },
+      {
+        "name": "Tar_SelBoun",
+        "value": 0
+      },
+      {
+        "name": "Tar_StrongBox",
+        "value": 0
+      },
+      {
+        "name": "Tar_SwoopRaceCounter",
+        "value": 0
+      },
+      {
+        "name": "Tar_SwoopStatus",
+        "value": 0
+      },
+      {
+        "name": "Tar_VulkarComputer",
+        "value": 0
+      },
+      {
+        "name": "Tar_VulkarElevator",
+        "value": 0
+      },
+      {
+        "name": "Tar_YunGend",
+        "value": 0
+      },
+      {
+        "name": "Tar_ZelkaRm",
+        "value": 0
+      },
+      {
+        "name": "Tar_ZelkaStor",
+        "value": 0
+      },
+      {
+        "name": "Tar_ZelkaTk",
+        "value": 0
+      },
+      {
+        "name": "UNK_AREA",
+        "value": 0
+      },
+      {
+        "name": "UNK_BlackTemple",
+        "value": 0
+      },
+      {
+        "name": "UNK_PARTYSHOWDOWN",
+        "value": 0
+      },
+      {
+        "name": "UNK_PUZD_FINAL",
+        "value": 0
+      },
+      {
+        "name": "UNK_PUZD_STATE",
+        "value": 0
+      },
+      {
+        "name": "UNK_PUZE_FINAL",
+        "value": 0
+      },
+      {
+        "name": "UNK_PUZE_STATE",
+        "value": 0
+      },
+      {
+        "name": "UNK_PUZF_FINAL",
+        "value": 0
+      },
+      {
+        "name": "UNK_RAKATAGUARDSTATUS",
+        "value": 0
+      },
+      {
+        "name": "UNK_RESEARCH",
+        "value": 0
+      },
+      {
+        "name": "UNK_RedTemple",
+        "value": 0
+      },
+      {
+        "name": "UNK_STORY",
+        "value": 0
+      },
+      {
+        "name": "UNK_TEMPLEALARM",
+        "value": 0
+      },
+      {
+        "name": "UNK_injuredSith",
+        "value": 0
+      },
+      {
+        "name": "Unk_Prisoner",
+        "value": 0
+      },
+      {
+        "name": "YAV_GIZKA",
+        "value": 0
+      },
+      {
+        "name": "YAV_SUVAM",
+        "value": 0
+      },
+      {
+        "name": "YAV_SUVAM_NUM",
+        "value": 0
+      },
+      {
+        "name": "ZaalbarTalk",
+        "value": 0
+      },
+      {
+        "name": "ebo_num_fighters",
+        "value": 0
+      },
+      {
+        "name": "k_Exchange_Store",
+        "value": 0
+      },
+      {
+        "name": "k_Geno_Zuulan",
+        "value": 0
+      },
+      {
+        "name": "k_geno_Ithorak",
+        "value": 0
+      },
+      {
+        "name": "k_geno_Rulan",
+        "value": 0
+      },
+      {
+        "name": "k_geno_Vorn",
+        "value": 0
+      },
+      {
+        "name": "k_geno_lorgal",
+        "value": 0
+      },
+      {
+        "name": "k_geno_story",
+        "value": 0
+      },
+      {
+        "name": "k_genoharadan",
+        "value": 0
+      },
+      {
+        "name": "k_rulan_morph",
+        "value": 0
+      },
+      {
+        "name": "kas_DefenseDroid",
+        "value": 0
+      },
+      {
+        "name": "kas_EmittersOff",
+        "value": 0
+      },
+      {
+        "name": "kas_JoleeKatarn",
+        "value": 0
+      },
+      {
+        "name": "kas_MandalorPlot",
+        "value": 0
+      },
+      {
+        "name": "kas_PoachersDead",
+        "value": 0
+      },
+      {
+        "name": "kas_freyyrstate",
+        "value": 0
+      },
+      {
+        "name": "kor_PazUp",
+        "value": 0
+      },
+      {
+        "name": "man_ManaanRaceState",
+        "value": 0
+      },
+      {
+        "name": "tar_droid",
+        "value": 0
+      },
+      {
+        "name": "tat_AmbushDead",
+        "value": 0
+      },
+      {
+        "name": "tat_AreaLocator",
+        "value": 0
+      },
+      {
+        "name": "tat_DuneSeaEnc",
+        "value": 0
+      },
+      {
+        "name": "tat_GriffCaptive",
+        "value": 0
+      },
+      {
+        "name": "tat_IzizCaptive",
+        "value": 0
+      },
+      {
+        "name": "tat_JawaCaptive",
+        "value": 0
+      },
+      {
+        "name": "tat_LinesChecked",
+        "value": 0
+      },
+      {
+        "name": "tat_MissCaptive",
+        "value": 0
+      },
+      {
+        "name": "tat_NewsBlocks",
+        "value": 0
+      },
+      {
+        "name": "tat_QueedleState",
+        "value": 0
+      },
+      {
+        "name": "tat_RaceComplete",
+        "value": 0
+      },
+      {
+        "name": "tat_SandHistory",
+        "value": 0
+      },
+      {
+        "name": "tat_SandWarrior",
+        "value": 0
+      },
+      {
+        "name": "tat_WraidHerd",
+        "value": 0
+      },
+      {
+        "name": "tat_fazzpazzstate",
+        "value": 0
+      },
+      {
+        "name": "tat_kashpazstate",
+        "value": 0
+      },
+      {
+        "name": "test_test",
+        "value": 0
+      },
+      {
+        "name": "unk_redvill",
+        "value": 0
+      }
+    ],
+    "booleans": [
+      {
+        "name": "01_TEST",
+        "value": false
+      },
+      {
+        "name": "CREDITPLAY",
+        "value": false
+      },
+      {
+        "name": "DAN_AHLAN_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_ANGER5_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_ANGER6_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_ANGER7_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_AREA1",
+        "value": false
+      },
+      {
+        "name": "DAN_BASTILA_AT_JEDI",
+        "value": false
+      },
+      {
+        "name": "DAN_BASTM_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_BELAYAJ_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_BELAYAM_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_BELAYAS_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_BELAYAT_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_BELAYA_DEFECT",
+        "value": false
+      },
+      {
+        "name": "DAN_BLACK_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_BODY_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_BOLOOKF_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_BOLOOK_PERS",
+        "value": false
+      },
+      {
+        "name": "DAN_BOLOOK_WEST",
+        "value": false
+      },
+      {
+        "name": "DAN_CARTH_AT_JEDI",
+        "value": false
+      },
+      {
+        "name": "DAN_CARTH_BACKUP",
+        "value": false
+      },
+      {
+        "name": "DAN_COMMENT_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_CONDUIT1",
+        "value": false
+      },
+      {
+        "name": "DAN_CONDUIT2",
+        "value": false
+      },
+      {
+        "name": "DAN_CORT_START",
+        "value": false
+      },
+      {
+        "name": "DAN_CRATISC_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_CRATISF_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_CRATISI_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_CRATISJ_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_CRATISK_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_CRATISL_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_CRATISS_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_CRYSTAL_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_CS",
+        "value": false
+      },
+      {
+        "name": "DAN_CSENT",
+        "value": false
+      },
+      {
+        "name": "DAN_DEATH_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_DIARY_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_DOOR_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_DORAK_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_DROIDS_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_DROID_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_EGGS_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_ELISEF_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_ELISEH_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_ELISE_COMPOUND",
+        "value": false
+      },
+      {
+        "name": "DAN_ELISE_TOLD",
+        "value": false
+      },
+      {
+        "name": "DAN_ESTATEC_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_ESTATE_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_EXTRA",
+        "value": false
+      },
+      {
+        "name": "DAN_GARF_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_GARL_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_HANDONF_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_HANDONG_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_HATE_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_IDROIDB_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_IDROIDF_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_JEDI_CODE",
+        "value": false
+      },
+      {
+        "name": "DAN_JUHANIF_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_JUHANIQ_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_JUHANI_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_JUHANI_FIGHT",
+        "value": false
+      },
+      {
+        "name": "DAN_JUHANI_JOINED",
+        "value": false
+      },
+      {
+        "name": "DAN_KARALC_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_KARALF_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_KARALK_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_KARALS_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_KARAL_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_LEAVE_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_LIED_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_LIEM_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_LIFE_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_MEETS_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_MEET_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_MISSB_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_MISSC_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_NEMOB_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_NEMOF_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_NEMOJ_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_NEMOR_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_NSENT",
+        "value": false
+      },
+      {
+        "name": "DAN_PLAINS_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_RAHASHIA_LIGHT",
+        "value": false
+      },
+      {
+        "name": "DAN_RAHA_AGREE",
+        "value": false
+      },
+      {
+        "name": "DAN_RE",
+        "value": false
+      },
+      {
+        "name": "DAN_RICKARDF_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_RSENT",
+        "value": false
+      },
+      {
+        "name": "DAN_RUINS_GONE",
+        "value": false
+      },
+      {
+        "name": "DAN_SABER_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_SAND_REFUSE",
+        "value": false
+      },
+      {
+        "name": "DAN_SC",
+        "value": false
+      },
+      {
+        "name": "DAN_SHEN_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_SOLD_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_SOL_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_SSENT",
+        "value": false
+      },
+      {
+        "name": "DAN_ST",
+        "value": false
+      },
+      {
+        "name": "DAN_STARMAP_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_STUNT00",
+        "value": false
+      },
+      {
+        "name": "DAN_TAREEJ_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_TEMP",
+        "value": false
+      },
+      {
+        "name": "DAN_TEMP2",
+        "value": false
+      },
+      {
+        "name": "DAN_TEST_ARMOR",
+        "value": false
+      },
+      {
+        "name": "DAN_TSENT",
+        "value": false
+      },
+      {
+        "name": "DAN_VANDARB_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_VANDARF_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_VANDARJ_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_VANDARM_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_VANDARP_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_VANDARR_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_VANDARS_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_VANDAR_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_VISION_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_VROOKBB_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_VROOKB_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_VROOKJ_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_VROOKP_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_VROOKR_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_VROOKS_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_WHITE_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_ZAALK_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_ZHARC_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_ZHARD_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_ZHARH_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_ZHARJ_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_ZHARL_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_ZHARR_DONE",
+        "value": false
+      },
+      {
+        "name": "DAN_ZHAR_TRAIN",
+        "value": false
+      },
+      {
+        "name": "DEMO_FIELD_DONE",
+        "value": false
+      },
+      {
+        "name": "Dan_Blaster",
+        "value": false
+      },
+      {
+        "name": "Dan_Cheat",
+        "value": false
+      },
+      {
+        "name": "Dan_Deesra",
+        "value": false
+      },
+      {
+        "name": "Dan_FalseAccuse",
+        "value": false
+      },
+      {
+        "name": "Dan_RakDroid_Build",
+        "value": false
+      },
+      {
+        "name": "Dan_RakDroid_Forge",
+        "value": false
+      },
+      {
+        "name": "Dan_RakDroid_Time",
+        "value": false
+      },
+      {
+        "name": "Dan_Rickrelate",
+        "value": false
+      },
+      {
+        "name": "Dan_Speeder",
+        "value": false
+      },
+      {
+        "name": "Dan_blood",
+        "value": false
+      },
+      {
+        "name": "Dan_handaccuse",
+        "value": false
+      },
+      {
+        "name": "Dan_handrelate",
+        "value": false
+      },
+      {
+        "name": "Dan_notvictim",
+        "value": false
+      },
+      {
+        "name": "Dan_rickaccuse",
+        "value": false
+      },
+      {
+        "name": "Dan_stolen",
+        "value": false
+      },
+      {
+        "name": "Dan_wife",
+        "value": false
+      },
+      {
+        "name": "EBO_HYPER_FIXED",
+        "value": false
+      },
+      {
+        "name": "EBO_LURZE_CODE",
+        "value": false
+      },
+      {
+        "name": "EBO_PUZZLE1",
+        "value": false
+      },
+      {
+        "name": "EBO_PUZZLE2",
+        "value": false
+      },
+      {
+        "name": "EBO_PUZZLE3",
+        "value": false
+      },
+      {
+        "name": "EBO_PUZZLE4",
+        "value": false
+      },
+      {
+        "name": "EBO_RAKATA_TALK",
+        "value": false
+      },
+      {
+        "name": "EBO_RIDDLE5",
+        "value": false
+      },
+      {
+        "name": "EBO_SASHA_ALLSAFE",
+        "value": false
+      },
+      {
+        "name": "EBO_SASHA_BADS",
+        "value": false
+      },
+      {
+        "name": "EBO_SASHA_MANLOREY",
+        "value": false
+      },
+      {
+        "name": "EBO_SASHA_NAME",
+        "value": false
+      },
+      {
+        "name": "EBO_SASHA_NINES",
+        "value": false
+      },
+      {
+        "name": "EBO_SASHA_SEENOW",
+        "value": false
+      },
+      {
+        "name": "EBO_SASHA_STARBIG",
+        "value": false
+      },
+      {
+        "name": "EBO_SASHA_STORY",
+        "value": false
+      },
+      {
+        "name": "EBO_SASHA_SUNHIGH",
+        "value": false
+      },
+      {
+        "name": "EBO_SASHA_YUM",
+        "value": false
+      },
+      {
+        "name": "EBO_SASH_LANG",
+        "value": false
+      },
+      {
+        "name": "END_BRIDGE_COMBAT",
+        "value": false
+      },
+      {
+        "name": "END_BRIDGE_SEALED",
+        "value": false
+      },
+      {
+        "name": "END_HURT_WARN",
+        "value": false
+      },
+      {
+        "name": "END_PC_ON_BRIDGE",
+        "value": false
+      },
+      {
+        "name": "END_ROUND_WARN",
+        "value": false
+      },
+      {
+        "name": "END_TRASK_ON_BRIDGE",
+        "value": false
+      },
+      {
+        "name": "Ebo_Canderous",
+        "value": false
+      },
+      {
+        "name": "Ebo_HK47",
+        "value": false
+      },
+      {
+        "name": "Ebo_Jolee",
+        "value": false
+      },
+      {
+        "name": "Ebo_Sasha_Lang",
+        "value": false
+      },
+      {
+        "name": "Ebo_T3M4",
+        "value": false
+      },
+      {
+        "name": "End_Droid",
+        "value": false
+      },
+      {
+        "name": "G_Banter1",
+        "value": false
+      },
+      {
+        "name": "G_Banter10",
+        "value": false
+      },
+      {
+        "name": "G_Banter11",
+        "value": false
+      },
+      {
+        "name": "G_Banter2",
+        "value": false
+      },
+      {
+        "name": "G_Banter3",
+        "value": false
+      },
+      {
+        "name": "G_Banter4",
+        "value": false
+      },
+      {
+        "name": "G_Banter5",
+        "value": false
+      },
+      {
+        "name": "G_Banter6",
+        "value": false
+      },
+      {
+        "name": "G_Banter7",
+        "value": false
+      },
+      {
+        "name": "G_Banter8",
+        "value": false
+      },
+      {
+        "name": "G_Banter9",
+        "value": false
+      },
+      {
+        "name": "G_CAND_THING",
+        "value": false
+      },
+      {
+        "name": "G_Carth_RevTalk",
+        "value": false
+      },
+      {
+        "name": "G_HK47_RevanTalk",
+        "value": false
+      },
+      {
+        "name": "G_JoleeJoined",
+        "value": false
+      },
+      {
+        "name": "G_Juhani_RevTalk",
+        "value": false
+      },
+      {
+        "name": "G_KashyyykSlaver",
+        "value": false
+      },
+      {
+        "name": "G_Lightside_Plot",
+        "value": false
+      },
+      {
+        "name": "G_Mika_Revan",
+        "value": false
+      },
+      {
+        "name": "G_NPC_Talk",
+        "value": false
+      },
+      {
+        "name": "G_Paz_JustPlayed",
+        "value": false
+      },
+      {
+        "name": "G_PazzakDeck",
+        "value": false
+      },
+      {
+        "name": "G_Sta_Bastila_Leave",
+        "value": false
+      },
+      {
+        "name": "G_Terentanek_Dead",
+        "value": false
+      },
+      {
+        "name": "KAS_HURT_PLOT",
+        "value": false
+      },
+      {
+        "name": "KOR33_MEDALLION",
+        "value": false
+      },
+      {
+        "name": "KOR33_MEKEL_REVEAL",
+        "value": false
+      },
+      {
+        "name": "KOR33_YUTHURA",
+        "value": false
+      },
+      {
+        "name": "KOR35_UTHAR_TALK",
+        "value": false
+      },
+      {
+        "name": "KOR37_DROIDHOSTILE",
+        "value": false
+      },
+      {
+        "name": "KOR37_SARC_OPEN",
+        "value": false
+      },
+      {
+        "name": "KOR37_SHIELD1C",
+        "value": false
+      },
+      {
+        "name": "KOR37_SHIELD2E",
+        "value": false
+      },
+      {
+        "name": "KOR37_SHIELD3H",
+        "value": false
+      },
+      {
+        "name": "KOR37_SHIELD4H",
+        "value": false
+      },
+      {
+        "name": "KOR37_SHIELD5C",
+        "value": false
+      },
+      {
+        "name": "KOR37_WARDROID_DEAD",
+        "value": false
+      },
+      {
+        "name": "KOR38B_DROID_DEAD",
+        "value": false
+      },
+      {
+        "name": "KOR38B_TOMB_STATUE",
+        "value": false
+      },
+      {
+        "name": "KOR39_GONG1",
+        "value": false
+      },
+      {
+        "name": "KOR39_GONG2",
+        "value": false
+      },
+      {
+        "name": "KOR39_GONG3",
+        "value": false
+      },
+      {
+        "name": "KOR_ADD_PARTY",
+        "value": false
+      },
+      {
+        "name": "KOR_BELAYA",
+        "value": false
+      },
+      {
+        "name": "KOR_CAVE_ACTIVE",
+        "value": false
+      },
+      {
+        "name": "KOR_CEILING_DEATH",
+        "value": false
+      },
+      {
+        "name": "KOR_DAK_LEAVE",
+        "value": false
+      },
+      {
+        "name": "KOR_DROID_NOSTUN",
+        "value": false
+      },
+      {
+        "name": "KOR_DUSTIL_SPAWN",
+        "value": false
+      },
+      {
+        "name": "KOR_END_HOSTILE",
+        "value": false
+      },
+      {
+        "name": "KOR_ENTER_ARMORY",
+        "value": false
+      },
+      {
+        "name": "KOR_FREEDON_SWORD",
+        "value": false
+      },
+      {
+        "name": "KOR_JORAK_MEET",
+        "value": false
+      },
+      {
+        "name": "KOR_KEL_TALK",
+        "value": false
+      },
+      {
+        "name": "KOR_KNDFCELL",
+        "value": false
+      },
+      {
+        "name": "KOR_KNOW_DRUG",
+        "value": false
+      },
+      {
+        "name": "KOR_KNOW_FREEDON",
+        "value": false
+      },
+      {
+        "name": "KOR_KNOW_JORAK",
+        "value": false
+      },
+      {
+        "name": "KOR_KNOW_LASH",
+        "value": false
+      },
+      {
+        "name": "KOR_KNOW_UTHAR",
+        "value": false
+      },
+      {
+        "name": "KOR_KNOW_WEAPONS",
+        "value": false
+      },
+      {
+        "name": "KOR_KNOW_YUTHURA",
+        "value": false
+      },
+      {
+        "name": "KOR_LASHOWE_HATE",
+        "value": false
+      },
+      {
+        "name": "KOR_LASHOWE_TUK",
+        "value": false
+      },
+      {
+        "name": "KOR_LASHOWE_VALLEY",
+        "value": false
+      },
+      {
+        "name": "KOR_MEKEL_DEAD",
+        "value": false
+      },
+      {
+        "name": "KOR_MEKEL_LIGHT",
+        "value": false
+      },
+      {
+        "name": "KOR_MEKEL_SPARED",
+        "value": false
+      },
+      {
+        "name": "KOR_MURDER_DEAD",
+        "value": false
+      },
+      {
+        "name": "KOR_PC_INTERROGATE",
+        "value": false
+      },
+      {
+        "name": "KOR_PC_SITH",
+        "value": false
+      },
+      {
+        "name": "KOR_PILLAR_CHANCE",
+        "value": false
+      },
+      {
+        "name": "KOR_PILLAR_END",
+        "value": false
+      },
+      {
+        "name": "KOR_PILLAR_START",
+        "value": false
+      },
+      {
+        "name": "KOR_PILLAR_USE",
+        "value": false
+      },
+      {
+        "name": "KOR_PORT_OPEN",
+        "value": false
+      },
+      {
+        "name": "KOR_PRESTIGE_END",
+        "value": false
+      },
+      {
+        "name": "KOR_PRISONERS_FREE",
+        "value": false
+      },
+      {
+        "name": "KOR_RENEGADE_DEAD",
+        "value": false
+      },
+      {
+        "name": "KOR_RENEGADE_TALK",
+        "value": false
+      },
+      {
+        "name": "KOR_SWORD_PLACED",
+        "value": false
+      },
+      {
+        "name": "KOR_TALK_MECH",
+        "value": false
+      },
+      {
+        "name": "KOR_TALK_PILOT1",
+        "value": false
+      },
+      {
+        "name": "KOR_TALK_PILOT2",
+        "value": false
+      },
+      {
+        "name": "KOR_TALK_PORT",
+        "value": false
+      },
+      {
+        "name": "KOR_THUG_TALK",
+        "value": false
+      },
+      {
+        "name": "KOR_TOLD_JORAK",
+        "value": false
+      },
+      {
+        "name": "KOR_TORTURE_DRUG",
+        "value": false
+      },
+      {
+        "name": "KOR_TORTURE_TELL",
+        "value": false
+      },
+      {
+        "name": "KOR_TUKATAQUEEN",
+        "value": false
+      },
+      {
+        "name": "KOR_TUKATA_GONE",
+        "value": false
+      },
+      {
+        "name": "KOR_UTHAR_POISON",
+        "value": false
+      },
+      {
+        "name": "KOR_UTHAR_TALK",
+        "value": false
+      },
+      {
+        "name": "KOR_VICTIM_UNCON",
+        "value": false
+      },
+      {
+        "name": "KOR_YUTHURA_REFUSE",
+        "value": false
+      },
+      {
+        "name": "KOR_YUTH_POISON",
+        "value": false
+      },
+      {
+        "name": "KOR_YUTH_YIELD",
+        "value": false
+      },
+      {
+        "name": "K_AT_EBON_HAWK",
+        "value": true
+      },
+      {
+        "name": "K_BAST_DREAMTALK",
+        "value": false
+      },
+      {
+        "name": "K_DAN_SWOOP_POINT_01",
+        "value": false
+      },
+      {
+        "name": "K_DAN_SWOOP_POINT_02",
+        "value": false
+      },
+      {
+        "name": "K_DAN_SWOOP_POINT_03",
+        "value": false
+      },
+      {
+        "name": "K_DAN_SWOOP_POINT_04",
+        "value": false
+      },
+      {
+        "name": "K_DAN_SWOOP_POINT_05",
+        "value": false
+      },
+      {
+        "name": "K_HK47_SIMULATION",
+        "value": false
+      },
+      {
+        "name": "K_Hulas_Revan",
+        "value": false
+      },
+      {
+        "name": "K_Ithorak_Mine",
+        "value": false
+      },
+      {
+        "name": "K_KAS_SWOOP_POINT_01",
+        "value": false
+      },
+      {
+        "name": "K_KAS_SWOOP_POINT_02",
+        "value": false
+      },
+      {
+        "name": "K_KAS_SWOOP_POINT_03",
+        "value": false
+      },
+      {
+        "name": "K_KAS_SWOOP_POINT_04",
+        "value": false
+      },
+      {
+        "name": "K_KOR_PORT_FEE",
+        "value": false
+      },
+      {
+        "name": "K_KOR_SWOOP_POINT_01",
+        "value": false
+      },
+      {
+        "name": "K_KOR_SWOOP_POINT_02",
+        "value": false
+      },
+      {
+        "name": "K_KOR_SWOOP_POINT_03",
+        "value": false
+      },
+      {
+        "name": "K_KOR_SWOOP_POINT_04",
+        "value": false
+      },
+      {
+        "name": "K_MAN_PORT_FEE",
+        "value": false
+      },
+      {
+        "name": "K_MAN_SWOOP_POINT_01",
+        "value": false
+      },
+      {
+        "name": "K_MAN_SWOOP_POINT_02",
+        "value": false
+      },
+      {
+        "name": "K_MAN_SWOOP_POINT_03",
+        "value": false
+      },
+      {
+        "name": "K_MAN_SWOOP_POINT_04",
+        "value": false
+      },
+      {
+        "name": "K_MAN_SWOOP_POINT_05",
+        "value": false
+      },
+      {
+        "name": "K_MESSENGER_AVAILABLE",
+        "value": false
+      },
+      {
+        "name": "K_MESS_BASTILA",
+        "value": false
+      },
+      {
+        "name": "K_MESS_CANDEROUS",
+        "value": false
+      },
+      {
+        "name": "K_MESS_CARTH",
+        "value": false
+      },
+      {
+        "name": "K_MESS_JOLEE",
+        "value": false
+      },
+      {
+        "name": "K_MESS_JUHANI",
+        "value": false
+      },
+      {
+        "name": "K_MESS_MISSION",
+        "value": false
+      },
+      {
+        "name": "K_MESS_ZIAGROM",
+        "value": false
+      },
+      {
+        "name": "K_Mika_Krayt",
+        "value": false
+      },
+      {
+        "name": "K_PARTY_STORED",
+        "value": false
+      },
+      {
+        "name": "K_PSTA_BASTSAVE",
+        "value": false
+      },
+      {
+        "name": "K_PSTA_SAIDLOVE",
+        "value": false
+      },
+      {
+        "name": "K_PUNK_BEACH_RESET",
+        "value": false
+      },
+      {
+        "name": "K_RANDOM_MINI_GAME",
+        "value": false
+      },
+      {
+        "name": "K_SPACE_SKYBOX_ON",
+        "value": false
+      },
+      {
+        "name": "K_STAR_MAP_KASHYYYK",
+        "value": false
+      },
+      {
+        "name": "K_STAR_MAP_KORRIBAN",
+        "value": false
+      },
+      {
+        "name": "K_STAR_MAP_MANAAN",
+        "value": false
+      },
+      {
+        "name": "K_STAR_MAP_TATOOINE",
+        "value": false
+      },
+      {
+        "name": "K_STA_SPAWNER",
+        "value": false
+      },
+      {
+        "name": "K_SWG_BASTILA_HOLO",
+        "value": false
+      },
+      {
+        "name": "K_SWG_CARTHROM",
+        "value": false
+      },
+      {
+        "name": "K_SWG_DAVIN",
+        "value": false
+      },
+      {
+        "name": "K_SWG_DUSTIL1",
+        "value": false
+      },
+      {
+        "name": "K_SWG_DUSTIL2",
+        "value": false
+      },
+      {
+        "name": "K_SWG_HELENA_TALK",
+        "value": false
+      },
+      {
+        "name": "K_SWG_HK47_KNOW",
+        "value": false
+      },
+      {
+        "name": "K_TARIS_CRASH",
+        "value": false
+      },
+      {
+        "name": "K_TAR_SWOOP_POINT_01",
+        "value": false
+      },
+      {
+        "name": "K_TAR_SWOOP_POINT_02",
+        "value": false
+      },
+      {
+        "name": "K_TAR_SWOOP_POINT_03",
+        "value": false
+      },
+      {
+        "name": "K_TAR_SWOOP_POINT_04",
+        "value": false
+      },
+      {
+        "name": "K_TAR_SWOOP_POINT_05",
+        "value": false
+      },
+      {
+        "name": "K_TAR_SWOOP_POINT_06",
+        "value": false
+      },
+      {
+        "name": "K_TAR_SWOOP_POINT_07",
+        "value": false
+      },
+      {
+        "name": "K_TAR_SWOOP_POINT_08",
+        "value": false
+      },
+      {
+        "name": "K_TAR_SWOOP_POINT_09",
+        "value": false
+      },
+      {
+        "name": "K_TAT_SWOOP_POINT_01",
+        "value": false
+      },
+      {
+        "name": "K_TAT_SWOOP_POINT_02",
+        "value": false
+      },
+      {
+        "name": "K_TAT_SWOOP_POINT_03",
+        "value": false
+      },
+      {
+        "name": "K_TAT_SWOOP_POINT_04",
+        "value": false
+      },
+      {
+        "name": "K_TAT_SWOOP_POINT_05",
+        "value": false
+      },
+      {
+        "name": "K_TAT_SWOOP_POINT_06",
+        "value": false
+      },
+      {
+        "name": "K_TAT_SWOOP_POINT_07",
+        "value": false
+      },
+      {
+        "name": "K_XOR_AMBUSH_FIX",
+        "value": false
+      },
+      {
+        "name": "Kas_Force_Emitter",
+        "value": false
+      },
+      {
+        "name": "LEV_40AAREVEALED",
+        "value": false
+      },
+      {
+        "name": "LEV_40ABREVEALED",
+        "value": false
+      },
+      {
+        "name": "LEV_BRIDGEOPEN",
+        "value": false
+      },
+      {
+        "name": "LEV_MALAK_SPAWN",
+        "value": false
+      },
+      {
+        "name": "LEV_REPOP40AB",
+        "value": false
+      },
+      {
+        "name": "LEV_SAULDEAD",
+        "value": false
+      },
+      {
+        "name": "LEV_SPACESUIT",
+        "value": false
+      },
+      {
+        "name": "Lev_BasLie",
+        "value": false
+      },
+      {
+        "name": "Lev_BasMission",
+        "value": false
+      },
+      {
+        "name": "Lev_Elev40.12",
+        "value": false
+      },
+      {
+        "name": "Lev_MalBetray",
+        "value": false
+      },
+      {
+        "name": "Lev_MalBetray_2",
+        "value": false
+      },
+      {
+        "name": "Lev_MalDream",
+        "value": false
+      },
+      {
+        "name": "Lev_MalJedi",
+        "value": false
+      },
+      {
+        "name": "Lev_Rescue",
+        "value": false
+      },
+      {
+        "name": "Lev_TortureBetray",
+        "value": false
+      },
+      {
+        "name": "Lev_bascounc",
+        "value": false
+      },
+      {
+        "name": "Lev_ramdroid",
+        "value": false
+      },
+      {
+        "name": "Lev_secDroidInact",
+        "value": false
+      },
+      {
+        "name": "M12AB_END_SYNC",
+        "value": false
+      },
+      {
+        "name": "MAIN_DAY",
+        "value": false
+      },
+      {
+        "name": "MAN_AFFAIR_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_ARBITER_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_AREA1",
+        "value": false
+      },
+      {
+        "name": "MAN_AREA2",
+        "value": false
+      },
+      {
+        "name": "MAN_AUTOF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_AUTOGF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_AUTOGM_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_AUTOM_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_CARD_GIVEN",
+        "value": false
+      },
+      {
+        "name": "MAN_COMP_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_CONFESS_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_CRIME_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_DAKOTAF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_DI",
+        "value": false
+      },
+      {
+        "name": "MAN_DIO",
+        "value": false
+      },
+      {
+        "name": "MAN_DOOR_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_DUANF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_ECHANIF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_ECHANIR_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_ECHANIT_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_ELORAFN_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_ELORAFT_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_ELORAS_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_ENTER",
+        "value": false
+      },
+      {
+        "name": "MAN_EXILED",
+        "value": false
+      },
+      {
+        "name": "MAN_FC",
+        "value": false
+      },
+      {
+        "name": "MAN_FCO",
+        "value": false
+      },
+      {
+        "name": "MAN_FDROID",
+        "value": false
+      },
+      {
+        "name": "MAN_FIRITHH_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_FIRITHI_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_FIRITHR_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_GAS1",
+        "value": false
+      },
+      {
+        "name": "MAN_GAS2",
+        "value": false
+      },
+      {
+        "name": "MAN_GLUUPEV_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_GONTOH_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_GONTOI_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_GONTOM_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_GONTOR_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_GO_TO_JAIL",
+        "value": false
+      },
+      {
+        "name": "MAN_HAS_CHUM",
+        "value": false
+      },
+      {
+        "name": "MAN_HRAKERT_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_HRAKERT_START",
+        "value": false
+      },
+      {
+        "name": "MAN_HUKTAL_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_IGNUSL_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_INFO",
+        "value": false
+      },
+      {
+        "name": "MAN_INTERR_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_IRIDORS_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_JUDGES",
+        "value": false
+      },
+      {
+        "name": "MAN_JUST_RACED",
+        "value": false
+      },
+      {
+        "name": "MAN_KILLS_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_LOWCOMP",
+        "value": false
+      },
+      {
+        "name": "MAN_MANDAL_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_MERCD_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_MIND_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_NILKOF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_NILKOQ_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_OFFICIAL_RACE",
+        "value": false
+      },
+      {
+        "name": "MAN_OFF_PAT",
+        "value": false
+      },
+      {
+        "name": "MAN_OFF_SEN",
+        "value": false
+      },
+      {
+        "name": "MAN_OFF_TUR",
+        "value": false
+      },
+      {
+        "name": "MAN_OPEN_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_PCTRIAL",
+        "value": false
+      },
+      {
+        "name": "MAN_PERS_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_PORTF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_PORT_ZONE",
+        "value": false
+      },
+      {
+        "name": "MAN_PRESS_ON",
+        "value": false
+      },
+      {
+        "name": "MAN_PROOF",
+        "value": false
+      },
+      {
+        "name": "MAN_PROVOKE",
+        "value": false
+      },
+      {
+        "name": "MAN_PTRAP_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_QUEEDLE_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_RDROID",
+        "value": false
+      },
+      {
+        "name": "MAN_REPACF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_REPDIQ_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_REPHACK_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_REPRET_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_REPSPYC_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_REPS_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_REPTECH1_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_REPTECH2_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_REWARD_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_RODIANF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SARBITER",
+        "value": false
+      },
+      {
+        "name": "MAN_SC",
+        "value": false
+      },
+      {
+        "name": "MAN_SDROID1",
+        "value": false
+      },
+      {
+        "name": "MAN_SDROID2",
+        "value": false
+      },
+      {
+        "name": "MAN_SE",
+        "value": false
+      },
+      {
+        "name": "MAN_SECRET_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SEO",
+        "value": false
+      },
+      {
+        "name": "MAN_SHALASC_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SHALASF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SHALASH_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SHALASQ_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SHASAQ_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SHORTCUT",
+        "value": false
+      },
+      {
+        "name": "MAN_SITHACF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SITHB1_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SITHB2_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SITHBASE",
+        "value": false
+      },
+      {
+        "name": "MAN_SITHBASE_SEALED",
+        "value": false
+      },
+      {
+        "name": "MAN_SITHFF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SITHF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SITHMEF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SITHPASS_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SITHSC_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SITHSFF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SITHSMF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SITHS_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SITHT_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SITH_FIELD",
+        "value": false
+      },
+      {
+        "name": "MAN_SSPARK1",
+        "value": false
+      },
+      {
+        "name": "MAN_SSPARK2",
+        "value": false
+      },
+      {
+        "name": "MAN_SSPARK3",
+        "value": false
+      },
+      {
+        "name": "MAN_ST",
+        "value": false
+      },
+      {
+        "name": "MAN_STARMAP_FOUND",
+        "value": false
+      },
+      {
+        "name": "MAN_STEAM_OFF",
+        "value": false
+      },
+      {
+        "name": "MAN_SUNAFFD_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SUNAFF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SUNRYF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SUNRYJF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SWOOPREG",
+        "value": false
+      },
+      {
+        "name": "MAN_SWOOPR_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_SWOOP_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_TEMP",
+        "value": false
+      },
+      {
+        "name": "MAN_TEMP2",
+        "value": false
+      },
+      {
+        "name": "MAN_THREAT",
+        "value": false
+      },
+      {
+        "name": "MAN_TOPCOMP",
+        "value": false
+      },
+      {
+        "name": "MAN_TRIAL2_START",
+        "value": false
+      },
+      {
+        "name": "MAN_TRIALARG1",
+        "value": false
+      },
+      {
+        "name": "MAN_TRIALARG2",
+        "value": false
+      },
+      {
+        "name": "MAN_TRIALARG3",
+        "value": false
+      },
+      {
+        "name": "MAN_TRIALARG4",
+        "value": false
+      },
+      {
+        "name": "MAN_TRIALARG5",
+        "value": false
+      },
+      {
+        "name": "MAN_TYVARKC_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_TYVARKD_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_TYVARKM_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_TYVARKS_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_TYVARKT_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_VIGLOF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_WATER_A",
+        "value": false
+      },
+      {
+        "name": "MAN_WATER_B",
+        "value": false
+      },
+      {
+        "name": "MAN_WATER_C",
+        "value": false
+      },
+      {
+        "name": "MAN_WATER_D",
+        "value": false
+      },
+      {
+        "name": "MAN_WATER_E",
+        "value": false
+      },
+      {
+        "name": "MAN_WATER_F",
+        "value": false
+      },
+      {
+        "name": "MAN_YORTALC_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_YORTALF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_YORTALH_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_YORTALK_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_YORTALM_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_YORTALS_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_YUKAF_DONE",
+        "value": false
+      },
+      {
+        "name": "MAN_ZORIISF_DONE",
+        "value": false
+      },
+      {
+        "name": "Man_Force_Comment",
+        "value": false
+      },
+      {
+        "name": "Mis_GriffAngry",
+        "value": false
+      },
+      {
+        "name": "Mission_Taris",
+        "value": false
+      },
+      {
+        "name": "Punk_stargem",
+        "value": false
+      },
+      {
+        "name": "RulanSpawn",
+        "value": false
+      },
+      {
+        "name": "STA_BASTILA_DEAD",
+        "value": false
+      },
+      {
+        "name": "STA_BASTILA_LEAVE",
+        "value": false
+      },
+      {
+        "name": "STA_BASTILA_STUNT",
+        "value": false
+      },
+      {
+        "name": "STA_BASTSITH",
+        "value": false
+      },
+      {
+        "name": "STA_BAST_MOVIE",
+        "value": false
+      },
+      {
+        "name": "STA_DROID_STAND",
+        "value": false
+      },
+      {
+        "name": "STA_GEN_BLASTER",
+        "value": false
+      },
+      {
+        "name": "STA_GEN_DESTROYED",
+        "value": false
+      },
+      {
+        "name": "STA_GEN_EXPLOSIVE",
+        "value": false
+      },
+      {
+        "name": "STA_GEN_FRIEND",
+        "value": false
+      },
+      {
+        "name": "STA_GEN_NEW",
+        "value": false
+      },
+      {
+        "name": "STA_GEN_OFF",
+        "value": false
+      },
+      {
+        "name": "STA_MALAK_DEAD",
+        "value": false
+      },
+      {
+        "name": "STA_MALAK_DRAIN",
+        "value": false
+      },
+      {
+        "name": "STA_MALAK_START",
+        "value": false
+      },
+      {
+        "name": "STA_SITH_RUN",
+        "value": false
+      },
+      {
+        "name": "TAR_08AAREVEALED",
+        "value": false
+      },
+      {
+        "name": "TAR_09AAREVEALED",
+        "value": false
+      },
+      {
+        "name": "TAR_10AAREVEALED",
+        "value": false
+      },
+      {
+        "name": "TAR_10ACREVEALED",
+        "value": false
+      },
+      {
+        "name": "TAR_11AAREVEALED",
+        "value": false
+      },
+      {
+        "name": "TAR_BEKBASEOPEN",
+        "value": false
+      },
+      {
+        "name": "TAR_BEKGUARDSPAWNED",
+        "value": false
+      },
+      {
+        "name": "TAR_BEKSHOSTILE",
+        "value": false
+      },
+      {
+        "name": "TAR_CANDINCANTINA",
+        "value": false
+      },
+      {
+        "name": "TAR_CANDSPAWN",
+        "value": false
+      },
+      {
+        "name": "TAR_DANCEGOOD",
+        "value": false
+      },
+      {
+        "name": "TAR_DISGUISEXP",
+        "value": false
+      },
+      {
+        "name": "TAR_DUELINPROGRESS",
+        "value": false
+      },
+      {
+        "name": "TAR_ESTATEEXPLOSIONS",
+        "value": false
+      },
+      {
+        "name": "TAR_FIRST_SWOOP_USE",
+        "value": false
+      },
+      {
+        "name": "TAR_GENDAR_TALK",
+        "value": false
+      },
+      {
+        "name": "TAR_GORTONONELINER",
+        "value": false
+      },
+      {
+        "name": "TAR_HEAL_TALK",
+        "value": false
+      },
+      {
+        "name": "TAR_HENDARHELP",
+        "value": false
+      },
+      {
+        "name": "TAR_HOMEINTRUDER",
+        "value": false
+      },
+      {
+        "name": "TAR_OUTCAST_ELEV",
+        "value": false
+      },
+      {
+        "name": "TAR_PAPERSSHOWN",
+        "value": false
+      },
+      {
+        "name": "TAR_POOLDROID",
+        "value": false
+      },
+      {
+        "name": "TAR_RACEMOVIE",
+        "value": false
+      },
+      {
+        "name": "TAR_RAMDROID",
+        "value": false
+      },
+      {
+        "name": "TAR_RANCOREATING",
+        "value": false
+      },
+      {
+        "name": "TAR_SITHARMOR",
+        "value": false
+      },
+      {
+        "name": "TAR_SITHBASEALARM",
+        "value": false
+      },
+      {
+        "name": "TAR_SITHDROIDSHACKED",
+        "value": false
+      },
+      {
+        "name": "TAR_STARTED",
+        "value": true
+      },
+      {
+        "name": "TAR_SWOOP_RUN",
+        "value": false
+      },
+      {
+        "name": "TAR_VULKARBASE_OPEN",
+        "value": false
+      },
+      {
+        "name": "TAT_BANDON_TRIG_SET",
+        "value": false
+      },
+      {
+        "name": "TAT_CALO_TRIGGER_SET",
+        "value": false
+      },
+      {
+        "name": "TAT_GREET_GRIFF",
+        "value": false
+      },
+      {
+        "name": "TAT_SWOOP_DONE",
+        "value": false
+      },
+      {
+        "name": "T_BASTGONE",
+        "value": false
+      },
+      {
+        "name": "T_CANDR",
+        "value": false
+      },
+      {
+        "name": "T_JUHANIC",
+        "value": false
+      },
+      {
+        "name": "T_JUHANIK",
+        "value": false
+      },
+      {
+        "name": "T_JUHANIKD",
+        "value": false
+      },
+      {
+        "name": "T_JUHANIKF",
+        "value": false
+      },
+      {
+        "name": "T_JUHANIR",
+        "value": false
+      },
+      {
+        "name": "T_JUHANIROM",
+        "value": false
+      },
+      {
+        "name": "T_JUHANIR_DONE",
+        "value": false
+      },
+      {
+        "name": "Tar_BastVulk",
+        "value": false
+      },
+      {
+        "name": "Tar_BenBrag",
+        "value": false
+      },
+      {
+        "name": "Tar_BenReward",
+        "value": false
+      },
+      {
+        "name": "Tar_Cand_T3",
+        "value": false
+      },
+      {
+        "name": "Tar_DavSlaveInfo",
+        "value": false
+      },
+      {
+        "name": "Tar_DavikGas",
+        "value": false
+      },
+      {
+        "name": "Tar_Destroyed",
+        "value": false
+      },
+      {
+        "name": "Tar_DiaBounty",
+        "value": false
+      },
+      {
+        "name": "Tar_DuelLost",
+        "value": false
+      },
+      {
+        "name": "Tar_DuelOrg",
+        "value": false
+      },
+      {
+        "name": "Tar_DuelOver",
+        "value": false
+      },
+      {
+        "name": "Tar_DuelPrep",
+        "value": false
+      },
+      {
+        "name": "Tar_GadonDead",
+        "value": false
+      },
+      {
+        "name": "Tar_GadonMission",
+        "value": false
+      },
+      {
+        "name": "Tar_Gadon_Eyes",
+        "value": false
+      },
+      {
+        "name": "Tar_GerlonTk",
+        "value": false
+      },
+      {
+        "name": "Tar_GortonAl",
+        "value": false
+      },
+      {
+        "name": "Tar_Gurney_Talk",
+        "value": false
+      },
+      {
+        "name": "Tar_HawkSec",
+        "value": false
+      },
+      {
+        "name": "Tar_Healer",
+        "value": false
+      },
+      {
+        "name": "Tar_HoloActive",
+        "value": false
+      },
+      {
+        "name": "Tar_HudrowFree",
+        "value": false
+      },
+      {
+        "name": "Tar_IceTk",
+        "value": false
+      },
+      {
+        "name": "Tar_Janice",
+        "value": false
+      },
+      {
+        "name": "Tar_JaniceDl1",
+        "value": false
+      },
+      {
+        "name": "Tar_JaniceDl2",
+        "value": false
+      },
+      {
+        "name": "Tar_JaniceInv",
+        "value": false
+      },
+      {
+        "name": "Tar_JaniceMB",
+        "value": false
+      },
+      {
+        "name": "Tar_JaniceSw",
+        "value": false
+      },
+      {
+        "name": "Tar_Kadir_Rude",
+        "value": false
+      },
+      {
+        "name": "Tar_KandonMission",
+        "value": false
+      },
+      {
+        "name": "Tar_Kebla",
+        "value": false
+      },
+      {
+        "name": "Tar_KeblaDl1",
+        "value": false
+      },
+      {
+        "name": "Tar_KeblaDl2",
+        "value": false
+      },
+      {
+        "name": "Tar_KeblaInv",
+        "value": false
+      },
+      {
+        "name": "Tar_KeblaMB",
+        "value": false
+      },
+      {
+        "name": "Tar_KeblaSw",
+        "value": false
+      },
+      {
+        "name": "Tar_MarlTk",
+        "value": false
+      },
+      {
+        "name": "Tar_MilBase",
+        "value": false
+      },
+      {
+        "name": "Tar_NeedUniform",
+        "value": false
+      },
+      {
+        "name": "Tar_SithDroid",
+        "value": false
+      },
+      {
+        "name": "Tar_SithGunTurret",
+        "value": false
+      },
+      {
+        "name": "Tar_SithInterrogation",
+        "value": false
+      },
+      {
+        "name": "Tar_SithPatrolDroid",
+        "value": false
+      },
+      {
+        "name": "Tar_Sith_XP",
+        "value": false
+      },
+      {
+        "name": "Tar_SummonGadon",
+        "value": false
+      },
+      {
+        "name": "Tar_SwoopDouble",
+        "value": false
+      },
+      {
+        "name": "Tar_SwoopEng",
+        "value": false
+      },
+      {
+        "name": "Tar_SwoopNew",
+        "value": false
+      },
+      {
+        "name": "Tar_SwoopRace",
+        "value": false
+      },
+      {
+        "name": "Tar_T3_Mention",
+        "value": false
+      },
+      {
+        "name": "Tar_TwitchPay",
+        "value": false
+      },
+      {
+        "name": "Tar_ZaxBounty",
+        "value": false
+      },
+      {
+        "name": "Tar_ZaxCollect",
+        "value": false
+      },
+      {
+        "name": "Tar_ZaxQuestion",
+        "value": false
+      },
+      {
+        "name": "Tar_ZelkaThr",
+        "value": false
+      },
+      {
+        "name": "Tar_out_gate",
+        "value": false
+      },
+      {
+        "name": "Tar_out_village",
+        "value": false
+      },
+      {
+        "name": "Tat_VornDroid_Mess",
+        "value": false
+      },
+      {
+        "name": "UNK_AREA1",
+        "value": false
+      },
+      {
+        "name": "UNK_BASTILA_CS",
+        "value": false
+      },
+      {
+        "name": "UNK_BLACKHOSTILE",
+        "value": false
+      },
+      {
+        "name": "UNK_Blackholocron2",
+        "value": false
+      },
+      {
+        "name": "UNK_COLDOFF",
+        "value": false
+      },
+      {
+        "name": "UNK_DISRUPT_OFF",
+        "value": false
+      },
+      {
+        "name": "UNK_EG",
+        "value": false
+      },
+      {
+        "name": "UNK_GUARD",
+        "value": false
+      },
+      {
+        "name": "UNK_GUARD_DOWN",
+        "value": false
+      },
+      {
+        "name": "UNK_GUIDE",
+        "value": false
+      },
+      {
+        "name": "UNK_NC",
+        "value": false
+      },
+      {
+        "name": "UNK_NCD",
+        "value": false
+      },
+      {
+        "name": "UNK_NCO",
+        "value": false
+      },
+      {
+        "name": "UNK_NCOMP",
+        "value": false
+      },
+      {
+        "name": "UNK_OB",
+        "value": false
+      },
+      {
+        "name": "UNK_PARTY_DOWN",
+        "value": false
+      },
+      {
+        "name": "UNK_PTO",
+        "value": false
+      },
+      {
+        "name": "UNK_PUZG_DONE",
+        "value": false
+      },
+      {
+        "name": "UNK_RAKPLOT",
+        "value": false
+      },
+      {
+        "name": "UNK_RAK_TEMPLE_OK",
+        "value": false
+      },
+      {
+        "name": "UNK_REDTALK",
+        "value": false
+      },
+      {
+        "name": "UNK_RakataTemple",
+        "value": false
+      },
+      {
+        "name": "UNK_SC",
+        "value": false
+      },
+      {
+        "name": "UNK_SCD",
+        "value": false
+      },
+      {
+        "name": "UNK_SCO",
+        "value": false
+      },
+      {
+        "name": "UNK_SCOMP",
+        "value": false
+      },
+      {
+        "name": "UNK_SHIELD_OFF",
+        "value": false
+      },
+      {
+        "name": "UNK_SHIPPARTS",
+        "value": false
+      },
+      {
+        "name": "UNK_SPAWN",
+        "value": false
+      },
+      {
+        "name": "UNK_SWITCH_DONE",
+        "value": false
+      },
+      {
+        "name": "UNK_TEMP",
+        "value": false
+      },
+      {
+        "name": "UNK_TEMP10",
+        "value": false
+      },
+      {
+        "name": "UNK_TEMP11",
+        "value": false
+      },
+      {
+        "name": "UNK_TEMP12",
+        "value": false
+      },
+      {
+        "name": "UNK_TEMP2",
+        "value": false
+      },
+      {
+        "name": "UNK_TEMP3",
+        "value": false
+      },
+      {
+        "name": "UNK_TEMP4",
+        "value": false
+      },
+      {
+        "name": "UNK_TEMP5",
+        "value": false
+      },
+      {
+        "name": "UNK_TEMP6",
+        "value": false
+      },
+      {
+        "name": "UNK_TEMP7",
+        "value": false
+      },
+      {
+        "name": "UNK_TEMP8",
+        "value": false
+      },
+      {
+        "name": "UNK_TEMP9",
+        "value": false
+      },
+      {
+        "name": "UNK_TEMPLEREADY",
+        "value": false
+      },
+      {
+        "name": "UNK_THEONE",
+        "value": false
+      },
+      {
+        "name": "UNK_TILES",
+        "value": false
+      },
+      {
+        "name": "UNK_USEDDARKSIDE",
+        "value": false
+      },
+      {
+        "name": "UNK_WG",
+        "value": false
+      },
+      {
+        "name": "Unk_Ambush_Temp",
+        "value": false
+      },
+      {
+        "name": "Unk_Black_RedRak",
+        "value": false
+      },
+      {
+        "name": "Unk_Black_Ship",
+        "value": false
+      },
+      {
+        "name": "Unk_Black_Temple",
+        "value": false
+      },
+      {
+        "name": "Unk_One_Dead",
+        "value": false
+      },
+      {
+        "name": "Unk_One_Spoke",
+        "value": false
+      },
+      {
+        "name": "Unk_ProtDroidCrazy",
+        "value": false
+      },
+      {
+        "name": "Unk_ProtDroidShield",
+        "value": false
+      },
+      {
+        "name": "Unk_RedConch",
+        "value": false
+      },
+      {
+        "name": "Unk_RedHostile",
+        "value": false
+      },
+      {
+        "name": "Unk_Red_Talk",
+        "value": false
+      },
+      {
+        "name": "Unk_ZaalbarInsane",
+        "value": false
+      },
+      {
+        "name": "Unk_black_repair",
+        "value": false
+      },
+      {
+        "name": "YAV_SUVAMA",
+        "value": false
+      },
+      {
+        "name": "YAV_SUVAMD",
+        "value": false
+      },
+      {
+        "name": "YAV_SUVAMG",
+        "value": false
+      },
+      {
+        "name": "YAV_SUVAMH",
+        "value": false
+      },
+      {
+        "name": "YAV_SUVAMP",
+        "value": false
+      },
+      {
+        "name": "YAV_SUVAMS",
+        "value": false
+      },
+      {
+        "name": "YAV_SUVAMZ",
+        "value": false
+      },
+      {
+        "name": "YAV_TEMP1",
+        "value": false
+      },
+      {
+        "name": "ZaalbarTalkMad",
+        "value": false
+      },
+      {
+        "name": "ebo_turret_done",
+        "value": false
+      },
+      {
+        "name": "fgdfghf",
+        "value": false
+      },
+      {
+        "name": "k_ithorakspawn",
+        "value": false
+      },
+      {
+        "name": "k_mIKA_HAWKTALK",
+        "value": false
+      },
+      {
+        "name": "k_mika_czerka",
+        "value": false
+      },
+      {
+        "name": "k_mika_kolto",
+        "value": false
+      },
+      {
+        "name": "k_mika_wookiee",
+        "value": false
+      },
+      {
+        "name": "k_sithdestroy",
+        "value": false
+      },
+      {
+        "name": "k_vek_threat",
+        "value": false
+      },
+      {
+        "name": "k_vis_Dantooine",
+        "value": false
+      },
+      {
+        "name": "k_vis_Kashyyyk",
+        "value": false
+      },
+      {
+        "name": "k_vis_Manaan",
+        "value": false
+      },
+      {
+        "name": "k_vis_Tatooine",
+        "value": false
+      },
+      {
+        "name": "k_vis_kashyyyk2",
+        "value": false
+      },
+      {
+        "name": "k_vis_korriban",
+        "value": false
+      },
+      {
+        "name": "k_vis_korriban2",
+        "value": false
+      },
+      {
+        "name": "k_vis_manaan2",
+        "value": false
+      },
+      {
+        "name": "k_vis_tatooine2",
+        "value": false
+      },
+      {
+        "name": "k_vornspawn",
+        "value": false
+      },
+      {
+        "name": "kas_ChuundReward",
+        "value": false
+      },
+      {
+        "name": "kas_ChuundarDead",
+        "value": false
+      },
+      {
+        "name": "kas_ComputerDown",
+        "value": false
+      },
+      {
+        "name": "kas_ComputerTalk",
+        "value": false
+      },
+      {
+        "name": "kas_CzerkaSteal",
+        "value": false
+      },
+      {
+        "name": "kas_DroidTalk",
+        "value": false
+      },
+      {
+        "name": "kas_FreyyrDead",
+        "value": false
+      },
+      {
+        "name": "kas_GuardTold",
+        "value": false
+      },
+      {
+        "name": "kas_HelpedFreyyr",
+        "value": false
+      },
+      {
+        "name": "kas_JaarakBolts",
+        "value": false
+      },
+      {
+        "name": "kas_JaarakConfessed",
+        "value": false
+      },
+      {
+        "name": "kas_JaarakDead",
+        "value": false
+      },
+      {
+        "name": "kas_JaarakFree",
+        "value": false
+      },
+      {
+        "name": "kas_PoacherJob",
+        "value": false
+      },
+      {
+        "name": "kas_RorworrMiss",
+        "value": false
+      },
+      {
+        "name": "kas_SpawnGorwook",
+        "value": false
+      },
+      {
+        "name": "kas_StarMap",
+        "value": false
+      },
+      {
+        "name": "kas_TalkChuundar",
+        "value": false
+      },
+      {
+        "name": "kas_ToldPoachers",
+        "value": false
+      },
+      {
+        "name": "kas_ZaalbarParty",
+        "value": false
+      },
+      {
+        "name": "kas_ZaalbarPris",
+        "value": false
+      },
+      {
+        "name": "kas_elikilled",
+        "value": false
+      },
+      {
+        "name": "kas_jolee_revan",
+        "value": false
+      },
+      {
+        "name": "lev_armory",
+        "value": false
+      },
+      {
+        "name": "lev_portgas",
+        "value": false
+      },
+      {
+        "name": "lev_secTurretInact",
+        "value": false
+      },
+      {
+        "name": "lev_starboardgas",
+        "value": false
+      },
+      {
+        "name": "lev_storage",
+        "value": false
+      },
+      {
+        "name": "man_HuktaMad",
+        "value": false
+      },
+      {
+        "name": "man_HuktaThreatened",
+        "value": false
+      },
+      {
+        "name": "man_PlayerLostLast",
+        "value": false
+      },
+      {
+        "name": "man_QueedleUpgrade",
+        "value": false
+      },
+      {
+        "name": "tar_durosdead",
+        "value": false
+      },
+      {
+        "name": "tar_durosfree",
+        "value": false
+      },
+      {
+        "name": "tar_upelev",
+        "value": false
+      },
+      {
+        "name": "tat_AskAboutHunt",
+        "value": false
+      },
+      {
+        "name": "tat_DaysoTiff",
+        "value": false
+      },
+      {
+        "name": "tat_DuneSea",
+        "value": false
+      },
+      {
+        "name": "tat_GammBribe",
+        "value": false
+      },
+      {
+        "name": "tat_GammGone",
+        "value": false
+      },
+      {
+        "name": "tat_GammoreansDead",
+        "value": false
+      },
+      {
+        "name": "tat_GriffGreeta",
+        "value": false
+      },
+      {
+        "name": "tat_GriffPort",
+        "value": false
+      },
+      {
+        "name": "tat_HunterDead",
+        "value": false
+      },
+      {
+        "name": "tat_KomadDead",
+        "value": false
+      },
+      {
+        "name": "tat_KomadDune",
+        "value": false
+      },
+      {
+        "name": "tat_KomadHuntEnd",
+        "value": false
+      },
+      {
+        "name": "tat_KomadPissed",
+        "value": false
+      },
+      {
+        "name": "tat_KraytDead",
+        "value": false
+      },
+      {
+        "name": "tat_KraytFight",
+        "value": false
+      },
+      {
+        "name": "tat_KraytMap",
+        "value": false
+      },
+      {
+        "name": "tat_LostLastRace",
+        "value": false
+      },
+      {
+        "name": "tat_MadTanis",
+        "value": false
+      },
+      {
+        "name": "tat_MetKomadLodge",
+        "value": false
+      },
+      {
+        "name": "tat_NotPaid",
+        "value": false
+      },
+      {
+        "name": "tat_OfficialRace",
+        "value": false
+      },
+      {
+        "name": "tat_OneDroidDead",
+        "value": false
+      },
+      {
+        "name": "tat_SharinaAccused",
+        "value": false
+      },
+      {
+        "name": "tat_SharinaPaidFull",
+        "value": false
+      },
+      {
+        "name": "tat_StarmapFound",
+        "value": false
+      },
+      {
+        "name": "tat_SwoopRacer",
+        "value": false
+      },
+      {
+        "name": "tat_TalkTanis",
+        "value": false
+      },
+      {
+        "name": "tat_TanisDead",
+        "value": false
+      },
+      {
+        "name": "tat_TanisGiveUp",
+        "value": false
+      },
+      {
+        "name": "tat_TanisSaved",
+        "value": false
+      },
+      {
+        "name": "tat_TrustGammNot",
+        "value": false
+      },
+      {
+        "name": "tat_TuskenDead",
+        "value": false
+      },
+      {
+        "name": "tat_TuskenJob",
+        "value": false
+      },
+      {
+        "name": "tat_TuskenMad",
+        "value": false
+      },
+      {
+        "name": "tat_TuskenSuit",
+        "value": false
+      },
+      {
+        "name": "tat_YukaStruggle",
+        "value": false
+      },
+      {
+        "name": "tat_YukaWookiees",
+        "value": false
+      },
+      {
+        "name": "tat_ZaalbarTaken",
+        "value": false
+      },
+      {
+        "name": "tat_chokedczerka",
+        "value": false
+      },
+      {
+        "name": "tat_freeracegiven",
+        "value": false
+      },
+      {
+        "name": "tat_oneofficialrace",
+        "value": false
+      },
+      {
+        "name": "tat_playerhasraced",
+        "value": false
+      },
+      {
+        "name": "tat_talkconserve",
+        "value": false
+      },
+      {
+        "name": "unk_BlackRakata",
+        "value": false
+      },
+      {
+        "name": "unk_blackholocron",
+        "value": false
+      },
+      {
+        "name": "vbcvbv",
+        "value": false
+      }
+    ],
+    "strings": [
+      {
+        "name": "K_LAST_MODULE",
+        "value": "NO_MODULE"
+      },
+      {
+        "name": "K_STUNT_MODULE",
+        "value": ""
+      }
+    ],
+    "locations": [
+      {
+        "name": "K_LAST_LOCATION",
+        "value": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "name": "TAR_BREJIKCORPSE",
+        "value": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "name": "TAR_DUELCUT_START1",
+        "value": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "name": "TAR_DUELCUT_START2",
+        "value": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      {
+        "name": "TAR_DUELIST_START",
+        "value": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    ],
+    "checks_structure": "ValBoolean is MSB-first in each byte (prior-art behavior)"
+  },
+  "pifo": {
+    "present": false,
+    "file": "pifo.ifo",
+    "size": 0,
+    "check_errors": [],
+    "checks": [
+      "missing pifo.ifo"
+    ]
+  },
+  "screen": {
+    "present": true,
+    "file": "Screen.tga",
+    "size": 196626,
+    "tga": {
+      "size": 196626,
+      "valid": true,
+      "id_length": 0,
+      "color_map_type": 0,
+      "image_type": 2,
+      "width": 256,
+      "height": 256,
+      "bits_per_pixel": 24,
+      "descriptor": 0
+    }
+  },
+  "corrupt": {
+    "present": false
+  },
+  "sidecar_files": {
+    "nfo": {
+      "present": true,
+      "file": "savenfo.res",
+      "size": 633
+    },
+    "party_table": {
+      "present": true,
+      "file": "PARTYTABLE.res",
+      "size": 1790
+    },
+    "global_vars": {
+      "present": true,
+      "file": "GLOBALVARS.res",
+      "size": 57112
+    },
+    "screen": {
+      "present": true,
+      "file": "Screen.tga",
+      "size": 196626
+    },
+    "pifo": {
+      "present": false
+    },
+    "corrupt": {
+      "present": false
+    }
+  },
+  "outer": {
+    "present": true,
+    "file": "SAVEGAME.sav",
+    "size": 76403,
+    "errors": [],
+    "entries": [
+      {
+        "index": 0,
+        "resref": "tar_m02af",
+        "type": 2057,
+        "kind": "SAV",
+        "id": 0,
+        "offset": 320,
+        "size": 21366
+      },
+      {
+        "index": 1,
+        "resref": "INVENTORY",
+        "type": 2037,
+        "kind": "GFF",
+        "id": 1,
+        "offset": 21688,
+        "size": 6884
+      },
+      {
+        "index": 2,
+        "resref": "REPUTE",
+        "type": 2038,
+        "kind": "FAC",
+        "id": 2,
+        "offset": 28572,
+        "size": 27758
+      },
+      {
+        "index": 3,
+        "resref": "AVAILNPC0",
+        "type": 2027,
+        "kind": "UTC",
+        "id": 3,
+        "offset": 56332,
+        "size": 8302
+      },
+      {
+        "index": 4,
+        "resref": "AVAILNPC2",
+        "type": 2027,
+        "kind": "UTC",
+        "id": 4,
+        "offset": 64636,
+        "size": 11767
+      }
+    ],
+    "duplicates": [],
+    "magic": "MOD ",
+    "version": "V1.0",
+    "entry_count": 5
+  },
+  "modules": [
+    {
+      "resref": "tar_m02af",
+      "type": 2057,
+      "size": 21366,
+      "nested_magic": "MOD ",
+      "nested_version": "V1.0",
+      "entry_count": 3,
+      "entries": [
+        {
+          "index": 0,
+          "resref": "m02af",
+          "type": 2023,
+          "kind": "GIT",
+          "id": 0,
+          "offset": 256,
+          "size": 10140
+        },
+        {
+          "index": 1,
+          "resref": "m02af",
+          "type": 2012,
+          "kind": "ARE",
+          "id": 1,
+          "offset": 10396,
+          "size": 2629
+        },
+        {
+          "index": 2,
+          "resref": "Module",
+          "type": 2014,
+          "kind": "IFO",
+          "id": 2,
+          "offset": 13028,
+          "size": 8338
+        }
+      ],
+      "ifo": {
+        "file_type": "IFO",
+        "magic": "IFO ",
+        "version": 3,
+        "struct_count": 30,
+        "field_count": 265,
+        "label_count": 185,
+        "labels": [
+          "Mod_ID",
+          "Mod_Creator_ID",
+          "Mod_Version",
+          "Mod_VO_ID",
+          "Expansion_Pack",
+          "Mod_Name",
+          "Mod_Tag",
+          "Mod_Hak",
+          "Mod_Description",
+          "Mod_IsSaveGame",
+          "Mod_Entry_Area",
+          "Mod_Entry_X",
+          "Mod_Entry_Y",
+          "Mod_Entry_Z",
+          "Mod_Entry_Dir_X",
+          "Mod_Entry_Dir_Y",
+          "Mod_Expan_List",
+          "Mod_DawnHour",
+          "Mod_DuskHour",
+          "Mod_MinPerHour",
+          "Mod_StartMonth",
+          "Mod_StartDay",
+          "Mod_StartHour",
+          "Mod_StartYear",
+          "Mod_XPScale",
+          "Mod_OnHeartbeat",
+          "Mod_OnModLoad",
+          "Mod_OnModStart",
+          "Mod_OnClientEntr",
+          "Mod_OnClientLeav",
+          "Mod_OnActvtItem",
+          "Mod_OnAcquirItem",
+          "Mod_OnUsrDefined",
+          "Mod_OnUnAqreItem",
+          "Mod_OnPlrDeath",
+          "Mod_OnPlrDying",
+          "Mod_OnPlrLvlUp",
+          "Mod_OnSpawnBtnDn",
+          "Mod_OnPlrRest",
+          "Mod_StartMovie",
+          "Mod_CutSceneList",
+          "Mod_GVar_List",
+          "Mod_Area_list",
+          "Mod_IsNWMFile",
+          "Mod_PlayerList"
+        ],
+        "list_counts": {
+          "Mod_Expan_List": 0,
+          "Mod_CutSceneList": 0,
+          "Mod_GVar_List": 0,
+          "Mod_Area_list": 1,
+          "Mod_PlayerList": 1
+        },
+        "check_errors": [],
+        "entry": {
+          "area": "m02af",
+          "x": 91.21743774414062,
+          "y": 143.53221130371094,
+          "z": 0.0,
+          "dir_x": -0.7071069478988647,
+          "dir_y": -0.7071065902709961
+        },
+        "tag": "tar_m02af",
+        "name": "tar_m02af",
+        "area_list": [
+          "m02af"
+        ],
+        "area_list_truncated": false,
+        "is_save_game": 1,
+        "start": {
+          "hour": 13,
+          "day": 1,
+          "month": 6,
+          "year": 1372,
+          "minutes_per_hour": 2
+        },
+        "xp_scale": 10
+      },
+      "are": {
+        "file_type": "ARE",
+        "magic": "ARE ",
+        "version": "V3.2",
+        "struct_count": 4,
+        "field_count": 77,
+        "label_count": 74,
+        "labels": [
+          "ID",
+          "Creator_ID",
+          "Version",
+          "Tag",
+          "Name",
+          "Comments",
+          "Map",
+          "Expansion_List",
+          "Flags",
+          "ModSpotCheck",
+          "ModListenCheck",
+          "AlphaTest",
+          "CameraStyle",
+          "DefaultEnvMap",
+          "Grass_TexName",
+          "Grass_Density",
+          "Grass_QuadSize",
+          "Grass_Ambient",
+          "Grass_Diffuse",
+          "Grass_Prob_LL",
+          "Grass_Prob_LR",
+          "Grass_Prob_UL",
+          "Grass_Prob_UR",
+          "MoonAmbientColor",
+          "MoonDiffuseColor",
+          "MoonFogOn",
+          "MoonFogNear",
+          "MoonFogFar",
+          "MoonFogColor",
+          "MoonShadows",
+          "SunAmbientColor",
+          "SunDiffuseColor",
+          "SunFogOn",
+          "SunFogNear",
+          "SunFogFar",
+          "SunFogColor",
+          "SunShadows",
+          "DynAmbientColor",
+          "IsNight",
+          "LightingScheme",
+          "ShadowOpacity",
+          "DayNightCycle",
+          "ChanceRain",
+          "ChanceSnow",
+          "ChanceLightning",
+          "WindPower",
+          "LoadScreenID",
+          "PlayerVsPlayer",
+          "NoRest",
+          "NoHangBack",
+          "PlayerOnly",
+          "Unescapable",
+          "StealthXPEnabled",
+          "StealthXPLoss",
+          "StealthXPMax",
+          "Rooms",
+          "OnEnter",
+          "OnExit",
+          "OnHeartbeat",
+          "OnUserDefined"
+        ],
+        "list_counts": {
+          "Expansion_List": 0,
+          "Rooms": 2
+        },
+        "check_errors": [],
+        "tag": "Untitled",
+        "name": null,
+        "flags": 0,
+        "camera_style": 0,
+        "load_screen_id": 0,
+        "rooms": 2
+      },
+      "git": {
+        "file_type": "GIT",
+        "magic": "GIT ",
+        "version": "V3.2",
+        "struct_count": 36,
+        "field_count": 404,
+        "label_count": 101,
+        "labels": [
+          "AreaProperties",
+          "Creature List",
+          "Door List",
+          "Encounter List",
+          "List",
+          "SoundList",
+          "StoreList",
+          "TriggerList",
+          "WaypointList",
+          "Placeable List",
+          "CameraList"
+        ],
+        "list_counts": {
+          "Creature List": 1,
+          "Door List": 2,
+          "Encounter List": 0,
+          "List": 0,
+          "SoundList": 0,
+          "StoreList": 0,
+          "TriggerList": 2,
+          "WaypointList": 11,
+          "Placeable List": 4,
+          "CameraList": 4
+        },
+        "check_errors": [],
+        "use_templates": null,
+        "object_counts": {
+          "creatures": 1,
+          "doors": 2,
+          "encounters": 0,
+          "misc": 0,
+          "sounds": 0,
+          "stores": 0,
+          "triggers": 2,
+          "waypoints": 11,
+          "placeables": 4,
+          "cameras": 4
+        },
+        "total_instances": 24
+      },
+      "others": [],
+      "errors": []
+    }
+  ],
+  "inventory": {
+    "entry": {
+      "index": 1,
+      "resref": "INVENTORY",
+      "type": 2037,
+      "kind": "GFF",
+      "id": 1,
+      "offset": 21688,
+      "size": 6884
+    },
+    "file_type": "INV",
+    "magic": "INV ",
+    "version": "V3.2",
+    "struct_count": 13,
+    "field_count": 325,
+    "label_count": 28,
+    "labels": [
+      "ItemList"
+    ],
+    "list_counts": {
+      "ItemList": 12
+    },
+    "check_errors": [],
+    "item_list_label": "ItemList",
+    "item_count": 12,
+    "items": [
+      {
+        "resref": null,
+        "x": null,
+        "y": null
+      },
+      {
+        "resref": null,
+        "x": null,
+        "y": null
+      },
+      {
+        "resref": null,
+        "x": null,
+        "y": null
+      },
+      {
+        "resref": null,
+        "x": null,
+        "y": null
+      },
+      {
+        "resref": null,
+        "x": null,
+        "y": null
+      },
+      {
+        "resref": null,
+        "x": null,
+        "y": null
+      },
+      {
+        "resref": null,
+        "x": null,
+        "y": null
+      },
+      {
+        "resref": null,
+        "x": null,
+        "y": null
+      },
+      {
+        "resref": null,
+        "x": null,
+        "y": null
+      },
+      {
+        "resref": null,
+        "x": null,
+        "y": null
+      },
+      {
+        "resref": null,
+        "x": null,
+        "y": null
+      },
+      {
+        "resref": null,
+        "x": null,
+        "y": null
+      }
+    ]
+  },
+  "repute": {
+    "entry": {
+      "index": 2,
+      "resref": "REPUTE",
+      "type": 2038,
+      "kind": "FAC",
+      "id": 2,
+      "offset": 28572,
+      "size": 27758
+    },
+    "file_type": "FAC",
+    "magic": "FAC ",
+    "version": "V3.2",
+    "struct_count": 427,
+    "field_count": 1280,
+    "label_count": 8,
+    "labels": [
+      "FactionList",
+      "RepList"
+    ],
+    "list_counts": {
+      "FactionList": 21,
+      "RepList": 405
+    },
+    "check_errors": []
+  },
+  "pcs": [],
+  "avail_npcs": [
+    {
+      "entry": {
+        "index": 3,
+        "resref": "AVAILNPC0",
+        "type": 2027,
+        "kind": "UTC",
+        "id": 3,
+        "offset": 56332,
+        "size": 8302
+      },
+      "file_type": "UTC",
+      "magic": "UTC ",
+      "version": "V3.2",
+      "struct_count": 68,
+      "field_count": 249,
+      "label_count": 178,
+      "labels": [
+        "FirstName",
+        "LastName",
+        "Description",
+        "IsPC",
+        "Tag",
+        "Conversation",
+        "Interruptable",
+        "Age",
+        "Gender",
+        "Race",
+        "Subrace",
+        "SubraceIndex",
+        "StartingPackage",
+        "Deity",
+        "MClassLevUpIn",
+        "willbonus",
+        "fortbonus",
+        "refbonus",
+        "Gold",
+        "RefSaveThrow",
+        "WillSaveThrow",
+        "FortSaveThrow",
+        "ArmorClass",
+        "Str",
+        "Dex",
+        "Int",
+        "Wis",
+        "Con",
+        "Cha",
+        "NaturalAC",
+        "SoundSetFile",
+        "Plot",
+        "Disarmable",
+        "Min1HP",
+        "PartyInteract",
+        "NotReorienting",
+        "BodyBag",
+        "HitPoints",
+        "CurrentHitPoints",
+        "MaxHitPoints",
+        "PregameCurrent",
+        "ForcePoints",
+        "CurrentForce",
+        "MaxForcePoints",
+        "Experience",
+        "MovementRate",
+        "PortraitId",
+        "GoodEvil",
+        "Color_Skin",
+        "Color_Hair",
+        "Color_Tattoo1",
+        "Color_Tattoo2",
+        "Phenotype",
+        "Appearance_Type",
+        "Appearance_Head",
+        "DuplicatingHead",
+        "UseBackupHead",
+        "Tail",
+        "Wings",
+        "FactionID",
+        "ChallengeRating",
+        "AIState",
+        "ClassList",
+        "SkillPoints",
+        "SkillList",
+        "FeatList",
+        "CombatInfo",
+        "DetectMode",
+        "StealthMode",
+        "CreatureSize",
+        "IsDestroyable",
+        "IsRaiseable",
+        "DeadSelectable",
+        "ScriptHeartbeat",
+        "ScriptOnNotice",
+        "ScriptSpellAt",
+        "ScriptAttacked",
+        "ScriptDamaged",
+        "ScriptDisturbed",
+        "ScriptEndRound",
+        "ScriptDialogue",
+        "ScriptSpawn",
+        "ScriptRested",
+        "ScriptDeath",
+        "ScriptUserDefine",
+        "ScriptOnBlocked",
+        "ScriptEndDialogu",
+        "Equip_ItemList",
+        "ItemList",
+        "PerceptionList",
+        "CombatRoundData",
+        "AreaId",
+        "AmbientAnimState",
+        "Animation",
+        "CreatnScrptFird",
+        "PM_IsDisguised",
+        "Listening",
+        "ExpressionList",
+        "XPosition",
+        "YPosition",
+        "ZPosition",
+        "XOrientation",
+        "YOrientation",
+        "ZOrientation",
+        "JoiningXP",
+        "EffectList",
+        "VarTable",
+        "SWVarTable",
+        "ActionList",
+        "Commandable"
+      ],
+      "list_counts": {
+        "ClassList": 1,
+        "SkillList": 8,
+        "FeatList": 12,
+        "Equip_ItemList": 1,
+        "ItemList": 0,
+        "PerceptionList": 2,
+        "ExpressionList": 6,
+        "EffectList": 1,
+        "VarTable": 0,
+        "ActionList": 0
+      },
+      "check_errors": []
+    },
+    {
+      "entry": {
+        "index": 4,
+        "resref": "AVAILNPC2",
+        "type": 2027,
+        "kind": "UTC",
+        "id": 4,
+        "offset": 64636,
+        "size": 11767
+      },
+      "file_type": "UTC",
+      "magic": "UTC ",
+      "version": "V3.2",
+      "struct_count": 101,
+      "field_count": 410,
+      "label_count": 195,
+      "labels": [
+        "FirstName",
+        "LastName",
+        "Description",
+        "IsPC",
+        "Tag",
+        "Conversation",
+        "Interruptable",
+        "Age",
+        "Gender",
+        "Race",
+        "Subrace",
+        "SubraceIndex",
+        "StartingPackage",
+        "Deity",
+        "MClassLevUpIn",
+        "willbonus",
+        "fortbonus",
+        "refbonus",
+        "Gold",
+        "RefSaveThrow",
+        "WillSaveThrow",
+        "FortSaveThrow",
+        "ArmorClass",
+        "Str",
+        "Dex",
+        "Int",
+        "Wis",
+        "Con",
+        "Cha",
+        "NaturalAC",
+        "SoundSetFile",
+        "Plot",
+        "Disarmable",
+        "Min1HP",
+        "PartyInteract",
+        "NotReorienting",
+        "BodyBag",
+        "HitPoints",
+        "CurrentHitPoints",
+        "MaxHitPoints",
+        "PregameCurrent",
+        "ForcePoints",
+        "CurrentForce",
+        "MaxForcePoints",
+        "Experience",
+        "MovementRate",
+        "PortraitId",
+        "GoodEvil",
+        "Color_Skin",
+        "Color_Hair",
+        "Color_Tattoo1",
+        "Color_Tattoo2",
+        "Phenotype",
+        "Appearance_Type",
+        "Appearance_Head",
+        "DuplicatingHead",
+        "UseBackupHead",
+        "Tail",
+        "Wings",
+        "FactionID",
+        "ChallengeRating",
+        "AIState",
+        "ClassList",
+        "SkillPoints",
+        "SkillList",
+        "FeatList",
+        "CombatInfo",
+        "DetectMode",
+        "StealthMode",
+        "CreatureSize",
+        "IsDestroyable",
+        "IsRaiseable",
+        "DeadSelectable",
+        "ScriptHeartbeat",
+        "ScriptOnNotice",
+        "ScriptSpellAt",
+        "ScriptAttacked",
+        "ScriptDamaged",
+        "ScriptDisturbed",
+        "ScriptEndRound",
+        "ScriptDialogue",
+        "ScriptSpawn",
+        "ScriptRested",
+        "ScriptDeath",
+        "ScriptUserDefine",
+        "ScriptOnBlocked",
+        "ScriptEndDialogu",
+        "Equip_ItemList",
+        "ItemList",
+        "PerceptionList",
+        "CombatRoundData",
+        "AreaId",
+        "AmbientAnimState",
+        "Animation",
+        "CreatnScrptFird",
+        "PM_IsDisguised",
+        "Listening",
+        "ExpressionList",
+        "XPosition",
+        "YPosition",
+        "ZPosition",
+        "XOrientation",
+        "YOrientation",
+        "ZOrientation",
+        "JoiningXP",
+        "EffectList",
+        "VarTable",
+        "SWVarTable",
+        "ActionList",
+        "Commandable"
+      ],
+      "list_counts": {
+        "ClassList": 1,
+        "SkillList": 8,
+        "FeatList": 13,
+        "Equip_ItemList": 3,
+        "ItemList": 0,
+        "PerceptionList": 2,
+        "ExpressionList": 6,
+        "EffectList": 2,
+        "VarTable": 0,
+        "ActionList": 0
+      },
+      "check_errors": []
+    }
+  ]
+}

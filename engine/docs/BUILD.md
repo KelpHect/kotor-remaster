@@ -87,6 +87,15 @@ build\msvc-release\kotor_engine.exe --module end_m01aa --party-test --null --hea
 build\msvc-release\kotor_engine.exe --module end_m01aa --ui-test --null --headless
 build\msvc-release\kotor_engine.exe --module danm13 --loot-test --null --headless
 build\msvc-release\kotor_engine.exe --module tar_m03ab --encounter-reset-test --null --headless
+build\msvc-release\kotor_engine.exe --profile-info "E:\SteamLibrary\steamapps\common\swkotor" --null --headless
+build\msvc-release\kotor_engine.exe --original-save-load "..\artifacts\lanes\06-dynamic\profile\saves\000000 - QUICKSAVE" --null --headless
+build\msvc-release\kotor_engine.exe --module end_m01aa --original-save-create "build\msvc-release\000010 - ENGINE" --null --headless
+```
+
+Original save slots written by the engine can be checked independently:
+
+```powershell
+python ..\tools\resources\kotor_save.py validate "build\msvc-release\000010 - ENGINE"
 ```
 
 `kotor_vm_corpus` runs the native VM over the extracted 8,666-script corpus and

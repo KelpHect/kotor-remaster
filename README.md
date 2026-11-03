@@ -1,18 +1,24 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 8.5 (residual inherited-systems closeout) complete - gate S8.5 met (2026-11-03).**
-The engine now also has container loot (UTP `ItemList` -> Loot panel/Take All), companion melee AI
-(companions assist the player's target with their own sheet/d20), merchant store gold and
-identification pricing, and persistence for store gold/item identification. All **24 CTest
-targets** pass, including the 117/117 module sweep with 0 failures/0 warnings. Sprint 8 remains
-complete (117-module loader sweep, encounter reset/respawn, formation/leader, feat/power selection).
-Sprint 7 remains complete (7 stores/41 `keblastore` entries, 4 encounter volumes/8 spawns, 80%
-companion XP, systems UI). Sprint 6 remains complete (native script VM 8,666/8,666 default and
-functional, 303,616 ACTION calls, dialogue entry 54, d20 rounds). Sprint 5 remains complete
-(playable `end_m01aa` slice, 0.03/255 parity). S9+ remains: original `SAVEGAME.sav` compatibility,
-animation/skinning/weapons, cutscene cameras, audio/EAX, Bink/lip sync, full `.gui`, minigames,
-localization, mods/Override and the P6 content checklist. Plans/reports: `docs/SPRINT1.md` through
-`docs/SPRINT8_5.md` and their `*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
+Status: **Sprint 9 (original save compatibility and game profiles) complete - gate S9 met
+(2026-11-03).** The engine now has a KotOR 1 / KotOR 2 `GameProfile` and native read/write support
+for original `SAVEGAME.sav` slots: outer MOD ERF, nested module IFOs/GITs/AREs, `PARTYTABLE.res`,
+`GLOBALVARS.res`, `savenfo.res`, inventory, equipment, party, journal, number/boolean/string/
+location globals and GIT object state. Round-trip and fresh-create slots validate with the
+independent Python save tool at **0 errors / 0 warnings**; the multi-module party slot passes with
+no new errors (it preserves the source's visited-module `Mod_Tag` warnings). All three reload in
+the engine. All **33 CTest targets** pass,
+including the 117/117 module sweep with 0 failures/0 warnings. Sprint 8.5 remains complete
+(container loot, companion melee AI, merchant store gold/identify); Sprint 8 remains complete
+(117-module sweep, encounter reset/respawn, formation/leader, feat/power selection); Sprint 7
+remains complete (7 stores/41 `keblastore` entries, 4 encounter volumes/8 spawns, 80% companion XP,
+systems UI); Sprint 6 remains complete (native script VM 8,666/8,666 default and functional,
+303,616 ACTION calls, dialogue entry 54, d20 rounds); Sprint 5 remains complete (playable
+`end_m01aa` slice, 0.03/255 parity). Sprint 10+ remains: KotOR 2 world loading, faction reputation
+serialization, animation/skinning/weapons, cutscene cameras, audio/EAX, Bink/lip sync, full `.gui`,
+minigames, localization, mods/Override, delayed functors and the P6 content checklist.
+Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT9.md` and their `*_REPORT.md`; P0 gate in
+`docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
 does not ship, download, extract, or redistribute game assets, and it does not require or execute
@@ -129,6 +135,14 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   pricing and their save round-trip. CTest: **24/24**; 117-module sweep still 0/0; VM parity 0;
   scene parity 0.03/255; install unchanged. See `docs/recon/46_RESIDUAL_SYSTEMS.md` and
   `docs/SPRINT8_5_REPORT.md`.
+- Sprint 9 (original saves and game profiles): `GameProfile` recognizes K1
+  (`0290889e...`) and K2 (`6a522e71...`); native original-save reader and writer
+  (`SAVEGAME.sav` outer/nested ERFs, PT/GVT/NFO/INV, equipment, party, journal and GIT
+  object state, preserved visited-module ERFs and REPUTE); independent Python validation
+  **0 errors / 0 warnings** on round-trip and fresh-create, 0 new errors on the party slot;
+  source hashes unchanged. CTest: **33/33**; 117-module
+  sweep 0/0; VM parity 0; scene parity 0.0300; Python 143 tests / 7 skips; install
+  unchanged. See `docs/recon/47_ORIGINAL_SAVES.md` and `docs/SPRINT9_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -181,6 +195,9 @@ Start with:
 - [`docs/SPRINT8.md`](docs/SPRINT8.md) - Sprint 8 plan: gate S8, lanes, non-goals
 - [`docs/SPRINT8_5_REPORT.md`](docs/SPRINT8_5_REPORT.md) - Sprint 8.5 (residual systems) exit report
 - [`docs/SPRINT8_5.md`](docs/SPRINT8_5.md) - Sprint 8.5 plan: gate S8.5, lanes, non-goals
+- [`docs/SPRINT9_REPORT.md`](docs/SPRINT9_REPORT.md) - Sprint 9 (original saves and profiles) exit report
+- [`docs/SPRINT9.md`](docs/SPRINT9.md) - Sprint 9 plan: gate S9, lanes, non-goals
+- [`docs/recon/47_ORIGINAL_SAVES.md`](docs/recon/47_ORIGINAL_SAVES.md) - original save read/write and validation
 - [`docs/recon/46_RESIDUAL_SYSTEMS.md`](docs/recon/46_RESIDUAL_SYSTEMS.md) - loot, companion combat, merchant depth
 - [`docs/recon/45_CLOSEOUT.md`](docs/recon/45_CLOSEOUT.md) - 117-module sweep, encounter reset, formation, feat selection
 - [`docs/recon/44_SYSTEMS_UI.md`](docs/recon/44_SYSTEMS_UI.md) - UTM/UTI stores, UTE encounters, companions and panels
