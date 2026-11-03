@@ -40,10 +40,10 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
    and play through `camerahook`; `CameraAngle` 1/2/3 height-offset presets
    compute speaker/target framing; `GameSession::camera()` prefers the animated
    clip, then the preset, then the static camera.
-7. **Dangly and saber meshes** - dangly headers and per-vertex constraints
+7. **Dangly, saber and FX meshes** - dangly headers and per-vertex constraints
    drive a deterministic damped settle; saber headers expose their static
-   vertex/UV/normal arrays. Non-pose controller types are parsed and exposed
-   (`fx_flame01` 76/80/84/88/380/392) without particle/light simulation.
+   vertex/UV/normal arrays; light and emitter controllers are evaluated and
+   emitted as deterministic billboard quads (room lights and `fx_flame01`).
 8. **Script bridge** - `animations.2da` names and flags load; `PlayAnimation`
    and `ActionPlayAnimation` map an animation id to a clip and play it on
    `OBJECT_SELF`.
@@ -73,9 +73,9 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
 
 ## Outside this sprint
 
-- Particle/light **simulation** (controllers are parsed and asserted; no
-  emitter/light rendering is implemented).
 - Non-default `CamVidEffect` semantics (none exist in the 1,135-DLG corpus).
+- Light/emitter **animation scaling for every exotic controller family**; the
+  shipped light/emitter billboard path is implemented.
 - Audio/EAX, Bink movies, lip sync, full `.gui`, minigames, localization,
   mods/Override runtime precedence and the P6 content checklist.
 

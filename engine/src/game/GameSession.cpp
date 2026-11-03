@@ -397,6 +397,12 @@ void GameSession::updateAnimations(float dt)
         if (!mesh.model) {
             continue;
         }
+        if (mesh.fx) {
+            mesh.animationTime = std::fmod(mesh.animationTime + dt, 10.0f);
+            kotor::refreshEntityMesh(mesh);
+            ++animationRevision_;
+            continue;
+        }
         const bool dangly = mesh.model->danglyNodeCount() > 0;
         if (mesh.animation.empty() && !dangly) {
             continue;

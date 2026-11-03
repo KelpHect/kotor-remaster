@@ -106,8 +106,37 @@ void addEntities(const Gff& git, std::uint32_t root, const char* listLabel, Enti
     }
 }
 
-void addCameras(const Gff& git, std::uint32_t root, Scene& scene)
+Image fxTexture(const std::string& name)
 {
+    int r = 255, g = 255, b = 255;
+    if (name.size() >= 11) {
+        try {
+            r = std::stoi(name.substr(5, 2), nullptr, 16);
+            g = std::stoi(name.substr(7, 2), nullptr, 16);
+            b = std::stoi(name.substr(9, 2), nullptr, 16);
+        } catch (const std::exception&) {
+        }
+    }
+    Image image;
+    image.width = 8;
+    image.height = 8;
+    image.rgba.resize(8u * 8u * 4u);
+    for (int y = 0; y < 8; ++y) {
+        for (int x = 0; x < 8; ++x) {
+            const float dx = (x - 3.5f) / 3.5f;
+            const float dy = (y - 3.5f) / 3.5f;
+            const float alpha = std::clamp(1.0f - std::sqrt(dx * dx + dy * dy), 0.0f, 1.0f);
+            const std::size_t o = (static_cast<std::size_t>(y) * 8u + x) * 4u;
+            image.rgba[o] = static_cast<std::uint8_t>(r);
+            image.rgba[o + 1] = static_cast<std::uint8_t>(g);
+            image.rgba[o + 2] = static_cast<std::uint8_t>(b);
+            image.rgba[o + 3] = static_cast<std::uint8_t>(alpha * 255.0f);
+        }
+    }
+    return image;
+}
+
+void addCameras(const Gff& git, std::uint32_t root, Scene& scene){
     const GffField* listField = git.field(root, "CameraList");
     if (listField == nullptr || listField->type != GffType::List) {
         return;
@@ -224,6 +253,25 @@ Scene loadModule(Install& install, const std::string& moduleStem)
             }
             byTexture[texture].push_back(triangle);
         }
+        for (MdlMeshTriangle triangle : mdl.fxTriangles({}, 0.0f)) {
+            for (MdlMeshVertex& vertex : triangle.v) {
+                vertex.position.x += room.origin.x;
+                vertex.position.y += room.origin.y;
+                vertex.position.z += room.origin.z;
+            }
+            MdlTriangle out;
+            for (int i = 0; i < 3; ++i) {
+                out.p[i] = triangle.v[i].position;
+                out.uv[i] = triangle.v[i].uv;
+            }
+            out.normal = normalize(cross(out.p[1] - out.p[0], out.p[2] - out.p[0]));
+            out.texture = triangle.texture;
+            std::string texture = lower(out.texture);
+            if (texture.empty()) {
+                texture = "__fx_ffffff";
+            }
+            byTexture[texture].push_back(out);
+        }
     }
     scene.sourceBytes = sourceBytes;
 
@@ -236,6 +284,14 @@ Scene loadModule(Install& install, const std::string& moduleStem)
         }
         std::uint32_t type = 0;
         std::string source;
+        if (name.rfind("__fx_", 0) == 0) {
+            Texture texture;
+            texture.name = name;
+            texture.image = fxTexture(name);
+            textureIndex[name] = static_cast<std::uint32_t>(scene.textures.size());
+            scene.textures.push_back(std::move(texture));
+            continue;
+        }
         auto data = install.findTexture(name, &type, &source);
         if (!data.has_value()) {
             textureIndex[name] = 0;

@@ -1539,6 +1539,32 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
                   && fxModel->hasControllerType(380) && fxModel->hasControllerType(392),
               "fx_controller_types");
         check(fxModel->skinnedNodeCount() == 0, "fx_no_skin");
+        check(fxModel->hasFxNodes(), "fx_nodes");
+        const std::vector<kotor::MdlMeshTriangle> fx0 = fxModel->fxTriangles({}, 0.0f);
+        const std::vector<kotor::MdlMeshTriangle> fx1 = fxModel->fxTriangles({}, 1.0f);
+        check(!fx0.empty() && fx0.size() == fx1.size(), "fx_geometry");
+        bool fxFinite = true;
+        std::size_t fxMoved = 0;
+        for (std::size_t i = 0; i < fx0.size() && i < fx1.size(); ++i) {
+            for (int v = 0; v < 3; ++v) {
+                const kotor::Vec3 a = fx0[i].v[v].position;
+                const kotor::Vec3 b = fx1[i].v[v].position;
+                fxFinite = fxFinite && std::isfinite(b.x) && std::isfinite(b.y)
+                    && std::isfinite(b.z);
+                if (std::fabs(a.x - b.x) > 0.0001f || std::fabs(a.y - b.y) > 0.0001f
+                    || std::fabs(a.z - b.z) > 0.0001f) {
+                    ++fxMoved;
+                }
+            }
+        }
+        check(fxFinite, "fx_finite");
+        check(fxMoved > 0, "fx_animated");
+    }
+    const std::optional<kotor::Mdl> roomFx = loadModel("m01aa_01a");
+    check(roomFx.has_value(), "room_light_loaded");
+    if (roomFx.has_value()) {
+        check(roomFx->hasFxNodes(), "room_light_nodes");
+        check(!roomFx->fxTriangles({}, 0.0f).empty(), "room_light_geometry");
     }
 
     check(game.rules().animationName(6) == "pause1", "animation_2da_name");
@@ -2588,14 +2614,14 @@ int runApplication(const Options& options)
             }
             if (options.sceneAssert) {
                 const bool ok = loaded.rooms.size() == 15
-                    && loaded.vertices.size() == 235038
-                    && loaded.indices.size() == 235038
-                    && loaded.batches.size() == 34
-                    && loaded.textures.size() == 67
+                    && loaded.vertices.size() == 239178
+                    && loaded.indices.size() == 239178
+                    && loaded.batches.size() == 49
+                    && loaded.textures.size() == 83
                     && loaded.collisionVertices.size() == 850
                     && loaded.collision.size() == 1365
                     && loaded.entities.size() == 218
-                    && loaded.entityMeshes.size() == 122
+                    && loaded.entityMeshes.size() == 143
                     && loaded.cameras.size() == 40
                     && loaded.triggers.size() == 13
                     && loaded.warnings.empty();
