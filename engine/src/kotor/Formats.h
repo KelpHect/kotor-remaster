@@ -462,6 +462,7 @@ struct DlgEntry {
     std::string sound;
     std::int32_t cameraId = -1;
     std::int32_t cameraAnimation = -1;
+    std::int32_t cameraAngle = -1;
     std::int32_t camVidEffect = -1;
     float camHeightOffset = 0.0f;
     float tarHeightOffset = 0.0f;
@@ -478,6 +479,7 @@ struct DlgReply {
     std::string sound;
     std::int32_t cameraId = -1;
     std::int32_t cameraAnimation = -1;
+    std::int32_t cameraAngle = -1;
     std::int32_t camVidEffect = -1;
     float camHeightOffset = 0.0f;
     float tarHeightOffset = 0.0f;
@@ -489,6 +491,7 @@ struct Dlg {
     std::vector<DlgReply> replies;
     std::vector<std::uint32_t> starting;
     std::vector<std::string> startingActive;
+    std::string cameraModel;
     std::string endConversation;
     std::string endConversationAbort;
     bool skippable = true;

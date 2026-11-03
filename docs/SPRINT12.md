@@ -32,8 +32,9 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
    follow the animated hand pose.
 6. **Cutscene cameras** - GIT `CameraList` cameras load with position,
    orientation, pitch, height and FOV; DLG `CameraID` entries/replies select a
-   camera; `GameSession::camera()` returns the cinematic camera while dialogue
-   is active.
+   static camera; `CameraAnimation` values map to camera-MDL `CUT###W` clips
+   and play through `camerahook`; `GameSession::camera()` prefers the animated
+   clip and falls back to the static camera.
 7. **Script bridge** - `animations.2da` names and flags load; `PlayAnimation`
    and `ActionPlayAnimation` map an animation id to a clip and play it on
    `OBJECT_SELF`.
@@ -62,7 +63,7 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
 
 - Dangly/saber vertex simulation and particle/light controllers.
 - Animation blending, transitions, root motion and inverse kinematics.
-- Camera animation clips (`CameraAnimation`) and dialogue camera effects.
+- Camera effects (`CamVidEffect`) and height-offset camera presets.
 - Audio/EAX, Bink movies, lip sync, full `.gui`, minigames, localization,
   mods/Override runtime precedence and the P6 content checklist.
 

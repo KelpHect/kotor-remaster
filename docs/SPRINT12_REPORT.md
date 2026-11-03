@@ -12,7 +12,7 @@ buffers from the posed mesh.
 
 ```text
 100% tests passed, 0 tests failed out of 36
-Total Test time (real) = 160.93 sec
+Total Test time (real) = 143.42 sec
 ```
 
 The new target is `kotor_animation`; all Sprint 11 targets still pass.
@@ -101,9 +101,18 @@ right   = R(orientation) * (1, 0, 0)
 up      = right x forward
 ```
 
+DLG entry/reply `CameraID` selects a static GIT camera. `CameraAnimation`
+values use the verified mapping `value = 1200 + (N-1)` -> `CUT{N:03d}W`;
+`m01aa_c01` resolves `m01aa_c01_cam` and its 18 clips. The camera model's
+`camerahook` node is evaluated with the same MDL pose evaluator; forward is
+local +Y and up is local +Z. `GameSession::camera()` prefers an active
+animated clip, then falls back to a static `CameraID`, then first-person.
+
 While dialogue is active, a non-negative `CameraID` overrides the first-person
 camera. The gate checks `camera_catalog`, `camera_math`, `camera_height`,
-`camera_forward`, `dialogue_camera_apply` and `dlg_camera_field`.
+`camera_forward`, `dialogue_camera_apply`, `camera_model`,
+`camera_animation_field`, `camera_clip_load`, `camera_clip_pose`,
+`camera_clip_advance` and `dlg_camera_field`.
 
 ## 7. Rendering
 
@@ -121,7 +130,7 @@ textures. A GL capture at frame 10 versus frame 70 differs in **12,937 of
 
 ## 8. Regression
 
-- **CTest: 36/36 passed** (160.93 s).
+- **CTest: 36/36 passed** (143.42 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0300**, PASS.
@@ -132,7 +141,7 @@ textures. A GL capture at frame 10 versus frame 70 differs in **12,937 of
 
 - Dangly/saber vertex simulation and particle/light controllers.
 - Animation blending/transitions, root motion and inverse kinematics.
-- Camera animation clips (`CameraAnimation`) and dialogue camera effects.
+- Camera effects (`CamVidEffect`) and height-offset camera presets.
 - Audio/EAX, Bink movies, lip sync, full `.gui`, minigames, localization,
   mods/Override precedence and the P6 content checklist.
 
