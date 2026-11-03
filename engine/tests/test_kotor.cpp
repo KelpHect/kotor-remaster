@@ -1,4 +1,5 @@
 #include "kotor/Formats.h"
+#include "script/ActionTable.h"
 #include "script/Ncs.h"
 #include "script/Random.h"
 #include "script/Vm.h"
@@ -152,6 +153,22 @@ void putBE32(std::vector<std::uint8_t>& bytes, std::uint32_t value)
     bytes.push_back(static_cast<std::uint8_t>(value & 0xFFu));
 }
 
+void testActionTable()
+{
+    expect(ke::script::actionTable().size() == 772, "action table has 772 rows");
+    expect(std::string(ke::script::actionSpec(0).name) == "Random", "action 0 is Random");
+    expect(std::string(ke::script::actionSpec(771).name) == "YavinHackCloseDoor",
+           "action 771 is YavinHackCloseDoor");
+    bool complete = true;
+    for (std::size_t i = 0; i < ke::script::actionTable().size(); ++i) {
+        if (ke::script::actionTable()[i].id != i
+            || std::string(ke::script::actionTable()[i].name).empty()) {
+            complete = false;
+        }
+    }
+    expect(complete, "action table ids and names are complete");
+}
+
 void testNcsVm()
 {
     // CONST 1; CONST 2; ADD int; RETN
@@ -201,6 +218,7 @@ int main()
     testWok();
     testTwoDa();
     testTlk();
+    testActionTable();
     testNcsVm();
     testPythonRandom();
     if (failures != 0) {
