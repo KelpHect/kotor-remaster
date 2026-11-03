@@ -77,9 +77,13 @@ Save DC is `10 + level/2 + WIS modifier`; the target's `FortSaveThrow`,
 - **Force Jump / Advanced / Mastery**: an equipped lightsaber plus a hostile
   target beyond 10 m closes to 2 m and grants +0/+2/+4 attack and damage on the
   first strike.
-- Battle Meditation (large-scale only), Jedi Defense projectile deflection and
-  Force Camouflage remain no-ops until their presentation/projectile/stealth
-  subsystems exist.
+- **Jedi Defense / Advanced / Master**: `jediDeflects` uses the equipped
+  lightsaber and +0/+3/+6 deflection roll bonus; ranged NPC attacks can be
+  deflected and a result 10 over the attack is returned to the attacker.
+  NPC `Equip_ItemList.EquippedRes` is resolved through the UTI template to
+  `baseitems.weapontype=4`, so ranged creatures stop at 15 m and fire.
+- **Force Camouflage**: `allowsStealth` is true for the feat; the full stealth
+  AI/perception presentation is outside this sprint.
 
 Active modes last 30 s and are stored as `CombatMode`; the character panel
 shows the current mode.
@@ -141,6 +145,10 @@ combat force test: power_attack_used=1 / power_blast_used=1
 combat force test: flurry_used=1 / toughness_learned=1
 combat force test: two_weapon_penalty=1 / two_weapon_fighting=1
 combat force test: force_jump_bonus=1 / force_jump_closed=1
+combat force test: ranged_entities_detected=1
+combat force test: jedi_defense_6=1 / jedi_deflect_yes=1 / jedi_deflect_no=1
+combat force test: jedi_deflect_integration=1
+combat force test: force_camouflage_stealth=1
 combat force test: caution_1/2/3=1 / gear_head_1=1
 combat force test: immunity_blocks_power=1 / breach_removes_immunity=1
 combat force test: shield_effect=1 / breach_removes_buffs=1
@@ -156,11 +164,14 @@ Regression: 35/35 CTest, 117/117 modules, 8,666/8,666 VM, 0.0300 parity,
 `000012 - ENGINE` original slot independently validates with
 `kotor_save.py` at 0 errors / 0 warnings.
 
-## 8. Residual
+## 8. Residual and evidence-based re-scope
 
-- Exact original formulas/animations for non-combat feats (crafting, skill
-  focus, gear feats) and content-specific scripted exceptions.
-- Persisting active `ActiveEffect` entries across save/load; the stack is live
-  state.
+- **Battle Meditation is re-scoped out of Sprint 11 by shipped data.** Its
+  `feat.2da` TLK description says it is for large fleets/armies and "is not
+  applicable to small-scale combat"; there is no small-scale rule to implement.
+- **Force Camouflage** exposes `allowsStealth` (no field required); full
+  stealth perception/presentation is later work.
+- Exact original animations for non-combat feats and content-specific
+  exceptions outside the implemented set.
 - Cutscenes, animation/skinning, audio/EAX, Bink/lip sync, full `.gui`,
   minigames, localization, mods/Override, KotOR 2 world loading and P6 content.

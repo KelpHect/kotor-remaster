@@ -185,6 +185,7 @@ public:
         playerMaxHp_ = sheet.maxHp;
         playerDead_ = false;
     }
+    void attackPlayerForTest(std::size_t index) { npcAttack(index); }
     std::int32_t forceArmorBonus() const;
     std::int32_t forceAttackBonus() const;
     std::int32_t forceDamageBonus() const;
@@ -192,6 +193,7 @@ public:
     bool hasEffect(const std::string& label) const;
     bool forceSuppressed() const { return character_.forceSuppressedTimer > 0.0f; }
     std::int32_t forceJumpBonus() const { return forceJumpBonus_; }
+    bool canStealth() const { return rules_.loaded() && rules_.allowsStealth(character_); }
     // Test hook invocation without moving the player; returns false if the
     // entity or hook is absent.
     bool runHookForTest(const std::string& hook, const std::string& tag,

@@ -567,6 +567,8 @@ struct Entity {
     std::int32_t damageMin = 1;
     std::int32_t damageMax = 4;
     float walkRate = 1.0f;
+    bool ranged = false;
+    float attackRange = 2.4f;
     float stunTimer = 0.0f;
     float fearTimer = 0.0f;
     float forceSuppressedTimer = 0.0f;

@@ -586,6 +586,13 @@ int runPlaythrough(GameSession& game)
         logInfo(concat("playthrough: combat target ", game.scene().entities[hostile].tag,
                        " dead=", dead ? 1 : 0, " playerHp=", game.playerHp(),
                        "/", game.playerMaxHp(), " steps=", steps));
+        if (!dead) {
+            const std::size_t total = game.combatLog().size();
+            const std::size_t first = total > 40 ? total - 40 : 0;
+            for (std::size_t i = first; i < total; ++i) {
+                logInfo(concat("playthrough event: ", game.combatLog()[i]));
+            }
+        }
         ok = ok && dead;
     }
 
@@ -1411,6 +1418,10 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     sheet.feats.insert(101); // FORCE_JUMP
     sheet.feats.insert(102); // FORCE_JUMP_ADVANCED
     sheet.feats.insert(103); // FORCE_JUMP_MASTERY
+    sheet.feats.insert(97); // FORCE_CAMOFLAGE
+    sheet.feats.insert(55); // JEDI_DEFENSE
+    sheet.feats.insert(1); // ADVANCED_JEDI_DEFENSE
+    sheet.feats.insert(24); // MASTER_JEDI_DEFENSE
     InventoryItem saber = game.rules().makeItem("saber", 8);
     saber.equipped = true;
     sheet.inventory.push_back(saber);
@@ -1425,6 +1436,13 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     }
     check(forcePowerCount == 44, "force_catalog_44");
     check(game.rules().featCount() == 125, "feat_catalog_125");
+    int rangedEntities = 0;
+    for (const kotor::Entity& entity : game.scene().entities) {
+        if (entity.ranged) {
+            ++rangedEntities;
+        }
+    }
+    check(rangedEntities > 0, "ranged_entities_detected");
     CharacterSheet passive = sheet;
     passive.feats = {7}; // CAUTIOUS
     check(game.rules().skillBonus(passive, "Demolitions") == 1, "caution_1");
@@ -1577,6 +1595,21 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     const float jumpDx = game.position().x - target.position.x;
     const float jumpDy = game.position().y - target.position.y;
     check(std::sqrt(jumpDx * jumpDx + jumpDy * jumpDy) < 3.0f, "force_jump_closed");
+    check(game.rules().jediDefenseBonus(sheet) == 6, "jedi_defense_6");
+    check(game.rules().jediDeflects(sheet, 10, 5), "jedi_deflect_yes");
+    check(!game.rules().jediDeflects(sheet, 20, 5), "jedi_deflect_no");
+    check(game.canStealth(), "force_camouflage_stealth");
+
+    target.ranged = true;
+    target.attackBonus = 10;
+    target.damageMin = 0;
+    target.damageMax = 0;
+    bool deflected = false;
+    for (int attempt = 0; attempt < 200 && !deflected; ++attempt) {
+        game.attackPlayerForTest(hostile);
+        deflected = hasEvent(game, "player deflects " + target.tag);
+    }
+    check(deflected, "jedi_deflect_integration");
 
     const std::int32_t hpBeforeFeat = game.character().maxHp;
     check(game.useFeat(28, targetObject), "power_attack_used");
