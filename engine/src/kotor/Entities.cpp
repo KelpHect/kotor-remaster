@@ -303,7 +303,9 @@ void refreshEntityMeshImpl(EntityMesh& mesh)
         return;
     }
     std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
-    for (MdlMeshTriangle& triangle : mesh.model->posedTriangles(mesh.animation, mesh.animationTime)) {
+    for (MdlMeshTriangle& triangle : mesh.model->posedTriangles(mesh.animation,
+                                                                mesh.animationTime,
+                                                                mesh.danglyTime)) {
         std::string texture = lower(triangle.texture);
         if (texture.empty()) {
             texture = "__default";

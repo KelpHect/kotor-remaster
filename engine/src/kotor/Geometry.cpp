@@ -328,7 +328,7 @@ Mdl Mdl::parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std
             node.stride = readU32(b.data(), b.size(), m + 252u, "MDL stride");
             node.vertexCount = readU32(b.data(), b.size(), m + 304u, "MDL vertex count") & 0xFFFFu;
             node.mdxOffset = readU32(b.data(), b.size(), m + 324u, "MDL mdx offset");
-            if (node.stride < 12u) {
+            if (node.stride < 12u && node.vertexCount != 0 && !(node.type & 0x800u)) {
                 throw FormatError(model.name_ + ": MDL vertex stride "
                                   + std::to_string(node.stride));
             }
@@ -336,7 +336,51 @@ Mdl Mdl::parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std
                          static_cast<std::size_t>(node.vertexCount) * node.stride, "MDX vertices");
             requireRange(b.size(), 12u + node.faceOffset,
                          static_cast<std::size_t>(node.faceCount) * 32u, "MDL faces");
-            if (node.type & 0x40u) {
+            if (node.type & 0x800u) {
+                const std::size_t sh = m + 332u;
+                requireRange(b.size(), sh, 20u, "MDL saber header");
+                const std::uint32_t vertexOffset = readU32(b.data(), b.size(), sh, "MDL saber vertices");
+                const std::uint32_t uvOffset = readU32(b.data(), b.size(), sh + 4u, "MDL saber uvs");
+                const std::uint32_t normalOffset = readU32(b.data(), b.size(), sh + 8u, "MDL saber normals");
+                Saber saber;
+                requireRange(b.size(), 12u + vertexOffset,
+                             static_cast<std::size_t>(node.vertexCount) * 12u, "MDL saber vertex data");
+                requireRange(b.size(), 12u + uvOffset,
+                             static_cast<std::size_t>(node.vertexCount) * 8u, "MDL saber uv data");
+                requireRange(b.size(), 12u + normalOffset,
+                             static_cast<std::size_t>(node.vertexCount) * 12u, "MDL saber normal data");
+                for (std::uint32_t i = 0; i < node.vertexCount; ++i) {
+                    const std::size_t vo = 12u + vertexOffset + static_cast<std::size_t>(i) * 12u;
+                    const std::size_t uo = 12u + uvOffset + static_cast<std::size_t>(i) * 8u;
+                    const std::size_t no = 12u + normalOffset + static_cast<std::size_t>(i) * 12u;
+                    saber.positions.push_back({readF32(b.data(), b.size(), vo, "MDL saber x"),
+                                               readF32(b.data(), b.size(), vo + 4u, "MDL saber y"),
+                                               readF32(b.data(), b.size(), vo + 8u, "MDL saber z")});
+                    saber.uvs.push_back({readF32(b.data(), b.size(), uo, "MDL saber u"),
+                                         readF32(b.data(), b.size(), uo + 4u, "MDL saber v")});
+                    saber.normals.push_back({readF32(b.data(), b.size(), no, "MDL saber nx"),
+                                             readF32(b.data(), b.size(), no + 4u, "MDL saber ny"),
+                                             readF32(b.data(), b.size(), no + 8u, "MDL saber nz")});
+                }
+                node.saber = std::move(saber);
+            } else if (node.type & 0x100u) {
+                const std::size_t dh = m + 332u;
+                requireRange(b.size(), dh, 28u, "MDL dangly header");
+                const std::uint32_t constraintOffset = readU32(b.data(), b.size(), dh, "MDL dangly constraints");
+                const std::uint32_t constraintCount = readU32(b.data(), b.size(), dh + 4u, "MDL dangly count");
+                Dangly dangly;
+                dangly.displacement = readF32(b.data(), b.size(), dh + 12u, "MDL dangly displacement");
+                dangly.tightness = readF32(b.data(), b.size(), dh + 16u, "MDL dangly tightness");
+                dangly.period = readF32(b.data(), b.size(), dh + 20u, "MDL dangly period");
+                requireRange(b.size(), 12u + constraintOffset,
+                             static_cast<std::size_t>(constraintCount) * 4u, "MDL dangly constraints data");
+                dangly.constraints.reserve(constraintCount);
+                for (std::uint32_t i = 0; i < constraintCount; ++i) {
+                    dangly.constraints.push_back(readF32(
+                        b.data(), b.size(), 12u + constraintOffset + i * 4u, "MDL dangly constraint"));
+                }
+                node.dangly = std::move(dangly);
+            } else if (node.type & 0x40u) {
                 const std::size_t sh = m + 332u;
                 requireRange(b.size(), sh, 100u, "MDL skin header");
                 Skin skin;
@@ -579,6 +623,17 @@ std::size_t Mdl::skinnedNodeCount() const
     return count;
 }
 
+std::size_t Mdl::danglyNodeCount() const
+{
+    std::size_t count = 0;
+    for (const Node& node : nodes_) {
+        if (node.dangly.has_value()) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 float Mdl::skinBindError() const
 {
     float maxError = 0.0f;
@@ -777,7 +832,8 @@ std::vector<MdlMeshTriangle> Mdl::meshTriangles() const
     return posedTriangles({}, 0.0f);
 }
 
-std::vector<MdlMeshTriangle> Mdl::posedTriangles(const std::string& animation, float time) const
+std::vector<MdlMeshTriangle> Mdl::posedTriangles(const std::string& animation, float time,
+                                                 float danglyTime) const
 {
     const int clip = animation.empty() ? -1 : animationIndex(animation);
     const Animation* anim = clip >= 0 ? &animationData_[static_cast<std::size_t>(clip)] : nullptr;
@@ -800,16 +856,24 @@ std::vector<MdlMeshTriangle> Mdl::posedTriangles(const std::string& animation, f
         const bool skinned = node.skin.has_value();
         for (std::uint32_t i = 0; i < node.vertexCount; ++i) {
             const std::size_t o = node.mdxOffset + static_cast<std::size_t>(i) * node.stride;
-            Vec3 local{readF32(mdx_.data(), mdx_.size(), o, "MDX x"),
-                       readF32(mdx_.data(), mdx_.size(), o + 4u, "MDX y"),
-                       readF32(mdx_.data(), mdx_.size(), o + 8u, "MDX z")};
-            Vec3 normal{readF32(mdx_.data(), mdx_.size(), o + 12u, "MDX nx"),
-                        readF32(mdx_.data(), mdx_.size(), o + 16u, "MDX ny"),
-                        readF32(mdx_.data(), mdx_.size(), o + 20u, "MDX nz")};
+            Vec3 local;
+            Vec3 normal;
             Vec2 uv{0.0f, 0.0f};
-            if (node.stride >= 32u) {
-                uv = {readF32(mdx_.data(), mdx_.size(), o + 24u, "MDX u"),
-                      readF32(mdx_.data(), mdx_.size(), o + 28u, "MDX v")};
+            if (node.saber.has_value() && i < node.saber->positions.size()) {
+                local = node.saber->positions[i];
+                normal = node.saber->normals[i];
+                uv = node.saber->uvs[i];
+            } else {
+                local = {readF32(mdx_.data(), mdx_.size(), o, "MDX x"),
+                         readF32(mdx_.data(), mdx_.size(), o + 4u, "MDX y"),
+                         readF32(mdx_.data(), mdx_.size(), o + 8u, "MDX z")};
+                normal = {readF32(mdx_.data(), mdx_.size(), o + 12u, "MDX nx"),
+                          readF32(mdx_.data(), mdx_.size(), o + 16u, "MDX ny"),
+                          readF32(mdx_.data(), mdx_.size(), o + 20u, "MDX nz")};
+                if (node.stride >= 32u) {
+                    uv = {readF32(mdx_.data(), mdx_.size(), o + 24u, "MDX u"),
+                          readF32(mdx_.data(), mdx_.size(), o + 28u, "MDX v")};
+                }
             }
             if (skinned) {
                 const Skin& skin = *node.skin;
@@ -877,6 +941,17 @@ std::vector<MdlMeshTriangle> Mdl::posedTriangles(const std::string& animation, f
                                      nodePose.translation.y + transformed.y,
                                      nodePose.translation.z + transformed.z});
                 normals.push_back(normalize(transform(nodePose.rotation, normal)));
+            }
+            if (danglyTime >= 0.0f && node.dangly.has_value()
+                && i < node.dangly->constraints.size()) {
+                const float constraint = std::clamp(node.dangly->constraints[i], 0.0f, 1.0f);
+                const float stiffness = std::max(node.dangly->tightness, 0.1f);
+                const float frequency = std::max(node.dangly->period, 0.1f);
+                const float settle = 1.0f
+                    - std::exp(-stiffness * danglyTime) * std::cos(frequency * danglyTime);
+                const float droop = node.dangly->displacement * constraint
+                    * std::clamp(settle, 0.0f, 1.0f);
+                positions.back().z -= droop;
             }
             uvs.push_back(uv);
         }

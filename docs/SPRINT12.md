@@ -33,18 +33,23 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
 6. **Cutscene cameras** - GIT `CameraList` cameras load with position,
    orientation, pitch, height and FOV; DLG `CameraID` entries/replies select a
    static camera; `CameraAnimation` values map to camera-MDL `CUT###W` clips
-   and play through `camerahook`; `GameSession::camera()` prefers the animated
-   clip and falls back to the static camera.
-7. **Script bridge** - `animations.2da` names and flags load; `PlayAnimation`
+   and play through `camerahook`; `CameraAngle` 1/2/3 height-offset presets
+   compute speaker/target framing; `GameSession::camera()` prefers the animated
+   clip, then the preset, then the static camera.
+7. **Dangly and saber meshes** - dangly headers and per-vertex constraints
+   drive a deterministic damped settle; saber headers expose their static
+   vertex/UV/normal arrays. Saber nodes carry no dynamic vertex constraints,
+   which is recorded as shipped-data evidence rather than invented physics.
+8. **Script bridge** - `animations.2da` names and flags load; `PlayAnimation`
    and `ActionPlayAnimation` map an animation id to a clip and play it on
    `OBJECT_SELF`.
-8. **Rendering** - both GL and Vulkan refresh entity vertex buffers when the
+9. **Rendering** - both GL and Vulkan refresh entity vertex buffers when the
    animation revision changes; room geometry and bind-pose topology stay
    stable.
-9. **Regression** - **36/36** CTest, 117/117 modules, VM 8,666/8,666 with
+10. **Regression** - **36/36** CTest, 117/117 modules, VM 8,666/8,666 with
    0 mismatches, scene parity 0.0300, Python 143 tests / 7 skips, install
    sentinel 0 session changes.
-10. **Evidence and docs** - report, technical note, fixture and logs.
+11. **Evidence and docs** - report, technical note, fixture and logs.
 
 ## Lanes
 
@@ -55,15 +60,15 @@ parity 0.0300, Python 143 tests / 7 skips, install unchanged.
 | s12-03-playback | session animation state, defaults, update loop | `engine/src/game/GameSession.*` |
 | s12-04-script | `animations.2da` and `PlayAnimation` bridge | `engine/src/game/Rules.*`, `GameSession.*` |
 | s12-05-attach | equipped weapon models on hand hooks | `engine/src/kotor/Entities.cpp`, `Formats.h` |
-| s12-06-camera | GIT cameras and DLG camera playback | `engine/src/kotor/Scene.cpp`, `Tlk.cpp`, `GameSession.*` |
+| s12-06-camera | GIT cameras, DLG `CameraID`/`CameraAnimation`, height presets | `engine/src/kotor/Scene.cpp`, `Tlk.cpp`, `GameSession.*` |
 | s12-07-render | entity mesh refresh for GL/Vulkan | `engine/src/render/*`, `Application.cpp` |
 | s12-08-evidence | gate, report, recon note, regression logs | `engine/CMakeLists.txt`, `docs/` |
 
 ## Outside this sprint
 
-- Dangly/saber vertex simulation and particle/light controllers.
 - Animation blending, transitions, root motion and inverse kinematics.
-- Camera effects (`CamVidEffect`) and height-offset camera presets.
+- `CamVidEffect` values beyond the shipped -1/0 defaults.
+- Particle/light controllers and emitter simulation.
 - Audio/EAX, Bink movies, lip sync, full `.gui`, minigames, localization,
   mods/Override runtime precedence and the P6 content checklist.
 

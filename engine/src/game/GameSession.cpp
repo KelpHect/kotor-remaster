@@ -153,6 +153,13 @@ kotor::Vec3 rotateQuaternion(float w, float x, float y, float z, kotor::Vec3 val
             (xz - wy) * value.x + (yz + wx) * value.y + (1.0f - xx - yy) * value.z};
 }
 
+kotor::Vec3 rotateZ(kotor::Vec3 value, float radians)
+{
+    const float c = std::cos(radians);
+    const float s = std::sin(radians);
+    return {value.x * c - value.y * s, value.x * s + value.y * c, value.z};
+}
+
 // Barycentric floor height at (x, y); the highest triangle below maxZ wins.
 bool floorHeight(const kotor::Scene& scene, float x, float y, float maxZ, float& out)
 {
@@ -376,18 +383,24 @@ void GameSession::updateAnimations(float dt)
         return;
     }
     for (kotor::EntityMesh& mesh : scene_.entityMeshes) {
-        if (!mesh.model || mesh.animation.empty()) {
+        if (!mesh.model) {
+            continue;
+        }
+        const bool dangly = mesh.model->danglyNodeCount() > 0;
+        if (mesh.animation.empty() && !dangly) {
             continue;
         }
         const float duration = mesh.model->animationDuration(mesh.animation);
-        if (duration <= 0.0f) {
-            continue;
+        if (!mesh.animation.empty() && duration > 0.0f) {
+            mesh.animationTime += dt;
+            if (mesh.animationLoop) {
+                mesh.animationTime = std::fmod(mesh.animationTime, duration);
+            } else {
+                mesh.animationTime = std::min(mesh.animationTime, duration);
+            }
         }
-        mesh.animationTime += dt;
-        if (mesh.animationLoop) {
-            mesh.animationTime = std::fmod(mesh.animationTime, duration);
-        } else {
-            mesh.animationTime = std::min(mesh.animationTime, duration);
+        if (dangly) {
+            mesh.danglyTime += dt;
         }
         kotor::refreshEntityMesh(mesh);
         ++animationRevision_;
@@ -1478,6 +1491,25 @@ SceneCamera GameSession::camera() const
             return camera;
         }
     }
+    if (dialogueView_.active && dialogueView_.cameraAngle >= 1
+        && dialogueView_.cameraAngle <= 3) {
+        kotor::Vec3 speaker = position_;
+        if (activeDialogue_.has_value()) {
+            for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+                if (objectForEntity(i) == activeDialogue_->npcObject) {
+                    speaker = scene_.entities[i].position;
+                    break;
+                }
+            }
+        }
+        const SceneCamera preset = presetCamera(dialogueView_.cameraAngle,
+                                                dialogueView_.camHeightOffset,
+                                                dialogueView_.tarHeightOffset,
+                                                speaker, position_);
+        if (preset.fovYDegrees > 0.0f) {
+            return preset;
+        }
+    }
     if (dialogueView_.active && dialogueView_.cameraId >= 0) {
         const SceneCamera camera = cinematicCamera(dialogueView_.cameraId);
         if (camera.fovYDegrees > 0.0f) {
@@ -1545,6 +1577,45 @@ bool GameSession::setDialogueCameraAnimationForTest(const std::string& model,
     dialogueCameraTime_ = 0.0f;
     dialogueCameraDuration_ = duration;
     return true;
+}
+
+SceneCamera GameSession::presetCamera(std::int32_t angle, float camHeight, float targetHeight,
+                                      kotor::Vec3 speaker, kotor::Vec3 target) const
+{
+    if (angle < 1 || angle > 3) {
+        return {};
+    }
+    const kotor::Vec3 up{0.0f, 0.0f, 1.0f};
+    const kotor::Vec3 delta = target - speaker;
+    const float range = kotor::length(delta);
+    const kotor::Vec3 direction = range > 0.0f ? delta * (1.0f / range) : kotor::Vec3{0.0f, 1.0f, 0.0f};
+    const float yaw = (angle == 2 ? -30.0f : angle == 3 ? 90.0f : 30.0f) * kPi / 180.0f;
+    const kotor::Vec3 rotated = rotateZ(direction, yaw);
+    kotor::Vec3 targetPoint{};
+    kotor::Vec3 eye{};
+    if (angle == 1) {
+        targetPoint = speaker - direction * 0.2f
+            + up * (targetHeight - 0.04f - 0.2f * range);
+        eye = targetPoint - rotated * (0.5f + range)
+            + up * (camHeight + 0.2f * range);
+    } else if (angle == 2) {
+        const kotor::Vec3 a = speaker - up * (0.1f * range);
+        const kotor::Vec3 b = target - up * (0.05f * range);
+        const kotor::Vec3 d = a - b;
+        targetPoint = b + d * 0.3f + up * targetHeight;
+        eye = targetPoint - rotated * 0.8f - kotor::normalize(rotated) * 0.15f
+            + up * camHeight;
+    } else {
+        const kotor::Vec3 d = speaker - target;
+        targetPoint = target + d * 0.5f + up * (targetHeight - 0.2f * range);
+        eye = targetPoint - rotated * 1.5f + up * (camHeight + 0.3f * range);
+    }
+    SceneCamera camera;
+    camera.eye = eye;
+    camera.forward = kotor::normalize(targetPoint - eye);
+    camera.up = up;
+    camera.fovYDegrees = 60.0f;
+    return camera;
 }
 
 SceneCamera GameSession::cinematicCamera(std::int32_t cameraId) const
@@ -1894,6 +1965,9 @@ void GameSession::showDialogueEntry(std::uint32_t entryIndex)
     dialogueView_.text = entry.text.empty() ? "(No text)" : entry.text;
     dialogueView_.entry = entryIndex;
     dialogueView_.cameraId = entry.cameraId;
+    dialogueView_.cameraAngle = entry.cameraAngle;
+    dialogueView_.camHeightOffset = entry.camHeightOffset;
+    dialogueView_.tarHeightOffset = entry.tarHeightOffset;
     setDialogueCameraClip(entry.cameraAnimation);
     dialogueView_.options.clear();
     if (!entry.script.empty() && activeDialogue_->firedEntries.insert(entryIndex).second) {
@@ -1949,6 +2023,11 @@ void GameSession::chooseDialogueOption(std::size_t optionIndex)
     if (reply.cameraId >= 0) {
         dialogueView_.cameraId = reply.cameraId;
     }
+    if (reply.cameraAngle >= 0) {
+        dialogueView_.cameraAngle = reply.cameraAngle;
+    }
+    dialogueView_.camHeightOffset = reply.camHeightOffset;
+    dialogueView_.tarHeightOffset = reply.tarHeightOffset;
     if (reply.cameraAnimation >= 0) {
         setDialogueCameraClip(reply.cameraAnimation);
     }

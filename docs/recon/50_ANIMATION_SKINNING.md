@@ -113,14 +113,31 @@ right   = R(orientation) * (1,0,0)
 up      = right x forward
 ```
 
-DLG entry/reply `CameraID` selects a static GIT camera. `CameraAnimation`
-values use `value = 1200 + (N-1)` -> clip `CUT{N:03d}W`; `m01aa_c01` names
-`m01aa_c01_cam` and resolves `CUT001W`..`CUT021W`. The camera model's
-`camerahook` node is evaluated with the same pose evaluator; local +Y is
-forward and local +Z is up. `camera()` prefers the animated clip, then the
-static camera id, then first-person.
+DLG `CameraAngle` 1/2/3 uses `CamHeightOffset`/`TarHeightOffset` and the
+verified speaker/target framing formulas. `camera()` prefers the animated
+clip, then a preset, then a static `CameraID`, then first-person.
+`CamVidEffect` is -1/0 only in the Endar Spire DLGs, so non-default effect
+semantics are evidence-based out of scope.
 
-## 7. Rendering refresh
+## 7. Dangly and saber meshes
+
+Dangly nodes (`type & 0x100`) carry a 28-byte header after the trimesh:
+constraint offset/count, `displacement`, `tightness`, `period`, and an unused
+danglyverts pointer. Per-vertex constraints are floats in model order. The
+runtime applies a deterministic damped settle:
+
+```text
+settle = 1 - exp(-max(tightness, 0.1) * t) * cos(max(period, 0.1) * t)
+z    -= displacement * constraint * clamp(settle, 0, 1)
+```
+
+Saber nodes (`type & 0x800`) carry a SaberHeader after the trimesh with
+vertex/UV/normal offsets. The 22 shipped saber MDLs have stride 0 trimesh
+headers but valid 352-vertex / 24-face SaberHeader geometry. They contain no
+constraints or springs, so they render as static blade geometry; dynamic saber
+physics is re-scoped with this shipped-data evidence.
+
+## 8. Rendering refresh
 
 `EntityMesh` retains its `Mdl`, bind triangles and deformed vertices.
 `refreshEntityMesh` regroups the posed triangles by texture and updates
@@ -129,7 +146,7 @@ dynamic `glBufferData` for each changed entity mesh; Vulkan maps the existing
 host-visible vertex allocation and copies the new vertices. The application
 refreshes only when `GameSession::animationRevision()` changes.
 
-## 8. Validation
+## 9. Validation
 
 - `n_bith`: 10 clips, `pause1` 3.0 s, `walk` 1.0 s, 4 skinned nodes, bind
   error < 1e-3, posed vertices move and remain finite.
@@ -139,7 +156,7 @@ refreshes only when `GameSession::animationRevision()` changes.
   0.96 s; `animations.2da` row 6 is `pause1` and loops.
 - Script fixture `anim_script_test.ncs` calls `PlayAnimation(6,1,0)` on an
   NPC and the NPC's clip becomes `pause1`.
-- Endar Spire now has 19 attached weapon meshes and 65 scene textures; the
+- Endar Spire now has 21 attached weapon meshes and 67 scene textures; the
   weapon gate checks hand hooks, models, finite vertices, parent linkage and
   motion while the creature animates.
 - GIT `CameraList` loads; `cinematicCamera` matches the stored eye height and
@@ -147,10 +164,14 @@ refreshes only when `GameSession::animationRevision()` changes.
   dialogue camera; `end_trask01` contains a non-negative `CameraID`.
 - `m01aa_c01` resolves `m01aa_c01_cam` with 18 `CUT###W` clips; `CUT001W`
   poses `camerahook`, is finite and unit-forward, and advances between frames.
+- `c_rakghoul` has a dangly node whose constraints move vertices and remain
+  finite; `w_lghtsbr_001` loads static SaberHeader geometry with no dangly or
+  skin nodes.
+- `CameraAngle` 1/2/3 presets compute finite, unit-forward cameras; all
+  `CamVidEffect` values in the Endar Spire DLGs are -1/0.
 
-## 9. Limits
+## 10. Limits
 
-Animation blending/transitions, root motion, inverse kinematics, camera
-effects/height-offset presets, dangly/saber simulation, particle/light
-controllers and audio/cutscenes are outside Sprint 12. They consume this pose
-evaluator but are separate systems.
+Animation blending/transitions, root motion, inverse kinematics, non-default
+`CamVidEffect` semantics, particle/light controllers and audio/cutscenes are
+outside Sprint 12. They consume this pose evaluator but are separate systems.
