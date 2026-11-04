@@ -5,16 +5,19 @@ animation/skinning, weapons, cutscene cameras and visual FX. Sprint 13 adds
 the runtime audio layer: shipped WAV/MP3 streams decode, area music/ambience
 and UTS sound emitters load, dialogue voice-over plays, a deterministic mixer
 provides 3D attenuation/pan and EAX-style reverb, and the script sound/music
-actions are bridged.
+actions are bridged. It also closes SSF sound sets, Bink container/pixel
+decode and presentation, LIP visemes, GUI screens and the three minigame state
+machines.
 
 ## 1. Build and test result
 
 ```text
-100% tests passed, 0 tests failed out of 37
-Total Test time (real) = 244.20 sec
+100% tests passed, 0 tests failed out of 40
+Total Test time (real) = 170.65 sec
 ```
 
-The new target is `kotor_audio`; all Sprint 12 targets still pass.
+The new targets are `kotor_audio`, `kotor_media`, `kotor_gui` and
+`kotor_minigame`; all Sprint 12 targets still pass.
 
 ## 2. Stream decode
 
@@ -94,22 +97,38 @@ Gate assertions: `creature_soundset`, `ssf_slots`, `ssf_filled`,
 - **Bink 1 containers**: `BIK` magic, version `i`, `filesize-8`, duplicate
   frame counts, dimensions, per-frame offset table and EOF sentinel. All **61**
   shipped movies validate; dimensions are 640x272 (53), 640x360 (5) and
-  640x480 (3); the header frame clock is 29.97/30 fps.
+  640x480 (3). The header stores FPS as a u32 numerator/denominator pair
+  (`2997/100` = 29.97); an earlier `/1000` interpretation was fixed.
+- **Pixel decode**: the native `BinkPlayer` (`engine/src/kotor/BinkDecoder.*`)
+  links FFmpeg 9.0.2 `libavcodec/libavformat/libswscale`, decodes Bink video
+  sequentially and converts each frame to RGBA. `01a.bik` frame 0 is
+  **640x272, 696,320 bytes**, SHA-256
+  `301f27f0e6022367e847de4861de2be72c25c1ffd0ccfdadbd920673f9bf1430`,
+  exactly the recorded FFmpeg oracle. Frames 1, rewind and replay are
+  deterministic.
+- **Presentation**: `GameSession` owns the player, advances it at the header
+  clock, exposes `movieFrame()`/`movieFrameIndex()` and supports seeking.
+  `--movie-play` decodes and presents the frame as a GL/Vulkan texture through
+  ImGui with the HUD hidden; `--movie-shot` writes a top-down BMP and
+  `--movie-time` seeks before presentation. Evidence:
+  `docs/evidence/s13/movie-gl.png`, `movie-vk.png`, `movie-frame.png`.
 - **Movie state**: `PlayMovie`/`QueueMovie`/`PlayMovieQueue` start/queue the
   Bink playback clock; `IsMoviePlaying` returns the state; duration comes from
-  the parsed frame count and fps. Pixel decoding/presentation is the Sprint 14
-  renderer step (FFmpeg is the documented pixel oracle).
+  the parsed frame count and fps.
 - **LIP V1.0**: `LIP V1.0` + duration + frame count + packed `(time, viseme)`;
   all **18,206** LIP resources in the 123 `lips/*.mod` archives validate
   (monotonic times, viseme 0-15, first 0, last == duration).
 - `GameSession` attaches the LIP whose resref matches the DLG/voice `Sound`
   and exposes `lipTime`/`lipViseme`/`lipSyncActive`, so dialogue playback has a
-  deterministic viseme timeline for the Sprint 14 facial rig.
+  deterministic viseme timeline.
 
-Gate assertions: `bik_movies`, `bik_headers`, `bik_frames`, `lip_mods`,
-`lip_resources`, `lip_timelines`, `lip_viseme_sample`, `movie_play`,
-`movie_state`, `movie_duration`, `movie_clock`, `movie_queue`,
-`movie_queue_play`.
+Gate assertions: `bik_movies`, `bik_headers`, `bik_frames`, `bink_decoder`,
+`bink_open`, `bink_frame0_decode`, `bink_frame0_size`, `bink_frame0_sha256`,
+`bink_frame1_decode`, `bink_frame1_size`, `bink_rewind`,
+`bink_frame0_reproducible`, `lip_mods`, `lip_resources`, `lip_timelines`,
+`lip_viseme_sample`, `movie_play`, `movie_state`, `movie_duration`,
+`movie_frame0_decode`, `movie_frame0_sha256`, `movie_clock`,
+`movie_frame_clock`, `movie_queue`, `movie_queue_play`, `movie_queue_frame`.
 
 ## 8. GUI screens
 
@@ -167,19 +186,20 @@ before `SDL_Quit` (the parity crash fix).
 
 ## 11. Regression
 
-- **CTest: 40/40 passed** (284.34 s).
+- **CTest: 40/40 passed** (170.65 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
-- **GL/Vulkan parity: 0.0449**, PASS.
+- **GL/Vulkan parity: 0.0000**, PASS.
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
 ## 12. Next sprint
 
-Sprint 13 closes audio plus Bink/LIP media data. The pixel renderer, facial
-rig and remaining UI/content systems are planned in
+Sprint 13 closes audio, Bink/LIP media and native movie presentation. The
+facial rig, Bink audio sync and remaining UI/content systems are planned in
 [`docs/SPRINT14.md`](SPRINT14.md); the shipped-data evidence is `media.log`
-(61 BIK, 18,206 LIP, 107 head rows / 106 models / 0 viseme clips) and `bik-oracle.txt`.
+(61 BIK, native RGBA SHA-256, 18,206 LIP, 107 head rows / 106 models / 0 viseme
+clips) and `bik-oracle.txt`.
 
 ## Evidence index
 
@@ -187,6 +207,7 @@ rig and remaining UI/content systems are planned in
 - `docs/evidence/s13/media.log`
 - `docs/evidence/s13/gui.log`
 - `docs/evidence/s13/minigame.log`
+- `docs/evidence/s13/movie-gl.png`, `movie-vk.png`, `movie-frame.png`
 - `docs/evidence/s13/bik-oracle.txt`, `bik-oracle.png`
 - `docs/evidence/s13/ctest.log`
 - `docs/evidence/s13/all-modules.log`, `all-modules.json`

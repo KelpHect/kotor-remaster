@@ -82,3 +82,42 @@ endif()
 if(NOT DEFINED imgui_SOURCE_DIR)
     message(FATAL_ERROR "ImGui source directory was not populated")
 endif()
+
+# ---------------------------------------------------------------------------
+# FFmpeg shared development build (libavcodec/libavformat/libswscale) for
+# Bink 1 video pixel decode. Optional: point KOTOR_FFMPEG_ROOT at an FFmpeg
+# shared build with include/ and lib/ (or set the environment variable).
+# The pixel oracle is the same FFmpeg 9.0.2 Bink decoder.
+# ---------------------------------------------------------------------------
+if(DEFINED ENV{KOTOR_FFMPEG_ROOT} AND NOT "$ENV{KOTOR_FFMPEG_ROOT}" STREQUAL "")
+    set(KOTOR_FFMPEG_ROOT "$ENV{KOTOR_FFMPEG_ROOT}" CACHE PATH "FFmpeg shared development build")
+else()
+    set(KOTOR_FFMPEG_ROOT "C:/dev-overflow/ffmpeg-dev/ffmpeg-n9.0-latest-win64-gpl-shared-9.0"
+        CACHE PATH "FFmpeg shared development build")
+endif()
+
+set(KOTOR_HAVE_FFMPEG OFF)
+if(EXISTS "${KOTOR_FFMPEG_ROOT}/include/libavcodec/avcodec.h")
+    find_library(KOTOR_AVCODEC_LIBRARY NAMES avcodec
+                 PATHS "${KOTOR_FFMPEG_ROOT}/lib" NO_DEFAULT_PATH)
+    find_library(KOTOR_AVFORMAT_LIBRARY NAMES avformat
+                 PATHS "${KOTOR_FFMPEG_ROOT}/lib" NO_DEFAULT_PATH)
+    find_library(KOTOR_AVUTIL_LIBRARY NAMES avutil
+                 PATHS "${KOTOR_FFMPEG_ROOT}/lib" NO_DEFAULT_PATH)
+    find_library(KOTOR_SWSCALE_LIBRARY NAMES swscale
+                 PATHS "${KOTOR_FFMPEG_ROOT}/lib" NO_DEFAULT_PATH)
+    if(KOTOR_AVCODEC_LIBRARY AND KOTOR_AVFORMAT_LIBRARY AND KOTOR_AVUTIL_LIBRARY
+       AND KOTOR_SWSCALE_LIBRARY)
+        set(KOTOR_HAVE_FFMPEG ON)
+        add_library(kotor_ffmpeg INTERFACE)
+        target_include_directories(kotor_ffmpeg SYSTEM INTERFACE "${KOTOR_FFMPEG_ROOT}/include")
+        target_link_libraries(kotor_ffmpeg INTERFACE
+            "${KOTOR_AVCODEC_LIBRARY}" "${KOTOR_AVFORMAT_LIBRARY}"
+            "${KOTOR_AVUTIL_LIBRARY}" "${KOTOR_SWSCALE_LIBRARY}")
+        target_compile_definitions(kotor_ffmpeg INTERFACE KOTOR_HAVE_FFMPEG=1)
+        message(STATUS "FFmpeg Bink decoder: ${KOTOR_FFMPEG_ROOT}")
+    endif()
+endif()
+if(NOT KOTOR_HAVE_FFMPEG)
+    message(STATUS "FFmpeg Bink decoder: disabled (set KOTOR_FFMPEG_ROOT)")
+endif()

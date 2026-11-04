@@ -197,6 +197,30 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.mediaTest = true;
             continue;
         }
+        if (arg == "--movie-play") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--movie-play requires a movie resref");
+            }
+            result.options.moviePlay = value;
+            continue;
+        }
+        if (arg == "--movie-shot") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--movie-shot requires a BMP path");
+            }
+            result.options.movieShot = value;
+            continue;
+        }
+        if (arg == "--movie-time") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--movie-time requires seconds");
+            }
+            result.options.movieTime = std::strtof(value, nullptr);
+            continue;
+        }
         if (arg == "--gui-test") {
             result.options.guiTest = true;
             continue;
@@ -503,6 +527,9 @@ void printUsage()
         << "  --animation-test      Assert MDL clips, skinning and playback\n"
         << "  --audio-test          Assert WAV/MP3 decode, buses and area audio\n"
         << "  --media-test          Assert Bink containers and LIP viseme timelines\n"
+        << "  --movie-play <resref> Play a Bink movie (native pixel decode)\n"
+        << "  --movie-time <sec>    Seek the movie before presenting\n"
+        << "  --movie-shot <bmp>    Save the first presented movie frame\n"
         << "  --gui-test            Assert all shipped GUI screens and control trees\n"
         << "  --minigame-test       Assert pazaak/swoop/turret state machines\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"

@@ -83,6 +83,9 @@ public:
     void refreshEntityMeshes(const kotor::Scene& scene);
     void render(const SceneCamera& camera, int width, int height);
     bool screenshot(const std::filesystem::path& path, int width, int height);
+    bool uploadMovieFrame(int width, int height, const std::uint8_t* rgba,
+                          GlUint& texture, std::string& error);
+    void destroyMovieFrame(GlUint& texture);
 
 private:
     struct GlMesh {

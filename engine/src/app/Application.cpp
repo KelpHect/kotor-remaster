@@ -4,10 +4,12 @@
 #include "core/Log.h"
 #include "game/GameSession.h"
 #include "game/Minigames.h"
+#include "kotor/BinkDecoder.h"
 #include "kotor/Formats.h"
 #include "kotor/Gui.h"
 #include "kotor/SaveGame.h"
 #include "render/Backend.h"
+#include "render/Bmp.h"
 #include "script/Corpus.h"
 
 #include "imgui.h"
@@ -364,6 +366,28 @@ void drawSystemsUi(GameSession& game)
         break;
     }
     ImGui::End();
+}
+
+void drawMovieOverlay(const kotor::BinkVideoFrame& frame, std::uint64_t texture)
+{
+    const ImGuiIO& io = ImGui::GetIO();
+    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+    ImGui::SetNextWindowSize(io.DisplaySize);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::Begin("Movie", nullptr,
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove
+                     | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground
+                     | ImGuiWindowFlags_NoBringToFrontOnFocus);
+    const float scale = std::min(io.DisplaySize.x / static_cast<float>(frame.width),
+                                 io.DisplaySize.y / static_cast<float>(frame.height));
+    const ImVec2 size(static_cast<float>(frame.width) * scale,
+                      static_cast<float>(frame.height) * scale);
+    ImGui::SetCursorPos(ImVec2((io.DisplaySize.x - size.x) * 0.5f,
+                               (io.DisplaySize.y - size.y) * 0.5f));
+    ImGui::Image(static_cast<ImTextureID>(texture), size);
+    ImGui::End();
+    ImGui::PopStyleVar(2);
 }
 
 void drawGuiScreenOverlay(const kotor::GuiScreen& screen)
@@ -1775,6 +1799,36 @@ int runMediaTest(GameSession& game)
     check(bikHeaders, "bik_headers");
     check(bikFrames > 10000, "bik_frames");
 
+    // Native Bink pixel decode against the recorded FFmpeg RGBA oracle.
+    constexpr const char* kOracleSha =
+        "301f27f0e6022367e847de4861de2be72c25c1ffd0ccfdadbd920673f9bf1430";
+    check(kotor::BinkPlayer::available(), "bink_decoder");
+    kotor::BinkPlayer bink;
+    std::string binkError;
+    const std::filesystem::path firstMovie = movies / "01a.bik";
+    check(bink.open(firstMovie.string(), binkError), "bink_open");
+    kotor::BinkVideoFrame decodedFrame;
+    check(bink.decodeFrame(0, decodedFrame, binkError), "bink_frame0_decode");
+    check(decodedFrame.width == 640 && decodedFrame.height == 272
+              && decodedFrame.rgba.size() == 640u * 272u * 4u,
+          "bink_frame0_size");
+    const std::string frameHash = kotor::sha256Bytes(
+        decodedFrame.rgba.data(), decodedFrame.rgba.size());
+    logInfo(concat("media test: 01a frame0 sha256=", frameHash));
+    logInfo(concat("media test: 01a fps=", bink.framesPerSecond(),
+                   " frames=", bink.frameCount()));
+    check(frameHash == kOracleSha, "bink_frame0_sha256");
+    kotor::BinkVideoFrame decodedFrame1;
+    check(bink.decodeFrame(1, decodedFrame1, binkError), "bink_frame1_decode");
+    check(decodedFrame1.width == 640 && decodedFrame1.height == 272,
+          "bink_frame1_size");
+    kotor::BinkVideoFrame replayedFrame;
+    check(bink.decodeFrame(0, replayedFrame, binkError), "bink_rewind");
+    check(kotor::sha256Bytes(replayedFrame.rgba.data(), replayedFrame.rgba.size())
+              == kOracleSha,
+          "bink_frame0_reproducible");
+    bink.close();
+
     std::size_t lipMods = 0;
     std::size_t lipCount = 0;
     bool lipValid = true;
@@ -1895,10 +1949,26 @@ int runMediaTest(GameSession& game)
     check(game.playMovie("01a"), "movie_play");
     check(game.moviePlaying() && game.movieName() == "01a", "movie_state");
     check(game.movieDuration() > 0.0f, "movie_duration");
-    game.update(1.0f, InputState{});
+    const kotor::BinkVideoFrame* playbackFrame = game.movieFrame();
+    check(playbackFrame != nullptr && playbackFrame->width == 640
+              && playbackFrame->height == 272,
+          "movie_frame0_decode");
+    check(playbackFrame != nullptr
+              && kotor::sha256Bytes(playbackFrame->rgba.data(),
+                                    playbackFrame->rgba.size()) == kOracleSha,
+          "movie_frame0_sha256");
+    for (int step = 0; step < 20; ++step) {
+        game.update(0.05f, InputState{});
+    }
     check(game.movieTime() > 0.0f, "movie_clock");
+    logInfo(concat("media test: movie clock index=", game.movieFrameIndex(),
+                   " time=", game.movieTime()));
+    check(game.movieFrameIndex() >= 29 && game.movieFrameIndex() <= 31,
+          "movie_frame_clock");
     check(game.queueMovie("01c", false) && game.playMovieQueue(), "movie_queue");
     check(game.movieName() == "01c", "movie_queue_play");
+    check(game.movieFrame() != nullptr && game.movieFrameIndex() == 0,
+          "movie_queue_frame");
 
     logInfo(ok ? "media test: PASS" : "media test: FAIL");
     return ok ? 0 : 61;
@@ -3697,6 +3767,19 @@ int runApplication(const Options& options)
             logWarn(concat("GUI screen parse failed: ", error.what()));
         }
     }
+    if (game && !options.moviePlay.empty()) {
+        if (game->playMovie(options.moviePlay)) {
+            if (options.movieTime >= 0.0f) {
+                game->seekMovie(options.movieTime);
+            }
+            logInfo(concat("Movie playing: ", game->movieName(),
+                           " duration=", game->movieDuration(),
+                           " frame=", game->movieFrameIndex(),
+                           " decoder=", kotor::BinkPlayer::available() ? "ffmpeg" : "none"));
+        } else {
+            logWarn(concat("Movie failed to start: ", options.moviePlay));
+        }
+    }
 
     std::vector<BackendKind> candidates;
     if (options.backend == BackendKind::Auto) {
@@ -3797,6 +3880,10 @@ int runApplication(const Options& options)
     std::uint64_t frames = 0;
     bool loggedUiGeometry = false;
     std::uint32_t lastAnimationRevision = UINT32_MAX;
+    std::uint64_t movieTexture = 0;
+    int uploadedMovieFrame = -1;
+    bool movieShotSaved = false;
+    bool movieUploadWarned = false;
     bool running = true;
     bool mouseRelative = game && !options.headless;
     float mouseDx = 0.0f;
@@ -3902,6 +3989,16 @@ int runApplication(const Options& options)
             mouseDx = 0.0f;
             mouseDy = 0.0f;
             game->update(static_cast<float>(deltaMs / 1000.0), input);
+            if (!options.movieShot.empty() && !movieShotSaved
+                && game->movieFrame() != nullptr) {
+                const kotor::BinkVideoFrame* frame = game->movieFrame();
+                if (writeBmpTopDown(options.movieShot, frame->width, frame->height,
+                                    frame->rgba)) {
+                    movieShotSaved = true;
+                    logInfo(concat("Movie frame saved: ", options.movieShot,
+                                   " frame=", game->movieFrameIndex()));
+                }
+            }
             state.backend->setCamera(game->camera());
             if (game->animationRevision() != lastAnimationRevision) {
                 lastAnimationRevision = game->animationRevision();
@@ -3913,13 +4010,35 @@ int runApplication(const Options& options)
             state.backend->newFrame();
             ImGui_ImplSDL3_NewFrame();
             ImGui::NewFrame();
-            drawDebugUi(state, frames, smoothedFrameMs, elapsedSeconds, exitReason);
-            if (state.guiScreen) {
-                drawGuiScreenOverlay(*state.guiScreen);
+            const bool movieMode = game && game->moviePlaying();
+            if (!movieMode) {
+                drawDebugUi(state, frames, smoothedFrameMs, elapsedSeconds, exitReason);
+                if (state.guiScreen) {
+                    drawGuiScreenOverlay(*state.guiScreen);
+                }
             }
             if (game) {
-                drawGameUi(*game, smoothedFrameMs > 0.0 ? static_cast<float>(1000.0 / smoothedFrameMs) : 0.0f,
-                           game->interactionPrompt());
+                if (!movieMode) {
+                    drawGameUi(*game, smoothedFrameMs > 0.0 ? static_cast<float>(1000.0 / smoothedFrameMs) : 0.0f,
+                               game->interactionPrompt());
+                }
+                if (game->movieFrame() != nullptr) {
+                    if (game->movieFrameIndex() != uploadedMovieFrame) {
+                        std::string movieError;
+                        const kotor::BinkVideoFrame* frame = game->movieFrame();
+                        if (state.backend->uploadMovieFrame(
+                                frame->width, frame->height, frame->rgba.data(),
+                                movieTexture, movieError)) {
+                            uploadedMovieFrame = game->movieFrameIndex();
+                        } else if (!movieUploadWarned) {
+                            logWarn(concat("Movie overlay unavailable: ", movieError));
+                            movieUploadWarned = true;
+                        }
+                    }
+                    if (movieTexture != 0) {
+                        drawMovieOverlay(*game->movieFrame(), movieTexture);
+                    }
+                }
             }
             ImGui::Render();
 
@@ -3936,6 +4055,9 @@ int runApplication(const Options& options)
         const FrameStatus status = state.backend->renderFrame(error);
         if (status == FrameStatus::Fatal) {
             logError(concat("Frame failed: ", error));
+            if (state.backend) {
+                state.backend->releaseMovieFrame(movieTexture);
+            }
             destroyRuntime(state);
             audioOutput.reset();
             SDL_Quit();
@@ -3973,6 +4095,9 @@ int runApplication(const Options& options)
     logInfo(concat("Backend summary: ", state.backend->info().name, " | ",
                    state.backend->info().apiVersion, " | ", state.backend->info().swapchain));
 
+    if (state.backend) {
+        state.backend->releaseMovieFrame(movieTexture);
+    }
     destroyRuntime(state);
     audioOutput.reset();
     SDL_Quit();

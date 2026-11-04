@@ -48,6 +48,21 @@ public:
     // Releases GPU resources and the ImGui renderer/platform backends.
     virtual void shutdown() = 0;
 
+    // Movie overlay: uploads one decoded RGBA frame and returns a backend
+    // texture identifier suitable for ImGui::Image. Callers release it with
+    // releaseMovieFrame before backend shutdown.
+    virtual bool uploadMovieFrame(int width, int height, const std::uint8_t* rgba,
+                                  std::uint64_t& textureId, std::string& error)
+    {
+        (void)width;
+        (void)height;
+        (void)rgba;
+        (void)textureId;
+        error = "movie overlay is not supported by this backend";
+        return false;
+    }
+    virtual void releaseMovieFrame(std::uint64_t& textureId) { (void)textureId; }
+
     // Scene pass hooks. Backends that cannot draw a scene keep the defaults;
     // the application still runs its logical loop and HUD.
     virtual void setScene(const kotor::Scene* scene) { (void)scene; }

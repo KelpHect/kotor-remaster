@@ -84,6 +84,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(kotor_data STATIC
     src/kotor/Archive.cpp
+    src/kotor/BinkDecoder.cpp
     src/kotor/Entities.cpp
     src/kotor/Gff.cpp
     src/kotor/GffWrite.cpp
@@ -99,6 +100,9 @@ add_library(kotor_data STATIC
     src/kotor/TwoDa.cpp)
 target_include_directories(kotor_data PUBLIC src)
 target_link_libraries(kotor_data PUBLIC kotor_engine_options)
+if(TARGET kotor_ffmpeg)
+    target_link_libraries(kotor_data PUBLIC kotor_ffmpeg)
+endif()
 
 # ---------------------------------------------------------------------------
 # Audio: WAV/MP3 decode, deterministic buses and EAX-style reverb.
@@ -162,6 +166,19 @@ target_compile_definitions(kotor_engine PRIVATE
 if(WIN32)
     target_link_libraries(kotor_engine PRIVATE opengl32)
     set_target_properties(kotor_engine PROPERTIES WIN32_EXECUTABLE OFF)
+endif()
+
+if(TARGET kotor_ffmpeg)
+    file(GLOB KOTOR_FFMPEG_DLLS
+        "${KOTOR_FFMPEG_ROOT}/bin/avcodec-*.dll"
+        "${KOTOR_FFMPEG_ROOT}/bin/avformat-*.dll"
+        "${KOTOR_FFMPEG_ROOT}/bin/avutil-*.dll"
+        "${KOTOR_FFMPEG_ROOT}/bin/swresample-*.dll"
+        "${KOTOR_FFMPEG_ROOT}/bin/swscale-*.dll")
+    add_custom_command(TARGET kotor_engine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${KOTOR_FFMPEG_DLLS} "$<TARGET_FILE_DIR:kotor_engine>"
+        COMMENT "Copying FFmpeg runtime DLLs")
 endif()
 
 # Keep the shader folder beside the executable in sync on every build; the

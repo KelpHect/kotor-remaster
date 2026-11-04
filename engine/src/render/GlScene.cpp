@@ -484,4 +484,36 @@ bool GlScene::screenshot(const std::filesystem::path& path, int width, int heigh
     return writeBmp(path, width, height, pixels);
 }
 
+bool GlScene::uploadMovieFrame(int width, int height, const std::uint8_t* rgba,
+                               GlUint& texture, std::string& error)
+{
+    if (width <= 0 || height <= 0 || rgba == nullptr) {
+        error = "invalid movie frame";
+        return false;
+    }
+    if (texture == 0) {
+        gl_.GenTextures(1, &texture);
+        if (texture == 0) {
+            error = "glGenTextures failed for the movie frame";
+            return false;
+        }
+    }
+    gl_.BindTexture(kGlTexture2D, texture);
+    gl_.PixelStorei(kGlUnpackAlignment, 1);
+    gl_.TexImage2D(kGlTexture2D, 0, static_cast<GlInt>(kGlRgba8), width, height, 0,
+                   kGlRgba, kGlUnsignedByte, rgba);
+    gl_.TexParameteri(kGlTexture2D, kGlTextureMinFilter, static_cast<GlInt>(kGlLinear));
+    gl_.TexParameteri(kGlTexture2D, kGlTextureMagFilter, static_cast<GlInt>(kGlLinear));
+    gl_.BindTexture(kGlTexture2D, 0);
+    return true;
+}
+
+void GlScene::destroyMovieFrame(GlUint& texture)
+{
+    if (texture != 0) {
+        gl_.DeleteTextures(1, &texture);
+        texture = 0;
+    }
+}
+
 } // namespace ke

@@ -798,6 +798,38 @@ void VulkanScene::draw(VkCommandBuffer commandBuffer, const SceneCamera& camera,
     }
 }
 
+bool VulkanScene::uploadMovieFrame(int width, int height, const std::uint8_t* rgba,
+                                   std::string& error)
+{
+    if (width <= 0 || height <= 0 || rgba == nullptr) {
+        error = "invalid movie frame";
+        return false;
+    }
+    destroyMovieFrame();
+    kotor::Texture texture;
+    texture.name = "movie";
+    texture.image.width = width;
+    texture.image.height = height;
+    texture.image.rgba.assign(rgba, rgba + static_cast<std::size_t>(width) * height * 4u);
+    return createTexture(texture, movieFrame_, error);
+}
+
+void VulkanScene::destroyMovieFrame()
+{
+    if (movieFrame_.view != VK_NULL_HANDLE) {
+        vkDestroyImageView(device_, movieFrame_.view, nullptr);
+        movieFrame_.view = VK_NULL_HANDLE;
+    }
+    if (movieFrame_.image != VK_NULL_HANDLE) {
+        vkDestroyImage(device_, movieFrame_.image, nullptr);
+        movieFrame_.image = VK_NULL_HANDLE;
+    }
+    if (movieFrame_.memory != VK_NULL_HANDLE) {
+        vkFreeMemory(device_, movieFrame_.memory, nullptr);
+        movieFrame_.memory = VK_NULL_HANDLE;
+    }
+}
+
 void VulkanScene::shutdown()
 {
     if (device_ == VK_NULL_HANDLE) {
@@ -809,6 +841,7 @@ void VulkanScene::shutdown()
     meshes_.clear();
     scene_ = nullptr;
     destroyTextures();
+    destroyMovieFrame();
     destroyDepth();
     if (sampler_ != VK_NULL_HANDLE) {
         vkDestroySampler(device_, sampler_, nullptr);

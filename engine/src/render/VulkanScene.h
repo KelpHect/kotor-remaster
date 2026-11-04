@@ -25,6 +25,12 @@ public:
     void draw(VkCommandBuffer commandBuffer, const SceneCamera& camera, VkExtent2D extent);
     void shutdown();
 
+    bool uploadMovieFrame(int width, int height, const std::uint8_t* rgba,
+                          std::string& error);
+    void destroyMovieFrame();
+    VkImageView movieFrameView() const { return movieFrame_.view; }
+    VkSampler sampler() const { return sampler_; }
+
     VkImageView depthView() const { return depthView_; }
     bool ready() const { return pipeline_ != VK_NULL_HANDLE; }
 
@@ -84,6 +90,7 @@ private:
     std::vector<GpuMesh> meshes_;
     const kotor::Scene* scene_ = nullptr;
     std::vector<GpuTexture> textures_;
+    GpuTexture movieFrame_;
     VkImage depthImage_ = VK_NULL_HANDLE;
     VkDeviceMemory depthMemory_ = VK_NULL_HANDLE;
     VkImageView depthView_ = VK_NULL_HANDLE;

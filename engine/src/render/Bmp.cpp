@@ -1,5 +1,6 @@
 #include "render/Bmp.h"
 
+#include <algorithm>
 #include <fstream>
 
 namespace ke {
@@ -69,6 +70,25 @@ bool writeBmp(const std::filesystem::path& path, int width, int height, const st
     }
     file.write(reinterpret_cast<const char*>(bmp.data()), static_cast<std::streamsize>(bmp.size()));
     return static_cast<bool>(file);
+}
+
+bool writeBmpTopDown(const std::filesystem::path& path, int width, int height,
+                     const std::vector<std::uint8_t>& rgba)
+{
+    if (width <= 0 || height <= 0
+        || rgba.size() < static_cast<std::size_t>(width) * height * 4u) {
+        return false;
+    }
+    const std::size_t rowBytes = static_cast<std::size_t>(width) * 4u;
+    std::vector<std::uint8_t> bottomUp(rgba.size());
+    for (int y = 0; y < height; ++y) {
+        const std::size_t source = static_cast<std::size_t>(y) * rowBytes;
+        const std::size_t destination =
+            static_cast<std::size_t>(height - 1 - y) * rowBytes;
+        std::copy_n(rgba.begin() + static_cast<std::ptrdiff_t>(source), rowBytes,
+                    bottomUp.begin() + static_cast<std::ptrdiff_t>(destination));
+    }
+    return writeBmp(path, width, height, bottomUp);
 }
 
 } // namespace ke
