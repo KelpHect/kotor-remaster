@@ -36,7 +36,9 @@ struct Options {
     bool audioTest = false;
     bool mediaTest = false;
     bool guiTest = false;
+    bool minigameTest = false;
     std::string guiScreen;
+    std::string minigameScript;
     std::string audioScript;
     std::string animationScript;
     std::string combatForceScript;

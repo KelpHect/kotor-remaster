@@ -25,7 +25,7 @@
 [INFO] Scene frame: eye 15.4248, 20.1215, 0.351596 meshes 143/143 textures 84 alpha batches 24 additive batches 17
 [INFO] Screenshot: E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s13-parity\parity-gl.bmp
 [INFO] Exit: frame limit reached (3)
-[INFO] Frames: 3 in 0.0806245 s (avg 26.8748 ms/frame)
+[INFO] Frames: 3 in 0.115189 s (avg 38.3964 ms/frame)
 [INFO] Backend summary: opengl | 4.5.0 Core Profile Context 26.10.1.261008 | double-buffered SDL window
 [INFO] KotOR module end_m01aa area m01aa from E:/SteamLibrary/steamapps/common/swkotor
 [INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
@@ -58,7 +58,7 @@
 [INFO] Vulkan scene draw: meshes 143/143 textures 84 alpha batches 24 additive batches 17 alpha pipeline ready additive pipeline ready eye 15.4248, 20.1215, 0.351596
 [INFO] Screenshot: E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s13-parity\parity-vulkan.bmp
 [INFO] Exit: frame limit reached (3)
-[INFO] Frames: 3 in 0.0870046 s (avg 29.0015 ms/frame)
+[INFO] Frames: 3 in 0.124957 s (avg 41.6523 ms/frame)
 [INFO] Backend summary: vulkan | instance 1.4.0 / device 1.4.359 | VK_FORMAT_B8G8R8A8_UNORM 960x540, 3 images, FIFO
 + E:\Projects\kotor-remaster\kotor-remaster\engine\build\msvc-release\kotor_engine.exe --module end_m01aa --gl --width 960 --height 540 --frames 3 --screenshot E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s13-parity\parity-gl.bmp
 + E:\Projects\kotor-remaster\kotor-remaster\engine\build\msvc-release\kotor_engine.exe --module end_m01aa --vulkan --width 960 --height 540 --frames 3 --screenshot E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s13-parity\parity-vulkan.bmp

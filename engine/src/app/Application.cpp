@@ -3,6 +3,7 @@
 #include "audio/Output.h"
 #include "core/Log.h"
 #include "game/GameSession.h"
+#include "game/Minigames.h"
 #include "kotor/Formats.h"
 #include "kotor/Gui.h"
 #include "kotor/SaveGame.h"
@@ -25,6 +26,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 
 namespace ke {
@@ -1501,6 +1503,215 @@ int runGuiTest(GameSession& game)
     check(unknownTypes == 0, "control_types");
     check(mainMenu, "mainmenu");
     return ok ? 0 : 62;
+}
+
+int runMinigameTest(GameSession& game, const std::string& scriptPath)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("minigame test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+
+    // Pazaak: deterministic deck, side cards and first-to-two-sets match.
+    const auto playPazaak = [](std::uint32_t seed) {
+        PazaakGame game;
+        game.reset(seed);
+        std::string transcript;
+        for (int step = 0; step < 256
+             && game.phase() != PazaakGame::Phase::MatchOver; ++step) {
+            if (game.phase() == PazaakGame::Phase::PlayerTurn) {
+                if (game.playerTotal() < 17) {
+                    game.playerDraw();
+                } else {
+                    game.playerStand();
+                }
+            } else if (game.phase() == PazaakGame::Phase::OpponentTurn) {
+                game.opponentTurn();
+            } else {
+                break;
+            }
+            transcript += std::to_string(static_cast<int>(game.phase())) + "|"
+                + std::to_string(game.playerTotal()) + "|"
+                + std::to_string(game.opponentTotal()) + "|"
+                + std::to_string(game.playerSets()) + "|"
+                + std::to_string(game.opponentSets()) + "|"
+                + std::to_string(game.deckRemaining()) + ";";
+        }
+        return std::make_tuple(transcript, game.phase(), game.playerSets(),
+                               game.opponentSets());
+    };
+    const auto pazaakA = playPazaak(0x13572468u);
+    const auto pazaakB = playPazaak(0x13572468u);
+    const auto pazaakC = playPazaak(0x24681357u);
+    check(std::get<0>(pazaakA) == std::get<0>(pazaakB), "pazaak_deterministic");
+    check(std::get<0>(pazaakA) != std::get<0>(pazaakC), "pazaak_seed_varies");
+    check(std::get<1>(pazaakA) == PazaakGame::Phase::MatchOver, "pazaak_match_over");
+    check(std::get<2>(pazaakA) == 2 || std::get<3>(pazaakA) == 2,
+          "pazaak_two_sets");
+    check(std::get<0>(pazaakA).size() > 32, "pazaak_turns");
+
+    PazaakGame pazaak;
+    pazaak.reset(7u);
+    check(pazaak.deckRemaining() == 40, "pazaak_deck");
+    check(pazaak.playerSide().size() == 4 && pazaak.playerSide()[0] == -1
+              && pazaak.playerSide()[1] == -2 && pazaak.playerSide()[2] == 3
+              && pazaak.playerSide()[3] == 4,
+          "pazaak_side_cards");
+    check(!pazaak.playerStand(), "pazaak_stand_requires_total");
+    check(!pazaak.playerPlaySide(9), "pazaak_side_bounds");
+    check(pazaak.playerPlaySide(3), "pazaak_side_play");
+    check(pazaak.playerTotal() == 4 && pazaak.playerSide().size() == 3,
+          "pazaak_side_total");
+    check(pazaak.playerDraw() && pazaak.deckRemaining() == 39, "pazaak_draw");
+    check(pazaak.playerTotal() >= 5 && pazaak.playerTotal() <= 14,
+          "pazaak_draw_range");
+    check(pazaak.phase() == PazaakGame::Phase::OpponentTurn, "pazaak_turn_order");
+    check(!pazaak.playerDraw(), "pazaak_draw_wrong_phase");
+    check(pazaak.opponentTurn(), "pazaak_opponent");
+    check(pazaak.playerSets() + pazaak.opponentSets() == 1, "pazaak_set_scored");
+
+    // Swoop: throttle/boost/brake and three laps of 3,000 m.
+    const auto runSwoop = []() {
+        SwoopRace race;
+        race.reset();
+        for (int frame = 0; frame < 60 * 150; ++frame) {
+            const float t = static_cast<float>(frame) / 60.0f;
+            race.update(1.0f / 60.0f, 1.0f, t > 5.0f, false);
+        }
+        return race.state();
+    };
+    const SwoopState swoopA = runSwoop();
+    const SwoopState swoopB = runSwoop();
+    check(swoopA.finished, "swoop_finished");
+    check(swoopA.lap == SwoopRace::kLaps, "swoop_laps");
+    check(swoopA.distance >= SwoopRace::kTrackLength * SwoopRace::kLaps,
+          "swoop_distance");
+    check(swoopA.speed > 100.0f && swoopA.time > 0.0f, "swoop_speed_time");
+    check(swoopA.distance == swoopB.distance && swoopA.speed == swoopB.speed
+              && swoopA.time == swoopB.time,
+          "swoop_deterministic");
+    SwoopRace braked;
+    braked.reset();
+    for (int frame = 0; frame < 60; ++frame) {
+        braked.update(1.0f / 60.0f, 1.0f, false, true);
+    }
+    check(braked.state().speed < swoopA.speed, "swoop_brake_slower");
+
+    // Turret: five approaching targets, hits/score and damage on arrival.
+    TurretGame turret;
+    turret.reset();
+    check(turret.targets().size() == 5, "turret_targets");
+    check(turret.fireAt(0), "turret_fire_hit");
+    check(turret.state().hits == 1 && turret.state().shots == 1
+              && turret.state().score == 100,
+          "turret_score");
+    check(!turret.fireAt(0), "turret_dead_target");
+    check(turret.state().shots == 1, "turret_shot_count");
+    turret.update(1.0f);
+    check(turret.state().hitPoints == 100, "turret_approach");
+    turret.update(10.0f);
+    check(!turret.targets()[1].alive && !turret.targets()[4].alive,
+          "turret_arrival");
+    check(turret.state().hitPoints == 20, "turret_damage");
+
+    TurretGame turretA;
+    TurretGame turretB;
+    turretA.reset();
+    turretB.reset();
+    for (TurretGame* sim : {&turretA, &turretB}) {
+        sim->update(0.5f);
+        sim->fireAt(2);
+        sim->update(2.0f);
+        sim->fireAt(3);
+    }
+    check(turretA.state().score == turretB.state().score
+              && turretA.state().hitPoints == turretB.state().hitPoints
+              && turretA.state().shots == 2 && turretA.state().hits == 2,
+          "turret_deterministic");
+
+    // Script bridge: the compiled fixture calls PlayPazaak(1, "", 0, FALSE,
+    // OBJECT_SELF); drive the match with the same stand-at-17 policy.
+    if (!scriptPath.empty()) {
+        std::ifstream scriptFile(scriptPath, std::ios::binary | std::ios::ate);
+        std::vector<std::uint8_t> scriptBytes;
+        if (scriptFile) {
+            const std::streamoff size = scriptFile.tellg();
+            scriptFile.seekg(0, std::ios::beg);
+            scriptBytes.resize(static_cast<std::size_t>(size));
+            if (!scriptBytes.empty()) {
+                scriptFile.read(reinterpret_cast<char*>(scriptBytes.data()), size);
+            }
+        }
+        check(!scriptBytes.empty(), "pazaak_script_loaded");
+        check(game.runScriptNcsForTest("minigame_script_test", scriptBytes,
+                                       game.objectForEntityIndex(0)),
+              "pazaak_script_ran");
+        check(game.pazaakActive(), "pazaak_script_start");
+        if (game.pazaakActive()) {
+            for (int step = 0; step < 256
+                 && game.pazaak()->phase() != PazaakGame::Phase::MatchOver; ++step) {
+                if (game.pazaak()->phase() == PazaakGame::Phase::PlayerTurn) {
+                    if (game.pazaak()->playerTotal() < 17) {
+                        game.pazaak()->playerDraw();
+                    } else {
+                        game.pazaak()->playerStand();
+                    }
+                } else if (game.pazaak()->phase() == PazaakGame::Phase::OpponentTurn) {
+                    game.pazaak()->opponentTurn();
+                } else {
+                    break;
+                }
+            }
+            check(game.pazaak()->phase() == PazaakGame::Phase::MatchOver,
+                  "pazaak_script_match_over");
+            const bool playerWon =
+                game.pazaak()->playerSets() > game.pazaak()->opponentSets();
+            game.resolvePazaakIfOver();
+            check(!game.pazaakActive(), "pazaak_script_resolved");
+            check(game.lastPazaakResult() == (playerWon ? 1 : 0),
+                  "pazaak_script_result");
+        }
+    }
+
+    // Wager settlement through GameSession.
+    const std::int32_t goldBefore = game.gold();
+    check(game.startPazaak(2, "", 25, false, 0), "pazaak_session_start");
+    if (game.pazaakActive()) {
+        for (int step = 0; step < 256
+             && game.pazaak()->phase() != PazaakGame::Phase::MatchOver; ++step) {
+            if (game.pazaak()->phase() == PazaakGame::Phase::PlayerTurn) {
+                if (game.pazaak()->playerTotal() < 17) {
+                    game.pazaak()->playerDraw();
+                } else {
+                    game.pazaak()->playerStand();
+                }
+            } else if (game.pazaak()->phase() == PazaakGame::Phase::OpponentTurn) {
+                game.pazaak()->opponentTurn();
+            } else {
+                break;
+            }
+        }
+        check(game.pazaak() != nullptr
+                  && game.pazaak()->phase() == PazaakGame::Phase::MatchOver,
+              "pazaak_session_match_over");
+        const bool playerWon =
+            game.pazaak()->playerSets() > game.pazaak()->opponentSets();
+        game.resolvePazaakIfOver();
+        check(game.lastPazaakResult() == (playerWon ? 1 : 0),
+              "pazaak_session_result");
+        const std::int32_t expected = std::max<std::int32_t>(
+            0, goldBefore + (playerWon ? 25 : -25));
+        check(game.gold() == expected, "pazaak_wager");
+    }
+
+    logInfo(concat("minigame test: pazaak sets=", std::get<2>(pazaakA), "-",
+                   std::get<3>(pazaakA), " turns=", std::get<0>(pazaakA).size(),
+                   " swoop distance=", swoopA.distance, " time=", swoopA.time,
+                   " turret score=", turret.state().score,
+                   " hp=", turret.state().hitPoints));
+    logInfo(ok ? "minigame test: PASS" : "minigame test: FAIL");
+    return ok ? 0 : 63;
 }
 
 int runMediaTest(GameSession& game)
@@ -3334,6 +3545,9 @@ int runApplication(const Options& options)
             }
             if (options.guiTest) {
                 return runGuiTest(*game);
+            }
+            if (options.minigameTest) {
+                return runMinigameTest(*game, options.minigameScript);
             }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);

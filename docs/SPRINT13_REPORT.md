@@ -125,23 +125,56 @@ Gate assertions: `bik_movies`, `bik_headers`, `bik_frames`, `lip_mods`,
 
 Gate assertions: `screens`, `controls`, `control_types`, `mainmenu`.
 
-## 9. Device
+## 9. Minigames
+
+Deterministic rule/state machines in `engine/src/game/Minigames.*`:
+
+- **Pazaak** - 40-card main deck (four copies of 1-10), xorshift shuffle,
+  four side cards `{-1,-2,3,4}` by default and `pazaakdecks.2da` rows when
+  started through `GameSession`, draw/stand/side play, bust > 20, opponent
+  stands at 17+ and spends side cards toward 20, first to two sets.
+  `reset(seed)` makes the whole match reproducible; deck exhaustion reshuffles
+  without losing set state. `PlayPazaak` (action 364) starts a session with
+  end script, wager and opponent; `GetLastPazaakResult` (365) reports 1/0, and
+  the wager is settled when the match ends.
+- **Swoop** - throttle/boost/brake drive speed toward a gear target
+  (35-140 m/s); 3 laps of a 3,000 m track, 150-second gate run finishes at
+  9,001.53 m in 66.20 s.
+- **Turret** - five targets at fixed angles/distances approach at 12 m/s;
+  `fireAt` records shots/hits/score (100 per kill) and rejects dead targets;
+  targets that reach the player remove 20 hit points each.
+
+Gate assertions: `pazaak_deterministic`, `pazaak_seed_varies`,
+`pazaak_match_over`, `pazaak_two_sets`, `pazaak_turns`, `pazaak_deck`,
+`pazaak_side_cards`, `pazaak_stand_requires_total`, `pazaak_side_bounds`,
+`pazaak_side_play`, `pazaak_side_total`, `pazaak_draw`, `pazaak_draw_range`,
+`pazaak_turn_order`, `pazaak_draw_wrong_phase`, `pazaak_opponent`,
+`pazaak_set_scored`, `swoop_finished`, `swoop_laps`, `swoop_distance`,
+`swoop_speed_time`, `swoop_deterministic`, `swoop_brake_slower`,
+`turret_targets`, `turret_fire_hit`, `turret_score`, `turret_dead_target`,
+`turret_shot_count`, `turret_approach`, `turret_arrival`, `turret_damage`,
+`turret_deterministic`, `pazaak_script_loaded`, `pazaak_script_ran`,
+`pazaak_script_start`, `pazaak_script_match_over`, `pazaak_script_resolved`,
+`pazaak_script_result`, `pazaak_session_start`, `pazaak_session_match_over`,
+`pazaak_session_result`, `pazaak_wager`.
+
+## 10. Device
 
 `audio::Output` opens an SDL3 playback stream (48 kHz float stereo) and pulls
 the mixer in the audio callback. Live runs log `Audio device: <name>`; headless
 tests use the same mixer without a device. The output stream is destroyed
 before `SDL_Quit` (the parity crash fix).
 
-## 10. Regression
+## 11. Regression
 
-- **CTest: 39/39 passed** (244.20 s).
+- **CTest: 40/40 passed** (284.34 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0449**, PASS.
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
-## 11. Next sprint
+## 12. Next sprint
 
 Sprint 13 closes audio plus Bink/LIP media data. The pixel renderer, facial
 rig and remaining UI/content systems are planned in
@@ -152,6 +185,8 @@ rig and remaining UI/content systems are planned in
 
 - `docs/evidence/s13/audio.log`
 - `docs/evidence/s13/media.log`
+- `docs/evidence/s13/gui.log`
+- `docs/evidence/s13/minigame.log`
 - `docs/evidence/s13/bik-oracle.txt`, `bik-oracle.png`
 - `docs/evidence/s13/ctest.log`
 - `docs/evidence/s13/all-modules.log`, `all-modules.json`

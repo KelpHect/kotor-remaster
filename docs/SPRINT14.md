@@ -1,8 +1,9 @@
 # Sprint 14 - media renderer, facial rig and the remaining parity systems
 
 Status: **planned**. Sprint 13 closed audio, SSF sound sets, Bink containers/
-movie state and LIP viseme timelines. Sprint 14 covers the renderer/facial
-layer and the systems that were previously listed as future work.
+movie state, LIP viseme timelines, GUI screens and the pazaak/swoop/turret
+state machines. Sprint 14 covers the renderer/facial layer and the systems
+that remain.
 
 ## Why this is a separate sprint
 
@@ -29,15 +30,13 @@ layer and the systems that were previously listed as future work.
    model setup without corrupting the existing animation state.
 3. **GUI interaction/state** - wire control actions, screen transitions and
    panel state on top of the Sprint 13 parser/renderer.
-4. **Minigames** - pazaak, swoop and turret state machines with the shipped
-   rules/content.
-5. **Localization** - TLK language selection and localized path handling.
-6. **Mods/Override precedence** - five-pass VFS overlay and TSLPatcher-style
+4. **Localization** - TLK language selection and localized path handling.
+5. **Mods/Override precedence** - five-pass VFS overlay and TSLPatcher-style
    merges.
-7. **KotOR 2 world loading** - profile-gated K2 resources and world data.
-8. **Faction reputation and P6** - faction simulation and the all-area content
+6. **KotOR 2 world loading** - profile-gated K2 resources and world data.
+7. **Faction reputation and P6** - faction simulation and the all-area content
    checklist.
-9. **Regression** - full CTest, 117-module sweep, VM parity, GL/Vulkan parity,
+8. **Regression** - full CTest, 117-module sweep, VM parity, GL/Vulkan parity,
    Python suite and install sentinel.
 
 ## Evidence carried into Sprint 14
