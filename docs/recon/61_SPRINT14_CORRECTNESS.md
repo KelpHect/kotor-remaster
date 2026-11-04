@@ -158,6 +158,7 @@ converted with `tools/harness/semantic_from_events.py`.
 - `docs/evidence/s14/retail-differential.json`
 - `docs/evidence/s14/retail-trace-sources.json`
 - `docs/evidence/s14/retail-path-coverage.json`
+- `docs/evidence/s14/console-warp-attempts.log`
 - `docs/evidence/s14/retail-differential-s4-live-02.json`
 - `docs/evidence/s14/retail-differential-s4-live-03.json`
 - `docs/evidence/s14/retail-differential-s4-live-04.json`
