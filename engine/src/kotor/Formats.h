@@ -510,6 +510,7 @@ class Tlk {
 public:
     static Tlk parse(std::vector<std::uint8_t> bytes, std::string name);
 
+    std::uint32_t language() const { return language_; }
     std::size_t size() const { return entries_.size(); }
     std::string text(std::uint32_t strref) const;
     std::string sound(std::uint32_t strref) const;
@@ -521,6 +522,7 @@ private:
         std::string sound;
     };
     std::string name_;
+    std::uint32_t language_ = 0;
     std::vector<Entry> entries_;
     std::vector<std::uint8_t> text_;
 };

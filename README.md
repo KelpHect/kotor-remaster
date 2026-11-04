@@ -1,6 +1,6 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 13 (audio, media, GUI and minigames) complete - gate
+Status: **Sprint 13 (audio, media, GUI, localization and minigames) complete - gate
 S13 met (2026-11-04).** Shipped `streamwaves`, `streamsounds` and `streammusic`
 audio decodes (PCM 8/16, IMA ADPCM, MP3, KotOR `0x1d6` prefix); a 48 kHz
 stereo mixer provides music/ambient/effects/voice buses, per-voice
@@ -15,10 +15,11 @@ matches the FFmpeg PCM SHA-256 and follows the movie clock, dialogue viseme
 sampling is wired, and a procedural 16-viseme facial rig drives the shipped
 jaw/mouth/brow bones from the LIP clock; all 86 unique `.gui` screens (2,383
 controls, 8 types) parse and render interactively (hit-testing, control state,
-actions, screen stack and panel mapping); deterministic pazaak, swoop and
+actions, screen stack and panel mapping); TLK language selection and localized
+voice/LIP paths pass their gate; deterministic pazaak, swoop and
 turret state machines pass their
 seeded gates; SDL3 pulls the mixer for live playback while headless tests use
-the same mixer deterministically. **40/40 CTest targets** pass.
+the same mixer deterministically. **41/41 CTest targets** pass.
 Sprint 12 remains complete (creature animation, skinning, weapons and cutscene
 cameras: MDL clips/controllers/skinning, `pause1`/`pause` playback, weapon hand
 hooks, GIT/DLG cameras with `CUT###W` clips and height presets, dangly/saber
@@ -38,7 +39,7 @@ companion XP, systems UI); Sprint 6 remains complete (native script VM
 8,666/8,666 default and functional, 303,616 ACTION calls, dialogue entry 54,
 d20 rounds); Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255
 parity). Sprint 14+ remains: non-default `CamVidEffect` semantics (none in the
-K1 corpus), localization, mods/Override, KotOR 2 world loading, faction
+K1 corpus), mods/Override, KotOR 2 world loading, faction
 reputation simulation and the P6 content checklist.
 Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT14.md` and their
 `*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
@@ -195,7 +196,7 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   CTest **36/36**; 117-module sweep 0/0; VM parity 0; scene parity 0.0449;
   Python 143 tests / 7 skips; install unchanged. See
   `docs/recon/50_ANIMATION_SKINNING.md` and `docs/SPRINT12_REPORT.md`.
-- Sprint 13 (audio/media/GUI/minigames): PCM/IMA ADPCM/MP3 decode with KotOR prefix handling,
+- Sprint 13 (audio/media/GUI/localization/minigames): PCM/IMA ADPCM/MP3 decode with KotOR prefix handling,
   48 kHz four-bus mixer, 3D attenuation/pan, `soundeax.2da` reverb presets,
   GIT `AreaProperties` music/ambience, 45 UTS sound emitters, DLG voice-over,
   SSF sound sets/barks, appearance-driven footsteps, Bink container/movie
@@ -203,12 +204,14 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   GL/Vulkan movie presentation, Bink Audio decode with the FFmpeg PCM SHA-256
   and movie-clock sync, LIP viseme timelines, a procedural facial rig
   on the shipped jaw/mouth/brow bones, 86 `.gui` screens/2,383 controls with
-  an interactive control-state/screen-stack layer, deterministic
+  an interactive control-state/screen-stack layer, TLK language and localized
+  voice/LIP paths, deterministic
   pazaak/swoop/turret state
   machines, script sound/music/ambient actions, SDL3 output stream.
-  CTest **40/40**; 117-module sweep 0/0; VM parity 0; scene parity 0.0000;
+  CTest **41/41**; 117-module sweep 0/0; VM parity 0; scene parity 0.0000;
   Python 143 tests / 7 skips; install unchanged. See
-  `docs/recon/51_AUDIO.md` and `docs/SPRINT13_REPORT.md`.
+  `docs/recon/51_AUDIO.md`, `docs/recon/56_LOCALIZATION.md` and
+  `docs/SPRINT13_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -269,7 +272,8 @@ Start with:
 - [`docs/SPRINT11.md`](docs/SPRINT11.md) - Sprint 11 plan: gate S11, lanes, non-goals
 - [`docs/SPRINT13_REPORT.md`](docs/SPRINT13_REPORT.md) - Sprint 13 (audio/media/GUI/minigames) exit report
 - [`docs/SPRINT13.md`](docs/SPRINT13.md) - Sprint 13 plan: gate S13, lanes, non-goals
-- [`docs/SPRINT14.md`](docs/SPRINT14.md) - Sprint 14 plan: localization, mods and remaining parity
+- [`docs/SPRINT14.md`](docs/SPRINT14.md) - Sprint 14 plan: mods, KotOR 2 and remaining parity
+- [`docs/recon/56_LOCALIZATION.md`](docs/recon/56_LOCALIZATION.md) - TLK language and localized voice/LIP paths
 - [`docs/recon/55_BINK_AUDIO.md`](docs/recon/55_BINK_AUDIO.md) - Bink Audio decode, PCM oracle and movie-clock sync
 - [`docs/recon/54_FACIAL_RIG.md`](docs/recon/54_FACIAL_RIG.md) - viseme channels and the shipped head bone rig
 - [`docs/recon/53_MINIGAMES.md`](docs/recon/53_MINIGAMES.md) - pazaak, swoop and turret deterministic rules

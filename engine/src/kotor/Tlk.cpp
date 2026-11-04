@@ -36,6 +36,7 @@ Tlk Tlk::parse(std::vector<std::uint8_t> bytes, std::string name)
     }
     const std::uint32_t count = readU32(bytes.data(), bytes.size(), 12, "TLK entry count");
     const std::uint32_t textOffset = readU32(bytes.data(), bytes.size(), 16, "TLK text offset");
+    tlk.language_ = readU32(bytes.data(), bytes.size(), 8, "TLK language");
     requireRange(bytes.size(), 20, static_cast<std::size_t>(count) * 40u, "TLK entry table");
     if (count > 1'000'000u) {
         throw FormatError(tlk.name_ + ": implausible TLK entry count");
