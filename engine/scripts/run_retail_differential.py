@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Run the retail-vs-engine semantic differential as one CTest target.
+"""Run the manifest-driven retail-vs-engine semantic differential.
 
-Records one engine trace, one drained functional VM corpus, then diffs both
-against every supplied recorded retail trace.
+The manifest defines one engine trace per scenario (module start or save load)
+and one recorded retail trace per path. Each retail trace is diffed against its
+engine trace plus the drained functional VM corpus, with zero missing actions
+required.
 """
 from __future__ import annotations
 
@@ -18,56 +20,75 @@ def run(cmd: list[str]) -> int:
     return subprocess.run(cmd, check=False).returncode
 
 
+def resolve(root: Path, value: str) -> Path:
+    path = Path(value)
+    return path if path.is_absolute() else root / path
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--engine", required=True)
     parser.add_argument("--install", required=True)
     parser.add_argument("--corpus", required=True)
-    parser.add_argument("--retail-trace", action="append", required=True)
+    parser.add_argument("--manifest", required=True)
+    parser.add_argument("--repo-root", required=True)
     parser.add_argument("--module-usage", required=True)
     parser.add_argument("--action-table", required=True)
     parser.add_argument("--out-dir", required=True)
-    parser.add_argument("--module", default="end_m01aa")
     args = parser.parse_args(argv)
 
+    root = Path(args.repo_root)
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    engine_trace = out / "engine-semantic.jsonl"
-    vm_actions = out / "vm-actions.jsonl"
+    manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    engines = manifest["engines"]
+    traces = manifest["traces"]
 
-    code = run([args.engine, "--module", args.module,
-                "--retail-differential-test", "--engine-trace", str(engine_trace),
-                "--install", args.install, "--null", "--headless"])
-    if code != 0:
-        return code
+    vm_actions = out / "vm-actions.jsonl"
     code = run([args.engine, "--vm-corpus", args.corpus, "--vm-out", str(vm_actions),
                 "--vm-functional", "--vm-drain", "--null", "--headless"])
     if code != 0:
         return code
 
+    engine_traces: dict[str, Path] = {}
+    for name, spec in engines.items():
+        trace = out / f"engine-semantic-{name}.jsonl"
+        cmd = [args.engine, "--module", spec.get("start_module", "end_m01aa"),
+               "--retail-differential-test", "--engine-trace", str(trace),
+               "--install", args.install, "--null", "--headless"]
+        if spec.get("save"):
+            cmd += ["--save-fixture", str(resolve(root, spec["save"]))]
+        code = run(cmd)
+        if code != 0:
+            return code
+        engine_traces[name] = trace
+
     reports = []
-    for trace in args.retail_trace:
-        trace_path = Path(trace)
-        report = out / f"retail-differential-{trace_path.stem}.json"
+    for trace in traces:
+        engine = trace["engine"]
+        spec = engines[engine]
+        report = out / f"retail-differential-{trace['id']}.json"
         code = run([sys.executable,
                     str(Path(__file__).with_name("check_retail_differential.py")),
-                    "--engine-trace", str(engine_trace),
-                    "--retail-trace", str(trace_path),
+                    "--engine-trace", str(engine_traces[engine]),
+                    "--retail-trace", str(resolve(root, trace["retail"])),
                     "--vm-coverage", str(vm_actions),
                     "--module-usage", args.module_usage,
-                    "--module", args.module,
+                    "--module", trace["module"],
                     "--action-table", args.action_table,
-                    "--expect-choices", "9",
-                    "--expect-transitions", "1",
+                    "--expect-choices", str(spec.get("expect_choices", 0)),
+                    "--expect-transitions", str(spec.get("expect_transitions", 0)),
                     "--out", str(report)])
-        reports.append({"trace": str(trace_path), "report": str(report),
+        reports.append({"id": trace["id"], "engine": engine,
+                        "retail": trace["retail"], "report": str(report),
                         "pass": code == 0})
         if code != 0:
             break
 
     aggregate = {
         "schema": "kotor.retail-differential-set/1",
-        "engine_trace": str(engine_trace),
+        "manifest": str(args.manifest),
+        "engines": {name: str(path) for name, path in engine_traces.items()},
         "vm_coverage": str(vm_actions),
         "traces": reports,
         "pass": all(item["pass"] for item in reports),

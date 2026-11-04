@@ -1,0 +1,128 @@
+{
+  "choices_ok": true,
+  "engine_actions": 7761,
+  "engine_details": {
+    "choices": 9,
+    "phases": {
+      "generic": 4206,
+      "host": 719,
+      "probe": 13,
+      "specific": 2823
+    },
+    "transitions": 1
+  },
+  "engine_only": [
+    {
+      "action": 13,
+      "name": "SetPartyLeader"
+    },
+    {
+      "action": 44,
+      "name": "ActionCloseDoor"
+    },
+    {
+      "action": 59,
+      "name": "GetStringLength"
+    },
+    {
+      "action": 62,
+      "name": "GetStringRight"
+    },
+    {
+      "action": 63,
+      "name": "GetStringLeft"
+    },
+    {
+      "action": 65,
+      "name": "GetSubString"
+    },
+    {
+      "action": 202,
+      "name": "ActionWait"
+    },
+    {
+      "action": 232,
+      "name": "StringToInt"
+    },
+    {
+      "action": 262,
+      "name": "GetFirstInPersistentObject"
+    },
+    {
+      "action": 319,
+      "name": "GetDistanceBetween2D"
+    },
+    {
+      "action": 324,
+      "name": "SetLocked"
+    },
+    {
+      "action": 383,
+      "name": "ActionForceMoveToObject"
+    },
+    {
+      "action": 515,
+      "name": "RevealMap"
+    },
+    {
+      "action": 517,
+      "name": "ShowTutorialWindow"
+    },
+    {
+      "action": 575,
+      "name": "RemovePartyMember"
+    },
+    {
+      "action": 579,
+      "name": "SetGlobalBoolean"
+    },
+    {
+      "action": 695,
+      "name": "RemoveAvailableNPC"
+    },
+    {
+      "action": 759,
+      "name": "NoClicksFor"
+    }
+  ],
+  "engine_trace": "docs\\evidence\\s14\\engine-semantic-end_m01aa.jsonl",
+  "engine_unique": 82,
+  "executed_union": 372,
+  "expected_choices": 9,
+  "expected_transitions": 1,
+  "missing_all_execution": [],
+  "missing_all_implementation": [],
+  "missing_execution": [],
+  "missing_implementation": [],
+  "module": "end_m01aa",
+  "module_used_actions": 190,
+  "pass": true,
+  "retail_actions": 21491,
+  "retail_only_not_in_module": [
+    66,
+    195,
+    221,
+    248,
+    254,
+    255,
+    256,
+    259,
+    261,
+    323,
+    331,
+    375,
+    489,
+    522,
+    565,
+    701
+  ],
+  "retail_script_actions": 108,
+  "retail_trace": "artifacts\\lanes\\s4-trace\\live-03-semantic.jsonl",
+  "retail_unique": 124,
+  "schema": "kotor.retail-differential/1",
+  "transitions_ok": true,
+  "vm_coverage": [
+    "docs\\evidence\\s14\\vm-actions.jsonl"
+  ],
+  "vm_unique": 357
+}

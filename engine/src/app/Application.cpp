@@ -2420,9 +2420,23 @@ int runBugParityTest(GameSession& game)
     return ok ? 0 : 72;
 }
 
-int runRetailDifferentialTest(GameSession& game, const std::string& tracePath)
+int runRetailDifferentialTest(GameSession& game, const std::string& tracePath,
+                              const std::string& saveFixture)
 {
-    const int playCode = runPlaythrough(game);
+    int playCode = 0;
+    if (saveFixture.empty()) {
+        playCode = runPlaythrough(game);
+    } else if (!game.loadOriginalSave(saveFixture)) {
+        logError(concat("retail differential: cannot load save ", saveFixture));
+        return 75;
+    } else {
+        const std::string loadedModule = game.module();
+        for (int frame = 0; frame < 3600; ++frame) {
+            game.update(1.0f / 60.0f, InputState{});
+        }
+        logInfo(concat("retail differential: save=", saveFixture,
+                       " module=", loadedModule, " simulated=60s"));
+    }
     if (playCode != 0) {
         logError("retail differential: deterministic playthrough failed");
         return playCode;
@@ -5410,7 +5424,8 @@ int runApplication(const Options& options)
                 return runDifferentialTest(*game, options.saveFixtures);
             }
             if (options.retailDifferentialTest) {
-                return runRetailDifferentialTest(*game, options.engineTrace);
+                return runRetailDifferentialTest(*game, options.engineTrace,
+                                                 options.saveFixture);
             }
             if (options.modulePlaythroughTest) {
                 return runModulePlaythroughMatrix(game->installPath());

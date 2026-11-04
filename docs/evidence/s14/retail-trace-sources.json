@@ -1,0 +1,54 @@
+{
+  "manifest": "engine/tests/fixtures/retail_traces.json",
+  "schema": "kotor.retail-trace-sources/1",
+  "sources": [
+    {
+      "id": "live-02",
+      "kind": "recorded-live",
+      "retail": "artifacts\\lanes\\s4-trace\\live-02-semantic.jsonl",
+      "sha256": "712fdfc739515d99d6678173b6df8b29231e5e07dc9da43df273ee514571ab06"
+    },
+    {
+      "id": "live-03",
+      "kind": "recorded-live",
+      "retail": "artifacts\\lanes\\s4-trace\\live-03-semantic.jsonl",
+      "sha256": "bb50d7f76c3d8a66e7e8f61dd68a9c88591987e4e5ba8b863e6986ce2c2545f3"
+    },
+    {
+      "id": "live-04",
+      "kind": "recorded-live",
+      "retail": "artifacts\\lanes\\s4-trace\\live-04-semantic.jsonl",
+      "sha256": "78ee05bbbf0dbbc5a5def50f04bacce13f264f6228288ec95f634d71a97ba23f"
+    },
+    {
+      "id": "live-05",
+      "kind": "recorded-live",
+      "retail": "artifacts\\lanes\\s4-trace\\live-05-semantic.jsonl",
+      "sha256": "ae434db5964136a55faaf05589d181d7cdd30527ed0737e89d78cdf3f9cc421d"
+    },
+    {
+      "converter": "tools/harness/semantic_from_events.py",
+      "events": "artifacts/lanes/s4-trace/runs/s14-quest-taris-08/events.jsonl",
+      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-game> --consent",
+      "id": "taris-save",
+      "kind": "recorded-retail-save-load",
+      "raw_sha256": "50cc4ae8d98e733f8e1cf45326a6c852860e14433a5a8c11e7ba99ea682760ad",
+      "retail": "docs/evidence/s14/live-taris-semantic.jsonl",
+      "run": "s14-quest-taris-08",
+      "save": "artifacts/lanes/06-dynamic/profile/saves/000005 - TARIS",
+      "sha256": "90c2c0777f81f2e69c9ab8008ef82d729e10f703c55ef9553a536177e73bb786"
+    },
+    {
+      "converter": "tools/harness/semantic_from_events.py",
+      "events": "artifacts/lanes/s4-trace/runs/s14-quest-tariscl-02/events.jsonl",
+      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-game> --consent",
+      "id": "tarislc-save",
+      "kind": "recorded-retail-save-load",
+      "raw_sha256": "6beaa98b17919eb9a2d16d9959c45187631f63875c92b4032103086f442bb72f",
+      "retail": "docs/evidence/s14/live-tarislc-semantic.jsonl",
+      "run": "s14-quest-tariscl-02",
+      "save": "artifacts/lanes/06-dynamic/profile/saves/000006 - TARISLC",
+      "sha256": "4d566fae18f1728422a4d5b5cd0705ea629680e9b8b0595b9c723916af8af5da"
+    }
+  ]
+}
