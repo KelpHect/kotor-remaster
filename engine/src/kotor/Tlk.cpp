@@ -26,6 +26,53 @@ std::string Tlk::sound(std::uint32_t strref) const
     return strref < entries_.size() ? entries_[strref].sound : std::string{};
 }
 
+Tlk Tlk::fromEntries(
+    std::uint32_t language,
+    const std::vector<std::pair<std::string, std::string>>& entries,
+    std::string name)
+{
+    Tlk tlk;
+    tlk.name_ = std::move(name);
+    tlk.language_ = language;
+    tlk.entries_.resize(entries.size());
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        tlk.entries_[i].sound = entries[i].second;
+        tlk.entries_[i].offset = static_cast<std::uint32_t>(tlk.text_.size());
+        tlk.entries_[i].length = static_cast<std::uint32_t>(entries[i].first.size());
+        tlk.text_.insert(tlk.text_.end(), entries[i].first.begin(), entries[i].first.end());
+        tlk.text_.push_back(0);
+    }
+    return tlk;
+}
+
+Tlk Tlk::merge(const Tlk& base, const Tlk& patch, std::string name,
+               std::size_t replaceCount)
+{
+    const std::size_t replaces = replaceCount == static_cast<std::size_t>(-1)
+        ? patch.size() : std::min(replaceCount, patch.size());
+    const std::size_t count = base.size() + (patch.size() - replaces);
+    std::vector<std::pair<std::string, std::string>> entries;
+    entries.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        const bool fromPatch = i < replaces || i >= base.size();
+        const std::size_t patchIndex = i < replaces ? i : replaces + (i - base.size());
+        std::string text = fromPatch && patchIndex < patch.size()
+            ? patch.text(static_cast<std::uint32_t>(patchIndex)) : std::string{};
+        std::string sound = fromPatch && patchIndex < patch.size()
+            ? patch.sound(static_cast<std::uint32_t>(patchIndex)) : std::string{};
+        if (i < base.size()) {
+            if (text.empty()) {
+                text = base.text(static_cast<std::uint32_t>(i));
+            }
+            if (sound.empty()) {
+                sound = base.sound(static_cast<std::uint32_t>(i));
+            }
+        }
+        entries.emplace_back(std::move(text), std::move(sound));
+    }
+    return fromEntries(base.language(), entries, std::move(name));
+}
+
 Tlk Tlk::parse(std::vector<std::uint8_t> bytes, std::string name)
 {
     Tlk tlk;

@@ -53,6 +53,7 @@ struct DialogueView {
     std::uint32_t entry = UINT32_MAX;
     std::int32_t cameraId = -1;
     std::int32_t cameraAngle = -1;
+    std::int32_t camVidEffect = 0;
     float camHeightOffset = 0.0f;
     float tarHeightOffset = 0.0f;
 };
@@ -170,6 +171,7 @@ public:
     void chooseDialogueOption(std::size_t optionIndex);
     void endDialogue();
     const DialogueView& dialogue() const { return dialogueView_; }
+    int unsupportedCamVidEffects() const { return unsupportedCamVidEffects_; }
     bool usePlaceable(std::size_t entityIndex);
 
     void attackNearestHostile();
@@ -365,6 +367,7 @@ private:
     std::optional<kotor::Tlk> tlk_;
     std::optional<ActiveDialogue> activeDialogue_;
     DialogueView dialogueView_;
+    int unsupportedCamVidEffects_ = 0;
     std::shared_ptr<kotor::Mdl> dialogueCameraModel_;
     std::string dialogueCameraClip_;
     float dialogueCameraTime_ = 0.0f;

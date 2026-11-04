@@ -74,6 +74,22 @@ constexpr float kPlayerRadius = 0.28f;
 constexpr float kStepHeight = 0.55f;
 constexpr float kGravity = 18.0f;
 
+kotor::EntityKind entityKindForSaved(kotor::SavedObjectState::Kind kind)
+{
+    switch (kind) {
+    case kotor::SavedObjectState::Kind::Creature: return kotor::EntityKind::Creature;
+    case kotor::SavedObjectState::Kind::Door: return kotor::EntityKind::Door;
+    case kotor::SavedObjectState::Kind::Placeable: return kotor::EntityKind::Placeable;
+    case kotor::SavedObjectState::Kind::Trigger: return kotor::EntityKind::Trigger;
+    case kotor::SavedObjectState::Kind::Store: return kotor::EntityKind::Store;
+    case kotor::SavedObjectState::Kind::Encounter: return kotor::EntityKind::Encounter;
+    case kotor::SavedObjectState::Kind::Waypoint: return kotor::EntityKind::Waypoint;
+    case kotor::SavedObjectState::Kind::Sound: return kotor::EntityKind::Sound;
+    case kotor::SavedObjectState::Kind::Other: break;
+    }
+    return kotor::EntityKind::Unknown;
+}
+
 float clamp(float value, float low, float high)
 {
     return std::max(low, std::min(high, value));
@@ -2352,6 +2368,13 @@ void GameSession::showDialogueEntry(std::uint32_t entryIndex)
     dialogueView_.entry = entryIndex;
     dialogueView_.cameraId = entry.cameraId;
     dialogueView_.cameraAngle = entry.cameraAngle;
+    dialogueView_.camVidEffect = entry.camVidEffect;
+    if (entry.camVidEffect > 0) {
+        ++unsupportedCamVidEffects_;
+        logWarn(concat("CamVidEffect ", entry.camVidEffect, " on ",
+                       activeDialogue_->resref, " entry ", entryIndex,
+                       " is not supported; effect ignored"));
+    }
     dialogueView_.camHeightOffset = entry.camHeightOffset;
     dialogueView_.tarHeightOffset = entry.tarHeightOffset;
     setDialogueCameraClip(entry.cameraAnimation);
@@ -2426,6 +2449,13 @@ void GameSession::chooseDialogueOption(std::size_t optionIndex)
     }
     if (reply.cameraAngle >= 0) {
         dialogueView_.cameraAngle = reply.cameraAngle;
+    }
+    dialogueView_.camVidEffect = reply.camVidEffect;
+    if (reply.camVidEffect > 0) {
+        ++unsupportedCamVidEffects_;
+        logWarn(concat("CamVidEffect ", reply.camVidEffect, " on ",
+                       activeDialogue_->resref, " reply ", replyIndex,
+                       " is not supported; effect ignored"));
     }
     dialogueView_.camHeightOffset = reply.camHeightOffset;
     dialogueView_.tarHeightOffset = reply.tarHeightOffset;
@@ -4364,11 +4394,30 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder)
         }
     }
 
+    std::vector<bool> objectUsed(scene_.entities.size(), false);
     for (const kotor::SavedObjectState& state : saved.objects) {
-        const std::size_t index = findEntity(state.tag);
+        const kotor::EntityKind kind = entityKindForSaved(state.kind);
+        std::size_t index = static_cast<std::size_t>(-1);
+        float bestDistance = 1.0e30f;
+        for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+            const kotor::Entity& candidate = scene_.entities[i];
+            if (objectUsed[i] || candidate.tag != state.tag
+                || (kind != kotor::EntityKind::Unknown && candidate.kind != kind)) {
+                continue;
+            }
+            const float dx = candidate.position.x - state.position.x;
+            const float dy = candidate.position.y - state.position.y;
+            const float dz = candidate.position.z - state.position.z;
+            const float distance = dx * dx + dy * dy + dz * dz;
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                index = i;
+            }
+        }
         if (index == static_cast<std::size_t>(-1)) {
             continue;
         }
+        objectUsed[index] = true;
         kotor::Entity& entity = scene_.entities[index];
         entity.position = state.position;
         entity.bearing = state.bearing;

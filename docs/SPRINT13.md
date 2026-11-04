@@ -108,10 +108,10 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
 
 Gate S13 covers audio, Bink/LIP media, Bink audio, the facial rig, GUI
 interaction, localization, mods/Override, KotOR 2 world loading, faction
-reputation and the P6 all-area content checklist. Sprint 14
-([`docs/SPRINT14.md`](SPRINT14.md)) covers P6 correctness and the residuals,
-Sprint 15 ([`docs/SPRINT15.md`](SPRINT15.md)) the release candidate, Sprint 16
-([`docs/SPRINT16.md`](SPRINT16.md)) the first remaster stage, Sprint 17
+reputation and the P6 all-area content checklist. Sprint 14 completed P6
+correctness and the residuals ([`docs/SPRINT14_REPORT.md`](SPRINT14_REPORT.md)),
+Sprint 15 ([`docs/SPRINT15.md`](SPRINT15.md)) is the release candidate, Sprint
+16 ([`docs/SPRINT16.md`](SPRINT16.md)) the first remaster stage, Sprint 17
 ([`docs/SPRINT17.md`](SPRINT17.md)) the remaining remaster/modding/platform
 work, and Sprint 18 ([`docs/SPRINT18.md`](SPRINT18.md)) KotOR 2 gameplay
 parity as the final sprint.

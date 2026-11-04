@@ -32,7 +32,9 @@ The gate asserts:
 7. the install executable hash matches the pinned KotOR 1 build.
 
 `--write-baseline` regenerates the committed baseline after an intentional
-engine/data change. Validation mode never writes the baseline.
+engine/data change, but refuses to overwrite an existing baseline unless
+`--accept-baseline-change` is also passed. Validation mode never writes the
+baseline and rejects an unknown baseline schema.
 
 ## Shipped coverage
 

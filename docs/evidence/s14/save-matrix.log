@@ -1,0 +1,193 @@
+[INFO] Language: English (0) tlk entries=49265
+[INFO] KotOR module end_m01aa area m01aa from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 15 vertices: 237594 indices: 237594 batches: 49
+[INFO]   textures: 84 collision vertices: 850 facets: 1365
+[INFO]   entities: 218 (door 15, placeable 60, creature 26, waypoint 58, store 0, encounter 0)
+[INFO]   encounter volumes: 0
+[INFO]   entry: 15.4248, 20.1215, -1.275
+[INFO]   entity meshes: 142 triggers: 13 warnings: 0
+[INFO]   script hooks: 284 on 54 entities; scene hooks: 3; script runs: 25
+[INFO]   entity mesh 0 end_door05 verts=564 local=-3.07263,-0.121998,-0.047403 .. 3.08736,0.123205,3.00955
+[INFO]   entity mesh 1 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   entity mesh 2 end_door06 verts=216 local=-3.27325,-2.27388,2.55884 .. 0.366864,-1.71284,3.09327
+[INFO]   creature mesh Carth verts=8208 local=-0.612183,-0.286822,-0.00207151 .. 0.612183,0.167699,1.5574
+[INFO]   bounds: -170.51, -32.6442, -204.652 .. 238.793, 471.187, 291.201
+[INFO] save matrix: fixture_count=1
+[INFO] save matrix: load_000000 - QUICKSAVE=1
+[INFO] save matrix: module_000000 - QUICKSAVE=1
+[INFO] save matrix: gold_000000 - QUICKSAVE=1
+[INFO] save matrix: inventory_000000 - QUICKSAVE=1
+[INFO] save matrix: journal_000000 - QUICKSAVE=1
+[INFO] save matrix: party_000000 - QUICKSAVE=1
+[INFO] save matrix: companions_000000 - QUICKSAVE=1
+[INFO] save matrix: position_000000 - QUICKSAVE=1
+[INFO] save matrix: 000000 - QUICKSAVE sourceObjects=20 matched=13
+[INFO] save matrix: objects_matched_000000 - QUICKSAVE=1
+[INFO] save matrix: objects_state_000000 - QUICKSAVE=1
+[INFO] save matrix: save_000000 - QUICKSAVE=1
+[INFO] save matrix: written_module_000000 - QUICKSAVE=1
+[INFO] save matrix: written_area_000000 - QUICKSAVE=1
+[INFO] save matrix: written_gold_000000 - QUICKSAVE=1
+[INFO] save matrix: written_inventory_000000 - QUICKSAVE=1
+[INFO] save matrix: written_journal_000000 - QUICKSAVE=1
+[INFO] save matrix: written_party_000000 - QUICKSAVE=1
+[INFO] save matrix: written_flattened_000000 - QUICKSAVE=1
+[INFO] save matrix: written_position_000000 - QUICKSAVE=1
+[INFO] save matrix: reload_000000 - QUICKSAVE=1
+[INFO] save matrix: reload_gold_000000 - QUICKSAVE=1
+[INFO] save matrix: reload_inventory_000000 - QUICKSAVE=1
+[INFO] save matrix: reload_journal_000000 - QUICKSAVE=1
+[INFO] save matrix: reload_party_000000 - QUICKSAVE=1
+[INFO] save matrix: load_000001 - AUTOSAVE=1
+[INFO] save matrix: module_000001 - AUTOSAVE=1
+[INFO] save matrix: gold_000001 - AUTOSAVE=1
+[INFO] save matrix: inventory_000001 - AUTOSAVE=1
+[INFO] save matrix: journal_000001 - AUTOSAVE=1
+[INFO] save matrix: party_000001 - AUTOSAVE=1
+[INFO] save matrix: companions_000001 - AUTOSAVE=1
+[INFO] save matrix: position_000001 - AUTOSAVE=1
+[INFO] save matrix: 000001 - AUTOSAVE sourceObjects=66 matched=56
+[INFO] save matrix: objects_matched_000001 - AUTOSAVE=1
+[INFO] save matrix: objects_state_000001 - AUTOSAVE=1
+[INFO] save matrix: save_000001 - AUTOSAVE=1
+[INFO] save matrix: written_module_000001 - AUTOSAVE=1
+[INFO] save matrix: written_area_000001 - AUTOSAVE=1
+[INFO] save matrix: written_gold_000001 - AUTOSAVE=1
+[INFO] save matrix: written_inventory_000001 - AUTOSAVE=1
+[INFO] save matrix: written_journal_000001 - AUTOSAVE=1
+[INFO] save matrix: written_party_000001 - AUTOSAVE=1
+[INFO] save matrix: written_flattened_000001 - AUTOSAVE=1
+[INFO] save matrix: written_position_000001 - AUTOSAVE=1
+[INFO] save matrix: reload_000001 - AUTOSAVE=1
+[INFO] save matrix: reload_gold_000001 - AUTOSAVE=1
+[INFO] save matrix: reload_inventory_000001 - AUTOSAVE=1
+[INFO] save matrix: reload_journal_000001 - AUTOSAVE=1
+[INFO] save matrix: reload_party_000001 - AUTOSAVE=1
+[INFO] save matrix: load_000002 - Game1=1
+[INFO] save matrix: module_000002 - Game1=1
+[INFO] save matrix: gold_000002 - Game1=1
+[INFO] save matrix: inventory_000002 - Game1=1
+[INFO] save matrix: journal_000002 - Game1=1
+[INFO] save matrix: party_000002 - Game1=1
+[INFO] save matrix: companions_000002 - Game1=1
+[INFO] save matrix: position_000002 - Game1=1
+[INFO] save matrix: 000002 - Game1 sourceObjects=72 matched=63
+[INFO] save matrix: objects_matched_000002 - Game1=1
+[INFO] save matrix: objects_state_000002 - Game1=1
+[INFO] save matrix: save_000002 - Game1=1
+[INFO] save matrix: written_module_000002 - Game1=1
+[INFO] save matrix: written_area_000002 - Game1=1
+[INFO] save matrix: written_gold_000002 - Game1=1
+[INFO] save matrix: written_inventory_000002 - Game1=1
+[INFO] save matrix: written_journal_000002 - Game1=1
+[INFO] save matrix: written_party_000002 - Game1=1
+[INFO] save matrix: written_flattened_000002 - Game1=1
+[INFO] save matrix: written_position_000002 - Game1=1
+[INFO] save matrix: reload_000002 - Game1=1
+[INFO] save matrix: reload_gold_000002 - Game1=1
+[INFO] save matrix: reload_inventory_000002 - Game1=1
+[INFO] save matrix: reload_journal_000002 - Game1=1
+[INFO] save matrix: reload_party_000002 - Game1=1
+[INFO] save matrix: load_000003 - SYNTH=1
+[INFO] save matrix: module_000003 - SYNTH=1
+[INFO] save matrix: gold_000003 - SYNTH=1
+[INFO] save matrix: inventory_000003 - SYNTH=1
+[INFO] save matrix: journal_000003 - SYNTH=1
+[INFO] save matrix: party_000003 - SYNTH=1
+[INFO] save matrix: companions_000003 - SYNTH=1
+[INFO] save matrix: position_000003 - SYNTH=1
+[INFO] save matrix: 000003 - SYNTH sourceObjects=11 matched=0
+[INFO] save matrix: objects_matched_000003 - SYNTH=1
+[INFO] save matrix: objects_state_000003 - SYNTH=1
+[INFO] save matrix: save_000003 - SYNTH=1
+[INFO] save matrix: written_module_000003 - SYNTH=1
+[INFO] save matrix: written_area_000003 - SYNTH=1
+[INFO] save matrix: written_gold_000003 - SYNTH=1
+[INFO] save matrix: written_inventory_000003 - SYNTH=1
+[INFO] save matrix: written_journal_000003 - SYNTH=1
+[INFO] save matrix: written_party_000003 - SYNTH=1
+[INFO] save matrix: written_flattened_000003 - SYNTH=1
+[INFO] save matrix: written_position_000003 - SYNTH=1
+[INFO] save matrix: reload_000003 - SYNTH=1
+[INFO] save matrix: reload_gold_000003 - SYNTH=1
+[INFO] save matrix: reload_inventory_000003 - SYNTH=1
+[INFO] save matrix: reload_journal_000003 - SYNTH=1
+[INFO] save matrix: reload_party_000003 - SYNTH=1
+[INFO] save matrix: load_000004 - VANILLA=1
+[INFO] save matrix: module_000004 - VANILLA=1
+[INFO] save matrix: gold_000004 - VANILLA=1
+[INFO] save matrix: inventory_000004 - VANILLA=1
+[INFO] save matrix: journal_000004 - VANILLA=1
+[INFO] save matrix: party_000004 - VANILLA=1
+[INFO] save matrix: companions_000004 - VANILLA=1
+[INFO] save matrix: position_000004 - VANILLA=1
+[INFO] save matrix: 000004 - VANILLA sourceObjects=218 matched=111
+[INFO] save matrix: objects_matched_000004 - VANILLA=1
+[INFO] save matrix: objects_state_000004 - VANILLA=1
+[INFO] save matrix: save_000004 - VANILLA=1
+[INFO] save matrix: written_module_000004 - VANILLA=1
+[INFO] save matrix: written_area_000004 - VANILLA=1
+[INFO] save matrix: written_gold_000004 - VANILLA=1
+[INFO] save matrix: written_inventory_000004 - VANILLA=1
+[INFO] save matrix: written_journal_000004 - VANILLA=1
+[INFO] save matrix: written_party_000004 - VANILLA=1
+[INFO] save matrix: written_flattened_000004 - VANILLA=1
+[INFO] save matrix: written_position_000004 - VANILLA=1
+[INFO] save matrix: reload_000004 - VANILLA=1
+[INFO] save matrix: reload_gold_000004 - VANILLA=1
+[INFO] save matrix: reload_inventory_000004 - VANILLA=1
+[INFO] save matrix: reload_journal_000004 - VANILLA=1
+[INFO] save matrix: reload_party_000004 - VANILLA=1
+[INFO] save matrix: load_000005 - TARIS=1
+[INFO] save matrix: module_000005 - TARIS=1
+[INFO] save matrix: gold_000005 - TARIS=1
+[INFO] save matrix: inventory_000005 - TARIS=1
+[INFO] save matrix: journal_000005 - TARIS=1
+[INFO] save matrix: party_000005 - TARIS=1
+[INFO] save matrix: companions_000005 - TARIS=1
+[INFO] save matrix: position_000005 - TARIS=1
+[INFO] save matrix: 000005 - TARIS sourceObjects=20 matched=13
+[INFO] save matrix: objects_matched_000005 - TARIS=1
+[INFO] save matrix: objects_state_000005 - TARIS=1
+[INFO] save matrix: save_000005 - TARIS=1
+[INFO] save matrix: written_module_000005 - TARIS=1
+[INFO] save matrix: written_area_000005 - TARIS=1
+[INFO] save matrix: written_gold_000005 - TARIS=1
+[INFO] save matrix: written_inventory_000005 - TARIS=1
+[INFO] save matrix: written_journal_000005 - TARIS=1
+[INFO] save matrix: written_party_000005 - TARIS=1
+[INFO] save matrix: written_flattened_000005 - TARIS=1
+[INFO] save matrix: written_position_000005 - TARIS=1
+[INFO] save matrix: reload_000005 - TARIS=1
+[INFO] save matrix: reload_gold_000005 - TARIS=1
+[INFO] save matrix: reload_inventory_000005 - TARIS=1
+[INFO] save matrix: reload_journal_000005 - TARIS=1
+[INFO] save matrix: reload_party_000005 - TARIS=1
+[INFO] save matrix: load_000006 - TARISLC=1
+[INFO] save matrix: module_000006 - TARISLC=1
+[INFO] save matrix: gold_000006 - TARISLC=1
+[INFO] save matrix: inventory_000006 - TARISLC=1
+[INFO] save matrix: journal_000006 - TARISLC=1
+[INFO] save matrix: party_000006 - TARISLC=1
+[INFO] save matrix: companions_000006 - TARISLC=1
+[INFO] save matrix: position_000006 - TARISLC=1
+[INFO] save matrix: 000006 - TARISLC sourceObjects=118 matched=79
+[INFO] save matrix: objects_matched_000006 - TARISLC=1
+[INFO] save matrix: objects_state_000006 - TARISLC=1
+[INFO] save matrix: save_000006 - TARISLC=1
+[INFO] save matrix: written_module_000006 - TARISLC=1
+[INFO] save matrix: written_area_000006 - TARISLC=1
+[INFO] save matrix: written_gold_000006 - TARISLC=1
+[INFO] save matrix: written_inventory_000006 - TARISLC=1
+[INFO] save matrix: written_journal_000006 - TARISLC=1
+[INFO] save matrix: written_party_000006 - TARISLC=1
+[INFO] save matrix: written_flattened_000006 - TARISLC=1
+[INFO] save matrix: written_position_000006 - TARISLC=1
+[INFO] save matrix: reload_000006 - TARISLC=1
+[INFO] save matrix: reload_gold_000006 - TARISLC=1
+[INFO] save matrix: reload_inventory_000006 - TARISLC=1
+[INFO] save matrix: reload_journal_000006 - TARISLC=1
+[INFO] save matrix: reload_party_000006 - TARISLC=1
+[INFO] save matrix: fixtures=7 loaded=7 roundTrips=7
+[INFO] save matrix: PASS

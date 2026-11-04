@@ -42,8 +42,12 @@ struct Options {
     bool vfsTest = false;
     bool k2Test = false;
     bool factionTest = false;
+    bool saveMatrixTest = false;
+    bool dialogueCorpusTest = false;
+    bool differentialTest = false;
     std::string vfsFixtures;
     std::string factionScript;
+    std::string saveFixtures;
     std::string guiScreen;
     std::string guiAction;
     std::string minigameScript;

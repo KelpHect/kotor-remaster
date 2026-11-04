@@ -1154,6 +1154,10 @@ OriginalSave readOriginalSave(const std::filesystem::path& folder)
     }
     if (gitEntry != nullptr) {
         const Gff git = Gff::parse(gitEntry->data, moduleEntry->resref + ".git");
+        if (const GffField* useTemplates = git.field(git.rootIndex(), "UseTemplates")) {
+            save.hasUseTemplates = true;
+            save.useTemplates = git.integer(*useTemplates) != 0;
+        }
         readObjects(git, save);
     }
     if (save.journal.empty() && save.gold == 0) {

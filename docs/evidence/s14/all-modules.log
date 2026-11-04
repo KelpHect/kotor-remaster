@@ -1,0 +1,7 @@
+sweep 0/117
+sweep 20/117
+sweep 40/117
+sweep 60/117
+sweep 80/117
+sweep 100/117
+{"count": 117, "encounters": 51, "entities": 11887, "failures": 0, "pass": true, "warnings": 0}

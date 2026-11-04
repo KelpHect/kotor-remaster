@@ -1,14 +1,12 @@
 # Sprint 14 - P6 correctness and residual gaps
 
-Status: **planned**. Sprint 13 closed audio, SSF sound sets, Bink containers,
-native Bink pixel decode/presentation, Bink Audio sync, LIP viseme timelines,
-the procedural facial rig, GUI screens/interaction, localization,
-mods/Override precedence, KotOR 2 world loading, faction reputation, the P6
-all-area content checklist and the pazaak/swoop/turret state machines. Sprint
-14 is the first P6 correctness sprint: it combines the differential
-playthrough/save matrix with the small residual gaps that must close before
-Sprint 15 release checks and the Sprint 16 remaster path. KotOR 2 gameplay
-parity is deliberately the final sprint (Sprint 18), after the remaster work.
+Status: **complete - gate S14 met (2026-11-04)**. Sprint 13 closed audio, SSF
+sound sets, Bink containers, native Bink pixel decode/presentation, Bink Audio
+sync, LIP viseme timelines, the procedural facial rig, GUI
+screens/interaction, localization, mods/Override precedence, KotOR 2 world
+loading, faction reputation, the P6 all-area content checklist and the
+pazaak/swoop/turret state machines. Sprint 14 closed the P6 correctness gaps.
+See [`SPRINT14_REPORT.md`](SPRINT14_REPORT.md).
 
 ## Why this is a separate sprint
 

@@ -1,6 +1,6 @@
 # Sprint 15 - Release candidate checks
 
-Status: **planned**. Sprint 14 closes P6 correctness and the residual gaps.
+Status: **planned**. Sprint 14 completed P6 correctness and the residual gaps.
 Sprint 15 is the release-candidate gate: performance, input/accessibility,
 legal review, installer/launcher and packaging. It adds no gameplay; it
 certifies the feature-complete KotOR 1 build from Sprint 14. KotOR 2 gameplay
