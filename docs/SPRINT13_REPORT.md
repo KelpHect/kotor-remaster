@@ -1,4 +1,4 @@
-# Sprint 13 report - audio, media, GUI, localization, mods, KotOR 2 and minigame parity
+# Sprint 13 report - audio, media, GUI, localization, mods, KotOR 2, factions and minigame parity
 
 Status: **complete - gate S13 met (2026-11-04)**. Sprint 12 closed
 animation/skinning, weapons, cutscene cameras and visual FX. Sprint 13 adds
@@ -7,14 +7,14 @@ and UTS sound emitters load, dialogue voice-over plays, a deterministic mixer
 provides 3D attenuation/pan and EAX-style reverb, and the script sound/music
 actions are bridged. It also closes SSF sound sets, Bink container/pixel
 decode and presentation, LIP visemes, GUI screens/interaction, localization,
-mods/Override precedence, KotOR 2 world loading and the three minigame state
-machines.
+mods/Override precedence, KotOR 2 world loading, faction reputation and the
+three minigame state machines.
 
 ## 1. Build and test result
 
 ```text
-100% tests passed, 0 tests failed out of 43
-Total Test time (real) = 175.99 sec
+100% tests passed, 0 tests failed out of 44
+Total Test time (real) = 183.33 sec
 ```
 
 The new targets are `kotor_audio`, `kotor_media`, `kotor_gui` and
@@ -268,7 +268,41 @@ Gate assertions: `profile_kind`, `profile_recognized`, `profile_sha256`,
 `triggers`, `warnings`, `vertices`, `batches`, `scripts`, `language`,
 `extra_area`, `extra_rooms`, `extra_geometry`.
 
-## 12. Minigames
+## 12. Faction reputation
+
+- **Matrix**: `repute.2da` is 21x21. Column 0 holds the faction name; row 0
+  holds player relations; every other cell is the row faction's standing
+  toward the column faction. Names run `Player`, `Hostile_1`, ...,
+  `Sacrifice`. Baseline values: Player/Hostile_1 = 0, Player/Friendly_1 = 100,
+  Player/Neutral = 50, Player/Endar_Spire = 0; Czerka/Sacrifice = 0,
+  Zone_Controller/Czerka = 100. Standing `< 50` is hostile.
+- **Runtime**: `FactionSystem` (`engine/src/game/Factions.*`) exposes
+  `reputation`, `setReputation`, `adjustReputation` (clamped 0..100),
+  `hostile`, `loadFac` and `saveFac`. `GameSession` loads it at startup and
+  maps script objects to their entity `FactionID`.
+- **Actions**: `GetReputation` (208) reads the matrix;
+  `AdjustReputation` (209) writes one direction and refreshes hostility;
+  `GetFactionAverageReputation` (186) averages party standings. Fixture
+  `faction_script_test.ncs` proves `0 -> 25` on Player/Hostile_1.
+- **Hostility**: GIT creatures are classified by the player row instead of the
+  old hardcoded `FactionID == 4`; encounter spawns keep an explicit override.
+  The Endar Spire first hostile is now a `SithSoldier` (faction 1) and
+  faction-4 Republic soldiers are friendly.
+- **Save FAC**: retail `REPUTE` stores 21 `FactionList` rows and 405
+  `RepList` rows (every non-100 pair; missing = 100). `saveFac` rebuilds that
+  shape, `loadFac` resets to 100 and applies the list, and an empty synthetic
+  FAC keeps `repute.2da` defaults. Adjustments survive save/reload.
+
+Gate assertions: `loaded`, `count`, `names`, `parents`, `relations`,
+`player_hostile1`, `player_friendly1`, `player_neutral`,
+`player_endar_spire`, `player_mirror`, `self_friendly`, `czerka_sacrifice`,
+`zone_czerka`, `hostility`, `entity_targets`, `sith_hostile`,
+`soldier_friendly`, `script_loaded`, `script_ran`, `script_before`,
+`script_after`, `script_bridge`, `adjust`, `adjust_value`, `save`, `fac_parse`,
+`fac_names`, `fac_value`, `fac_script_reset`, `reload`, `fac_reload`,
+`fac_reload_hostility`.
+
+## 13. Minigames
 
 Deterministic rule/state machines in `engine/src/game/Minigames.*`:
 
@@ -301,30 +335,31 @@ Gate assertions: `pazaak_deterministic`, `pazaak_seed_varies`,
 `pazaak_script_result`, `pazaak_session_start`, `pazaak_session_match_over`,
 `pazaak_session_result`, `pazaak_wager`.
 
-## 13. Device
+## 14. Device
 
 `audio::Output` opens an SDL3 playback stream (48 kHz float stereo) and pulls
 the mixer in the audio callback. Live runs log `Audio device: <name>`; headless
 tests use the same mixer without a device. The output stream is destroyed
 before `SDL_Quit` (the parity crash fix).
 
-## 14. Regression
+## 15. Regression
 
-- **CTest: 43/43 passed** (175.99 s).
+- **CTest: 44/44 passed** (183.33 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0000**, PASS.
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
-## 15. Next sprint
+## 16. Next sprint
 
 Sprint 13 closes audio, Bink/LIP media, native movie presentation, Bink audio,
-GUI interaction, localization, mods/Override, KotOR 2 world loading and the
-facial rig. Faction reputation and the P6 content checklist are planned in
+GUI interaction, localization, mods/Override, KotOR 2 world loading, faction
+reputation and the facial rig. The P6 all-area content checklist is planned in
 [`docs/SPRINT14.md`](SPRINT14.md); the shipped-data evidence is `media.log`
 (61 BIK, native RGBA SHA-256, 18,206 LIP, 107 head rows / 106 models / 0 viseme
-clips), `localization.log`, `vfs.log`, `k2.log` and `bik-oracle.txt`.
+clips), `localization.log`, `vfs.log`, `k2.log`, `faction.log` and
+`bik-oracle.txt`.
 
 ## Evidence index
 
@@ -332,6 +367,7 @@ clips), `localization.log`, `vfs.log`, `k2.log` and `bik-oracle.txt`.
 - `docs/evidence/s13/localization.log`
 - `docs/evidence/s13/vfs.log`
 - `docs/evidence/s13/k2.log`
+- `docs/evidence/s13/faction.log`
 - `docs/evidence/s13/media.log`
 - `docs/evidence/s13/gui.log`
 - `docs/evidence/s13/gui-state.png`, `gui-mainmenu.png`
@@ -350,4 +386,5 @@ clips), `localization.log`, `vfs.log`, `k2.log` and `bik-oracle.txt`.
 - VFS fixtures: `engine/tests/fixtures/vfs/merge_base.2da`, `merge_patch.2da`
 - Technical notes: [docs/recon/51_AUDIO.md](recon/51_AUDIO.md),
   [docs/recon/57_MODS_VFS.md](recon/57_MODS_VFS.md),
-  [docs/recon/58_KOTOR2.md](recon/58_KOTOR2.md)
+  [docs/recon/58_KOTOR2.md](recon/58_KOTOR2.md),
+  [docs/recon/59_FACTIONS.md](recon/59_FACTIONS.md)

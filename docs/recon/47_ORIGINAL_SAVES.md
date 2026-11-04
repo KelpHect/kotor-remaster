@@ -83,10 +83,10 @@ payloads). `engine/src/kotor/SaveGame.cpp` builds:
 - **NFO** - area name, last module, played time, save name, hints and portrait;
 - **INVENTORY** - unequipped items; equipped items are written into the PC
   `Equip_ItemList`;
-- **REPUTE** - a loaded slot's FAC payload is preserved byte-for-byte on round
-  trip (the Taris save keeps 21 factions / 405 relations). A fresh save starts
-  with an empty FAC scaffold because faction reputation is not modelled by the
-  engine yet.
+- **REPUTE** - the FAC payload is parsed into the faction matrix and rebuilt on
+  save (21 factions / 405 non-100 relations for the shipped table, including
+  player relations and `FactionParentID`). A fresh save writes the full matrix
+  instead of an empty scaffold; adjustments made in play survive reload.
 - **visited modules** - the current module is rebuilt from live state; the other
   nested `<module>.sav` ERFs and `AVAILNPC*`/`PC` outer resources are preserved
   verbatim so revisiting a previously saved module keeps its retail state.
@@ -119,9 +119,10 @@ Source hashes are identical before and after the gate
 
 ## 5. Residual work
 
-- Faction reputation (`REPUTE`) is not simulated. A loaded slot's FAC payload
-  is preserved on round trip, but reputation changes made in play are not
-  modelled, and a fresh save writes an empty faction list.
+- Faction reputation (`REPUTE`) is simulated from `repute.2da` and the FAC
+  payload (`GetReputation`/`AdjustReputation`, save round-trip). Remaining
+  residual: custom faction parenting is stored but not inherited for relation
+  fallback.
 - The writer updates the current module from live state and preserves the other
   visited modules as their original saved ERFs; it does not re-simulate those
   modules or update their state.

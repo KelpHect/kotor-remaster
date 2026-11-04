@@ -268,6 +268,18 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.k2Test = true;
             continue;
         }
+        if (arg == "--faction-test") {
+            result.options.factionTest = true;
+            continue;
+        }
+        if (arg == "--faction-script") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--faction-script requires an .ncs path");
+            }
+            result.options.factionScript = value;
+            continue;
+        }
         if (arg == "--vfs-fixtures") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -592,6 +604,7 @@ void printUsage()
         << "  --localization-test   Assert TLK language and localized paths\n"
         << "  --vfs-test            Assert five-pass VFS and 2DA merges\n"
         << "  --k2-test             Assert KotOR 2 profile, geometry and 001EBO\n"
+        << "  --faction-test        Assert repute.2da, actions and FAC round-trip\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"
         << "  --gui-screen <resref> Render one .gui screen in the debug UI\n"
         << "  --gui-action <tag>    Activate one control before rendering\n"

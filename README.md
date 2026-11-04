@@ -1,6 +1,6 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 13 (audio, media, GUI, localization, mods, KotOR 2 and minigames) complete - gate
+Status: **Sprint 13 (audio, media, GUI, localization, mods, KotOR 2, factions and minigames) complete - gate
 S13 met (2026-11-04).** Shipped `streamwaves`, `streamsounds` and `streammusic`
 audio decodes (PCM 8/16, IMA ADPCM, MP3, KotOR `0x1d6` prefix); a 48 kHz
 stereo mixer provides music/ambient/effects/voice buses, per-voice
@@ -19,10 +19,12 @@ actions, screen stack and panel mapping); TLK language selection and localized
 voice/LIP paths pass their gate; the five-pass Override/mod VFS and
 TSLPatcher-style 2DA merges are verified; KotOR 2 world loading is profile-
 gated (K2 geometry layout, `_dlg.erf`) and loads `001EBO`, `007EBO` and
-`002EBO`; deterministic pazaak, swoop and
+`002EBO`; faction reputation comes from the 21x21 `repute.2da` matrix with
+`GetReputation`/`AdjustReputation` and FAC save round-trip; deterministic
+pazaak, swoop and
 turret state machines pass their
 seeded gates; SDL3 pulls the mixer for live playback while headless tests use
-the same mixer deterministically. **43/43 CTest targets** pass.
+the same mixer deterministically. **44/44 CTest targets** pass.
 Sprint 12 remains complete (creature animation, skinning, weapons and cutscene
 cameras: MDL clips/controllers/skinning, `pause1`/`pause` playback, weapon hand
 hooks, GIT/DLG cameras with `CUT###W` clips and height presets, dangly/saber
@@ -42,7 +44,7 @@ companion XP, systems UI); Sprint 6 remains complete (native script VM
 8,666/8,666 default and functional, 303,616 ACTION calls, dialogue entry 54,
 d20 rounds); Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255
 parity). Sprint 14+ remains: non-default `CamVidEffect` semantics (none in the
-K1 corpus), faction reputation simulation and the P6 content checklist.
+K1 corpus) and the P6 all-area content checklist.
 Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT14.md` and their
 `*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
 
@@ -198,7 +200,7 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   CTest **36/36**; 117-module sweep 0/0; VM parity 0; scene parity 0.0449;
   Python 143 tests / 7 skips; install unchanged. See
   `docs/recon/50_ANIMATION_SKINNING.md` and `docs/SPRINT12_REPORT.md`.
-- Sprint 13 (audio/media/GUI/localization/mods/KotOR 2/minigames): PCM/IMA ADPCM/MP3 decode with KotOR prefix handling,
+- Sprint 13 (audio/media/GUI/localization/mods/KotOR 2/factions/minigames): PCM/IMA ADPCM/MP3 decode with KotOR prefix handling,
   48 kHz four-bus mixer, 3D attenuation/pan, `soundeax.2da` reverb presets,
   GIT `AreaProperties` music/ambience, 45 UTS sound emitters, DLG voice-over,
   SSF sound sets/barks, appearance-driven footsteps, Bink container/movie
@@ -208,13 +210,15 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   on the shipped jaw/mouth/brow bones, 86 `.gui` screens/2,383 controls with
   an interactive control-state/screen-stack layer, TLK language and localized
   voice/LIP paths, five-pass Override/mod VFS with TSLPatcher-style 2DA merges,
-  KotOR 2 profile-gated world loading (three areas), deterministic
+  KotOR 2 profile-gated world loading (three areas), faction reputation from
+  `repute.2da` with FAC save round-trip, deterministic
   pazaak/swoop/turret state
   machines, script sound/music/ambient actions, SDL3 output stream.
-  CTest **43/43**; 117-module sweep 0/0; VM parity 0; scene parity 0.0000;
+  CTest **44/44**; 117-module sweep 0/0; VM parity 0; scene parity 0.0000;
   Python 143 tests / 7 skips; install unchanged. See
   `docs/recon/51_AUDIO.md`, `docs/recon/56_LOCALIZATION.md`,
-  `docs/recon/58_KOTOR2.md` and `docs/SPRINT13_REPORT.md`.
+  `docs/recon/58_KOTOR2.md`, `docs/recon/59_FACTIONS.md` and
+  `docs/SPRINT13_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -273,9 +277,10 @@ Start with:
 - [`docs/SPRINT10.md`](docs/SPRINT10.md) - Sprint 10 plan: gate S10, lanes, non-goals
 - [`docs/SPRINT11_REPORT.md`](docs/SPRINT11_REPORT.md) - Sprint 11 (combat/Force/alignment) exit report
 - [`docs/SPRINT11.md`](docs/SPRINT11.md) - Sprint 11 plan: gate S11, lanes, non-goals
-- [`docs/SPRINT13_REPORT.md`](docs/SPRINT13_REPORT.md) - Sprint 13 (audio/media/GUI/localization/mods/minigames) exit report
+- [`docs/SPRINT13_REPORT.md`](docs/SPRINT13_REPORT.md) - Sprint 13 (audio/media/GUI/localization/mods/KotOR 2/factions/minigames) exit report
 - [`docs/SPRINT13.md`](docs/SPRINT13.md) - Sprint 13 plan: gate S13, lanes, non-goals
-- [`docs/SPRINT14.md`](docs/SPRINT14.md) - Sprint 14 plan: faction reputation, P6 and remaining parity
+- [`docs/SPRINT14.md`](docs/SPRINT14.md) - Sprint 14 plan: P6 all-area content parity
+- [`docs/recon/59_FACTIONS.md`](docs/recon/59_FACTIONS.md) - repute matrix, faction actions and FAC round-trip
 - [`docs/recon/58_KOTOR2.md`](docs/recon/58_KOTOR2.md) - K2 profile gate, MDL layout and three loaded areas
 - [`docs/recon/57_MODS_VFS.md`](docs/recon/57_MODS_VFS.md) - five-pass VFS and TSLPatcher-style merges
 - [`docs/recon/56_LOCALIZATION.md`](docs/recon/56_LOCALIZATION.md) - TLK language and localized voice/LIP paths

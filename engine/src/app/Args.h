@@ -40,7 +40,9 @@ struct Options {
     bool localizationTest = false;
     bool vfsTest = false;
     bool k2Test = false;
+    bool factionTest = false;
     std::string vfsFixtures;
+    std::string factionScript;
     std::string guiScreen;
     std::string guiAction;
     std::string minigameScript;

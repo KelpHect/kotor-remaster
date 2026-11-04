@@ -766,7 +766,7 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
         entity.scriptDialogue = textField(utc, root, "ScriptDialogue");
         entity.scriptOnEnter = textField(utc, root, "ScriptOnNotice");
         entity.walkRate = 3.0f + numberField(utc, root, "WalkRate", 7.0f) * 0.15f;
-        entity.hostile = entity.faction == 4;
+        entity.hostile = false;
         if (baseitems.has_value()) {
             applyEquippedWeapon(entity, install, utc, *baseitems);
         }
@@ -853,7 +853,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                     entity.scriptDialogue = textField(utc, utc.rootIndex(), "ScriptDialogue");
                     entity.scriptOnEnter = textField(utc, utc.rootIndex(), "ScriptOnNotice");
                     entity.walkRate = 3.0f + numberField(utc, utc.rootIndex(), "WalkRate", 7.0f) * 0.15f;
-                    entity.hostile = entity.faction == 4; // Sith faction in the Endar Spire slice
+                    entity.hostile = false; // GameSession applies faction relations
                     if (baseitems.has_value()) {
                         applyEquippedWeapon(entity, install, utc, *baseitems);
                     }
