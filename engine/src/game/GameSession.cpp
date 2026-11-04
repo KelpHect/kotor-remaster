@@ -1860,6 +1860,36 @@ void GameSession::resolvePazaakIfOver()
     }
 }
 
+void GameSession::startSwoop()
+{
+    swoop_.reset();
+    swoopActive_ = true;
+    turretActive_ = false;
+}
+
+void GameSession::startTurret()
+{
+    turret_.reset();
+    turretActive_ = true;
+    swoopActive_ = false;
+}
+
+void GameSession::updateSwoop(float dt, float throttle, bool boost, bool brake)
+{
+    if (!swoopActive_) {
+        return;
+    }
+    swoop_.update(dt, throttle, boost, brake);
+}
+
+void GameSession::updateTurret(float dt)
+{
+    if (!turretActive_) {
+        return;
+    }
+    turret_.update(dt);
+}
+
 void GameSession::update(float dt, const InputState& input)
 {
     if (dt <= 0.0f) {

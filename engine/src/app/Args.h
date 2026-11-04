@@ -54,6 +54,7 @@ struct Options {
     bool thirdPerson = false;
     bool noMovies = false;
     bool cameraNoClip = false;
+    std::string startMinigame;
     int playerAppearance = 92;
     std::string playerName = "Player";
     std::string engineTrace;
