@@ -38,6 +38,8 @@ struct Options {
     bool guiTest = false;
     bool minigameTest = false;
     bool localizationTest = false;
+    bool vfsTest = false;
+    std::string vfsFixtures;
     std::string guiScreen;
     std::string guiAction;
     std::string minigameScript;

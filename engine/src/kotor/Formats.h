@@ -494,6 +494,10 @@ public:
     std::string cell(std::size_t row, std::size_t column) const;
     std::string cell(const std::string& row, const std::string& column) const;
 
+    // TSLPatcher-style merge: patch rows overwrite non-empty cells, new columns
+    // are appended and new rows are appended after the base rows.
+    static TwoDa merge(const TwoDa& base, const TwoDa& patch, std::string name);
+
 private:
     struct Row {
         std::string label;
@@ -857,6 +861,8 @@ public:
     void bindModule(const std::string& stem);
     void addPacks();
     void addLips();
+    void setOverlayRoot(std::filesystem::path root);
+    const std::filesystem::path& overlayRoot() const { return overlayRoot_; }
     std::optional<std::vector<std::uint8_t>> find(const std::string& resref, std::uint32_t type,
                                                   std::string* source = nullptr);
     std::optional<std::vector<std::uint8_t>> findTexture(const std::string& resref, std::uint32_t* type,
@@ -864,16 +870,36 @@ public:
     std::vector<std::string> resourceNames(std::uint32_t type) const;
 
 private:
+    struct Layer {
+        int pass = 2;
+        int order = 0;
+        int sequence = 0;
+        std::string name;
+        Archive archive;
+    };
+    struct LooseFile {
+        std::uint32_t type = 0;
+        std::filesystem::path path;
+    };
+
     const BifFile& bif(std::uint32_t index);
     std::filesystem::path bifPath(const std::string& keyName) const;
+    std::filesystem::path overlayPath(const std::string& relative) const;
+    void addLayer(int pass, int order, const std::filesystem::path& path,
+                  const std::string& name);
+    void sortLayers();
+    void indexLooseDirectory(const std::filesystem::path& directory);
+    void rebuildLooseIndex();
 
     std::filesystem::path root_;
+    std::filesystem::path overlayRoot_;
     GameProfile profile_;
     std::string buildSha256_;
     KeyFile key_;
     std::unordered_map<std::uint32_t, BifFile> bifs_;
-    std::vector<Archive> archives_;
-    std::vector<std::string> archiveNames_;
+    std::vector<Layer> layers_;
+    std::unordered_map<std::string, std::vector<LooseFile>> loose_;
+    int nextSequence_ = 0;
 };
 
 // Area audio routing resolved from GIT AreaProperties through

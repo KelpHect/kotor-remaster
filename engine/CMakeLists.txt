@@ -276,6 +276,10 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                          --null --headless)
         add_test(NAME kotor_localization
                  COMMAND kotor_engine --module end_m01aa --localization-test --null --headless)
+        add_test(NAME kotor_vfs
+                 COMMAND kotor_engine --module end_m01aa --vfs-test
+                         --vfs-fixtures "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/vfs"
+                         --null --headless)
         add_test(NAME kotor_playthrough
                  COMMAND kotor_engine --module end_m01aa --playthrough --null --headless)
         add_test(NAME kotor_landmark
@@ -317,7 +321,7 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                              kotor_taris_transition kotor_walk_collision kotor_dialogue
                              kotor_combat kotor_script kotor_rules kotor_systems
                              kotor_merchant kotor_encounter kotor_encounter_reset kotor_party kotor_ui kotor_loot
-                             kotor_delayed_functors kotor_combat_force kotor_animation kotor_audio kotor_media kotor_gui kotor_minigame kotor_localization
+                             kotor_delayed_functors kotor_combat_force kotor_animation kotor_audio kotor_media kotor_gui kotor_minigame kotor_localization kotor_vfs
                              kotor_playthrough kotor_landmark kotor_save_load kotor_original_save_create kotor_profile_k1
             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
         if(EXISTS "${KOTOR2_TEST_INSTALL}/swkotor2.exe")

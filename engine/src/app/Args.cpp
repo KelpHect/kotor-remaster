@@ -260,6 +260,18 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.localizationTest = true;
             continue;
         }
+        if (arg == "--vfs-test") {
+            result.options.vfsTest = true;
+            continue;
+        }
+        if (arg == "--vfs-fixtures") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--vfs-fixtures requires a directory");
+            }
+            result.options.vfsFixtures = value;
+            continue;
+        }
         if (arg == "--minigame-script") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -574,6 +586,7 @@ void printUsage()
         << "  --gui-test            Assert all shipped GUI screens and control trees\n"
         << "  --minigame-test       Assert pazaak/swoop/turret state machines\n"
         << "  --localization-test   Assert TLK language and localized paths\n"
+        << "  --vfs-test            Assert five-pass VFS and 2DA merges\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"
         << "  --gui-screen <resref> Render one .gui screen in the debug UI\n"
         << "  --gui-action <tag>    Activate one control before rendering\n"
