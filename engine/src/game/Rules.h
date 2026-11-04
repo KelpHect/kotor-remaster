@@ -103,6 +103,12 @@ struct CompanionState {
     float attackTimer = 0.0f;
 };
 
+struct PortraitInfo {
+    std::string resref;
+    std::uint32_t appearance = 0;
+    int sex = 0;
+};
+
 // Read-only rules facade. One instance per install; tables are loaded once.
 class Rules {
 public:
@@ -171,6 +177,14 @@ public:
     std::int32_t classHitDie(std::int32_t classId) const;
     std::string className(std::int32_t classId) const;
     std::string classConstant(std::int32_t classId) const;
+    std::string classDescription(std::int32_t classId) const;
+    std::int32_t playableClassCount() const { return 3; }
+    std::int32_t portraitCount() const;
+    PortraitInfo portrait(std::int32_t index) const;
+    std::int32_t skillCount() const;
+    std::string skillName(std::int32_t index) const;
+    bool skillIsClassSkill(std::int32_t classId, std::int32_t skillIndex) const;
+    bool featIsAvailable(std::int32_t classId, std::int32_t featId) const;
 
 private:
     std::int32_t cellInt(const kotor::TwoDa& table, const std::string& row,
@@ -182,6 +196,7 @@ private:
     std::optional<kotor::TwoDa> exptable_;
     std::optional<kotor::TwoDa> skills_;
     std::optional<kotor::TwoDa> feat_;
+    std::optional<kotor::TwoDa> portraits_;
     std::optional<kotor::TwoDa> baseitems_;
     std::optional<kotor::TwoDa> featgain_;
     std::optional<kotor::TwoDa> spells_;

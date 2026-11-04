@@ -4,6 +4,7 @@
 #include "core/Log.h"
 #include "game/AudioSystem.h"
 #include "game/BugParity.h"
+#include "game/Chargen.h"
 #include "game/Factions.h"
 #include "game/GameSession.h"
 #include "game/GuiSystem.h"
@@ -78,6 +79,7 @@ struct RuntimeState {
     BackendKind activeBackend = BackendKind::Null;
     std::unique_ptr<kotor::Install> guiInstall;
     std::unique_ptr<GuiSystem> guiSystem;
+    bool requestChargen = false;
 };
 
 SDL_WindowFlags windowFlagsFor(BackendKind kind, const Options& options)
@@ -468,7 +470,7 @@ void drawFacialRigOverlay(const FacialRig& rig)
     ImGui::End();
 }
 
-void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game)
+void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game, bool& requestChargen)
 {
     const kotor::GuiScreen* screen = gui.screen();
     if (screen == nullptr) {
@@ -565,10 +567,130 @@ void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game)
                 gui.push("loadscreen");
             } else if (action == "BTN_NEWGAME") {
                 gui.close();
+                requestChargen = true;
             } else if (action == "BTN_MOVIES") {
                 gui.push("credits");
             }
         }
+    }
+    ImGui::End();
+}
+
+void drawChargenUi(Chargen& chargen, GameSession& game, bool& active)
+{
+    ImGui::SetNextWindowPos(ImVec2(40.0f, 40.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(620.0f, 500.0f), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Character Generation", nullptr, ImGuiWindowFlags_NoCollapse);
+    ImGui::TextWrapped("Build a level-1 character. The same state machine is used by --chargen-test.");
+    ImGui::Separator();
+    const Rules& rules = game.rules();
+    switch (chargen.step()) {
+    case Chargen::Step::Class:
+        ImGui::TextUnformatted("Choose a class");
+        for (std::int32_t id = 0; id < chargen.classCount(); ++id) {
+            if (ImGui::Selectable(rules.className(id).c_str(), chargen.classId() == id)) {
+                chargen.selectClass(id);
+            }
+        }
+        ImGui::Text("Class: %s", rules.className(chargen.classId()).c_str());
+        break;
+    case Chargen::Step::Abilities: {
+        ImGui::Text("Points remaining: %d", chargen.pointsRemaining());
+        static const char* labels[] = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
+        for (int i = 0; i < 6; ++i) {
+            ImGui::Text("%s %d", labels[i], chargen.attribute(i));
+            ImGui::SameLine();
+            if (ImGui::SmallButton((std::string(" -##a") + std::to_string(i)).c_str())) {
+                chargen.adjustAttribute(i, -1);
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton((std::string(" +##a") + std::to_string(i)).c_str())) {
+                chargen.adjustAttribute(i, 1);
+            }
+        }
+        break;
+    }
+    case Chargen::Step::Skills: {
+        ImGui::Text("Skill points remaining: %d", chargen.skillPointsRemaining());
+        ImGui::BeginChild("skills", ImVec2(0.0f, 340.0f), true);
+        for (std::int32_t i = 0; i < rules.skillCount(); ++i) {
+            ImGui::Text("%-14s %d%s", rules.skillName(i).c_str(), chargen.skillRank(i),
+                        rules.skillIsClassSkill(chargen.classId(), i) ? " *" : "");
+            ImGui::SameLine();
+            if (ImGui::SmallButton((std::string(" -##s") + std::to_string(i)).c_str())) {
+                chargen.adjustSkill(i, -1);
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton((std::string(" +##s") + std::to_string(i)).c_str())) {
+                chargen.adjustSkill(i, 1);
+            }
+        }
+        ImGui::EndChild();
+        break;
+    }
+    case Chargen::Step::Feats: {
+        ImGui::Text("Feat points remaining: %d", chargen.featPointsRemaining());
+        ImGui::BeginChild("feats", ImVec2(0.0f, 340.0f), true);
+        for (const std::int32_t feat : chargen.availableFeats()) {
+            const bool selected = chargen.featSelected(feat);
+            if (ImGui::Selectable((std::to_string(feat) + " " + rules.featName(feat)).c_str(),
+                                  selected)) {
+                chargen.toggleFeat(feat);
+            }
+        }
+        ImGui::EndChild();
+        break;
+    }
+    case Chargen::Step::Portrait: {
+        const PortraitInfo portrait = chargen.portrait();
+        ImGui::Text("Portrait %d: %s", chargen.portraitIndex(), portrait.resref.c_str());
+        ImGui::Text("Appearance row: %u", portrait.appearance);
+        if (ImGui::Button("Previous")) {
+            chargen.cyclePortrait(-1);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Next")) {
+            chargen.cyclePortrait(1);
+        }
+        break;
+    }
+    case Chargen::Step::Name: {
+        static char nameBuffer[32] = "Player";
+        if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
+            chargen.setName(nameBuffer);
+        }
+        ImGui::Text("Name: %s", chargen.name().c_str());
+        break;
+    }
+    case Chargen::Step::Done: {
+        const CharacterSheet sheet = chargen.build();
+        ImGui::Text("Class: %s", rules.className(sheet.classId).c_str());
+        ImGui::Text("Name: %s", sheet.name.c_str());
+        ImGui::Text("HP: %d  FP: %d", sheet.maxHp, sheet.maxFp);
+        ImGui::Text("STR %d DEX %d CON %d INT %d WIS %d CHA %d",
+                    sheet.str, sheet.dex, sheet.con, sheet.intel, sheet.wis, sheet.cha);
+        if (ImGui::Button("Start Game")) {
+            game.applyCharacter(sheet);
+            game.setPlayerAppearance(chargen.portrait().appearance, chargen.name());
+            game.setThirdPerson(true);
+            active = false;
+        }
+        break;
+    }
+    }
+    ImGui::Separator();
+    if (chargen.step() != Chargen::Step::Done) {
+        if (ImGui::Button("Next")) {
+            chargen.next();
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Back")) {
+        chargen.back();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) {
+        active = false;
     }
     ImGui::End();
 }
@@ -2306,6 +2428,95 @@ int runModulePlaythroughMatrix(const std::string& installPath)
                    " lines=", lines, " warnings=", warnings));
     logInfo(ok ? "module playthrough: PASS" : "module playthrough: FAIL");
     return ok ? 0 : 71;
+}
+
+int runChargenTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("chargen: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    Chargen chargen(game.rules());
+    check(chargen.classCount() == 3, "class_count");
+    check(chargen.selectClass(1), "select_scout");
+    check(chargen.classId() == 1, "class_id");
+    check(chargen.pointsRemaining() == 30, "points_start");
+    for (int i = 0; i < 2; ++i) {
+        check(chargen.adjustAttribute(0, 1), "str_plus");
+        check(chargen.adjustAttribute(1, 1), "dex_plus");
+        check(chargen.adjustAttribute(2, 1), "con_plus");
+    }
+    check(chargen.adjustAttribute(3, 1), "int_plus");
+    check(chargen.attribute(0) == 10 && chargen.attribute(1) == 10
+              && chargen.attribute(2) == 10 && chargen.attribute(3) == 9,
+          "attributes");
+    check(chargen.pointsRemaining() == 23, "points_spent");
+
+    int awareness = -1;
+    for (int i = 0; i < game.rules().skillCount(); ++i) {
+        if (game.rules().skillName(i) == "Awareness") {
+            awareness = i;
+            break;
+        }
+    }
+    check(awareness >= 0, "skill_awareness");
+    for (int i = 0; i < 4 && awareness >= 0; ++i) {
+        check(chargen.adjustSkill(awareness, 1), "skill_plus");
+    }
+    check(awareness >= 0 && chargen.skillRank(awareness) == 4, "skill_rank");
+    check(chargen.skillPointsRemaining() >= 0, "skill_points");
+
+    const std::vector<std::int32_t> feats = chargen.availableFeats();
+    check(!feats.empty(), "feat_choices");
+    std::int32_t chosenFeat = -1;
+    if (!feats.empty()) {
+        chosenFeat = feats.front();
+        check(chargen.toggleFeat(chosenFeat), "feat_select");
+        check(chargen.featSelected(chosenFeat), "feat_selected");
+    }
+    check(game.rules().portraitCount() > 0, "portrait_table");
+    if (game.rules().portraitCount() > 0) {
+        chargen.cyclePortrait(1);
+        check(chargen.portraitIndex() == 1, "portrait_cycle");
+    }
+    chargen.setName("Revan");
+    check(chargen.name() == "REVAN", "name_upper");
+
+    const CharacterSheet sheet = chargen.build();
+    check(sheet.classId == 1, "sheet_class");
+    check(sheet.name == "REVAN", "sheet_name");
+    check(sheet.str == 10 && sheet.dex == 10 && sheet.con == 10
+              && sheet.intel == 9, "sheet_attributes");
+    check(sheet.maxHp == game.rules().maxHitPoints(1, 1, 10), "sheet_hp");
+    check(awareness >= 0
+              && sheet.skills.at("Awareness") == 4, "sheet_skill");
+    check(chosenFeat < 0 || sheet.feats.contains(chosenFeat), "sheet_feat");
+
+    game.applyCharacter(sheet);
+    check(game.character().name == "REVAN", "applied_name");
+    check(game.character().classId == 1, "applied_class");
+    game.setPlayerAppearance(chargen.portrait().appearance, chargen.name());
+    game.setThirdPerson(true);
+    check(game.playerEntity() != static_cast<std::size_t>(-1), "player_entity");
+    check(!game.scene().entityMeshes.empty(), "player_mesh");
+
+    const std::filesystem::path temp = std::filesystem::temp_directory_path()
+        / "kotor-s14-chargen";
+    std::error_code error;
+    std::filesystem::remove_all(temp, error);
+    const std::filesystem::path savePath = temp / "player.txt";
+    check(game.save(savePath), "save");
+    GameSession restored(game.installPath(), game.module());
+    check(restored.load(savePath), "load");
+    check(restored.character().name == "REVAN", "loaded_name");
+    check(restored.character().classId == 1, "loaded_class");
+    check(restored.character().str == 10, "loaded_str");
+    check(restored.character().skills.contains("Awareness")
+              && restored.character().skills.at("Awareness") == 4, "loaded_skill");
+
+    logInfo(ok ? "chargen: PASS" : "chargen: FAIL");
+    return ok ? 0 : 73;
 }
 
 int runBugParityTest(GameSession& game)
@@ -5154,6 +5365,8 @@ int runApplication(const Options& options)
     }
 
     std::optional<GameSession> game;
+    std::unique_ptr<Chargen> chargen;
+    bool chargenActive = options.chargen;
     std::unique_ptr<audio::Output> audioOutput;
     if (!options.module.empty()) {
         std::string installPath = options.install;
@@ -5180,6 +5393,9 @@ int runApplication(const Options& options)
             logInfo(concat("Language: ", game->localization().languageName(),
                            " (", game->languageId(), ") tlk entries=",
                            game->localization().entryCount()));
+            if (chargenActive) {
+                chargen = std::make_unique<Chargen>(game->rules());
+            }
             game->setAnimationEnabled(!options.headless && options.backend != BackendKind::Null);
             if (options.thirdPerson) {
                 game->setPlayerAppearance(
@@ -5491,6 +5707,9 @@ int runApplication(const Options& options)
             }
             if (options.bugParityTest) {
                 return runBugParityTest(*game);
+            }
+            if (options.chargenTest) {
+                return runChargenTest(*game);
             }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);
@@ -5865,21 +6084,23 @@ int runApplication(const Options& options)
 
         if (game) {
             InputState input;
-            const bool* keys = SDL_GetKeyboardState(nullptr);
-            input.forward = keys[SDL_SCANCODE_W] != 0;
-            input.back = keys[SDL_SCANCODE_S] != 0;
-            input.left = keys[SDL_SCANCODE_A] != 0;
-            input.right = keys[SDL_SCANCODE_D] != 0;
-            input.run = keys[SDL_SCANCODE_LSHIFT] != 0 || keys[SDL_SCANCODE_RSHIFT] != 0;
-            input.jump = keys[SDL_SCANCODE_SPACE] != 0;
-            input.mouseDx = mouseDx;
-            input.mouseDy = mouseDy;
+            if (!chargenActive) {
+                const bool* keys = SDL_GetKeyboardState(nullptr);
+                input.forward = keys[SDL_SCANCODE_W] != 0;
+                input.back = keys[SDL_SCANCODE_S] != 0;
+                input.left = keys[SDL_SCANCODE_A] != 0;
+                input.right = keys[SDL_SCANCODE_D] != 0;
+                input.run = keys[SDL_SCANCODE_LSHIFT] != 0 || keys[SDL_SCANCODE_RSHIFT] != 0;
+                input.jump = keys[SDL_SCANCODE_SPACE] != 0;
+                input.mouseDx = mouseDx;
+                input.mouseDy = mouseDy;
+                if (options.noMovies && game->moviePlaying()) {
+                    game->stopMovie();
+                }
+                game->update(static_cast<float>(deltaMs / 1000.0), input);
+            }
             mouseDx = 0.0f;
             mouseDy = 0.0f;
-            if (options.noMovies && game->moviePlaying()) {
-                game->stopMovie();
-            }
-            game->update(static_cast<float>(deltaMs / 1000.0), input);
             if (!options.movieShot.empty() && !movieShotSaved
                 && game->movieFrame() != nullptr) {
                 const kotor::BinkVideoFrame* frame = game->movieFrame();
@@ -5903,17 +6124,23 @@ int runApplication(const Options& options)
             ImGui::NewFrame();
             const bool movieMode = game && game->moviePlaying();
             const bool guiMode = state.guiSystem && state.guiSystem->active();
-            if (!movieMode && !guiMode) {
-                drawDebugUi(state, frames, smoothedFrameMs, elapsedSeconds, exitReason);
-            }
-            if (game) {
+            if (chargenActive && chargen && game) {
+                drawChargenUi(*chargen, *game, chargenActive);
+            } else {
                 if (!movieMode && !guiMode) {
-                    drawGameUi(*game, smoothedFrameMs > 0.0 ? static_cast<float>(1000.0 / smoothedFrameMs) : 0.0f,
-                               game->interactionPrompt());
-                    if (options.facialDemo >= 0 || game->lipSyncActive()) {
-                        drawFacialRigOverlay(game->facialRig());
+                    drawDebugUi(state, frames, smoothedFrameMs, elapsedSeconds, exitReason);
+                }
+                if (game) {
+                    if (!movieMode && !guiMode) {
+                        drawGameUi(*game, smoothedFrameMs > 0.0 ? static_cast<float>(1000.0 / smoothedFrameMs) : 0.0f,
+                                   game->interactionPrompt());
+                        if (options.facialDemo >= 0 || game->lipSyncActive()) {
+                            drawFacialRigOverlay(game->facialRig());
+                        }
                     }
                 }
+            }
+            if (game) {
                 if (game->movieFrame() != nullptr) {
                     if (game->movieFrameIndex() != uploadedMovieFrame) {
                         std::string movieError;
@@ -5933,7 +6160,15 @@ int runApplication(const Options& options)
                 }
             }
             if (!movieMode && guiMode && game) {
-                drawGuiScreenOverlay(*state.guiSystem, *game);
+                drawGuiScreenOverlay(*state.guiSystem, *game, state.requestChargen);
+            }
+            if (state.requestChargen && game && !chargenActive) {
+                chargen = std::make_unique<Chargen>(game->rules());
+                chargenActive = true;
+                state.requestChargen = false;
+                if (state.guiSystem) {
+                    state.guiSystem->close();
+                }
             }
             if (!movieMode && state.guiSystem && state.guiSystem->quitRequested()) {
                 exitReason = "GUI exit";

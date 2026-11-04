@@ -58,6 +58,7 @@ Rules::Rules(kotor::Install& install)
     exptable_ = loadTable("exptable");
     skills_ = loadTable("skills");
     feat_ = loadTable("feat");
+    portraits_ = loadTable("portraits");
     baseitems_ = loadTable("baseitems");
     featgain_ = loadTable("featgain");
     spells_ = loadTable("spells");
@@ -807,6 +808,98 @@ std::string Rules::classConstant(std::int32_t classId) const
         return {};
     }
     return classes_->cell(std::to_string(classId), "constant");
+}
+
+std::string Rules::classDescription(std::int32_t classId) const
+{
+    if (!classes_ || classId < 0
+        || classId >= static_cast<std::int32_t>(classes_->rowCount())) {
+        return {};
+    }
+    return classes_->cell(std::to_string(classId), "description");
+}
+
+std::int32_t Rules::portraitCount() const
+{
+    if (!portraits_) {
+        return 0;
+    }
+    std::int32_t count = 0;
+    for (std::size_t row = 0; row < portraits_->rowCount(); ++row) {
+        if (cellInt(*portraits_, portraits_->rowLabel(row), "forpc", 0) == 1) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+PortraitInfo Rules::portrait(std::int32_t index) const
+{
+    PortraitInfo info;
+    if (!portraits_ || index < 0) {
+        return info;
+    }
+    std::int32_t seen = 0;
+    for (std::size_t row = 0; row < portraits_->rowCount(); ++row) {
+        const std::string label = portraits_->rowLabel(row);
+        if (cellInt(*portraits_, label, "forpc", 0) != 1) {
+            continue;
+        }
+        if (seen++ != index) {
+            continue;
+        }
+        info.resref = portraits_->cell(label, "baseresref");
+        info.appearance = static_cast<std::uint32_t>(
+            cellInt(*portraits_, label, "appearancenumber", 0));
+        info.sex = cellInt(*portraits_, label, "sex", 0);
+        return info;
+    }
+    return info;
+}
+
+std::int32_t Rules::skillCount() const
+{
+    return skills_ ? static_cast<std::int32_t>(skills_->rowCount()) : 0;
+}
+
+std::string Rules::skillName(std::int32_t index) const
+{
+    if (!skills_ || index < 0
+        || index >= static_cast<std::int32_t>(skills_->rowCount())) {
+        return {};
+    }
+    const std::string row = skills_->rowLabel(static_cast<std::size_t>(index));
+    std::string name = skills_->cell(row, "label");
+    if (name.empty()) {
+        name = row;
+    }
+    return name;
+}
+
+bool Rules::skillIsClassSkill(std::int32_t classId, std::int32_t skillIndex) const
+{
+    if (!skills_ || classId < 0 || classId > 2 || skillIndex < 0
+        || skillIndex >= static_cast<std::int32_t>(skills_->rowCount())) {
+        return false;
+    }
+    static const char* columns[] = {"sol_class", "sct_class", "scd_class"};
+    const std::string row = skills_->rowLabel(static_cast<std::size_t>(skillIndex));
+    return cellInt(*skills_, row, columns[classId], 0) != 0;
+}
+
+bool Rules::featIsAvailable(std::int32_t classId, std::int32_t featId) const
+{
+    if (!feat_ || classId < 0 || classId > 2 || featId < 0
+        || featId >= static_cast<std::int32_t>(feat_->rowCount())) {
+        return false;
+    }
+    const std::string row = std::to_string(featId);
+    if (cellInt(*feat_, row, "allclassescanuse", 0) != 0) {
+        return true;
+    }
+    static const char* columns[] = {"sol_list", "sct_list", "scd_list"};
+    const std::string value = feat_->cell(row, columns[classId]);
+    return !value.empty() && value != "****" && value != "0";
 }
 
 } // namespace ke
