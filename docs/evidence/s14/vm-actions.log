@@ -1,0 +1,2 @@
+[INFO] vm corpus: files=8666 returned=8185 blocked=472 budget=9 decode_errors=0 vm_errors=0 invalid_jumps=0 steps=3697114 action_calls=303616 max_sp=221 functional=1
+[INFO] vm corpus: wrote E:\Projects\kotor-remaster\kotor-remaster\docs\evidence\s14\vm-actions.jsonl

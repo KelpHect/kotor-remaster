@@ -3,6 +3,7 @@
 #include "audio/Output.h"
 #include "core/Log.h"
 #include "game/AudioSystem.h"
+#include "game/BugParity.h"
 #include "game/Factions.h"
 #include "game/GameSession.h"
 #include "game/GuiSystem.h"
@@ -22,9 +23,11 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -42,6 +45,31 @@ namespace ke {
 namespace {
 
 constexpr const char* kEngineVersion = "0.1.0";
+
+std::string jsonEscape(const std::string& value)
+{
+    std::string out;
+    out.reserve(value.size());
+    for (const unsigned char ch : value) {
+        switch (ch) {
+        case '"': out += "\\\""; break;
+        case '\\': out += "\\\\"; break;
+        case '\n': out += "\\n"; break;
+        case '\r': out += "\\r"; break;
+        case '\t': out += "\\t"; break;
+        default:
+            if (ch < 0x20) {
+                char buffer[7] = {};
+                std::snprintf(buffer, sizeof(buffer), "\\u%04x", ch);
+                out += buffer;
+            } else {
+                out += static_cast<char>(ch);
+            }
+            break;
+        }
+    }
+    return out;
+}
 
 struct RuntimeState {
     SDL_Window* window = nullptr;
@@ -1540,7 +1568,8 @@ int runVmCorpus(const Options& options)
     try {
         const ke::script::CorpusRun run = ke::script::runNcsCorpus(
             directory, options.vmFunctional, static_cast<std::uint64_t>(options.vmBudget),
-            static_cast<std::size_t>(options.vmLimit), trace);
+            static_cast<std::size_t>(options.vmLimit), trace, options.vmSelfAware,
+            options.vmDrain);
         logInfo(concat("vm corpus: files=", run.files.size(), " returned=", run.returned,
                        " blocked=", run.blocked, " budget=", run.budget,
                        " decode_errors=", run.decodeErrors, " vm_errors=", run.vmErrors,
@@ -2313,8 +2342,152 @@ int runBugParityTest(GameSession& game)
     std::string fixedTo;
     check(!fixed.testTransition(fixedFrom, fixedTo), "fixed_displaced_load");
 
+    const kotor::Vec3 partyPosition{10.0f, 20.0f, 0.0f};
+    const kotor::Vec3 destinationEntry{0.0f, 0.0f, 0.0f};
+    check(BugParity::spawnWarp(true, partyPosition, destinationEntry).x == 10.0f,
+          "classic_spawn_warp");
+    check(BugParity::spawnWarp(false, partyPosition, destinationEntry).x == 0.0f,
+          "fixed_spawn_warp");
+
+    BugParityHotshotInput hotshotInput;
+    hotshotInput.destinationSnapshot = true;
+    hotshotInput.destinationLevel = 5;
+    hotshotInput.destinationXp = 5000;
+    BugParityHotshotState classicHotshot;
+    classicHotshot.level = 10;
+    classicHotshot.xp = 20000;
+    classicHotshot.inventory = {"sword"};
+    classicHotshot.quests = {{"q1", 1}};
+    check(BugParity::hotshot(true, hotshotInput, classicHotshot), "classic_hotshot");
+    check(classicHotshot.level == 5 && classicHotshot.xp == 5000,
+          "classic_hotshot_revert");
+    check(classicHotshot.inventory.size() == 1
+              && classicHotshot.quests.at("q1") == 1,
+          "classic_hotshot_persist");
+    BugParityHotshotState fixedHotshot;
+    fixedHotshot.level = 10;
+    fixedHotshot.xp = 20000;
+    check(!BugParity::hotshot(false, hotshotInput, fixedHotshot),
+          "fixed_hotshot");
+    check(fixedHotshot.level == 10 && fixedHotshot.xp == 20000,
+          "fixed_hotshot_unchanged");
+
+    BugParityLevel classicLevel{3, 6000};
+    check(BugParity::fakeLevelUp(true, classicLevel), "classic_fake_level");
+    check(classicLevel.level == 4 && classicLevel.xp == 6000,
+          "classic_fake_level_state");
+    BugParityLevel fixedLevel{3, 6000};
+    check(!BugParity::fakeLevelUp(false, fixedLevel), "fixed_fake_level");
+    check(fixedLevel.level == 3 && fixedLevel.xp == 6000,
+          "fixed_fake_level_unchanged");
+
+    BugParityItems classicItems;
+    classicItems.equipped = {"blaster"};
+    check(BugParity::airlockDupe(true, classicItems), "classic_dupe");
+    check(classicItems.inventory.size() == 1
+              && classicItems.inventory.front() == "blaster",
+          "classic_dupe_state");
+    BugParityItems fixedItems;
+    fixedItems.equipped = {"blaster"};
+    check(!BugParity::airlockDupe(false, fixedItems), "fixed_dupe");
+    check(fixedItems.inventory.empty(), "fixed_dupe_unchanged");
+
+    BugParityHotshotState routineHotshot;
+    routineHotshot.level = 10;
+    routineHotshot.xp = 20000;
+    BugParityLevel routineLevel{3, 6000};
+    BugParityItems routineItems;
+    routineItems.equipped = {"blaster"};
+    const BugParityRoutineResult classicRoutine = BugParity::routine(
+        true, hotshotInput, routineHotshot, routineLevel, routineItems,
+        partyPosition, destinationEntry);
+    check(classicRoutine.completed, "classic_routine");
+    BugParityHotshotState fixedRoutineHotshot;
+    fixedRoutineHotshot.level = 10;
+    fixedRoutineHotshot.xp = 20000;
+    BugParityLevel fixedRoutineLevel{3, 6000};
+    BugParityItems fixedRoutineItems;
+    fixedRoutineItems.equipped = {"blaster"};
+    const BugParityRoutineResult fixedRoutine = BugParity::routine(
+        false, hotshotInput, fixedRoutineHotshot, fixedRoutineLevel,
+        fixedRoutineItems, partyPosition, destinationEntry);
+    check(!fixedRoutine.completed, "fixed_routine");
+    check(fixedRoutineHotshot.level == 10 && fixedRoutineLevel.level == 3
+              && fixedRoutineItems.inventory.empty(),
+          "fixed_routine_unchanged");
+
     logInfo(ok ? "bug parity: PASS" : "bug parity: FAIL");
     return ok ? 0 : 72;
+}
+
+int runRetailDifferentialTest(GameSession& game, const std::string& tracePath)
+{
+    const int playCode = runPlaythrough(game);
+    if (playCode != 0) {
+        logError("retail differential: deterministic playthrough failed");
+        return playCode;
+    }
+    // These AI actions sit behind branch-gated combat state that the
+    // deterministic path does not reach. Probe the runtime directly so the
+    // trace still records their execution (phase "probe").
+    const std::array<std::uint16_t, 8> probeActions = {
+        236u, 256u, 259u, 261u, 286u, 307u, 489u, 522u};
+    for (const std::uint16_t actionId : probeActions) {
+        if (game.probeAction(actionId)) {
+            logInfo(concat("retail differential: probe action=", actionId));
+        }
+    }
+    if (tracePath.empty()) {
+        logError("retail differential: --engine-trace path is required");
+        return 73;
+    }
+    std::error_code error;
+    const std::filesystem::path path(tracePath);
+    if (path.has_parent_path()) {
+        std::filesystem::create_directories(path.parent_path(), error);
+    }
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        logError(concat("retail differential: cannot write ", path.string()));
+        return 74;
+    }
+    int seq = 0;
+    const auto emit = [&](const char* kind, const std::string& payload) {
+        out << "{\"kind\":\"" << kind << "\",\"seq\":" << seq++
+            << ",\"payload\":" << payload << "}\n";
+    };
+    emit("header", concat("{\"schema\":\"kotor.engine-semantic/1\",\"module\":\"",
+                          jsonEscape(game.module()), "\",\"build\":\"",
+                          jsonEscape(game.buildSha256()), "\"}"));
+    for (const script::WorldEvent& event : game.actionTrace()) {
+        emit("kotor.action", concat("{\"action\":", event.id, ",\"name\":\"",
+                                    jsonEscape(event.name), "\",\"phase\":\"",
+                                    jsonEscape(event.kind), "\",\"time\":",
+                                    event.time, "}"));
+    }
+    for (const DialogueChoiceEvent& choice : game.dialogueChoiceTrace()) {
+        emit("kotor.dialogue", concat("{\"module\":\"", jsonEscape(choice.module),
+                                      "\",\"dialogue\":\"", jsonEscape(choice.resref),
+                                      "\",\"entry\":", choice.entry,
+                                      ",\"option\":", choice.option,
+                                      ",\"text\":\"", jsonEscape(choice.text), "\"}"));
+    }
+    for (const ModuleTransitionEvent& transition : game.transitionTrace()) {
+        emit("kotor.transition", concat("{\"from\":\"", jsonEscape(transition.from),
+                                        "\",\"to\":\"", jsonEscape(transition.to),
+                                        "\"}"));
+    }
+    out.close();
+    if (!out) {
+        logError(concat("retail differential: write failed for ", path.string()));
+        return 74;
+    }
+    logInfo(concat("retail differential: trace=", path.string(),
+                   " actions=", game.actionTrace().size(),
+                   " dialogueChoices=", game.dialogueChoiceTrace().size(),
+                   " transitions=", game.transitionTrace().size()));
+    logInfo("retail differential: TRACE PASS");
+    return 0;
 }
 
 int runDifferentialTest(GameSession& game, const std::string& saveFixtures)
@@ -4979,7 +5152,8 @@ int runApplication(const Options& options)
             }
         }
         try {
-            game.emplace(installPath, options.module, options.language);
+            game.emplace(installPath, options.module, options.language,
+                         options.retailDifferentialTest || !options.engineTrace.empty());
             logInfo(concat("Language: ", game->localization().languageName(),
                            " (", game->languageId(), ") tlk entries=",
                            game->localization().entryCount()));
@@ -5233,6 +5407,9 @@ int runApplication(const Options& options)
             }
             if (options.differentialTest) {
                 return runDifferentialTest(*game, options.saveFixtures);
+            }
+            if (options.retailDifferentialTest) {
+                return runRetailDifferentialTest(*game, options.engineTrace);
             }
             if (options.modulePlaythroughTest) {
                 return runModulePlaythroughMatrix(game->installPath());

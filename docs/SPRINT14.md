@@ -27,9 +27,10 @@ Status: all items met on the shipped corpus; evidence in
 
 1. **Differential playthroughs** - met as a composite gate: the all-117-module
    playthrough matrix (780 conversations, 10,133 lines), the all-DLG corpus
-   (1,043 DLGs, 67,395 links), the deterministic Endar Spire playthrough and
-   retail trace action coverage (91,967 events, 127 actions, 0 missing). See
-   the report's residual boundary for the per-quest trace limit.
+   (1,043 DLGs, 67,395 links), the deterministic Endar Spire playthrough, the
+   recorded retail-vs-engine semantic differential (89 module actions, 0
+   missing) and retail trace action coverage (91,967 events, 127 actions, 0
+   missing). See the report's residual boundary for the per-quest trace limit.
 2. **Save/load matrix** - met: seven retail fixtures plus external `.rsv`
    shadowing, flattened `UseTemplates`, corrupt `EventQueue` and
    reload-after-save cases.
@@ -42,7 +43,7 @@ Status: all items met on the shipped corpus; evidence in
    the runtime warns and rejects them, with a deterministic fixture.
 6. **P6 baseline maintenance** - met: `--write-baseline` requires
    `--accept-baseline-change` and the schema is validated.
-7. **Regression** - met: 50/50 CTest, 117-module sweep, VM parity, GL/Vulkan
+7. **Regression** - met: 51/51 CTest, 117-module sweep, VM parity, GL/Vulkan
    parity, Python suite and install sentinel.
 
 ## Lanes

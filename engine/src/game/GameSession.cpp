@@ -549,12 +549,14 @@ void GameSession::initAnimations()
     ++animationRevision_;
 }
 
-GameSession::GameSession(std::string installPath, std::string module, int language)
+GameSession::GameSession(std::string installPath, std::string module, int language,
+                        bool traceActions)
     : installPath_(std::move(installPath))
     , rsvRoot_(std::filesystem::path(installPath_) / "modules")
     , install_(installPath_)
     , rules_(install_)
 {
+    traceActions_ = traceActions;
     localization_ = std::make_unique<kotor::Localization>(
         std::filesystem::path(installPath_));
     std::string localizationError;
@@ -598,17 +600,48 @@ GameSession::GameSession(std::string installPath, std::string module, int langua
     runtime_ = std::make_unique<script::ActionRuntime>(&scriptWorld_, this);
     runtime_->setSelfAware(true);
     runtime_->setContinuations(true);
+    runtime_->setTraceEvents(traceActions_);
     initScriptWorld();
     syncPlayerToScriptWorld();
 }
 
 GameSession::~GameSession() = default;
 
+const std::vector<script::WorldEvent>& GameSession::actionTrace() const
+{
+    static const std::vector<script::WorldEvent> empty;
+    return runtime_ ? runtime_->traceHistory() : empty;
+}
+
+bool GameSession::probeAction(std::uint16_t actionId)
+{
+    if (runtime_ == nullptr) {
+        return false;
+    }
+    script::Vm vm({}, runtime_.get(), 1000);
+    runtime_->call(actionId, {}, vm);
+    runtime_->markLastTracePhase("probe");
+    return true;
+}
+
+void GameSession::clearTraces()
+{
+    if (runtime_) {
+        runtime_->clearTrace();
+    }
+    dialogueChoices_.clear();
+    transitions_.clear();
+}
+
 bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn, const std::string& linkedDoor)
 {
+    const std::string previousModule = module_;
     kotor::Scene loaded = kotor::loadModule(install_, module);
     module_ = module;
     scene_ = std::move(loaded);
+    if (traceActions_ && !previousModule.empty() && previousModule != module_) {
+        transitions_.push_back({previousModule, module_});
+    }
     refreshHostility();
     if (spawn != nullptr) {
         position_ = *spawn;
@@ -2447,6 +2480,11 @@ void GameSession::chooseDialogueOption(std::size_t optionIndex)
 {
     if (!activeDialogue_.has_value() || optionIndex >= dialogueView_.options.size()) {
         return;
+    }
+    if (traceActions_) {
+        dialogueChoices_.push_back({module_, activeDialogue_->resref,
+                                    dialogueView_.entry, optionIndex,
+                                    dialogueView_.options[optionIndex].text});
     }
     const std::uint32_t replyIndex = dialogueView_.options[optionIndex].reply;
     if (replyIndex == UINT32_MAX || replyIndex >= activeDialogue_->dlg.replies.size()) {

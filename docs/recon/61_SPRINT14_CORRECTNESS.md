@@ -85,19 +85,47 @@ scripts / 303,616 actions).
 
 ## Bug parity
 
-`--bug-parity-test` runs classic and fixed modes on the same scenario:
+`--bug-parity-test` runs every documented glitch in classic and fixed modes:
 
-- **Anywhere Menu Glitch** - classic mode opens the character panel during
-  dialogue; fixed mode refuses it.
-- **Displaced Load Zone** - classic mode transitions through a door from an
-  arbitrary position; fixed mode requires proximity (2 m).
+- **Anywhere Menu Glitch** - classic opens the character panel during dialogue;
+  fixed refuses.
+- **Displaced Load Zone** - classic transitions through a door from an arbitrary
+  position; fixed requires proximity (2 m).
+- **Spawn Warps** - classic keeps party coordinates across a module transition;
+  fixed uses the destination entry.
+- **Hotshot** - classic restores the destination snapshot's level/XP while
+  inventory and quests persist; fixed refuses.
+- **Fake Level Up** - classic advances the level with XP unchanged; fixed
+  refuses.
+- **Item duping** - classic copies equipped items into the inventory on the
+  airlock cycle; fixed does not.
+- **The Routine** - the documented chain of menu glitch, hotshot, spawn warp,
+  fake level and duping completes only in classic mode.
 
-## Retail trace coverage
+The models live in `engine/src/game/BugParity.h` and assert both the classic
+mutation and the fixed-mode opt-out.
+
+## Retail trace coverage and differential
 
 `engine/scripts/check_retail_traces.py` parses the recorded s4 retail semantic
 traces: **91,967 events**, **127 observed action IDs**, **772 implemented
-action-table entries**, **0 missing**. This is action-ID coverage from the
-recorded traces, paired with the all-module and all-DLG matrices.
+action-table entries**, **0 missing**.
+
+`kotor_retail_differential` records the engine's own semantic trace for the
+new-game/Endar Spire path (`--retail-differential-test --engine-trace`) and
+diffs it against `live-05-semantic.jsonl`:
+
+- **7,756 engine actions**, **9 dialogue choices**, **1 transition**;
+- **89** retail actions used by `end_m01aa` scripts;
+- **367** executed action IDs across the playthrough, drained functional VM
+  corpus (357) and eight probes;
+- **0 missing execution**, **0 missing implementation** across all 102 retail
+  action IDs.
+
+The VM corpus drain executes delayed/queued closures (`--vm-drain`) so AI
+actions behind `DelayCommand` are covered. Eight branch-gated actions are
+recorded with phase `probe` (three talent/AI and five perception/movement
+queries) because their combat or perception branches are state-gated.
 
 ## Evidence
 
@@ -109,4 +137,9 @@ recorded traces, paired with the all-module and all-DLG matrices.
 - `docs/evidence/s14/bug-parity.log`
 - `docs/evidence/s14/retail-trace.log`
 - `docs/evidence/s14/retail-trace-coverage.json`
+- `docs/evidence/s14/engine-semantic.jsonl`
+- `docs/evidence/s14/retail-differential.json`
+- `docs/evidence/s14/retail-differential-engine.log`
+- `docs/evidence/s14/vm-actions.log`
+- `docs/evidence/s14/vm-actions.jsonl`
 - `docs/SPRINT14_REPORT.md`

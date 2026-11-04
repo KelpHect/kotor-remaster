@@ -411,6 +411,16 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                                  --actions "${CMAKE_SOURCE_DIR}/src/script/ActionTable.inc"
                                  --out "${CMAKE_BINARY_DIR}/retail-trace-coverage.json")
                 set_tests_properties(kotor_retail_trace PROPERTIES TIMEOUT 300)
+                add_test(NAME kotor_retail_differential
+                         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/run_retail_differential.py
+                                 --engine $<TARGET_FILE:kotor_engine>
+                                 --install "${KOTOR_TEST_INSTALL}"
+                                 --corpus "${CMAKE_SOURCE_DIR}/../artifacts/lanes/04-ncs/extracted/unique"
+                                 --retail-trace "${KOTOR_RETAIL_TRACE_DIR}/live-05-semantic.jsonl"
+                                 --module-usage "${CMAKE_SOURCE_DIR}/../artifacts/lanes/s1-04-scripts/module_action_usage.csv"
+                                 --action-table "${CMAKE_SOURCE_DIR}/src/script/ActionTable.inc"
+                                 --out-dir "${CMAKE_BINARY_DIR}/retail-differential")
+                set_tests_properties(kotor_retail_differential PROPERTIES TIMEOUT 600)
             endif()
             add_test(NAME kotor_p6_content
                      COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/check_p6_content.py

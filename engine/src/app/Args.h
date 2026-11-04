@@ -45,8 +45,10 @@ struct Options {
     bool saveMatrixTest = false;
     bool dialogueCorpusTest = false;
     bool differentialTest = false;
+    bool retailDifferentialTest = false;
     bool modulePlaythroughTest = false;
     bool bugParityTest = false;
+    std::string engineTrace;
     std::string vfsFixtures;
     std::string factionScript;
     std::string saveFixtures;
@@ -85,6 +87,8 @@ struct Options {
     std::string vmCorpus;
     std::string vmOut;
     bool vmFunctional = false;
+    bool vmSelfAware = false;
+    bool vmDrain = false;
     bool vmJsonSummary = false;
     int vmLimit = 0;
     int vmBudget = 200000;

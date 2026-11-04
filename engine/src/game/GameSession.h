@@ -58,6 +58,19 @@ struct DialogueView {
     float tarHeightOffset = 0.0f;
 };
 
+struct DialogueChoiceEvent {
+    std::string module;
+    std::string resref;
+    std::uint32_t entry = UINT32_MAX;
+    std::size_t option = 0;
+    std::string text;
+};
+
+struct ModuleTransitionEvent {
+    std::string from;
+    std::string to;
+};
+
 enum class UiPanel { None, Character, Inventory, Party, Journal, Merchant, Loot };
 const char* uiPanelName(UiPanel panel);
 
@@ -69,7 +82,8 @@ const char* combatModeName(CombatMode mode);
 // on the engine's own NCS VM and mutate the same world the renderer uses.
 class GameSession : public script::ActionHost {
 public:
-    GameSession(std::string installPath, std::string module, int language = -1);
+    GameSession(std::string installPath, std::string module, int language = -1,
+                bool traceActions = false);
     ~GameSession() override;
 
     const kotor::Scene& scene() const { return scene_; }
@@ -174,6 +188,15 @@ public:
     void endDialogue();
     const DialogueView& dialogue() const { return dialogueView_; }
     int unsupportedCamVidEffects() const { return unsupportedCamVidEffects_; }
+    const std::vector<script::WorldEvent>& actionTrace() const;
+    bool probeAction(std::uint16_t actionId);
+    const std::vector<DialogueChoiceEvent>& dialogueChoiceTrace() const {
+        return dialogueChoices_;
+    }
+    const std::vector<ModuleTransitionEvent>& transitionTrace() const {
+        return transitions_;
+    }
+    void clearTraces();
     bool usePlaceable(std::size_t entityIndex);
 
     void attackNearestHostile();
@@ -423,6 +446,9 @@ private:
     std::vector<std::string> combatLog_;
     bool playerDead_ = false;
     bool classicBugs_ = true;
+    bool traceActions_ = false;
+    std::vector<DialogueChoiceEvent> dialogueChoices_;
+    std::vector<ModuleTransitionEvent> transitions_;
     std::uint32_t rng_ = 0x12345678u;
 
     Rules rules_;

@@ -288,6 +288,18 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.differentialTest = true;
             continue;
         }
+        if (arg == "--retail-differential-test") {
+            result.options.retailDifferentialTest = true;
+            continue;
+        }
+        if (arg == "--engine-trace") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--engine-trace requires a path");
+            }
+            result.options.engineTrace = value;
+            continue;
+        }
         if (arg == "--module-playthrough-test") {
             result.options.modulePlaythroughTest = true;
             continue;
@@ -422,6 +434,14 @@ ParseResult parseArguments(int argc, char** argv)
         }
         if (arg == "--vm-functional") {
             result.options.vmFunctional = true;
+            continue;
+        }
+        if (arg == "--vm-self-aware") {
+            result.options.vmSelfAware = true;
+            continue;
+        }
+        if (arg == "--vm-drain") {
+            result.options.vmDrain = true;
             continue;
         }
         if (arg == "--vm-summary") {
@@ -642,6 +662,8 @@ void printUsage()
         << "  --save-fixtures <dir> Directory of SAVEGAME.sav fixture slots\n"
         << "  --dialogue-corpus-test Assert every shipped DLG parses and CamVidEffect\n"
         << "  --differential-test   Save-matrix + dialogue corpus + playthrough gate\n"
+        << "  --retail-differential-test  Playthrough + engine semantic trace\n"
+        << "  --engine-trace <path> Engine trace JSONL for the retail differential\n"
         << "  --module-playthrough-test  All-module conversation matrix only\n"
         << "  --bug-parity-test     Classic bug-parity vs fixed-mode assertions\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"
@@ -668,6 +690,8 @@ void printUsage()
         << "  --vm-corpus <dir>     Execute every .ncs in a directory and report\n"
         << "  --vm-out <path>       Write per-file JSONL results\n"
         << "  --vm-functional       Use the stateful action runtime\n"
+        << "  --vm-self-aware       Resolve OBJECT_SELF in functional corpus runs\n"
+        << "  --vm-drain            Execute delayed/queued closures for coverage\n"
         << "  --vm-limit <n>        Stop after n files\n"
         << "  --vm-budget <n>       Instruction budget per script (default 200000)\n"
         << "\n"

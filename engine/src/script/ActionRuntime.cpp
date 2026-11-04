@@ -270,22 +270,27 @@ std::vector<Value> ActionRuntime::call(std::uint16_t actionId, const Args& args,
     if (traceEvents_ && world_ != nullptr) {
         world_->events.push_back(WorldEvent{world_->time, actionId, name, "unknown"});
     }
+    const auto record = [&](const char* kind) {
+        if (!traceEvents_ || world_ == nullptr || world_->events.empty()) {
+            return;
+        }
+        world_->events.back().kind = kind;
+        traceHistory_.push_back(world_->events.back());
+        observedActions_.insert(actionId);
+    };
     ++calls_[actionId];
     if (host_ != nullptr) {
         if (auto handled = host_->action(actionId, args, *world_, vm); handled.has_value()) {
+            record("host");
             return *handled;
         }
     }
     if (auto handled = specific(name, args, vm, actionId); handled.has_value()) {
         specific_.insert(name);
-        if (traceEvents_ && !world_->events.empty()) {
-            world_->events.back().kind = "specific";
-        }
+        record("specific");
         return *handled;
     }
-    if (traceEvents_ && !world_->events.empty()) {
-        world_->events.back().kind = "generic";
-    }
+    record("generic");
     return generic(name, args, vm, actionId);
 }
 
