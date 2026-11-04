@@ -12,8 +12,48 @@
 [INFO]   entity mesh 2 end_door06 verts=216 local=-3.27325,-2.27388,2.55884 .. 0.366864,-1.71284,3.09327
 [INFO]   creature mesh Carth verts=8208 local=-0.612183,-0.286822,-0.00207151 .. 0.612183,0.167699,1.5574
 [INFO]   bounds: -170.51, -32.6442, -204.652 .. 238.793, 471.187, 291.201
-[INFO] gui test: screens=86 controls=2302 types=7 unknown=0 maxControls=121
+[INFO] gui test: screens=86 controls=2383 types=8 unknown=0 maxControls=127
 [INFO] gui test: screens=1
 [INFO] gui test: controls=1
 [INFO] gui test: control_types=1
+[INFO] gui test: unknown_control_types=1
 [INFO] gui test: mainmenu=1
+[INFO] gui test: gui_open=1
+[INFO] gui test: gui_screen=1
+[INFO] gui test: button_found=1
+[INFO] gui test: hit_test=1
+[INFO] gui test: pointer_down=1
+[INFO] gui test: pointer_pressed=1
+[INFO] gui test: pointer_up=1
+[INFO] gui test: button_action=1
+[INFO] gui test: action_log=1
+[INFO] gui test: pointer_released=1
+[INFO] gui test: control_hide=1
+[INFO] gui test: hidden_no_hit=1
+[INFO] gui test: control_show=1
+[INFO] gui test: exit_activate=1
+[INFO] gui test: quit_requested=1
+[INFO] gui test: screen_push=1
+[INFO] gui test: screen_push_state=1
+[INFO] gui test: screen_pop=1
+[INFO] gui test: screen_slider=1
+[INFO] gui test: slider_control=1
+[INFO] gui test: slider_set=1
+[INFO] gui test: slider_clamp_high=1
+[INFO] gui test: slider_set_low=1
+[INFO] gui test: slider_clamp_low=1
+[INFO] gui test: screen_progress=1
+[INFO] gui test: progress_control=1
+[INFO] gui test: progress_value=1
+[INFO] gui test: screen_listbox=1
+[INFO] gui test: listbox_control=1
+[INFO] gui test: scrollbar_control=1
+[INFO] gui test: list_selection=1
+[INFO] gui test: scrollbar_value=1
+[INFO] gui test: screen_checkbox=1
+[INFO] gui test: checkbox_control=1
+[INFO] gui test: checkbox_on=1
+[INFO] gui test: checkbox_off=1
+[INFO] gui test: panel_character=1
+[INFO] gui test: panel_toggle=1
+[INFO] gui test: panel_inventory=1

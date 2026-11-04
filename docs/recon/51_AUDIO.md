@@ -163,7 +163,7 @@ LIP resources and a viseme sample.
 
 ## 9. Next sprint
 
-The GUI interaction layer and the remaining UI/content
+The localization, mods/Override, KotOR 2 and faction/P6
 systems are planned in `docs/SPRINT14.md`. The shipped-data boundary is
 recorded here: 107 heads carry 0 viseme clips, so facial deformation needs an
 engine rig rather than a data-only mapping.

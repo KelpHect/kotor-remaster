@@ -16,6 +16,7 @@ struct GuiExtent {
 };
 
 struct GuiControl {
+    std::string key; // stable hierarchy path, e.g. "LB_DESC/SCROLLBAR"
     int type = 0;
     int id = -1;
     std::string tag;
@@ -27,6 +28,11 @@ struct GuiControl {
     std::string fill;
     std::string edge;
     std::string corner;
+    float maxValue = 1.0f;
+    float curValue = 0.0f;
+    bool startFromLeft = true;
+    bool selected = false;
+    bool isSelected = false;
     std::vector<GuiControl> children;
 };
 

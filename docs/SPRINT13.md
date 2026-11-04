@@ -44,9 +44,12 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
    `visemeAt(time)`, with real head-geometry deformation and a debug rig view;
    Bink Audio (DCT) decodes all 5.3M frames and matches the FFmpeg PCM
    SHA-256, with the movie-bus cursor locked to the video clock, seek and stop.
-10. **GUI screens** - all 86 unique `.gui` screens (91 resources including
-    patch.erf), 2,302 controls, 7 known control types and 640x480 extents
-    parse; `--gui-screen` renders the control tree in the debug UI.
+10. **GUI screens and interaction** - all 86 unique `.gui` screens (91
+    resources including patch.erf), 2,383 controls, 8 known control types and
+    640x480 extents parse; `GuiSystem` adds hit-testing, per-control state,
+    button/checkbox/listbox actions, slider/scrollbar/progress clamping, a
+    screen stack and panel actions; `--gui-screen` renders the interactive
+    tree and `--gui-action` drives a deterministic control.
 11. **Minigames** - deterministic pazaak (40-card deck, four side cards,
     first to two sets, `PlayPazaak`/`GetLastPazaakResult` and wager
     settlement), swoop (throttle/boost/brake, 3 x 3,000 m laps) and turret
@@ -72,7 +75,7 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
 | s13-06-device | SDL3 output stream | `engine/src/audio/Output.*`, `Application.cpp` |
 | s13-07-soundsets | SSF, soundset mapping, footsteps and barks | `engine/src/audio`, `game/*` |
 | s13-08-media | Bink container/pixels/audio, LIP visemes and facial rig | `engine/src/kotor/Media.*`, `BinkDecoder.*`, `engine/src/game/FacialRig.*`, `GameSession.*` |
-| s13-09-gui | `.gui` parser, corpus assertions and debug renderer | `engine/src/kotor/Gui.*`, `Application.cpp` |
+| s13-09-gui | `.gui` parser, corpus assertions, interaction and renderer | `engine/src/kotor/Gui.*`, `engine/src/game/GuiSystem.*`, `Application.cpp` |
 | s13-10-minigames | pazaak/swoop/turret state machines and gate | `engine/src/game/Minigames.*`, `Application.cpp` |
 | s13-11-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
 

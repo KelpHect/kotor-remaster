@@ -1,28 +1,26 @@
-# Sprint 14 - GUI interaction and the remaining parity systems
+# Sprint 14 - localization, mods and the remaining parity systems
 
 Status: **planned**. Sprint 13 closed audio, SSF sound sets, Bink containers,
 native Bink pixel decode/presentation, Bink Audio sync, LIP viseme timelines,
-the procedural facial rig, GUI screens and the pazaak/swoop/turret state
-machines. Sprint 14 covers the systems that remain.
+the procedural facial rig, GUI screens/interaction and the pazaak/swoop/turret
+state machines. Sprint 14 covers the systems that remain.
 
 ## Why this is a separate sprint
 
-- **GUI interaction/state**: Sprint 13 parses and renders the shipped screens;
-  control actions, transitions and panel state are the next layer.
-- **Localization, mods/Override, KotOR 2 world loading, faction reputation and
-  P6** are content/system layers beyond the KotOR 1 runtime slice.
+- **Localization**: TLK language selection and localized path handling.
+- **Mods/Override precedence** and **KotOR 2 world loading** are VFS/content
+  layers beyond the KotOR 1 runtime slice.
+- **Faction reputation and P6** are the remaining content/simulation layers.
 
 ## Gate S14
 
-1. **GUI interaction/state** - wire control actions, screen transitions and
-   panel state on top of the Sprint 13 parser/renderer.
-2. **Localization** - TLK language selection and localized path handling.
-3. **Mods/Override precedence** - five-pass VFS overlay and TSLPatcher-style
+1. **Localization** - TLK language selection and localized path handling.
+2. **Mods/Override precedence** - five-pass VFS overlay and TSLPatcher-style
    merges.
-4. **KotOR 2 world loading** - profile-gated K2 resources and world data.
-5. **Faction reputation and P6** - faction simulation and the all-area content
+3. **KotOR 2 world loading** - profile-gated K2 resources and world data.
+4. **Faction reputation and P6** - faction simulation and the all-area content
    checklist.
-6. **Regression** - full CTest, 117-module sweep, VM parity, GL/Vulkan parity,
+5. **Regression** - full CTest, 117-module sweep, VM parity, GL/Vulkan parity,
    Python suite and install sentinel.
 
 ## Evidence carried into Sprint 14
@@ -36,5 +34,6 @@ machines. Sprint 14 covers the systems that remain.
 - `docs/evidence/s13/movie-gl.png`, `movie-vk.png`, `movie-frame.png` - movie
   presentation on both backends and the decoded frame itself.
 - `docs/evidence/s13/facial-roar.png` - viseme 13 driving the facial rig.
+- `docs/evidence/s13/gui-state.png` - interactive mainmenu control tree.
 - `docs/recon/51_AUDIO.md`, `docs/recon/54_FACIAL_RIG.md` - stream/mixer and
   viseme rig details.
