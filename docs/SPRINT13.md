@@ -110,10 +110,11 @@ Gate S13 covers audio, Bink/LIP media, Bink audio, the facial rig, GUI
 interaction, localization, mods/Override, KotOR 2 world loading, faction
 reputation and the P6 all-area content checklist. Sprint 14
 ([`docs/SPRINT14.md`](SPRINT14.md)) covers P6 correctness and the residuals,
-Sprint 15 ([`docs/SPRINT15.md`](SPRINT15.md)) K2 gameplay, Sprint 16
-([`docs/SPRINT16.md`](SPRINT16.md)) the release candidate, and Sprints 17-18
-the remaster path ([`docs/SPRINT17.md`](SPRINT17.md),
-[`docs/SPRINT18.md`](SPRINT18.md)).
+Sprint 15 ([`docs/SPRINT15.md`](SPRINT15.md)) the release candidate, Sprint 16
+([`docs/SPRINT16.md`](SPRINT16.md)) the first remaster stage, Sprint 17
+([`docs/SPRINT17.md`](SPRINT17.md)) the remaining remaster/modding/platform
+work, and Sprint 18 ([`docs/SPRINT18.md`](SPRINT18.md)) KotOR 2 gameplay
+parity as the final sprint.
 
 ## Running the gate
 

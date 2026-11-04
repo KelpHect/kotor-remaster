@@ -1,45 +1,48 @@
-# Sprint 15 - KotOR 2 gameplay parity
+# Sprint 15 - Release candidate checks
 
-Status: **planned**. Sprint 13 closed KotOR 2 world loading (profile detection,
-K2 MDL/MDX geometry, `_dlg.erf`, three shipped areas). Sprint 15 adds the
-KotOR 2 gameplay layers that world loading does not cover.
+Status: **planned**. Sprint 14 closes P6 correctness and the residual gaps.
+Sprint 15 is the release-candidate gate: performance, input/accessibility,
+legal review, installer/launcher and packaging. KotOR 2 gameplay parity is
+deferred to the final sprint (Sprint 18).
 
 ## Why this is a separate sprint
 
-K2 uses the same data layer with different rules and content: prestige classes,
-influence, crafting/upgrades and K2-only script actions. Those are rules and
-content work, not resource loading.
+These checks need a feature-complete build. They are verification and
+packaging work, not gameplay changes.
 
 ## Gate S15
 
-1. **K2 rules** - classes, feats, powers, skills and 2DA differences load from
-   the K2 install; character creation and level-up produce the K2 tables.
-2. **Influence** - companion influence values, dialogue gating, influence
-   rewards and the influence cap behave deterministically.
-3. **Crafting and upgrades** - workbench flows, upgrade item slots, component
-   costs and crafted-item stats use the K2 2DA data.
-4. **K2 scripts/actions** - the K2 action set used by the shipped module
-   scripts executes through the VM; unimplemented K2-only actions are
-   enumerated and gated.
-5. **K2 module sweep** - every shipped K2 module pair loads with zero scene
-   warnings; the sweep records areas, entities, meshes and script runs.
-6. **Regression** - all K1 gates remain green; K2 world tests, CTest,
-   GL/Vulkan parity, Python suite and install sentinel.
+1. **Performance budgets** - frame time, memory, streaming and load times on
+   the reference machine and the documented minimum tier; capture methodology
+   and evidence format follow the project performance rules (calm baseline,
+   cited captures, no inferred numbers).
+2. **Controller and accessibility** - gamepad mapping, rebinding, subtitles,
+   UI scaling and keyboard-only navigation.
+3. **Legal review** - `docs/LEGAL_REVIEW.md` closes asset ownership,
+   no-redistribution policy, FFmpeg runtime packaging/licensing and the
+   release checklist.
+4. **Installer/launcher** - points at a user-owned install, validates the data
+   set, builds the cache outside the install and never modifies or
+   redistributes game files (ADR 0003).
+5. **Release candidate** - version pinning, reproducible build, packaged
+   runtime DLLs/shaders, docs and a clean install sentinel.
+6. **Regression** - full CTest, 117-module K1 sweep, VM parity, GL/Vulkan
+   parity, Python suite and install sentinel.
 
 ## Lanes
 
 | Lane | Scope | Output |
 |---|---|---|
-| s15-01-rules | K2 classes/feats/powers/skills | `engine/src/game/Rules.*` |
-| s15-02-influence | influence state, dialogue gates, rewards | `engine/src/game/GameSession.*`, script bridge |
-| s15-03-crafting | workbench/upgrade slots and costs | `engine/src/game/`, `engine/src/kotor/` |
-| s15-04-actions | K2-only action coverage | `engine/src/script/`, `ActionTable` |
-| s15-05-sweep | all-module K2 sweep + gate | `engine/scripts/`, `engine/CMakeLists.txt` |
-| s15-06-evidence | gate, report, recon notes, logs | `docs/` |
+| s15-01-performance | budgets and profiling captures | `docs/evidence/s15/`, docs |
+| s15-02-input | controller/accessibility matrix | `engine/src/app/`, docs |
+| s15-03-legal | asset/licence/release review | `docs/LEGAL_REVIEW.md` |
+| s15-04-installer | launcher, install validation, external cache | `tools/`, `docs/` |
+| s15-05-package | release candidate build and packaging | build scripts, docs |
+| s15-06-evidence | gate, report, logs | `docs/` |
 
 ## Evidence carried into Sprint 15
 
-- `docs/evidence/s13/k2.log`, `docs/recon/58_KOTOR2.md` - K2 profile and
-  geometry layout.
-- `docs/recon/59_FACTIONS.md` - faction model reused by K2.
-- `docs/SPRINT13_REPORT.md` - K1 regression baseline.
+- `docs/SPRINT13_REPORT.md` - feature-complete runtime and gate baseline.
+- `docs/SPRINT14.md` - P6 correctness and residual gaps.
+- `docs/evidence/s13/p6-content.json` - content coverage.
+- `docs/recon/02_TECHNICAL_NOTES.md` - ownership split and legal boundaries.

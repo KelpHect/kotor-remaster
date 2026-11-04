@@ -1,34 +1,37 @@
-# Sprint 17 - Remaster stage 1
+# Sprint 17 - Remaster stages 2-4, modding and platforms
 
-Status: **planned**. Sprint 16 produces the release candidate. Sprint 17 is
-the first optional remaster stage; Classic remains the 1:1 oracle and stays
-selectable at runtime.
+Status: **planned**. Sprint 16 completed the first remaster stage. Sprint 17
+finishes the optional remaster path and the public modding/platform surface.
+KotOR 2 gameplay parity remains the final sprint (Sprint 18).
 
 ## Gate S17
 
-1. **High-res textures** - replace shipped textures at runtime from an external
-   cache, preserving the material/TXI contract and the read-only install.
-2. **HFR and widescreen** - presentation clock and aspect handling that do not
-   change gameplay timing or cutscene camera composition.
-3. **MSAA and anisotropy** - configurable on GL and Vulkan with deterministic
-   fallback.
-4. **SSAO and bloom** - screen-space effects that can be disabled independently
-   and do not affect Classic captures.
-5. **Parity** - Classic vs remaster captures documented; Classic GL/Vulkan
-   parity remains the gate; no install writes.
+1. **Shadows/AO** - re-baked static shadows/AO and dynamic shadow maps, with
+   raster fallback and Classic parity preserved.
+2. **Optional RT** - opt-in RT shadows/reflections on capable hardware with a
+   full raster fallback.
+3. **Upscaling** - FSR-class upscaling using depth/motion vectors, with
+   deterministic quality presets.
+4. **Modding API** - documented data/mod hooks that do not expose copied
+   engine code or game assets.
+5. **Platforms** - documented Windows baseline plus the agreed additional
+   target(s), with install validation and input parity.
+6. **Regression** - Classic/remaster toggles, CTest, K1 sweeps, VM parity,
+   GL/Vulkan parity, Python suite and install sentinel.
 
 ## Lanes
 
 | Lane | Scope | Output |
 |---|---|---|
-| s17-01-textures | external high-res texture cache | render/asset pipeline |
-| s17-02-display | HFR/widescreen presentation | `engine/src/app/`, `render/` |
-| s17-03-aa | MSAA/anisotropy settings | GL/Vulkan backends |
-| s17-04-post | SSAO/bloom | render/ |
-| s17-05-evidence | captures, budget, opt-out matrix | `docs/evidence/s17/` |
+| s17-01-shadows | baked/dynamic shadow path | render/ |
+| s17-02-rt | optional RT with raster fallback | render/ |
+| s17-03-upscale | FSR-class upscaling | render/ |
+| s17-04-modding | modding API and docs | docs/, public headers |
+| s17-05-platforms | additional platform builds | build/ |
+| s17-06-evidence | captures, matrices, release notes | `docs/evidence/s17/` |
 
 ## Evidence carried into Sprint 17
 
-- `docs/SPRINT13_REPORT.md` - Classic parity and install sentinel.
-- `docs/SPRINT16.md` - release candidate build.
-- `docs/adr/0001-runtime-and-renderer.md`, `docs/adr/0003-distribution-and-install-model.md`.
+- `docs/SPRINT16.md` - remaster stage 1.
+- `docs/SPRINT15.md` - release candidate and legal review.
+- `docs/adr/0001-runtime-and-renderer.md`.
