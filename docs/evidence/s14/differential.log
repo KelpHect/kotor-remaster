@@ -207,8 +207,11 @@
 [INFO] dialogue corpus: camera_models=1
 [INFO] dialogue corpus: camvid_defaults=1
 [INFO] dialogue corpus: links=1
+[INFO] dialogue corpus: camvid_fixture_effect=1
+[INFO] dialogue corpus: camvid_fixture_rejected=1
 [INFO] dialogue corpus: dlgs=1043 entries=22572 replies=25300 scripts=5900 sounds=6715 cameraModels=22 camVidEffects=0 links=67395 invalidLinks=0
 [INFO] dialogue corpus: PASS
+[WARN] CamVidEffect 1 on camvid_fixture entry 0 is not supported; effect ignored
 [WARN] playthrough: walk blocked, using scripted spawn
 [INFO]   dialogue: Trask: We've been ambushed by a Sith battle fleet! The Endar Spire is under attack! Hurry up - we don't have much time!
 [INFO]   dialogue: Trask: I'm Trask Ulgo, ensign with the Republic Fleet. I'm your bunk mate here on the Endar Spire. We work opposite shifts; I guess that's why you haven't seen me before.
@@ -229,43 +232,1264 @@
 [INFO] playthrough: save/load module=end_m01ab same=1
 [INFO] playthrough: simulated 1800.02 s, events=32
 [INFO] playthrough: PASS
+[INFO] module playthrough: module_count=1
 [INFO] module playthrough: area=1
 [INFO] module playthrough: rooms=1
 [INFO] module playthrough: position=1
-[INFO] module playthrough: end_m01aa area=m01aa entities=218 dialogueLines=2 warnings=0
+[INFO] module playthrough: M12ab area=m12ab entities=11 conversations=0 dialogueLines=0 transitioned=0 warnings=0
 [INFO] module playthrough: area=1
 [INFO] module playthrough: rooms=1
 [INFO] module playthrough: position=1
-[INFO] module playthrough: end_m01ab area=m01ab entities=68 dialogueLines=64 warnings=0
+[INFO] module playthrough: STUNT_00 area=stunt_eboqrts entities=1 conversations=0 dialogueLines=0 transitioned=0 warnings=0
 [INFO] module playthrough: area=1
 [INFO] module playthrough: rooms=1
 [INFO] module playthrough: position=1
-[INFO] module playthrough: tar_m02af area=m02af entities=20 dialogueLines=3 warnings=0
+[INFO] module playthrough: STUNT_03a dialogue=m40ab_c01 lines=10 completed=1 transitioned=0
+[INFO] module playthrough: STUNT_03a area=stunt_levbridge entities=14 conversations=1 dialogueLines=10 transitioned=0 warnings=0
 [INFO] module playthrough: area=1
 [INFO] module playthrough: rooms=1
 [INFO] module playthrough: position=1
-[INFO] module playthrough: tar_m03aa area=m03aa entities=126 dialogueLines=3 warnings=0
+[INFO] module playthrough: STUNT_06 dialogue=scene_06 lines=4 completed=1 transitioned=0
+[INFO] module playthrough: STUNT_06 area=stunt_levbridge entities=16 conversations=1 dialogueLines=4 transitioned=0 warnings=0
 [INFO] module playthrough: area=1
 [INFO] module playthrough: rooms=1
 [INFO] module playthrough: position=1
-[INFO] module playthrough: tar_m03ab area=m03ab entities=90 dialogueLines=6 warnings=0
+[INFO] module playthrough: STUNT_07 area=stunt_ebodant entities=2 conversations=0 dialogueLines=0 transitioned=0 warnings=0
 [INFO] module playthrough: area=1
 [INFO] module playthrough: rooms=1
 [INFO] module playthrough: position=1
-[INFO] module playthrough: danm14aa area=m14aa entities=129 dialogueLines=1 warnings=0
+[INFO] module playthrough: STUNT_12 dialogue=stunt12 lines=15 completed=1 transitioned=0
+[INFO] module playthrough: STUNT_12 area=m40ad entities=40 conversations=1 dialogueLines=15 transitioned=0 warnings=0
 [INFO] module playthrough: area=1
 [INFO] module playthrough: rooms=1
 [INFO] module playthrough: position=1
-[INFO] module playthrough: manm28aa area=m28aa entities=258 dialogueLines=64 warnings=0
+[INFO] module playthrough: STUNT_14 dialogue=stunt14 lines=7 completed=1 transitioned=0
+[INFO] module playthrough: STUNT_14 area=m40ad entities=41 conversations=1 dialogueLines=7 transitioned=0 warnings=0
 [INFO] module playthrough: area=1
 [INFO] module playthrough: rooms=1
 [INFO] module playthrough: position=1
-[INFO] module playthrough: m12ab area=m12ab entities=11 dialogueLines=0 warnings=0
+[INFO] module playthrough: STUNT_16 area=stunt_ebolev entities=2 conversations=0 dialogueLines=0 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: STUNT_18 dialogue=m44aa_c02 lines=13 completed=1 transitioned=0
+[INFO] module playthrough: STUNT_18 area=stunt_unkhall entities=6 conversations=1 dialogueLines=13 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: STUNT_19 dialogue=19 lines=4 completed=1 transitioned=0
+[INFO] module playthrough: STUNT_19 area=stunt_starforge entities=16 conversations=1 dialogueLines=4 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: STUNT_31b area=m44ad entities=3 conversations=0 dialogueLines=0 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: STUNT_34 area=stunt_ebosf entities=2 conversations=0 dialogueLines=0 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: STUNT_35 area=stunt_ebocrash entities=2 conversations=0 dialogueLines=0 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: STUNT_42 dialogue=k_hbas_dialog lines=3 completed=1 transitioned=0
+[INFO] module playthrough: STUNT_42 area=stunt_ebocom entities=4 conversations=1 dialogueLines=3 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: STUNT_44 area=stunt_ebocom entities=4 conversations=0 dialogueLines=0 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: STUNT_50a dialogue=m01aa_c02 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: STUNT_50a area=stunt_endbridge entities=11 conversations=1 dialogueLines=2 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: STUNT_51a dialogue=cut51a_diag lines=9 completed=1 transitioned=0
+[INFO] module playthrough: STUNT_51a area=stunt_endbridge entities=15 conversations=1 dialogueLines=9 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: STUNT_54a dialogue=m01aa_c04 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: STUNT_54a area=stunt_endbridge entities=11 conversations=1 dialogueLines=5 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: STUNT_55a area=stunt_unktemp entities=7 conversations=0 dialogueLines=0 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: STUNT_56a dialogue=m01aa_c05 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: STUNT_56a area=stunt_endbridge entities=19 conversations=1 dialogueLines=5 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: STUNT_57 dialogue=m41ad_c01 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: STUNT_57 area=stunt_unkramp entities=22 conversations=1 dialogueLines=5 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: danm13 dialogue=dan13_cort lines=9 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan13_tutorial lines=64 completed=0 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan13_ahlan lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan13_belaya lines=8 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan13_crattis lines=8 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan13_dorak lines=5 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan13_jedi lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan14_jedi lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan13_jdroid lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan13_karal lines=3 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=ebo46_lurarka lines=10 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan13_pdroid lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan13_vandar lines=2 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan13_vrook lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan13_zhar lines=14 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan13_solaa lines=7 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=k_hdroid2_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan13_droid lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm13 dialogue=dan13_deesra lines=5 completed=1 transitioned=0
+[INFO] module playthrough: danm13 area=m13aa entities=171 conversations=20 dialogueLines=144 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: danm14aa dialogue=dan14_cut02 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm14aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm14aa dialogue=dan14_elise lines=22 completed=1 transitioned=0
+[INFO] module playthrough: danm14aa dialogue=dan14_jon lines=10 completed=1 transitioned=0
+[INFO] module playthrough: danm14aa dialogue=dan13_jedi lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm14aa dialogue=dan14_settler lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm14aa dialogue=dan14_kni lines=64 completed=0 transitioned=0
+[INFO] module playthrough: danm14aa dialogue=dan14_adam lines=9 completed=1 transitioned=0
+[INFO] module playthrough: danm14aa area=m14aa entities=129 conversations=8 dialogueLines=109 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: danm14ab dialogue=k_dan_speeder lines=2 completed=1 transitioned=0
+[INFO] module playthrough: danm14ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm14ab dialogue=dan14_mdroid lines=32 completed=1 transitioned=0
+[INFO] module playthrough: danm14ab area=m14ab entities=147 conversations=3 dialogueLines=35 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: danm14ac dialogue=dan14_cutjuh lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm14ac dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm14ac dialogue=dan14_bolook lines=16 completed=1 transitioned=0
+[INFO] module playthrough: danm14ac dialogue=dan14_juhani lines=25 completed=1 transitioned=0
+[INFO] module playthrough: danm14ac area=m14ac entities=130 conversations=4 dialogueLines=43 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: danm14ad dialogue=dan14_cutscene lines=44 completed=1 transitioned=0
+[INFO] module playthrough: danm14ad dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm14ad dialogue=dan14_sdroid lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm14ad area=m14ad entities=110 conversations=3 dialogueLines=46 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: danm14ae dialogue=dan_egg01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm14ae dialogue=dan_crystal01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm14ae area=m14ae entities=67 conversations=2 dialogueLines=2 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: danm15 dialogue=dan15_bastila lines=12 completed=1 transitioned=0
+[INFO] module playthrough: danm15 dialogue=dan15_compb lines=64 completed=0 transitioned=0
+[INFO] module playthrough: danm15 dialogue=dan15_compw lines=64 completed=0 transitioned=0
+[INFO] module playthrough: danm15 dialogue=dan15_cut01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm15 dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm15 dialogue=dan15_ancientdrd lines=64 completed=0 transitioned=0
+[INFO] module playthrough: danm15 area=m15aa entities=74 conversations=6 dialogueLines=206 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: danm16 dialogue=dan16_nurik lines=27 completed=1 transitioned=0
+[INFO] module playthrough: danm16 dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: danm16 dialogue=dan16_shen lines=11 completed=1 transitioned=0
+[INFO] module playthrough: danm16 dialogue=dan16_repdroid lines=64 completed=0 transitioned=0
+[INFO] module playthrough: danm16 dialogue=dan16_rahasia lines=4 completed=1 transitioned=0
+[INFO] module playthrough: danm16 dialogue=dan14_sdroid lines=2 completed=1 transitioned=0
+[INFO] module playthrough: danm16 area=m16aa entities=115 conversations=6 dialogueLines=109 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: ebo_m12aa dialogue=ebo_compartment lines=2 completed=1 transitioned=0
+[INFO] module playthrough: ebo_m12aa dialogue=ebo_supplies lines=1 completed=1 transitioned=0
+[INFO] module playthrough: ebo_m12aa area=m12aa entities=113 conversations=2 dialogueLines=3 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: ebo_m40aa area=m12aa entities=14 conversations=0 dialogueLines=0 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: ebo_m40ad area=m12aa entities=19 conversations=0 dialogueLines=0 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: ebo_m41aa dialogue=ebn12_galaxymap lines=1 completed=1 transitioned=0
+[INFO] module playthrough: ebo_m41aa area=m12aa entities=57 conversations=1 dialogueLines=1 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: ebo_m46ab dialogue=ebo46_rakata2 lines=30 completed=1 transitioned=0
+[INFO] module playthrough: ebo_m46ab area=m46aa entities=16 conversations=1 dialogueLines=30 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: end_m01aa dialogue=end_cut04 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: end_m01aa dialogue=end_room3 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: end_m01aa dialogue=end_room5 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: end_m01aa dialogue=end_cut01 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: end_m01aa known missing dialogue end_carth001
+[INFO] module playthrough: end_m01aa dialogue=end_trask01 lines=9 completed=1 transitioned=0
+[INFO] module playthrough: end_m01aa dialogue=k_hdroid1_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: end_m01aa area=m01aa entities=218 conversations=6 dialogueLines=18 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: end_m01ab dialogue=end_securitycomp lines=64 completed=0 transitioned=0
+[INFO] module playthrough: end_m01ab dialogue=end_pod lines=1 completed=1 transitioned=0
+[INFO] module playthrough: end_m01ab dialogue=end_carth001 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: end_m01ab dialogue=end_damagedroid lines=64 completed=0 transitioned=0
+[INFO] module playthrough: end_m01ab area=m01ab entities=68 conversations=4 dialogueLines=132 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: kas_m22aa dialogue=kas22_rebelcut_1 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22aa dialogue=kas22_rebelcut_2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22aa dialogue=kas22_captcut lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22aa dialogue=kas_xor_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22aa dialogue=kas22_czerkag_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: kas_m22aa dialogue=kas22_czerkg2_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22aa dialogue=kas22_eli_01 lines=12 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22aa dialogue=kas22_dasol_01 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22aa dialogue=kas22_janos_01 lines=9 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22aa dialogue=kas22_czerkas_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: kas_m22aa dialogue=kas22_czerkam_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22aa dialogue=kas22_czerka2_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22aa dialogue=kas22_xczerka_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22aa dialogue=kas22_xglobal_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22aa dialogue=kas22_xxpazaa_01 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22aa area=m22aa entities=157 conversations=16 dialogueLines=170 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: kas_m22ab dialogue=kas22_sign_01 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22ab dialogue=kas22_droid1_01 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22ab dialogue=kas22_chorraw_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: kas_m22ab dialogue=kas22_wookcho_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22ab dialogue=kas22_wookg2_01 lines=7 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22ab dialogue=kas22_wookg1_01 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22ab dialogue=kas22_czguard_02 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22ab dialogue=kas22_dehno_01 lines=23 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22ab dialogue=kas22_xrustbot lines=64 completed=0 transitioned=0
+[INFO] module playthrough: kas_m22ab dialogue=kas22_darkjedi01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m22ab area=m22ab entities=162 conversations=11 dialogueLines=168 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: kas_m23aa dialogue=kas23_audspeak lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m23aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m23aa dialogue=kas23_wookgem_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m23aa dialogue=kas23_wookgua_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: kas_m23aa dialogue=kas23_wookgef_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m23aa dialogue=kas23_wookfem_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: kas_m23aa area=m23aa entities=49 conversations=6 dialogueLines=132 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: kas_m23ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m23ab dialogue=kas23_jaarak_01 lines=10 completed=1 transitioned=0
+[INFO] module playthrough: kas_m23ab dialogue=kas23_woorwil_01 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: kas_m23ab area=m23ab entities=12 conversations=3 dialogueLines=13 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: kas_m23ac dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m23ac dialogue=kas23_worrroz_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: kas_m23ac area=m23ac entities=10 conversations=2 dialogueLines=65 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: kas_m23ad dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m23ad dialogue=kas23_chuunda_01 lines=28 completed=1 transitioned=0
+[INFO] module playthrough: kas_m23ad dialogue=kas23_postzaa_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m23ad area=m23ad entities=26 conversations=3 dialogueLines=30 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: kas_m24aa dialogue=kas24_emitter_01 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: kas_m24aa dialogue=kas24_force_01 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: kas_m24aa dialogue=kas24_xcontai_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m24aa dialogue=kas24_wraid_01 lines=4 completed=1 transitioned=0
+[INFO] module playthrough: kas_m24aa dialogue=kas24_jolee_01 lines=4 completed=1 transitioned=0
+[INFO] module playthrough: kas_m24aa dialogue=kas_k_h_calo lines=7 completed=1 transitioned=0
+[INFO] module playthrough: kas_m24aa dialogue=kas_k_h_bandon lines=6 completed=1 transitioned=0
+[INFO] module playthrough: kas_m24aa dialogue=k_pkas_rulan2 lines=4 completed=1 transitioned=0
+[INFO] module playthrough: kas_m24aa dialogue=kas_ter_conv lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m24aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m24aa dialogue=kas24_droid_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: kas_m24aa dialogue=kas24_poffice_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: kas_m24aa dialogue=kas24_pgener_01 lines=6 completed=1 transitioned=0
+[INFO] module playthrough: kas_m24aa dialogue=kas24_gorwook_01 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: kas_m24aa dialogue=kas24_tach lines=2 completed=1 transitioned=0
+[INFO] module playthrough: kas_m24aa dialogue=kas24_jolee_02 lines=19 completed=1 transitioned=0
+[INFO] module playthrough: kas_m24aa area=m24aa entities=194 conversations=16 dialogueLines=194 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: kas_m25aa dialogue=kas25_ritualmark lines=5 completed=1 transitioned=0
+[INFO] module playthrough: kas_m25aa dialogue=kas25_mandcut_01 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: kas_m25aa dialogue=kas25_starmap lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m25aa dialogue=kas25_cut2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m25aa dialogue=kas25_cut3 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m25aa dialogue=kas25_bike_conv lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m25aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: kas_m25aa dialogue=kas25_comp_01 lines=11 completed=1 transitioned=0
+[INFO] module playthrough: kas_m25aa dialogue=kas25_freyyr_01 lines=4 completed=1 transitioned=0
+[INFO] module playthrough: kas_m25aa dialogue=kas25_hurt_01 lines=13 completed=1 transitioned=0
+[INFO] module playthrough: kas_m25aa area=m25aa entities=145 conversations=10 dialogueLines=40 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: korr_m33aa dialogue=kor33a_doorlock lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kas_xor_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_portauth lines=64 completed=0 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_czerkagrd lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_lashowe lines=15 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_czerkarep lines=9 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_pilot1 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_pilot2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_prospectm lines=64 completed=0 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_prospectf lines=64 completed=0 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_genprospm lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_alien lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_citizenm lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_informed lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_mechanic lines=64 completed=0 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_shaardan lines=25 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=ebo46_lurze lines=18 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_bartender lines=8 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_freightcap lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_toll lines=3 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_weapons lines=64 completed=0 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_genprospf lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa dialogue=kor33_citizenf lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33aa area=m33aa entities=201 conversations=24 dialogueLines=474 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: korr_m33ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33ab dialogue=kor33_mekel lines=3 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33ab dialogue=kor33_mekfight3 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33ab dialogue=kor33_mekfight1 lines=6 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33ab dialogue=kor33_mekfight2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33ab dialogue=k33_academyguard lines=3 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33ab dialogue=k_hdroid1_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33ab dialogue=k_hdroid3_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m33ab area=m33ab entities=51 conversations=8 dialogueLines=17 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: korr_m34aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m34aa dialogue=k34_trg_passage lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m34aa dialogue=kor34_sithrebel lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m34aa dialogue=kor34_thaliamay lines=4 completed=1 transitioned=0
+[INFO] module playthrough: korr_m34aa area=m34aa entities=136 conversations=4 dialogueLines=7 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: korr_m35aa dialogue=kor35_utharbed lines=2 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_duelcomp lines=4 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_duelconv lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_utharwynn lines=28 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_yuthuraban lines=64 completed=0 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_tariga lines=64 completed=0 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_adrenas lines=6 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_repprison2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_unconsciou lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_sithstudm lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_sithduel lines=64 completed=0 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_sithstudf lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_kelal lines=10 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_lashowe lines=64 completed=0 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_sithguard lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_mekel lines=3 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_torturer lines=7 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_sithteach1 lines=8 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_sithteach2 lines=9 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_shaardan lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m35aa dialogue=kor35_sithfreed1 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: korr_m35aa area=m35aa entities=237 conversations=22 dialogueLines=405 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: korr_m36aa dialogue=kor_k_h_calo lines=7 completed=1 transitioned=0
+[INFO] module playthrough: korr_m36aa dialogue=kor_k_h_bandon lines=6 completed=1 transitioned=0
+[INFO] module playthrough: korr_m36aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m36aa dialogue=kor36_sithexcavf lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m36aa dialogue=kor36_dakvesser lines=64 completed=0 transitioned=0
+[INFO] module playthrough: korr_m36aa dialogue=kor36_sithfreed2 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: korr_m36aa dialogue=kor36_sithguard lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m36aa dialogue=kor36_sithassass lines=64 completed=0 transitioned=0
+[INFO] module playthrough: korr_m36aa area=m36aa entities=157 conversations=8 dialogueLines=208 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: korr_m37aa dialogue=kor37_firescene lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m37aa dialogue=k37_statue lines=2 completed=1 transitioned=0
+[INFO] module playthrough: korr_m37aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m37aa dialogue=kor37_leverscene lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m37aa area=m37aa entities=82 conversations=4 dialogueLines=5 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: korr_m38aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m38aa dialogue=k38a_assassindrd lines=2 completed=1 transitioned=0
+[INFO] module playthrough: korr_m38aa dialogue=k38a_wardroid lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m38aa area=m38ab entities=69 conversations=3 dialogueLines=4 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: korr_m38ab dialogue=k38b_plc_console lines=3 completed=1 transitioned=0
+[INFO] module playthrough: korr_m38ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m38ab dialogue=kor38b_droid1 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: korr_m38ab dialogue=kor38b_mekel lines=10 completed=1 transitioned=0
+[INFO] module playthrough: korr_m38ab dialogue=kor38b_jorakuln lines=5 completed=1 transitioned=0
+[INFO] module playthrough: korr_m38ab area=m38aa entities=101 conversations=5 dialogueLines=83 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: korr_m39aa dialogue=k39_plc_acidpool lines=3 completed=1 transitioned=0
+[INFO] module playthrough: korr_m39aa dialogue=kor39_areaenter lines=2 completed=1 transitioned=0
+[INFO] module playthrough: korr_m39aa dialogue=kor39_pillar lines=9 completed=1 transitioned=0
+[INFO] module playthrough: korr_m39aa dialogue=kor39_starspeak lines=3 completed=1 transitioned=0
+[INFO] module playthrough: korr_m39aa dialogue=kor39_cutscene2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m39aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m39aa dialogue=kor39_cut_terent lines=1 completed=1 transitioned=0
+[INFO] module playthrough: korr_m39aa area=m39aa entities=123 conversations=7 dialogueLines=20 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: lev_m40aa dialogue=lev40_detcompdlg lines=2 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40aa dialogue=plev_elev_dlg lines=1 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40aa dialogue=lev40_bast400 lines=12 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40aa dialogue=lev40_transform lines=1 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40aa dialogue=lev40_jucs_dlg lines=1 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40aa dialogue=lev40_t3cs_dlg lines=1 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40aa dialogue=lev40_aacompdlg lines=64 completed=0 transitioned=0
+[INFO] module playthrough: lev_m40aa dialogue=lev40_jolee lines=10 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40aa dialogue=lev40_cand_dlg lines=1 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40aa dialogue=lev40_saul403 lines=58 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40aa dialogue=lev40_sithcomman lines=6 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40aa dialogue=lev40_rodpris2 lines=14 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40aa dialogue=lev40_decomdroid lines=64 completed=0 transitioned=0
+[INFO] module playthrough: lev_m40aa area=m40aa entities=219 conversations=13 dialogueLines=235 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: lev_m40ab dialogue=lev40_abcompdlg lines=64 completed=0 transitioned=0
+[INFO] module playthrough: lev_m40ab dialogue=plev_elev_dlg lines=2 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40ab dialogue=lev40_droid17b lines=3 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40ab dialogue=lev40_servdroid2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40ab dialogue=lev40_servdroid lines=1 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40ab dialogue=lev40_asdrd_dlg lines=1 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40ab area=m40ab entities=212 conversations=7 dialogueLines=73 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: lev_m40ac dialogue=lev40_combatdlg lines=1 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40ac dialogue=lev40_accntl_dlg lines=1 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40ac dialogue=lev40_hangardlg lines=1 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40ac dialogue=lev40_darthmala2 lines=9 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40ac dialogue=lev40_cand_dlg lines=1 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40ac area=m40ac entities=124 conversations=5 dialogueLines=13 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: lev_m40ad dialogue=lev40_saul402 lines=7 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40ad dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: lev_m40ad dialogue=lev40_comp25 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: lev_m40ad area=m40ad entities=105 conversations=3 dialogueLines=72 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: liv_m99aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: liv_m99aa dialogue=yav47_suvam lines=12 completed=1 transitioned=0
+[INFO] module playthrough: liv_m99aa area=m50aa entities=105 conversations=2 dialogueLines=13 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: manm26aa dialogue=man26_trial lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_pcexile lines=14 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_duan lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_viglo lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_gonto lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_irimerc lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_manmerc lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_nilko lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_shaelas lines=10 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_sithneg lines=5 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_repneg lines=5 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_selguard lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_selbar lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_selward lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_sunry lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_seljud5 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_seljud2 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_seljud4 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_seljud3 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_seljud1 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_pris lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_repac lines=9 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_sithac lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_merc1 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_echmerc1 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_sel2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_selamb2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa dialogue=man26_travel lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26aa area=m26aa entities=125 conversations=29 dialogueLines=514 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: manm26ab dialogue=man26_regcomp lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_return lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_selarrest lines=8 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_casandra lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_swpreg lines=10 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_hukta lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_zoffice_01 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_merc2 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_swoopgen01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_queedle lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_sel2 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_selamb2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_selauth2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_sithdip lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_sithneg lines=5 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_sithyell lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_sithyell2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_sithswp1 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_sithswp2 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_sithwdrd lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_swoop1 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_swoop2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_travel lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_yortal lines=6 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=k_hdroid1_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_droid lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_swoop1a lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_swoop1q lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man27_zeena lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_vek lines=4 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab dialogue=man26_sithbuy lines=6 completed=1 transitioned=0
+[INFO] module playthrough: manm26ab area=m26ab entities=180 conversations=32 dialogueLines=512 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: manm26ac dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ac dialogue=man26_repkol2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ac dialogue=man26_security lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ac dialogue=man26_selport lines=4 completed=1 transitioned=0
+[INFO] module playthrough: manm26ac dialogue=man26_travel lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ac dialogue=man26_sithamb lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ac dialogue=man26_sithkol1 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ac dialogue=man26_sithkol2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ac dialogue=man26_selcoord lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26ac dialogue=man26_selkol lines=3 completed=1 transitioned=0
+[INFO] module playthrough: manm26ac dialogue=man26_sel1 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ac dialogue=man26_selamb lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ac dialogue=man26_selamb2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ac dialogue=k_hdroid1_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ac dialogue=man26_jolan lines=5 completed=1 transitioned=0
+[INFO] module playthrough: manm26ac area=m26ac entities=121 conversations=15 dialogueLines=87 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: manm26ad dialogue=man26_speed lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm26ad dialogue=man26_enter5 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm26ad dialogue=man26_enter6 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm26ad dialogue=man26_enter7 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm26ad dialogue=man_ithordead lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm26ad dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ad dialogue=kas_xor_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ad dialogue=man26_reparg lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26ad dialogue=man26_sitharg lines=8 completed=1 transitioned=0
+[INFO] module playthrough: manm26ad dialogue=ebo46_nubassa lines=14 completed=1 transitioned=0
+[INFO] module playthrough: manm26ad dialogue=man26_merch lines=9 completed=1 transitioned=0
+[INFO] module playthrough: manm26ad dialogue=man26_repkol1 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ad dialogue=k_hdroid1_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ad dialogue=man26_sithkol2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ad area=m26ad entities=235 conversations=14 dialogueLines=110 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: manm26ae dialogue=man26_bigcomp lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_sub lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_sithsolar lines=7 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_selambush lines=7 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man_lorgterm lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man_lorgal lines=7 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=k_hdroid1_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_firith lines=12 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_gluupor lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_ignus lines=6 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_repint lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_repsol3 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_repsolar lines=3 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_repsol lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_repkol1 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_repsol2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_repsol4 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_repamb lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_reptech lines=10 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_repdip lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_selamb2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_sithpris lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_sithsol lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_sithsol2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_tyvark lines=4 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=k_hdroid2_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_shady lines=4 completed=1 transitioned=0
+[INFO] module playthrough: manm26ae dialogue=man26_hulas lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm26ae area=m26ae entities=226 conversations=29 dialogueLines=334 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: manm26mg area=m26mg entities=20 conversations=0 dialogueLines=0 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: manm27aa dialogue=man27_warning lines=3 completed=1 transitioned=0
+[INFO] module playthrough: manm27aa dialogue=man27_warning002 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: manm27aa dialogue=man27_warning004 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: manm27aa dialogue=man27_warning005 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: manm27aa dialogue=man27_warning003 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: manm27aa dialogue=man27_cut01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm27aa dialogue=man27_sithmas lines=6 completed=1 transitioned=0
+[INFO] module playthrough: manm27aa dialogue=man27_dyingsel lines=2 completed=1 transitioned=0
+[INFO] module playthrough: manm27aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm27aa dialogue=man27_shasa lines=25 completed=1 transitioned=0
+[INFO] module playthrough: manm27aa dialogue=man27_seljed1 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm27aa dialogue=man27_seljed4 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm27aa dialogue=man27_seljed2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm27aa dialogue=man27_seljed3 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm27aa dialogue=man27_sithlieu lines=7 completed=1 transitioned=0
+[INFO] module playthrough: manm27aa dialogue=man27_rep01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm27aa area=m27aa entities=317 conversations=16 dialogueLines=125 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: manm28aa dialogue=man28_sur1 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm28aa dialogue=man28aa_comp01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm28aa dialogue=man28_sub lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm28aa dialogue=man_k_h_calo lines=7 completed=1 transitioned=0
+[INFO] module playthrough: manm28aa dialogue=man_k_h_bandon lines=5 completed=1 transitioned=0
+[INFO] module playthrough: manm28aa dialogue=man28_merc lines=12 completed=1 transitioned=0
+[INFO] module playthrough: manm28aa dialogue=k_pman_rep04 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm28aa dialogue=k_pman_rep03 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: manm28aa area=m28aa entities=258 conversations=8 dialogueLines=281 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: manm28ab dialogue=man28_sur2 lines=13 completed=1 transitioned=0
+[INFO] module playthrough: manm28ab area=m28ab entities=69 conversations=1 dialogueLines=13 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: manm28ac dialogue=man28ac_comp01 lines=6 completed=1 transitioned=0
+[INFO] module playthrough: manm28ac dialogue=man28_sur3 lines=59 completed=1 transitioned=0
+[INFO] module playthrough: manm28ac dialogue=man28_sur4 lines=7 completed=1 transitioned=0
+[INFO] module playthrough: manm28ac area=m28ac entities=80 conversations=3 dialogueLines=72 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: manm28ad dialogue=man28_puzzle lines=5 completed=1 transitioned=0
+[INFO] module playthrough: manm28ad dialogue=man28_starmap lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm28ad dialogue=man28_fish lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm28ad dialogue=man28_safe lines=1 completed=1 transitioned=0
+[INFO] module playthrough: manm28ad area=m28ad entities=47 conversations=4 dialogueLines=8 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: sta_m45aa dialogue=k_sta_malak1 lines=7 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45aa dialogue=k_sta_jedidark lines=1 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45aa dialogue=k_sta_carth lines=20 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45aa dialogue=k_sta_jedifem lines=6 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45aa dialogue=k_sta_jedim lines=1 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45aa area=m45aa entities=166 conversations=6 dialogueLines=36 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: sta_m45ab dialogue=k_sta45_malak2 lines=11 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ab dialogue=sta45_turretcomp lines=64 completed=0 transitioned=0
+[INFO] module playthrough: sta_m45ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ab area=m45ab entities=94 conversations=3 dialogueLines=76 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: sta_m45ac dialogue=k_sta_gen_assass lines=2 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ac dialogue=k_sta_gen_mk2 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ac dialogue=k_sta_gen_mk4 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ac dialogue=k_sta_gen_spyder lines=2 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ac dialogue=k_sta_gen_probe lines=2 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ac dialogue=k_sta_gen_war lines=2 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ac dialogue=k_sta_darkcut lines=8 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ac dialogue=k_sta_darthmalak lines=7 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ac dialogue=k_sta_lightcut lines=11 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ac dialogue=k_sta_bastila lines=4 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ac dialogue=k_sta_bastlast lines=25 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ac dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ac dialogue=k_sta_freezeconv lines=1 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ac area=m45ac entities=204 conversations=13 dialogueLines=69 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: sta_m45ad dialogue=sta_captive_conv lines=1 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ad dialogue=k_sta_cutscene lines=1 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ad dialogue=k_sta_jedi lines=1 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ad dialogue=sta_firstjedi_co lines=7 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ad dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: sta_m45ad area=m45ad entities=106 conversations=5 dialogueLines=11 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m02aa dialogue=tar02_preraid lines=5 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02aa dialogue=tar02_dia022 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02aa dialogue=tar02_alien4 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02aa dialogue=tar02_alien lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02aa dialogue=tar02a_alien3 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02aa dialogue=k_hdroid1_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02aa dialogue=tar02_janitor lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m02aa dialogue=tar02_larrim lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m02aa dialogue=tar02a_alien4 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02aa dialogue=tar02a_alien lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02aa dialogue=tar02_postraid lines=4 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02aa area=m02aa entities=100 conversations=12 dialogueLines=147 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m02ab dialogue=tar02_drddlg lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ab dialogue=tar02_child lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ab dialogue=tar02_drunk021 lines=7 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ab dialogue=tar02_sithguard lines=4 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ab dialogue=tar02_sithpat22 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ab dialogue=tar02_gorton21 lines=8 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ab dialogue=tar02_janice021 lines=9 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ab dialogue=tar02_t3h8 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ab dialogue=tar02_protdro lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m02ab dialogue=tar02_t3m4 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ab dialogue=tar02_citizen lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ab dialogue=tar02_ambman2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ab dialogue=tar02_ambman1 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ab dialogue=tar02_gortlistfe lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ab dialogue=tar02_merchant lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ab area=m02ab entities=151 conversations=16 dialogueLines=103 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m02ac dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ac dialogue=tar02_zelka021 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m02ac dialogue=tar02_gurney021 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m02ac dialogue=tar02_medidr_dlg lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ac dialogue=tar02_kebla021 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ac dialogue=tar02_sithcantin lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ac dialogue=tar02_sithpat22 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ac dialogue=tar02_protdro lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m02ac dialogue=tar02_bountyh022 lines=11 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ac dialogue=tar02_bullmerc21 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ac dialogue=tar02_shopdroid lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ac dialogue=tar02_salvage lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ac dialogue=tar02_ambman1 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ac dialogue=tar02_ambman2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ac dialogue=tar02_ambwom1 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ac dialogue=tar02_ambwom2 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ac area=m02ac entities=143 conversations=16 dialogueLines=219 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m02ad dialogue=tar02_sarna021 lines=11 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ad dialogue=tar02_yungenda21 lines=17 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ad dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ad dialogue=tar02_scaredm021 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ad dialogue=tar02_child lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ad dialogue=tar02_man lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ad dialogue=tar02_woman lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ad dialogue=tar02_alienpris lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m02ad dialogue=tar02_sithintero lines=12 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ad dialogue=tar02_aptwndw lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ad dialogue=tar02_aptwnd lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ad dialogue=tar02_aptwndc lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ad dialogue=k_hdroid1_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ad area=m02ad entities=111 conversations=13 dialogueLines=115 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m02ae dialogue=tar02_duelmon lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_duelann022 lines=9 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_duelann021 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_duelorg021 lines=13 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_deadeye021 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_gerlon021 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_ice021 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_marl021 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_twitch lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_jergan021 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_yungenda21 lines=17 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_musictwi21 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_bith lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_niklos021 lines=4 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_garouk021 lines=9 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_christy021 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_noble021 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_gana021 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_waiter lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_sarna021 lines=11 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_sithmale lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_sithfem lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_musicf021 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_musicm021 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_femyouth23 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_duelfem lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_duelmale lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_taproomf lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_male021 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_male022 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae dialogue=tar02_taproomm lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02ae area=m02ae entities=116 conversations=32 dialogueLines=227 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m02af dialogue=k_ptar_workbench lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02af dialogue=k_hcar_dialog lines=4 completed=1 transitioned=0
+[INFO] module playthrough: tar_m02af area=m02af entities=20 conversations=2 dialogueLines=7 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m03aa dialogue=tar03_cutdlg lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03aa dialogue=tar03_sithpat31 lines=4 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03aa dialogue=tar03_cand032 lines=9 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03aa dialogue=tar03_hidbekguar lines=8 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03aa dialogue=tar03_cantguard lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03aa dialogue=tar03_hidbek031 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03aa area=m03aa entities=126 conversations=7 dialogueLines=27 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m03ab dialogue=tar03_calo032 lines=6 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ab dialogue=tar03_strongbox lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ab dialogue=tar03_message lines=4 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ab dialogue=tar03_selven031 lines=4 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ab area=m03ab entities=90 conversations=5 dialogueLines=17 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m03ad dialogue=tar03_puzzle lines=4 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ad dialogue=tar03_bithwarn lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ad dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ad dialogue=tar03_matrik031 lines=10 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ad dialogue=tar03_rustdroid lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m03ad area=m03ad entities=90 conversations=5 dialogueLines=81 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m03ae dialogue=tar03_calo031 lines=11 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=tar03_mission031 lines=10 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=tar03_gelrood031 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=tar03_cardsell31 lines=6 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=tar03_holdan031 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=tar03_citizen lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=tar03_zax031 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=tar03_bounhun31 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=tar03_bounhun032 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=tar03_bounhun33 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=tar03_zaal031 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=tar03_bith lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=tar02_musictwi21 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=tar03_bibsurool lines=7 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=tar03_lynsekla lines=28 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03ae dialogue=tar02_twohead lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m03ae area=m03ae entities=102 conversations=17 dialogueLines=265 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m03af dialogue=tar03_brejik031 lines=15 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03af dialogue=tar03_mechanic lines=12 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03af dialogue=tar03_doba lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03af dialogue=tar03_anglu lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03af dialogue=tar03_phirk lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03af dialogue=tar03_redros lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03af dialogue=tar03_announcer lines=5 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03af dialogue=tar03_bastila lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03af dialogue=tar03_guard lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m03af area=m03af entities=46 conversations=9 dialogueLines=42 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m03mg area=m03mg entities=17 conversations=0 dialogueLines=0 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m04aa dialogue=tar04_victim lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_outman041 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_republicso lines=4 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_outwom044 lines=6 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_infect041 lines=8 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_infectf041 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_gendar041 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_rukil lines=41 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_outman043 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_outwom041 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_outwom042 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_outwom043 lines=13 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_outman045 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_hendar lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_cand043 lines=9 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_daviktr041 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_igear lines=11 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_shaleena lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_sithpatrol lines=8 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa dialogue=tar04_outman044 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m04aa area=m04aa entities=326 conversations=21 dialogueLines=243 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m05aa dialogue=tar05_ff_dlg lines=4 completed=1 transitioned=0
+[INFO] module playthrough: tar_m05aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m05aa dialogue=missdoor_dlg lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m05aa dialogue=tar05_rustdroid lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m05aa area=m05aa entities=156 conversations=4 dialogueLines=70 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m05ab dialogue=tar05_pile_dlg lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m05ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m05ab area=m05ab entities=102 conversations=2 dialogueLines=3 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m08aa dialogue=tar08_aacompdlg lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m08aa dialogue=tar08_ramp lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m08aa dialogue=tar08_davik081 lines=20 completed=1 transitioned=0
+[INFO] module playthrough: tar_m08aa dialogue=tar08_davguest01 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m08aa dialogue=tar08_davguest82 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: tar_m08aa dialogue=tar08_davslav82 lines=4 completed=1 transitioned=0
+[INFO] module playthrough: tar_m08aa dialogue=tar08_davguest83 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: tar_m08aa dialogue=tar08_davslav84 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m08aa area=m08aa entities=228 conversations=8 dialogueLines=103 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m09aa dialogue=tar09_aacompdlg lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m09aa dialogue=tar09_trap_dlg lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m09aa dialogue=tar09_durosx lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m09aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m09aa dialogue=tar09_recept091 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: tar_m09aa dialogue=tar09_sith091 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m09aa dialogue=k_tar09_repdroid lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m09aa dialogue=tar09_duros lines=4 completed=1 transitioned=0
+[INFO] module playthrough: tar_m09aa area=m09aa entities=167 conversations=8 dialogueLines=141 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m09ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m09ab dialogue=tar09_darkjedi91 lines=4 completed=1 transitioned=0
+[INFO] module playthrough: tar_m09ab area=m09ab entities=10 conversations=2 dialogueLines=5 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m10aa dialogue=tar10_vulkelev lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tar_m10aa dialogue=tar10_aacompdlg lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m10aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m10aa dialogue=tar10_waitress lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m10aa dialogue=tar10_bartender lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m10aa dialogue=tar10_bardroid lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m10aa dialogue=tar10_vulksur2 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m10aa dialogue=tar10_pooldroid2 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tar_m10aa area=m10aa entities=192 conversations=8 dialogueLines=263 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m10ab dialogue=tar10_mainpanel lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m10ab dialogue=tar10_heatpanel lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tar_m10ab dialogue=tar10_vulklabt01 lines=6 completed=1 transitioned=0
+[INFO] module playthrough: tar_m10ab dialogue=tar10_vulkmech01 lines=9 completed=1 transitioned=0
+[INFO] module playthrough: tar_m10ab dialogue=tar10_vulkmec02 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m10ab dialogue=tar10_vulkmech03 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m10ab dialogue=tar10_vulklabgua lines=4 completed=1 transitioned=0
+[INFO] module playthrough: tar_m10ab dialogue=tar_rustdroid lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m10ab dialogue=tar10_vulkmech04 lines=7 completed=1 transitioned=0
+[INFO] module playthrough: tar_m10ab area=m10ab entities=116 conversations=9 dialogueLines=222 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m10ac dialogue=tar10_accompdlg lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m10ac dialogue=tar10_kandon01 lines=25 completed=1 transitioned=0
+[INFO] module playthrough: tar_m10ac dialogue=k_ptar_workbench lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tar_m10ac dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m10ac dialogue=tar10_vulkjunkdr lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m10ac dialogue=tar10_repdroid lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m10ac area=m10ac entities=150 conversations=6 dialogueLines=221 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m11aa dialogue=tar11_aacompdlg lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m11aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m11aa dialogue=tar11_gadon112 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tar_m11aa dialogue=tar11_zaerdra111 lines=6 completed=1 transitioned=0
+[INFO] module playthrough: tar_m11aa dialogue=tar11_hidbek116 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m11aa dialogue=tar11_hidbek113 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m11aa dialogue=tar11_hidbek111 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tar_m11aa dialogue=tar11_hidbek112 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tar_m11aa dialogue=tar11_hidbek114 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m11aa dialogue=tar11_hidbek115 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m11aa area=m11aa entities=127 conversations=10 dialogueLines=145 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m11ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tar_m11ab dialogue=tar11_gadon111 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: tar_m11ab area=m11ab entities=11 conversations=2 dialogueLines=6 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tat_m17aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17aa dialogue=tat17_03shari_01 lines=14 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17aa dialogue=tat17_11iziz_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tat_m17aa dialogue=tat17_11guard_01 lines=4 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17aa dialogue=tat17_12rodia_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17aa dialogue=tat17_12trade_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17aa dialogue=tat17_05mecha_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tat_m17aa dialogue=k_hdroid1_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17aa dialogue=tat17_12comm_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17aa dialogue=tat17_darkjedi01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17aa dialogue=tat17_xxjawa_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17aa dialogue=tat17_news_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17aa area=m17aa entities=182 conversations=12 dialogueLines=154 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tat_m17ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ab dialogue=tat17_01cust_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tat_m17ab dialogue=tat17_01mech_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ab dialogue=ebo46_jorulkurax lines=7 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ab dialogue=tat17ab_twohead lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ab dialogue=tat17_01guard_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ab area=m17ab entities=62 conversations=6 dialogueLines=77 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tat_m17ac dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ac dialogue=tat17_08yuka_01 lines=12 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ac dialogue=tat17_08hk47_01 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ac dialogue=tat17_08xrustbot lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ac dialogue=k_hdroid1_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ac area=m17ac entities=24 conversations=5 dialogueLines=20 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tat_m17ad dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ad dialogue=tat17_03dorak_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tat_m17ad dialogue=tat17_03fazza_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tat_m17ad dialogue=tat17_03tanis_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tat_m17ad dialogue=tat17_03gurke_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tat_m17ad dialogue=tat17_03narka_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ad dialogue=tat17_03ugzak_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ad dialogue=tat17_03komad_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tat_m17ad dialogue=tat17_0xpazaa_01 lines=7 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ad area=m17ad entities=34 conversations=9 dialogueLines=330 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tat_m17ae dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ae dialogue=tat17_04celis_01 lines=10 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ae dialogue=tat17_04garm_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tat_m17ae dialogue=tat17_04nico_01 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ae dialogue=tat17_04yuka_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tat_m17ae dialogue=tat17_04zorii_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tat_m17ae dialogue=tat17_04swoop_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ae dialogue=tat17_04sfanf_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ae dialogue=tat17_04race_01 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ae area=m17ae entities=47 conversations=9 dialogueLines=212 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tat_m17af dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17af dialogue=tat17_07junix_01 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17af dialogue=tat17_07jawag_01 lines=11 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17af dialogue=tat17_07gandr_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tat_m17af dialogue=tat17_07furko_01 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17af dialogue=tat17_07offic_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tat_m17af dialogue=tat17_07offic_02 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17af dialogue=tat17_07xjawa_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17af dialogue=tat17_07ithor_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17af area=m17af entities=46 conversations=9 dialogueLines=151 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tat_m17ag dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ag dialogue=tat17_10czerk_01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: tat_m17ag dialogue=tat17_10greet_01 lines=8 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ag dialogue=tat17_xconser_02 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: tat_m17ag area=m17ae entities=25 conversations=4 dialogueLines=78 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tat_m17mg area=m17mg entities=18 conversations=0 dialogueLines=0 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tat_m18aa dialogue=tat18_xduneedge lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18aa dialogue=tat18aa_marker lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18aa dialogue=tat18_12gurke_01 lines=12 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18aa dialogue=tat18_xsandptran lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18aa dialogue=tat18_xkrayttran lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18aa dialogue=tat18aa_tuskenc lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18aa dialogue=tat18_tuskamb lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18aa dialogue=tat18_10wife_01 lines=6 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18aa dialogue=tat18_13craw2_01 lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18aa dialogue=tat18_13craw1_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18aa dialogue=tat18_10tanis_01 lines=11 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18aa dialogue=tat18_tusken lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18aa area=m18aa entities=344 conversations=13 dialogueLines=44 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tat_m18ab dialogue=tat18_sanddeath lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ab dialogue=tat18_xkrayttra2 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ab dialogue=tat18ab_marker lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ab dialogue=tat18_xduneedge2 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ab dialogue=tat18_xdunesea1 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ab dialogue=tat18_vorndroid2 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ab dialogue=tat18ab_tuskenc lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ab dialogue=tat18_tusken lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ab area=m18ab entities=273 conversations=9 dialogueLines=13 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tat_m18ac dialogue=tat18_xdunesea2 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ac dialogue=tat18_xduneedge3 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ac dialogue=tat18ac_marker lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ac dialogue=tat18_bantha lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ac dialogue=tat18_starspeak lines=3 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ac dialogue=ambush_test lines=7 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ac dialogue=tat_k_h_bandon lines=5 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ac dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ac dialogue=tat18_hunter_01 lines=2 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ac dialogue=tat18_11komad_01 lines=17 completed=1 transitioned=0
+[INFO] module playthrough: tat_m18ac area=m18ac entities=273 conversations=10 dialogueLines=41 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tat_m20aa dialogue=tat20_xstuff_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m20aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m20aa dialogue=tat20_06jawa_01 lines=5 completed=1 transitioned=0
+[INFO] module playthrough: tat_m20aa dialogue=tat20_09chief_01 lines=13 completed=1 transitioned=0
+[INFO] module playthrough: tat_m20aa dialogue=tat20_09warr_01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: tat_m20aa dialogue=tat20_09first_01 lines=8 completed=1 transitioned=0
+[INFO] module playthrough: tat_m20aa area=m20aa entities=131 conversations=6 dialogueLines=29 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: unk_m41aa dialogue=unk41_fight lines=7 completed=1 transitioned=0
+[INFO] module playthrough: unk_m41aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m41aa area=m41aa entities=95 conversations=2 dialogueLines=8 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: unk_m41ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m41ab area=m41ab entities=97 conversations=1 dialogueLines=1 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: unk_m41ac dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m41ac area=m41ac entities=70 conversations=1 dialogueLines=1 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: unk_m41ad dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m41ad area=m41ad entities=79 conversations=1 dialogueLines=1 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: unk_m42aa dialogue=unk42_redcomp lines=64 completed=0 transitioned=0
+[INFO] module playthrough: unk_m42aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m42aa dialogue=unk42_redelder lines=64 completed=0 transitioned=0
+[INFO] module playthrough: unk_m42aa dialogue=unk42_redhistory lines=64 completed=0 transitioned=0
+[INFO] module playthrough: unk_m42aa dialogue=unk42_breed01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m42aa dialogue=unk42_breed02 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m42aa dialogue=unk42_breed03 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m42aa dialogue=unk42_redbreed01 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: unk_m42aa dialogue=unk42_redbreed02 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m42aa dialogue=unk42_redbreed03 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m42aa dialogue=unk42_redwand02 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m42aa dialogue=unk42_redwand01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m42aa dialogue=k_hdroid1_dialog lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m42aa area=m42aa entities=267 conversations=13 dialogueLines=265 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: unk_m43aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m43aa dialogue=unk43_theone lines=25 completed=1 transitioned=0
+[INFO] module playthrough: unk_m43aa dialogue=unk43_black02 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m43aa dialogue=unk43_black01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m43aa dialogue=unk43_rakstory lines=64 completed=0 transitioned=0
+[INFO] module playthrough: unk_m43aa dialogue=unk41_rakfan lines=9 completed=1 transitioned=0
+[INFO] module playthrough: unk_m43aa dialogue=unk43_blackrak01 lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m43aa dialogue=unk43_redpris lines=5 completed=1 transitioned=0
+[INFO] module playthrough: unk_m43aa area=m43aa entities=171 conversations=8 dialogueLines=107 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: unk_m44aa dialogue=unk_comp lines=64 completed=0 transitioned=0
+[INFO] module playthrough: unk_m44aa dialogue=unk_comp2 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: unk_m44aa dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m44aa dialogue=unk44_brokdro001 lines=64 completed=0 transitioned=0
+[INFO] module playthrough: unk_m44aa dialogue=unk44_sithmast lines=2 completed=1 transitioned=0
+[INFO] module playthrough: unk_m44aa area=m44aa entities=215 conversations=5 dialogueLines=195 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: unk_m44ab dialogue=unk44_lib_dlg lines=64 completed=0 transitioned=0
+[INFO] module playthrough: unk_m44ab dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m44ab area=m44ab entities=69 conversations=2 dialogueLines=65 transitioned=0 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: unk_m44ac dialogue=unk44_comp lines=4 completed=1 transitioned=0
+[INFO] module playthrough: unk_m44ac dialogue=k_transabort lines=1 completed=1 transitioned=0
+[INFO] module playthrough: unk_m44ac dialogue=unk44_evilbast lines=15 completed=1 transitioned=0
+[INFO] module playthrough: unk_m44ac area=m44ac entities=46 conversations=3 dialogueLines=20 transitioned=0 warnings=0
 [INFO] module playthrough: modules=1
 [INFO] module playthrough: dialogues=1
+[INFO] module playthrough: conversation_load=1
+[INFO] module playthrough: conversation_attempts=1
+[INFO] module playthrough: known_missing=1
 [INFO] module playthrough: lines=1
 [INFO] module playthrough: warnings=1
-[INFO] module playthrough: modules=8 dialogues=7 lines=143 warnings=0
+[INFO] module playthrough: modules=117 dialogues=780 attempts=781 failures=0 knownMissing=1 lines=10133 warnings=0
 [INFO] module playthrough: PASS
 [INFO] differential test: saveMatrix=0 dialogueCorpus=0 playthrough=0 moduleMatrix=0
 [INFO] differential test: PASS

@@ -45,6 +45,8 @@ struct Options {
     bool saveMatrixTest = false;
     bool dialogueCorpusTest = false;
     bool differentialTest = false;
+    bool modulePlaythroughTest = false;
+    bool bugParityTest = false;
     std::string vfsFixtures;
     std::string factionScript;
     std::string saveFixtures;

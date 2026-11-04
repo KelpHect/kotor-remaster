@@ -529,6 +529,8 @@ public:
     std::size_t size() const { return entries_.size(); }
     std::string text(std::uint32_t strref) const;
     std::string sound(std::uint32_t strref) const;
+    // TLK V3.0 serializer for patch fixtures and mod tooling.
+    std::vector<std::uint8_t> toBytes() const;
 
 private:
     struct Entry {

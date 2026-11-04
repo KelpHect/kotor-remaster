@@ -2124,6 +2124,18 @@ int runDialogueCorpusTest(GameSession& game)
     check(cameraModels > 0, "camera_models");
     check(camVidEffects == 0, "camvid_defaults");
     check(links > 0 && invalidLinks == 0, "links");
+
+    kotor::Dlg camDlg;
+    kotor::DlgEntry camEntry;
+    camEntry.text = "CamVid fixture";
+    camEntry.camVidEffect = 1;
+    camDlg.entries.push_back(camEntry);
+    const int before = game.unsupportedCamVidEffects();
+    game.setDialogueForTest(std::move(camDlg), "camvid_fixture", "Tester");
+    check(game.dialogue().camVidEffect == 1, "camvid_fixture_effect");
+    check(game.unsupportedCamVidEffects() == before + 1,
+          "camvid_fixture_rejected");
+    game.endDialogue();
     logInfo(concat("dialogue corpus: dlgs=", dlgs, " entries=", entries,
                    " replies=", replies, " scripts=", scripts,
                    " sounds=", sounds, " cameraModels=", cameraModels,
@@ -2140,15 +2152,40 @@ int runModulePlaythroughMatrix(const std::string& installPath)
         logInfo(concat("module playthrough: ", label, "=", condition ? 1 : 0));
         ok = ok && condition;
     };
-    const char* modules[] = {
-        "end_m01aa", "end_m01ab", "tar_m02af", "tar_m03aa",
-        "tar_m03ab", "danm14aa", "manm28aa", "m12ab",
-    };
+    std::vector<std::string> modules;
+    std::error_code moduleError;
+    const std::filesystem::path modulesRoot =
+        std::filesystem::path(installPath) / "modules";
+    if (std::filesystem::is_directory(modulesRoot, moduleError)) {
+        for (const std::filesystem::directory_entry& item :
+             std::filesystem::directory_iterator(modulesRoot, moduleError)) {
+            if (moduleError || !item.is_regular_file()
+                || item.path().extension() != ".rim") {
+                continue;
+            }
+            const std::string stem = item.path().stem().string();
+            if (stem.ends_with("_s") || stem.ends_with("_a")
+                || stem.ends_with("_adx")) {
+                continue;
+            }
+            modules.push_back(stem);
+        }
+    }
+    std::sort(modules.begin(), modules.end());
+    modules.erase(std::unique(modules.begin(), modules.end()), modules.end());
+    check(modules.size() == 117, "module_count");
     std::size_t loaded = 0;
     std::size_t dialogues = 0;
+    std::size_t conversationAttempts = 0;
+    std::size_t conversationFailures = 0;
+    std::size_t knownMissing = 0;
     std::size_t lines = 0;
     std::size_t warnings = 0;
-    for (const char* module : modules) {
+    // Shipped KotOR 1 data references one DLG that is absent from the VFS;
+    // retail cannot start it either. It is an explicit data anomaly, not an
+    // engine failure.
+    const std::set<std::string> knownMissingConversations = {"end_carth001"};
+    for (const std::string& module : modules) {
         try {
             GameSession game(installPath, module);
             ++loaded;
@@ -2163,42 +2200,121 @@ int runModulePlaythroughMatrix(const std::string& installPath)
                       && std::isfinite(position.z),
                   "position");
             std::size_t dialogueLines = 0;
-            for (std::size_t i = 0; i < game.scene().entities.size(); ++i) {
+            std::size_t moduleDialogues = 0;
+            std::set<std::string> seenConversations;
+            const std::string startModule = game.module();
+            bool transitioned = false;
+            for (std::size_t i = 0; i < game.scene().entities.size() && !transitioned; ++i) {
                 const kotor::Entity& entity = game.scene().entities[i];
                 if (entity.conversation.empty() || entity.dead) {
                     continue;
                 }
+                std::string key = entity.conversation;
+                for (char& ch : key) {
+                    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                }
+                if (!seenConversations.insert(key).second) {
+                    continue;
+                }
+                ++conversationAttempts;
                 if (!game.startDialogue(i)) {
+                    if (knownMissingConversations.contains(key)) {
+                        ++knownMissing;
+                        logInfo(concat("module playthrough: ", module,
+                                       " known missing dialogue ", entity.conversation));
+                    } else {
+                        ++conversationFailures;
+                        logWarn(concat("module playthrough: ", module,
+                                       " conversation load failed ", entity.conversation));
+                    }
                     continue;
                 }
                 ++dialogues;
+                ++moduleDialogues;
+                std::size_t conversationLines = 0;
                 for (int step = 0; step < 64 && game.dialogue().active; ++step) {
                     ++dialogueLines;
+                    ++conversationLines;
                     game.chooseDialogueOption(0);
+                    if (game.module() != startModule) {
+                        transitioned = true;
+                        break;
+                    }
                 }
+                const bool completed = !game.dialogue().active;
+                logInfo(concat("module playthrough: ", module,
+                               " dialogue=", entity.conversation,
+                               " lines=", conversationLines,
+                               " completed=", completed ? 1 : 0,
+                               " transitioned=", transitioned ? 1 : 0));
                 if (game.dialogue().active) {
                     game.endDialogue();
                 }
-                break;
             }
             lines += dialogueLines;
             logInfo(concat("module playthrough: ", module, " area=", game.scene().area,
                            " entities=", game.scene().entities.size(),
+                           " conversations=", moduleDialogues,
                            " dialogueLines=", dialogueLines,
+                           " transitioned=", transitioned ? 1 : 0,
                            " warnings=", game.scene().warnings.size()));
         } catch (const std::exception& exception) {
             logWarn(concat("module playthrough: ", module, ": ", exception.what()));
             check(false, "exception");
         }
     }
-    check(loaded == sizeof(modules) / sizeof(modules[0]), "modules");
+    check(loaded == modules.size(), "modules");
     check(dialogues > 0, "dialogues");
+    check(conversationFailures == 0, "conversation_load");
+    check(conversationAttempts == dialogues + knownMissing, "conversation_attempts");
+    check(knownMissing == 1, "known_missing");
     check(lines > 0, "lines");
     check(warnings == 0, "warnings");
     logInfo(concat("module playthrough: modules=", loaded, " dialogues=", dialogues,
+                   " attempts=", conversationAttempts,
+                   " failures=", conversationFailures,
+                   " knownMissing=", knownMissing,
                    " lines=", lines, " warnings=", warnings));
     logInfo(ok ? "module playthrough: PASS" : "module playthrough: FAIL");
     return ok ? 0 : 71;
+}
+
+int runBugParityTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("bug parity: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    const std::size_t trask = game.findEntity("end_trask");
+    const std::string startModule = game.module();
+    check(trask != static_cast<std::size_t>(-1), "trask");
+    GameSession fixed(game.installPath(), startModule);
+    fixed.setBugParityMode(false);
+    if (trask != static_cast<std::size_t>(-1)) {
+        check(game.startDialogue(trask), "classic_dialogue");
+        game.toggleUiPanel(UiPanel::Character);
+        check(game.activePanel() == UiPanel::Character, "classic_anywhere_menu");
+        game.endDialogue();
+        game.setUiPanel(UiPanel::None);
+
+        check(fixed.startDialogue(trask), "fixed_dialogue");
+        fixed.toggleUiPanel(UiPanel::Character);
+        check(fixed.activePanel() == UiPanel::None, "fixed_anywhere_menu");
+        fixed.endDialogue();
+    }
+
+    game.setPositionForTest({-999.0f, -999.0f, 0.0f});
+    std::string from;
+    std::string to;
+    check(game.testTransition(from, to), "classic_displaced_load");
+    fixed.setPositionForTest({-999.0f, -999.0f, 0.0f});
+    std::string fixedFrom;
+    std::string fixedTo;
+    check(!fixed.testTransition(fixedFrom, fixedTo), "fixed_displaced_load");
+
+    logInfo(ok ? "bug parity: PASS" : "bug parity: FAIL");
+    return ok ? 0 : 72;
 }
 
 int runDifferentialTest(GameSession& game, const std::string& saveFixtures)
@@ -2545,6 +2661,50 @@ int runLocalizationTest(GameSession& game)
                   == "append_snd",
           "tlk_merge_append");
     check(localization.tlk().text(0) == base0, "tlk_merge_base_unchanged");
+
+    // VFS integration: Override/replace.tlk and Override/append.tlk merge into
+    // the base table, and a DLG StrRef resolves through the merged table.
+    const std::filesystem::path tlkOverlay =
+        std::filesystem::temp_directory_path() / "kotor-tlk-overlay";
+    std::error_code tlkError;
+    std::filesystem::remove_all(tlkOverlay, tlkError);
+    std::filesystem::create_directories(tlkOverlay / "Override", tlkError);
+    const auto writeBytes = [](const std::filesystem::path& path,
+                               const std::vector<std::uint8_t>& data) {
+        std::ofstream file(path, std::ios::binary | std::ios::trunc);
+        file.write(reinterpret_cast<const char*>(data.data()),
+                   static_cast<std::streamsize>(data.size()));
+        return static_cast<bool>(file);
+    };
+    const kotor::Tlk replacePatch = kotor::Tlk::fromEntries(
+        0, {{"REPLACED", ""}}, "replace.tlk");
+    const kotor::Tlk appendPatch = kotor::Tlk::fromEntries(
+        0, {{"APPENDED", "append_snd"}}, "append.tlk");
+    check(writeBytes(tlkOverlay / "Override" / "replace.tlk",
+                     replacePatch.toBytes()),
+          "tlk_vfs_replace_write");
+    check(writeBytes(tlkOverlay / "Override" / "append.tlk",
+                     appendPatch.toBytes()),
+          "tlk_vfs_append_write");
+    kotor::Install tlkInstall(game.installPath());
+    tlkInstall.setOverlayRoot(tlkOverlay);
+    kotor::Localization tlkLocalization(game.installPath());
+    check(tlkLocalization.load(tlkInstall, 0, error), "tlk_vfs_load");
+    check(tlkLocalization.tlk().text(0) == "REPLACED", "tlk_vfs_replace");
+    check(tlkLocalization.tlk().text(
+              static_cast<std::uint32_t>(localization.entryCount())) == "APPENDED",
+          "tlk_vfs_append");
+    auto dlgEntry = std::make_shared<kotor::GffNode>(0);
+    dlgEntry->addLocString("Text", static_cast<std::uint32_t>(localization.entryCount()), {});
+    auto dlgRoot = std::make_shared<kotor::GffNode>(0);
+    dlgRoot->addList("EntryList", {dlgEntry});
+    const std::vector<std::uint8_t> dlgBytes = kotor::writeGff("DLG ", *dlgRoot);
+    const kotor::Gff dlgGff = kotor::Gff::parse(dlgBytes, "overlay.dlg");
+    const kotor::Dlg dlg = kotor::Dlg::parse(dlgGff, &tlkLocalization.tlk(),
+                                             "overlay.dlg");
+    check(dlg.entries.size() == 1 && dlg.entries.front().text == "APPENDED",
+          "tlk_vfs_strref");
+    std::filesystem::remove_all(tlkOverlay, tlkError);
     check(localization.load(0, error), "language_explicit");
     check(!localization.load(1, error), "language_missing");
     check(localization.languageId() == 0, "language_retained");
@@ -5073,6 +5233,12 @@ int runApplication(const Options& options)
             }
             if (options.differentialTest) {
                 return runDifferentialTest(*game, options.saveFixtures);
+            }
+            if (options.modulePlaythroughTest) {
+                return runModulePlaythroughMatrix(game->installPath());
+            }
+            if (options.bugParityTest) {
+                return runBugParityTest(*game);
             }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);

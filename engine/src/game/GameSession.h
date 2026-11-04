@@ -135,6 +135,7 @@ public:
 
     bool startDialogue(std::size_t entityIndex);
     bool startDialogue(const std::string& tag);
+    void setDialogueForTest(kotor::Dlg dlg, std::string resref, std::string speaker);
     bool lipSyncActive() const { return activeLip_.has_value(); }
     float lipTime() const { return lipTime_; }
     std::uint8_t lipViseme() const;
@@ -215,7 +216,14 @@ public:
     void setPartyLeader(const std::string& tag) { leaderTag_ = tag; selectedCompanion_ = -1; if (tag != "PC") { for (std::size_t i = 0; i < companions_.size(); ++i) { if (companions_[i].tag == tag) { selectedCompanion_ = static_cast<int>(i); break; } } } }
     UiPanel activePanel() const { return activePanel_; }
     void setUiPanel(UiPanel panel) { activePanel_ = panel; }
-    void toggleUiPanel(UiPanel panel) { activePanel_ = activePanel_ == panel ? UiPanel::None : panel; }
+    void toggleUiPanel(UiPanel panel) {
+        if (!classicBugs_ && dialogueView_.active) {
+            return;
+        }
+        activePanel_ = activePanel_ == panel ? UiPanel::None : panel;
+    }
+    void setBugParityMode(bool classic) { classicBugs_ = classic; }
+    bool bugParityMode() const { return classicBugs_; }
     bool applyGuiAction(const std::string& tag);
     std::int32_t journalState(const std::string& plotId) const;
     std::size_t journalSize() const { return journal_.size(); }
@@ -414,6 +422,7 @@ private:
     std::vector<bool> triggerInside_;
     std::vector<std::string> combatLog_;
     bool playerDead_ = false;
+    bool classicBugs_ = true;
     std::uint32_t rng_ = 0x12345678u;
 
     Rules rules_;

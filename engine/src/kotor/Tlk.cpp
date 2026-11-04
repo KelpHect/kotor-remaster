@@ -26,8 +26,45 @@ std::string Tlk::sound(std::uint32_t strref) const
     return strref < entries_.size() ? entries_[strref].sound : std::string{};
 }
 
-Tlk Tlk::fromEntries(
-    std::uint32_t language,
+std::vector<std::uint8_t> Tlk::toBytes() const
+{
+    const auto appendU32 = [](std::vector<std::uint8_t>& out, std::uint32_t value) {
+        out.push_back(static_cast<std::uint8_t>(value & 0xFFu));
+        out.push_back(static_cast<std::uint8_t>((value >> 8) & 0xFFu));
+        out.push_back(static_cast<std::uint8_t>((value >> 16) & 0xFFu));
+        out.push_back(static_cast<std::uint8_t>((value >> 24) & 0xFFu));
+    };
+    const std::uint32_t count = static_cast<std::uint32_t>(entries_.size());
+    const std::uint32_t textOffset = 20u + count * 40u;
+    std::vector<std::uint8_t> out;
+    out.insert(out.end(), {'T', 'L', 'K', ' '});
+    out.insert(out.end(), {'V', '3', '.', '0'});
+    appendU32(out, language_);
+    appendU32(out, count);
+    appendU32(out, textOffset);
+    std::vector<std::uint8_t> textTable;
+    std::uint32_t index = 0;
+    for (const Entry& entry : entries_) {
+        const std::string value = Tlk::text(index++);
+        std::array<char, 16> sound{};
+        for (std::size_t i = 0; i < entry.sound.size() && i < sound.size(); ++i) {
+            sound[i] = entry.sound[i];
+        }
+        out.insert(out.end(), 4u, 0u); // flags
+        out.insert(out.end(), sound.begin(), sound.end());
+        appendU32(out, 0u); // volume variance
+        appendU32(out, 0u); // pitch variance
+        appendU32(out, static_cast<std::uint32_t>(textTable.size()));
+        appendU32(out, static_cast<std::uint32_t>(value.size()));
+        appendU32(out, 0u); // sound length
+        textTable.insert(textTable.end(), value.begin(), value.end());
+        textTable.push_back(0);
+    }
+    out.insert(out.end(), textTable.begin(), textTable.end());
+    return out;
+}
+
+Tlk Tlk::fromEntries(std::uint32_t language,
     const std::vector<std::pair<std::string, std::string>>& entries,
     std::string name)
 {

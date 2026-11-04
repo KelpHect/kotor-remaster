@@ -245,7 +245,7 @@ gameplay parity is deliberately the final sprint, after everything else.
 
 | Sprint | Plan | Focus |
 |---|---|---|
-| 14 | [`SPRINT14.md`](SPRINT14.md) | **complete** - P6 correctness, differential playthroughs, save/load matrix, TSLPatcher TLK merges, faction parent inheritance, `CamVidEffect` audit, P6 baseline maintenance |
+| 14 | [`SPRINT14.md`](SPRINT14.md) | **complete** - P6 correctness: save/load matrix with `.rsv`/`EventQueue` fixtures, all-117-module playthroughs, all-DLG corpus, retail trace coverage, bug-parity mode, TSLPatcher TLK VFS merges, faction parent inheritance, `CamVidEffect` audit, P6 baseline maintenance |
 | 15 | [`SPRINT15.md`](SPRINT15.md) | Release candidate: performance budgets, controller/accessibility, legal review, installer/launcher, packaging |
 | 16 | [`SPRINT16.md`](SPRINT16.md) | Remaster stage 1: high-res textures, HFR/widescreen, MSAA/anisotropy, SSAO/bloom |
 | 17 | [`SPRINT17.md`](SPRINT17.md) | Remaster stages 2-4, modding API and platform builds |

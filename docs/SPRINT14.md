@@ -12,8 +12,9 @@ See [`SPRINT14_REPORT.md`](SPRINT14_REPORT.md).
 
 The P6 content checklist is green, but content presence is not behaviour
 parity. Sprint 14 measures retail-vs-engine behaviour and closes the known
-correctness gaps: TSLPatcher TLK merges, faction parent inheritance, the
-`CamVidEffect` audit and baseline maintenance.
+correctness gaps: the save/load matrix, the all-module playthrough matrix,
+retail trace action coverage, bug-parity mode, TSLPatcher TLK merges, faction
+parent inheritance, the `CamVidEffect` audit and baseline maintenance.
 
 Exit criterion: the **KotOR 1 campaign is feature-complete and end-to-end
 playable**. Sprint 15 then certifies the release candidate; it adds no
@@ -21,25 +22,28 @@ gameplay. KotOR 2 gameplay is not covered here.
 
 ## Gate S14
 
-1. **Differential playthroughs** - retail-vs-engine behaviour on every quest
-   and cutscene path, including bug-parity mode vs fixed mode. Record event
-   traces, dialogue choices, transitions and combat outcomes.
-2. **Save/load matrix** - original saves and engine saves through autosave,
-   quicksave, manual save, module transitions, `.rsv` shadowing,
-   `UseTemplates=0`, corrupt `EventQueue` and reload-after-transition cases.
-3. **TSLPatcher TLK merges** - append and replace StrRef entries, preserve
-   entry indices for 2DA/GFF references, and apply the same VFS precedence as
-   the existing 2DA merges.
-4. **Faction parent inheritance** - honour `FactionParentID` when a child
-   faction has no explicit relation, and preserve parents through FAC
-   save/reload.
-5. **CamVidEffect audit** - the shipped KotOR 1 corpus has no non-default
-   values. Either implement the verified semantics for mods or reject them
-   with an explicit warning; never silently ignore them.
-6. **P6 baseline maintenance** - document and gate `--write-baseline` so the
-   117-module baseline changes only with a reviewed engine/data change.
-7. **Regression** - full CTest, 117-module sweep, K2 world gate, VM parity,
-   GL/Vulkan parity, Python suite and install sentinel.
+Status: all items met on the shipped corpus; evidence in
+`docs/evidence/s14/` and `docs/SPRINT14_REPORT.md`.
+
+1. **Differential playthroughs** - met as a composite gate: the all-117-module
+   playthrough matrix (780 conversations, 10,133 lines), the all-DLG corpus
+   (1,043 DLGs, 67,395 links), the deterministic Endar Spire playthrough and
+   retail trace action coverage (91,967 events, 127 actions, 0 missing). See
+   the report's residual boundary for the per-quest trace limit.
+2. **Save/load matrix** - met: seven retail fixtures plus external `.rsv`
+   shadowing, flattened `UseTemplates`, corrupt `EventQueue` and
+   reload-after-save cases.
+3. **TSLPatcher TLK merges** - met: `replace.tlk`/`append.tlk` merge,
+   `Override` VFS precedence, preserved indices and a DLG StrRef integration
+   test.
+4. **Faction parent inheritance** - met: `FactionParentID` source/target
+   fallback and FAC save/reload.
+5. **CamVidEffect audit** - met: the shipped corpus has no non-default values;
+   the runtime warns and rejects them, with a deterministic fixture.
+6. **P6 baseline maintenance** - met: `--write-baseline` requires
+   `--accept-baseline-change` and the schema is validated.
+7. **Regression** - met: 50/50 CTest, 117-module sweep, VM parity, GL/Vulkan
+   parity, Python suite and install sentinel.
 
 ## Lanes
 

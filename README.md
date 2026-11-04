@@ -27,11 +27,15 @@ entity meshes) against a committed baseline; deterministic
 pazaak, swoop and
 turret state machines pass their
 seeded gates; SDL3 pulls the mixer for live playback while headless tests use
-the same mixer deterministically. **48/48 CTest targets** pass.
+the same mixer deterministically. **50/50 CTest targets** pass.
 Sprint 14 adds the retail save matrix (7/7 slots plus external `.rsv` and
 corrupt `EventQueue` fixtures), the all-DLG corpus (1,043 DLGs / 22,572
-entries / 67,395 links), TSLPatcher TLK merges, faction parent inheritance,
-explicit `CamVidEffect` rejection, an 8-module playthrough matrix and the
+entries / 67,395 links), TSLPatcher TLK merges with `replace.tlk`/`append.tlk`
+VFS precedence and StrRef resolution, faction parent inheritance, explicit
+`CamVidEffect` rejection with a deterministic fixture, an all-117-module
+playthrough matrix (780 conversations / 10,133 lines), classic-vs-fixed
+bug-parity checks for the Anywhere Menu Glitch and Displaced Load Zone, retail
+trace action coverage (91,967 events / 127 actions / 0 missing) and the
 differential gate; see
 [`docs/SPRINT14_REPORT.md`](docs/SPRINT14_REPORT.md).
 Sprint 12 remains complete (creature animation, skinning, weapons and cutscene

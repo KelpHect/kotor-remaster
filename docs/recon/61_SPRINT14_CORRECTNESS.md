@@ -15,6 +15,16 @@ Status: Sprint 14 implementation note. Target install:
 Fixture: overwrite StrRef 0, sound-only patch StrRef 1 while keeping its text,
 append one entry at `base.size()`. Gate in `docs/evidence/s14/localization.log`.
 
+### VFS integration
+
+`Localization::load(Install&, ...)` resolves the base `dialog.tlk` through the
+VFS, then merges `Override/replace.tlk` (full replacement) and
+`Override/append.tlk` (append), in that order. The integration fixture writes
+both patches to a temporary overlay, loads them through `Install`, verifies
+StrRef 0 is replaced and the appended StrRef resolves, and parses a synthetic
+DLG whose `Text` StrRef points at the appended entry. Gate:
+`tlk_vfs_replace`, `tlk_vfs_append`, `tlk_vfs_strref`.
+
 ## Faction parent inheritance
 
 `FactionSystem` now tracks explicit matrix cells separately. A child with
@@ -25,11 +35,13 @@ parent change and save/reload.
 
 ## CamVidEffect
 
-The all-DLG corpus has **1,043 unique DLGs**, **22,572 entries** and **25,300
+The all-DLG corpus has **1,043 unique DLGs**, **22,572 entries**, **25,300
 replies** and **67,395 links** (0 invalid), with **0** non-default
-`CamVidEffect` values. Runtime dialogue now
-increments `unsupportedCamVidEffects_` and logs a warning instead of silently
-ignoring a non-default value from a mod.
+`CamVidEffect` values. Runtime dialogue increments
+`unsupportedCamVidEffects_` and logs a warning instead of silently ignoring a
+non-default value from a mod. A deterministic synthetic DLG with
+`CamVidEffect=1` asserts the warning and rejection counter
+(`camvid_fixture_effect=1`, `camvid_fixture_rejected=1`).
 
 ## Save/load matrix
 
@@ -62,11 +74,30 @@ position, proving the cached-queue hazard is non-fatal.
 
 `--differential-test` runs the save matrix, the entire DLG corpus, the
 deterministic Endar Spire playthrough (Trask dialogue, trigger, locker,
-SithSoldier combat, `end_m01aa -> end_m01ab`, save/load) and an eight-module
-playthrough matrix (`end_m01aa`, `end_m01ab`, `tar_m02af`, `tar_m03aa`,
-`tar_m03ab`, `danm14aa`, `manm28aa`, `m12ab`) with 7 dialogue starts and 143
-dialogue lines. This is the P6 behaviour gate; the VM corpus remains the
-action-level oracle (8,666 scripts / 303,616 actions).
+SithSoldier combat, `end_m01aa -> end_m01ab`, save/load) and an all-module
+playthrough matrix: all **117 modules** load, settle for 120 frames and run
+**every entity-owned conversation** end-to-end (**780 conversations**,
+**10,133 dialogue lines**, 0 warnings). The retail GIT of `end_m01aa` references
+`end_carth001`, which is absent from the VFS; retail cannot start it either, so
+the gate asserts exactly this one known anomaly and zero engine failures. This
+is the P6 behaviour gate; the VM corpus remains the action-level oracle (8,666
+scripts / 303,616 actions).
+
+## Bug parity
+
+`--bug-parity-test` runs classic and fixed modes on the same scenario:
+
+- **Anywhere Menu Glitch** - classic mode opens the character panel during
+  dialogue; fixed mode refuses it.
+- **Displaced Load Zone** - classic mode transitions through a door from an
+  arbitrary position; fixed mode requires proximity (2 m).
+
+## Retail trace coverage
+
+`engine/scripts/check_retail_traces.py` parses the recorded s4 retail semantic
+traces: **91,967 events**, **127 observed action IDs**, **772 implemented
+action-table entries**, **0 missing**. This is action-ID coverage from the
+recorded traces, paired with the all-module and all-DLG matrices.
 
 ## Evidence
 
@@ -75,4 +106,7 @@ action-level oracle (8,666 scripts / 303,616 actions).
 - `docs/evidence/s14/dialogue-corpus.log`
 - `docs/evidence/s14/localization.log`
 - `docs/evidence/s14/faction.log`
+- `docs/evidence/s14/bug-parity.log`
+- `docs/evidence/s14/retail-trace.log`
+- `docs/evidence/s14/retail-trace-coverage.json`
 - `docs/SPRINT14_REPORT.md`

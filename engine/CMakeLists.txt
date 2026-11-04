@@ -329,6 +329,10 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                  COMMAND kotor_engine --module end_m01aa --dialogue-corpus-test --null --headless)
         set_tests_properties(kotor_dialogue_corpus
                              PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+        add_test(NAME kotor_bug_parity
+                 COMMAND kotor_engine --module end_m01aa --bug-parity-test --null --headless)
+        set_tests_properties(kotor_bug_parity
+                             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 120)
         add_test(NAME kotor_profile_k1
                  COMMAND kotor_engine --profile-info "${KOTOR_TEST_INSTALL}" --null --headless)
         set(KOTOR2_TEST_INSTALL "$ENV{KOTOR2_INSTALL}")
@@ -399,6 +403,15 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                              --install "${KOTOR_TEST_INSTALL}"
                              --out "${CMAKE_BINARY_DIR}/all-modules.json")
             set_tests_properties(kotor_all_modules PROPERTIES TIMEOUT 900)
+            set(KOTOR_RETAIL_TRACE_DIR "${CMAKE_SOURCE_DIR}/../artifacts/lanes/s4-trace")
+            if(EXISTS "${KOTOR_RETAIL_TRACE_DIR}")
+                add_test(NAME kotor_retail_trace
+                         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/check_retail_traces.py
+                                 --trace-dir "${KOTOR_RETAIL_TRACE_DIR}"
+                                 --actions "${CMAKE_SOURCE_DIR}/src/script/ActionTable.inc"
+                                 --out "${CMAKE_BINARY_DIR}/retail-trace-coverage.json")
+                set_tests_properties(kotor_retail_trace PROPERTIES TIMEOUT 300)
+            endif()
             add_test(NAME kotor_p6_content
                      COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/check_p6_content.py
                              --exe $<TARGET_FILE:kotor_engine>
