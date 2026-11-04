@@ -1,8 +1,9 @@
 # K1 playability closeout
 
-Status: **implemented and gated** (post-Sprint 14). This work closes the
-playability items that the Sprint 15-18 roadmap did not cover. It is not a
-claim that a full quest-completion playthrough has already been played.
+Status: **implemented and gated for the playable surface; bounded residuals
+remain.** This work closes the playability items that the Sprint 15-18 roadmap
+did not cover, except for the evidence-bounded items listed at the end. It is
+not a claim that a full quest-completion playthrough has already been played.
 
 ## What was added
 
