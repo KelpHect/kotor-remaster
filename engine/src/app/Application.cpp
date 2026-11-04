@@ -1506,6 +1506,63 @@ int runMediaTest(GameSession& game)
     check(lipValid, "lip_timelines");
     check(lipSample, "lip_viseme_sample");
     check(!sampleLip.frames.empty(), "lip_playback_data");
+    kotor::Install headInstall(game.installPath());
+    std::size_t visemeRows = 0;
+    std::vector<std::string> visemeAnimations;
+    if (const auto data = headInstall.find("visemes", kotor::resType(kotor::ResType::TwoDa));
+        data.has_value()) {
+        try {
+            const kotor::TwoDa table = kotor::TwoDa::parse(*data, "visemes");
+            visemeRows = table.rowCount();
+            for (std::size_t row = 0; row < table.rowCount(); ++row) {
+                const std::string name = table.cell(std::to_string(row), "animname");
+                if (!name.empty()) {
+                    visemeAnimations.push_back(name);
+                }
+            }
+        } catch (const kotor::FormatError&) {
+        }
+    }
+    check(visemeRows == 16, "viseme_table");
+    std::size_t headRows = 0;
+    std::size_t headModels = 0;
+    std::size_t headsWithVisemeClips = 0;
+    if (const auto data = headInstall.find("heads", kotor::resType(kotor::ResType::TwoDa));
+        data.has_value()) {
+        try {
+            const kotor::TwoDa heads = kotor::TwoDa::parse(*data, "heads");
+            headRows = heads.rowCount();
+            for (std::size_t row = 0; row < heads.rowCount(); ++row) {
+                const std::string resref = heads.cell(std::to_string(row), "head");
+                if (resref.empty()) {
+                    continue;
+                }
+                const auto mdl = headInstall.find(resref, kotor::resType(kotor::ResType::Mdl));
+                const auto mdx = headInstall.find(resref, kotor::resType(kotor::ResType::Mdx));
+                if (!mdl.has_value() || !mdx.has_value()) {
+                    continue;
+                }
+                try {
+                    const kotor::Mdl model = kotor::Mdl::parse(*mdl, *mdx, resref + ".mdl");
+                    ++headModels;
+                    for (const std::string& animation : visemeAnimations) {
+                        if (model.animationIndex(animation) >= 0) {
+                            ++headsWithVisemeClips;
+                            break;
+                        }
+                    }
+                } catch (const kotor::FormatError&) {
+                }
+            }
+        } catch (const kotor::FormatError&) {
+        }
+    }
+    check(headRows >= 100, "head_rows");
+    check(headModels >= 100, "head_models");
+    check(headsWithVisemeClips == 0, "viseme_head_clips");
+    logInfo(concat("media test: visemes=", visemeRows, " heads=", headRows,
+                   " models=", headModels, " visemeClips=", headsWithVisemeClips));
+
     if (!sampleLip.frames.empty()) {
         game.setLipSyncForTest(sampleLip);
         check(game.lipSyncActive(), "lip_playback_active");

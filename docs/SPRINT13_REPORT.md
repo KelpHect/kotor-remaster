@@ -11,7 +11,7 @@ actions are bridged.
 
 ```text
 100% tests passed, 0 tests failed out of 37
-Total Test time (real) = 176.62 sec
+Total Test time (real) = 256.46 sec
 ```
 
 The new target is `kotor_audio`; all Sprint 12 targets still pass.
@@ -120,24 +120,25 @@ before `SDL_Quit` (the parity crash fix).
 
 ## 9. Regression
 
-- **CTest: 38/38 passed** (176.62 s).
+- **CTest: 38/38 passed** (256.46 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0449**, PASS.
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
-## 10. Outside Sprint 13
+## 10. Next sprint
 
-- Bink pixel decoding/presentation and facial morph application (Sprint 14).
-- Full `.gui` screens, minigames, localization, mods/Override precedence and
-  KotOR 2 world loading.
-- Faction reputation simulation and the P6 content checklist.
+Sprint 13 closes audio plus Bink/LIP media data. The pixel renderer, facial
+rig and remaining UI/content systems are planned in
+[`docs/SPRINT14.md`](SPRINT14.md); the shipped-data evidence is `media.log`
+(61 BIK, 18,206 LIP, 107 head rows / 106 models / 0 viseme clips) and `bik-oracle.txt`.
 
 ## Evidence index
 
 - `docs/evidence/s13/audio.log`
 - `docs/evidence/s13/media.log`
+- `docs/evidence/s13/bik-oracle.txt`, `bik-oracle.png`
 - `docs/evidence/s13/ctest.log`
 - `docs/evidence/s13/all-modules.log`, `all-modules.json`
 - `docs/evidence/s13/vm-corpus.log`, `vm-parity.json`

@@ -60,12 +60,12 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
 | s13-08-media | Bink container/movie state and LIP visemes | `engine/src/kotor/Media.*`, `GameSession.*` |
 | s13-09-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
 
-## Outside this sprint
+## Next sprint
 
-- Bink pixel decoding/presentation and facial morph application (Sprint 14).
-- Full `.gui` screens, minigames, localization, mods/Override precedence and
-  KotOR 2 world loading.
-- Faction reputation simulation and the P6 content checklist.
+Gate S13 covers audio plus Bink/LIP media data. The media pixel renderer,
+facial rig and the remaining UI/content systems are tracked in
+[`docs/SPRINT14.md`](SPRINT14.md) with the shipped-data evidence for each
+boundary.
 
 ## Running the gate
 

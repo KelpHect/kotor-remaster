@@ -20,6 +20,11 @@
 [INFO] media test: lip_timelines=1
 [INFO] media test: lip_viseme_sample=1
 [INFO] media test: lip_playback_data=1
+[INFO] media test: viseme_table=1
+[INFO] media test: head_rows=1
+[INFO] media test: head_models=1
+[INFO] media test: viseme_head_clips=1
+[INFO] media test: visemes=16 heads=107 models=106 visemeClips=0
 [INFO] media test: lip_playback_active=1
 [INFO] media test: lip_playback_start=1
 [INFO] media test: lip_playback_clock=1

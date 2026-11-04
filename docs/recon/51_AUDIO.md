@@ -150,8 +150,9 @@ attaches the LIP matching a dialogue voice `Sound` resref and exposes
 `--media-test` asserts all 61 Bink containers/frame tables, movie
 play/queue/clock, all 18,206 LIP resources and a viseme sample.
 
-## 9. Limits
+## 9. Next sprint
 
-Bink pixel decode/presentation and facial morph application are Sprint 14.
-Full `.gui`, minigames, localization, mods/Override precedence, KotOR 2 world
-loading, faction reputation and the P6 checklist remain future sprints.
+Bink pixel decode/presentation, the facial rig and the remaining UI/content
+systems are planned in `docs/SPRINT14.md`. The shipped-data boundary is
+recorded here: 107 heads carry 0 viseme clips, so facial deformation needs an
+engine rig rather than a data-only mapping.
