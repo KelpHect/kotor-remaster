@@ -1950,6 +1950,8 @@ int runDialogueCorpusTest(GameSession& game)
     std::size_t sounds = 0;
     std::size_t cameraModels = 0;
     std::size_t camVidEffects = 0;
+    std::size_t links = 0;
+    std::size_t invalidLinks = 0;
     std::size_t parseFailures = 0;
     const auto parseOne = [&](const std::string& name, std::vector<std::uint8_t> data) {
         if (!seen.insert(lowerKey(name)).second) {
@@ -1964,12 +1966,24 @@ int runDialogueCorpusTest(GameSession& game)
             if (!dlg.cameraModel.empty()) {
                 ++cameraModels;
             }
+            for (const std::uint32_t start : dlg.starting) {
+                ++links;
+                invalidLinks += start >= dlg.entries.size() ? 1 : 0;
+            }
             for (const kotor::DlgEntry& entry : dlg.entries) {
+                for (const std::uint32_t reply : entry.replies) {
+                    ++links;
+                    invalidLinks += reply >= dlg.replies.size() ? 1 : 0;
+                }
                 scripts += entry.script.empty() ? 0 : 1;
                 sounds += entry.sound.empty() ? 0 : 1;
                 camVidEffects += entry.camVidEffect > 0 ? 1 : 0;
             }
             for (const kotor::DlgReply& reply : dlg.replies) {
+                for (const std::uint32_t entry : reply.entries) {
+                    ++links;
+                    invalidLinks += entry >= dlg.entries.size() ? 1 : 0;
+                }
                 scripts += reply.script.empty() ? 0 : 1;
                 sounds += reply.sound.empty() ? 0 : 1;
                 camVidEffects += reply.camVidEffect > 0 ? 1 : 0;
@@ -2019,10 +2033,12 @@ int runDialogueCorpusTest(GameSession& game)
     check(sounds > 0, "sounds");
     check(cameraModels > 0, "camera_models");
     check(camVidEffects == 0, "camvid_defaults");
+    check(links > 0 && invalidLinks == 0, "links");
     logInfo(concat("dialogue corpus: dlgs=", dlgs, " entries=", entries,
                    " replies=", replies, " scripts=", scripts,
                    " sounds=", sounds, " cameraModels=", cameraModels,
-                   " camVidEffects=", camVidEffects));
+                   " camVidEffects=", camVidEffects, " links=", links,
+                   " invalidLinks=", invalidLinks));
     logInfo(ok ? "dialogue corpus: PASS" : "dialogue corpus: FAIL");
     return ok ? 0 : 69;
 }

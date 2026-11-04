@@ -9,7 +9,7 @@ playable and added the differential/save-matrix evidence.
 
 ```text
 100% tests passed, 0 tests failed out of 48
-Total Test Time (real) = 277.76 sec
+Total Test Time (real) = 273.15 sec
 ```
 
 New CTest targets: `kotor_save_matrix`, `kotor_differential`,
@@ -25,7 +25,8 @@ New CTest targets: `kotor_save_matrix`, `kotor_differential`,
   save and reload through the engine.
 - **Dialogue/cutscene corpus** - **1,043 unique shipped DLGs**, **22,572
   entries**, **25,300 replies**, **5,900 scripts**, **6,715 sounds** and
-  **22 camera models**, all parsed with zero failures.
+  **22 camera models**, **67,395 dialogue links**, all parsed with zero failures
+  and zero invalid links.
 - **Deterministic Endar Spire playthrough** - Trask dialogue (9 lines), trigger
   `end_trig02`, locker use, SithSoldier combat (faction-correct), module
   transition `end_m01aa -> end_m01ab`, and save/load of `end_m01ab`.
@@ -82,7 +83,7 @@ comparison. The 117-module baseline is unchanged and still green.
 
 ## 8. Regression
 
-- **CTest: 48/48 passed** (277.76 s).
+- **CTest: 48/48 passed** (273.15 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0000**, PASS.
