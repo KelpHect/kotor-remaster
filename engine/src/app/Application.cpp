@@ -1394,6 +1394,139 @@ std::string resolveInstallPath(const Options& options)
     return "E:/SteamLibrary/steamapps/common/swkotor";
 }
 
+int runMediaTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("media test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    const std::filesystem::path root = std::filesystem::path(game.installPath());
+    std::size_t bikCount = 0;
+    std::size_t bikFrames = 0;
+    bool bikHeaders = true;
+    std::error_code error;
+    const std::filesystem::path movies = root / "movies";
+    if (std::filesystem::is_directory(movies, error)) {
+        for (const std::filesystem::directory_entry& entry :
+             std::filesystem::directory_iterator(movies, error)) {
+            if (error || !entry.is_regular_file()
+                || entry.path().extension() != ".bik") {
+                continue;
+            }
+            const std::uint64_t size = entry.file_size(error);
+            if (error || size < 0x3c) {
+                bikHeaders = false;
+                continue;
+            }
+            std::ifstream file(entry.path(), std::ios::binary);
+            std::vector<std::uint8_t> head(0x3c);
+            if (!file.read(reinterpret_cast<char*>(head.data()), 0x3c)) {
+                bikHeaders = false;
+                continue;
+            }
+            const std::uint32_t frames = kotor::readU32(head.data(), head.size(), 8,
+                                                         "BIK frames");
+            const std::size_t table = 0x38u + (static_cast<std::size_t>(frames) + 1u) * 4u;
+            std::vector<std::uint8_t> bytes(std::min<std::size_t>(
+                static_cast<std::size_t>(size), table));
+            file.clear();
+            file.seekg(0, std::ios::beg);
+            if (!file.read(reinterpret_cast<char*>(bytes.data()),
+                           static_cast<std::streamsize>(bytes.size()))) {
+                bikHeaders = false;
+                continue;
+            }
+            try {
+                const kotor::BikMovie movie = kotor::parseBik(
+                    bytes, entry.path().filename().string(), size);
+                bikHeaders = bikHeaders && movie.version == 'i'
+                    && movie.width == 640
+                    && (movie.height == 272 || movie.height == 360
+                        || movie.height == 480);
+                ++bikCount;
+                bikFrames += movie.frames;
+            } catch (const kotor::FormatError&) {
+                bikHeaders = false;
+            }
+        }
+    }
+    check(bikCount == 61, "bik_movies");
+    check(bikHeaders, "bik_headers");
+    check(bikFrames > 10000, "bik_frames");
+
+    std::size_t lipMods = 0;
+    std::size_t lipCount = 0;
+    bool lipValid = true;
+    bool lipSample = false;
+    kotor::LipSync sampleLip;
+    const std::filesystem::path lips = root / "lips";
+    if (std::filesystem::is_directory(lips, error)) {
+        for (const std::filesystem::directory_entry& entry :
+             std::filesystem::directory_iterator(lips, error)) {
+            if (error || !entry.is_regular_file()
+                || entry.path().extension() != ".mod") {
+                continue;
+            }
+            ++lipMods;
+            try {
+                const kotor::Archive archive = kotor::Archive::open(entry.path());
+                for (const kotor::ArchiveEntry& resource : archive.entries()) {
+                    if (resource.type != 3004) {
+                        continue;
+                    }
+                    try {
+                        const kotor::LipSync lip = kotor::parseLip(
+                            archive.read(resource), entry.path().filename().string()
+                                + "/" + resource.resref);
+                        ++lipCount;
+                        if (!lip.frames.empty()) {
+                            if (sampleLip.frames.empty()) {
+                                sampleLip = lip;
+                            }
+                            const std::uint8_t first = lip.visemeAt(0.0f);
+                            const std::uint8_t last = lip.visemeAt(lip.duration);
+                            const std::uint8_t middle = lip.visemeAt(lip.duration * 0.5f);
+                            lipSample = lipSample
+                                || (first == lip.frames.front().viseme
+                                    && last == lip.frames.back().viseme
+                                    && middle <= 15);
+                        }
+                    } catch (const kotor::FormatError&) {
+                        lipValid = false;
+                    }
+                }
+            } catch (const kotor::FormatError&) {
+                lipValid = false;
+            }
+        }
+    }
+    check(lipMods == 123, "lip_mods");
+    check(lipCount == 18206, "lip_resources");
+    check(lipValid, "lip_timelines");
+    check(lipSample, "lip_viseme_sample");
+    check(!sampleLip.frames.empty(), "lip_playback_data");
+    if (!sampleLip.frames.empty()) {
+        game.setLipSyncForTest(sampleLip);
+        check(game.lipSyncActive(), "lip_playback_active");
+        check(game.lipViseme() == sampleLip.visemeAt(0.0f), "lip_playback_start");
+        game.update(0.05f, InputState{});
+        check(game.lipTime() > 0.0f, "lip_playback_clock");
+        game.clearLipSyncForTest();
+    }
+
+    check(game.playMovie("01a"), "movie_play");
+    check(game.moviePlaying() && game.movieName() == "01a", "movie_state");
+    check(game.movieDuration() > 0.0f, "movie_duration");
+    game.update(1.0f, InputState{});
+    check(game.movieTime() > 0.0f, "movie_clock");
+    check(game.queueMovie("01c", false) && game.playMovieQueue(), "movie_queue");
+    check(game.movieName() == "01c", "movie_queue_play");
+
+    logInfo(ok ? "media test: PASS" : "media test: FAIL");
+    return ok ? 0 : 61;
+}
+
 int runAudioTest(GameSession& game, const std::string& scriptPath)
 {
     bool ok = true;
@@ -3029,6 +3162,9 @@ int runApplication(const Options& options)
             }
             if (options.audioTest) {
                 return runAudioTest(*game, options.audioScript);
+            }
+            if (options.mediaTest) {
+                return runMediaTest(*game);
             }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);

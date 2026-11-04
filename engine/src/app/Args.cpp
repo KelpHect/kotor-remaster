@@ -193,6 +193,10 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.audioTest = true;
             continue;
         }
+        if (arg == "--media-test") {
+            result.options.mediaTest = true;
+            continue;
+        }
         if (arg == "--audio-script") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -474,6 +478,7 @@ void printUsage()
         << "  --combat-force-test   Assert feats, Force powers, saves and alignment\n"
         << "  --animation-test      Assert MDL clips, skinning and playback\n"
         << "  --audio-test          Assert WAV/MP3 decode, buses and area audio\n"
+        << "  --media-test          Assert Bink containers and LIP viseme timelines\n"
         << "  --audio-script <ncs>  Sound/music/ambient script bridge assertions\n"
         << "  --animation-script <ncs>  PlayAnimation script bridge assertions\n"
         << "  --combat-force-script <ncs>  Script bridge assertions for the combat-force gate\n"

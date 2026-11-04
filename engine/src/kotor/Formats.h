@@ -84,6 +84,8 @@ enum class ResType : std::uint32_t {
     Mdx = 3008,
     TwoDa = 2017,
     Uts = 2035,
+    Bik = 2063,
+    Lip = 3004,
 };
 
 inline std::uint32_t resType(ResType type) { return static_cast<std::uint32_t>(type); }
@@ -846,6 +848,7 @@ public:
 
     void bindModule(const std::string& stem);
     void addPacks();
+    void addLips();
     std::optional<std::vector<std::uint8_t>> find(const std::string& resref, std::uint32_t type,
                                                   std::string* source = nullptr);
     std::optional<std::vector<std::uint8_t>> findTexture(const std::string& resref, std::uint32_t* type,

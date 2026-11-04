@@ -33,13 +33,18 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
    resrefs; creature selection/battle/pain/attack/death slots and
    `BarkString` play; `appearance.footsteptype` drives
    `footstepsounds.2da` surface steps.
-9. **Device** - SDL3 audio stream pulls the mixer in live frames; headless
-   tests exercise the same mixer without a device.
-10. **Regression** - 37/37 CTest, 117/117 modules with 0 warnings, VM
+9. **Movies and lip sync** - Bink 1 containers validate on all 61 shipped
+   movies (header, frame table, dimensions, frame clock, script movie actions
+   and queues); LIP V1.0 parses all 18,206 lip resources and exposes
+   `visemeAt(time)` for dialogue voice-over. Pixel decode and facial morph
+   application are the Sprint 14 renderer step.
+10. **Device** - SDL3 audio stream pulls the mixer in live frames; headless
+    tests exercise the same mixer without a device.
+11. **Regression** - 38/38 CTest, 117/117 modules with 0 warnings, VM
     8,666/8,666, scene parity PASS, Python 143 tests / 7 skips, install
     sentinel 0 session changes.
-11. **Evidence and docs** - audio test, phase log, module/VM/parity/tools/install
-    logs, report and technical note.
+12. **Evidence and docs** - audio/media tests, phase log,
+    module/VM/parity/tools/install logs, report and technical note.
 
 ## Lanes
 
@@ -52,11 +57,12 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
 | s13-05-bridge | dialogue voice and script actions | `engine/src/game/GameSession.cpp` |
 | s13-06-device | SDL3 output stream | `engine/src/audio/Output.*`, `Application.cpp` |
 | s13-07-soundsets | SSF, soundset mapping, footsteps and barks | `engine/src/audio`, `game/*` |
-| s13-08-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
+| s13-08-media | Bink container/movie state and LIP visemes | `engine/src/kotor/Media.*`, `GameSession.*` |
+| s13-09-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
 
 ## Outside this sprint
 
-- Bink movie playback and LIP lip sync.
+- Bink pixel decoding/presentation and facial morph application (Sprint 14).
 - Full `.gui` screens, minigames, localization, mods/Override precedence and
   KotOR 2 world loading.
 - Faction reputation simulation and the P6 content checklist.

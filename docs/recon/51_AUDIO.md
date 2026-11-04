@@ -101,7 +101,38 @@ mines 18-19, stealth/search/unlock 20-24, party 25-26, poisoned 27.
 dirt(1), grass(3), stone(4), wood(5), water(6/11), carpet(9), metal(10).
 The 0/1/2 variant is a deterministic footstep counter.
 
-## 7. Validation
+## 7. Bink and LIP media
+
+Bink 1 header (all 61 shipped movies, version `i`):
+
+```text
+0x00 "BIK" + version
+0x04 filesize-8
+0x08 frame count, 0x0C largest frame, 0x10 duplicate frame count
+0x14 width, 0x18 height, 0x1C frame clock (value/1000)
+0x38 (frames+1) u32 frame offsets, EOF sentinel == filesize
+```
+
+The engine validates every header and frame table, stores the playback clock
+and implements `PlayMovie`/`QueueMovie`/`PlayMovieQueue`/`IsMoviePlaying`.
+Dimensions are 640x272 (53), 640x360 (5), 640x480 (3); pixel decoding is the
+Sprint 14 media-renderer step with FFmpeg as the documented oracle.
+
+LIP V1.0 (type 3004, 18,206 resources in 123 `lips/*.mod`):
+
+```text
+0x00 "LIP V1.0"
+0x08 f32 duration
+0x0C u32 frame count
+0x10 count x (f32 time, u8 viseme 0..15)
+```
+
+The parser enforces exact size, monotonic times, first 0, last == duration and
+viseme range. `visemeAt(time)` is a deterministic binary search; `GameSession`
+attaches the LIP matching a dialogue voice `Sound` resref and exposes
+`lipTime`/`lipViseme`.
+
+## 8. Validation
 
 `--audio-test` asserts:
 
@@ -116,8 +147,11 @@ The 0/1/2 variant is a deterministic footstep counter.
 - SSF slot/fill counts, `SoundSetFile` -> `soundset.2da` mapping, appearance
   footstep mapping, five creature bark slots and stone/metal/wood footsteps.
 
-## 8. Limits
+`--media-test` asserts all 61 Bink containers/frame tables, movie
+play/queue/clock, all 18,206 LIP resources and a viseme sample.
 
-Bink movies, LIP lip sync, full `.gui`, minigames, localization,
-mods/Override precedence, KotOR 2 world loading, faction reputation and the
-P6 checklist remain future sprints.
+## 9. Limits
+
+Bink pixel decode/presentation and facial morph application are Sprint 14.
+Full `.gui`, minigames, localization, mods/Override precedence, KotOR 2 world
+loading, faction reputation and the P6 checklist remain future sprints.

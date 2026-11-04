@@ -596,6 +596,7 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
         playerHp_ = playerMaxHp_;
         playerDead_ = false;
     }
+    install_.addLips();
     if (audio_) {
         std::string audioError;
         audio_->loadScene(scene_, audioError);
@@ -1461,6 +1462,63 @@ void GameSession::logEvent(std::string line)
     }
 }
 
+std::uint8_t GameSession::lipViseme() const
+{
+    return activeLip_.has_value() ? activeLip_->visemeAt(lipTime_) : 0;
+}
+
+bool GameSession::playMovie(const std::string& name)
+{
+    if (name.empty()) {
+        return false;
+    }
+    const std::filesystem::path path = std::filesystem::path(installPath_)
+        / "movies" / (name + ".bik");
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) {
+        return false;
+    }
+    const std::streamoff size = file.tellg();
+    if (size <= 0) {
+        return false;
+    }
+    file.seekg(0, std::ios::beg);
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
+    if (!file.read(reinterpret_cast<char*>(bytes.data()), size)) {
+        return false;
+    }
+    try {
+        const kotor::BikMovie movie = kotor::parseBik(bytes, name + ".bik",
+                                                      static_cast<std::uint64_t>(size));
+        movieName_ = name;
+        movieTime_ = 0.0f;
+        movieDuration_ = movie.durationSeconds();
+        moviePlaying_ = true;
+        return true;
+    } catch (const kotor::FormatError&) {
+        return false;
+    }
+}
+
+bool GameSession::queueMovie(const std::string& name, bool playNow)
+{
+    if (name.empty()) {
+        return false;
+    }
+    movieQueue_.push_back(name);
+    return playNow ? playMovieQueue() : true;
+}
+
+bool GameSession::playMovieQueue()
+{
+    if (movieQueue_.empty()) {
+        return false;
+    }
+    const std::string name = movieQueue_.front();
+    movieQueue_.erase(movieQueue_.begin());
+    return playMovie(name);
+}
+
 void GameSession::update(float dt, const InputState& input)
 {
     if (dt <= 0.0f) {
@@ -1468,6 +1526,19 @@ void GameSession::update(float dt, const InputState& input)
     }
     dt = std::min(dt, 0.08f);
     elapsed_ += dt;
+    if (activeLip_.has_value() && dialogueView_.active) {
+        lipTime_ = std::min(lipTime_ + dt, activeLip_->duration);
+    }
+    if (moviePlaying_) {
+        movieTime_ += dt;
+        if (movieTime_ >= movieDuration_) {
+            moviePlaying_ = false;
+            movieTime_ = movieDuration_;
+            if (!movieQueue_.empty()) {
+                playMovieQueue();
+            }
+        }
+    }
     updateAnimations(dt);
     if (!dialogueCameraClip_.empty()) {
         dialogueCameraTime_ = std::min(dialogueCameraTime_ + dt, dialogueCameraDuration_);
@@ -2069,6 +2140,18 @@ void GameSession::showDialogueEntry(std::uint32_t entryIndex)
     if (audio_ && !entry.sound.empty()) {
         audio_->playVoice(entry.sound);
     }
+    activeLip_.reset();
+    lipTime_ = 0.0f;
+    if (!entry.sound.empty()) {
+        if (auto lipData = install_.find(entry.sound, kotor::resType(kotor::ResType::Lip));
+            lipData.has_value()) {
+            try {
+                activeLip_ = kotor::parseLip(*lipData, entry.sound + ".lip");
+            } catch (const kotor::FormatError&) {
+                activeLip_.reset();
+            }
+        }
+    }
     dialogueView_.options.clear();
     if (!entry.script.empty() && activeDialogue_->firedEntries.insert(entryIndex).second) {
         runScript(entry.script, activeDialogue_->npcObject, scriptWorld_.pc,
@@ -2152,6 +2235,8 @@ void GameSession::endDialogue()
     dialogueCameraClip_.clear();
     dialogueCameraTime_ = 0.0f;
     dialogueCameraDuration_ = 0.0f;
+    activeLip_.reset();
+    lipTime_ = 0.0f;
 }
 
 void GameSession::attackNearestHostile()
@@ -3341,6 +3426,17 @@ std::optional<std::vector<script::Value>> GameSession::action(
         }
         return std::vector<script::Value>{};
     }
+    case 733: // PlayMovie
+        playMovie(stringArg(0));
+        return std::vector<script::Value>{};
+    case 768: // IsMoviePlaying
+        return intCells(moviePlaying_ ? 1 : 0);
+    case 769: // QueueMovie
+        queueMovie(stringArg(0), intArg(1) != 0);
+        return std::vector<script::Value>{};
+    case 770: // PlayMovieQueue
+        playMovieQueue();
+        return std::vector<script::Value>{};
     case 425: // MusicBackgroundPlay
     case 426: // MusicBackgroundStop
     case 427: // MusicBackgroundSetDelay

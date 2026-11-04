@@ -86,6 +86,31 @@ void Install::addPacks()
     }
 }
 
+void Install::addLips()
+{
+    std::error_code error;
+    const std::filesystem::path directory = root_ / "lips";
+    if (!std::filesystem::is_directory(directory, error)) {
+        return;
+    }
+    for (const std::filesystem::directory_entry& entry :
+         std::filesystem::directory_iterator(directory, error)) {
+        if (error || !entry.is_regular_file() || entry.path().extension() != ".mod") {
+            continue;
+        }
+        const std::string name = "lips/" + entry.path().filename().string();
+        if (std::find(archiveNames_.begin(), archiveNames_.end(), name)
+            != archiveNames_.end()) {
+            continue;
+        }
+        try {
+            archives_.push_back(Archive::open(entry.path()));
+            archiveNames_.push_back(name);
+        } catch (const FormatError&) {
+        }
+    }
+}
+
 std::optional<std::vector<std::uint8_t>> Install::find(const std::string& resref, std::uint32_t type,
                                                        std::string* source)
 {
