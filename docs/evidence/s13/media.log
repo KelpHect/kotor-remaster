@@ -15,6 +15,17 @@
 [INFO] media test: bik_movies=1
 [INFO] media test: bik_headers=1
 [INFO] media test: bik_frames=1
+[INFO] media test: bink_decoder=1
+[INFO] media test: bink_open=1
+[INFO] media test: bink_frame0_decode=1
+[INFO] media test: bink_frame0_size=1
+[INFO] media test: 01a frame0 sha256=301f27f0e6022367e847de4861de2be72c25c1ffd0ccfdadbd920673f9bf1430
+[INFO] media test: 01a fps=29.97 frames=3606
+[INFO] media test: bink_frame0_sha256=1
+[INFO] media test: bink_frame1_decode=1
+[INFO] media test: bink_frame1_size=1
+[INFO] media test: bink_rewind=1
+[INFO] media test: bink_frame0_reproducible=1
 [INFO] media test: lip_mods=1
 [INFO] media test: lip_resources=1
 [INFO] media test: lip_timelines=1
@@ -31,7 +42,12 @@
 [INFO] media test: movie_play=1
 [INFO] media test: movie_state=1
 [INFO] media test: movie_duration=1
+[INFO] media test: movie_frame0_decode=1
+[INFO] media test: movie_frame0_sha256=1
 [INFO] media test: movie_clock=1
+[INFO] media test: movie clock index=29 time=1
+[INFO] media test: movie_frame_clock=1
 [INFO] media test: movie_queue=1
 [INFO] media test: movie_queue_play=1
+[INFO] media test: movie_queue_frame=1
 [INFO] media test: PASS

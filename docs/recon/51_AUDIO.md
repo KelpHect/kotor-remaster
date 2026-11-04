@@ -109,14 +109,20 @@ Bink 1 header (all 61 shipped movies, version `i`):
 0x00 "BIK" + version
 0x04 filesize-8
 0x08 frame count, 0x0C largest frame, 0x10 duplicate frame count
-0x14 width, 0x18 height, 0x1C frame clock (value/1000)
+0x14 width, 0x18 height
+0x1C u32 fps numerator, 0x20 u32 fps denominator (2997/100 = 29.97)
 0x38 (frames+1) u32 frame offsets, EOF sentinel == filesize
 ```
 
 The engine validates every header and frame table, stores the playback clock
 and implements `PlayMovie`/`QueueMovie`/`PlayMovieQueue`/`IsMoviePlaying`.
-Dimensions are 640x272 (53), 640x360 (5), 640x480 (3); pixel decoding is the
-Sprint 14 media-renderer step with FFmpeg as the documented oracle.
+Dimensions are 640x272 (53), 640x360 (5), 640x480 (3). `BinkPlayer` links
+FFmpeg 9.0.2 `avcodec`/`avformat`/`swscale`, decodes Bink 1 frames to RGBA and
+presents them through a GL/Vulkan ImGui texture at the header clock. `01a.bik`
+frame 0 is 640x272 RGBA (696,320 bytes), SHA-256
+`301f27f0e6022367e847de4861de2be72c25c1ffd0ccfdadbd920673f9bf1430`,
+matching the recorded FFmpeg oracle. Bink audio synchronization remains in
+Sprint 14.
 
 LIP V1.0 (type 3004, 18,206 resources in 123 `lips/*.mod`):
 
@@ -147,12 +153,14 @@ attaches the LIP matching a dialogue voice `Sound` resref and exposes
 - SSF slot/fill counts, `SoundSetFile` -> `soundset.2da` mapping, appearance
   footstep mapping, five creature bark slots and stone/metal/wood footsteps.
 
-`--media-test` asserts all 61 Bink containers/frame tables, movie
-play/queue/clock, all 18,206 LIP resources and a viseme sample.
+`--media-test` asserts all 61 Bink containers/frame tables, native pixel
+decode of `01a.bik` frame 0 against the recorded SHA-256, frame 1, rewind and
+replay determinism, the playback frame/clock, movie play/queue, all 18,206 LIP
+resources and a viseme sample.
 
 ## 9. Next sprint
 
-Bink pixel decode/presentation, the facial rig and the remaining UI/content
+The facial rig, Bink audio synchronization and the remaining UI/content
 systems are planned in `docs/SPRINT14.md`. The shipped-data boundary is
 recorded here: 107 heads carry 0 viseme clips, so facial deformation needs an
 engine rig rather than a data-only mapping.

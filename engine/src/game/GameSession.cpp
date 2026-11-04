@@ -1474,30 +1474,45 @@ bool GameSession::playMovie(const std::string& name)
     }
     const std::filesystem::path path = std::filesystem::path(installPath_)
         / "movies" / (name + ".bik");
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file) {
+    auto player = std::make_unique<kotor::BinkPlayer>();
+    std::string decodeError;
+    if (!player->open(path.string(), decodeError)) {
+        logEvent("movie " + name + ": " + decodeError);
         return false;
     }
-    const std::streamoff size = file.tellg();
-    if (size <= 0) {
+    moviePlayer_ = std::move(player);
+    movieName_ = name;
+    movieTime_ = 0.0f;
+    movieDuration_ = static_cast<float>(
+        static_cast<double>(moviePlayer_->frameCount()) / moviePlayer_->framesPerSecond());
+    moviePlaying_ = true;
+    movieFrameIndex_ = -1;
+    movieFrame_ = {};
+    if (!moviePlayer_->decodeFrame(0, movieFrame_, decodeError)) {
+        logEvent("movie " + name + ": frame 0: " + decodeError);
+    } else {
+        movieFrameIndex_ = 0;
+    }
+    return true;
+}
+
+bool GameSession::seekMovie(float seconds)
+{
+    if (!moviePlayer_ || !moviePlaying_) {
         return false;
     }
-    file.seekg(0, std::ios::beg);
-    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
-    if (!file.read(reinterpret_cast<char*>(bytes.data()), size)) {
+    const double fps = moviePlayer_->framesPerSecond();
+    const int lastFrame = std::max(0, moviePlayer_->frameCount() - 1);
+    movieTime_ = std::clamp(seconds, 0.0f, movieDuration_);
+    const int index = std::clamp(
+        static_cast<int>(movieTime_ * static_cast<float>(fps)), 0, lastFrame);
+    std::string decodeError;
+    if (!moviePlayer_->decodeFrame(index, movieFrame_, decodeError)) {
+        logEvent("movie seek frame " + std::to_string(index) + ": " + decodeError);
         return false;
     }
-    try {
-        const kotor::BikMovie movie = kotor::parseBik(bytes, name + ".bik",
-                                                      static_cast<std::uint64_t>(size));
-        movieName_ = name;
-        movieTime_ = 0.0f;
-        movieDuration_ = movie.durationSeconds();
-        moviePlaying_ = true;
-        return true;
-    } catch (const kotor::FormatError&) {
-        return false;
-    }
+    movieFrameIndex_ = index;
+    return true;
 }
 
 bool GameSession::queueMovie(const std::string& name, bool playNow)
@@ -1607,8 +1622,23 @@ void GameSession::update(float dt, const InputState& input)
     if (activeLip_.has_value() && dialogueView_.active) {
         lipTime_ = std::min(lipTime_ + dt, activeLip_->duration);
     }
-    if (moviePlaying_) {
+    if (moviePlaying_ && moviePlayer_) {
         movieTime_ += dt;
+        const double fps = moviePlayer_->framesPerSecond();
+        const int lastFrame = std::max(0, moviePlayer_->frameCount() - 1);
+        const int index = std::clamp(
+            static_cast<int>(movieTime_ * static_cast<float>(fps)), 0, lastFrame);
+        if (index != movieFrameIndex_) {
+            kotor::BinkVideoFrame frame;
+            std::string decodeError;
+            if (moviePlayer_->decodeFrame(index, frame, decodeError)) {
+                movieFrame_ = std::move(frame);
+                movieFrameIndex_ = index;
+            } else {
+                movieFrameIndex_ = index;
+                logEvent("movie frame " + std::to_string(index) + ": " + decodeError);
+            }
+        }
         if (movieTime_ >= movieDuration_) {
             moviePlaying_ = false;
             movieTime_ = movieDuration_;

@@ -3,6 +3,7 @@
 #include "game/AudioSystem.h"
 #include "game/Minigames.h"
 #include "game/Rules.h"
+#include "kotor/BinkDecoder.h"
 #include "kotor/Media.h"
 #include "kotor/Formats.h"
 #include "kotor/SaveGame.h"
@@ -128,6 +129,11 @@ public:
     const std::string& movieName() const { return movieName_; }
     float movieTime() const { return movieTime_; }
     float movieDuration() const { return movieDuration_; }
+    const kotor::BinkVideoFrame* movieFrame() const {
+        return movieFrame_.rgba.empty() ? nullptr : &movieFrame_;
+    }
+    int movieFrameIndex() const { return movieFrameIndex_; }
+    bool seekMovie(float seconds);
     bool startPazaak(std::int32_t opponentDeck, std::string endScript,
                      std::int32_t maxWager, bool tutorial, std::uint32_t opponent);
     PazaakGame* pazaak() { return pazaak_.get(); }
@@ -340,6 +346,9 @@ private:
     float movieTime_ = 0.0f;
     float movieDuration_ = 0.0f;
     std::vector<std::string> movieQueue_;
+    std::unique_ptr<kotor::BinkPlayer> moviePlayer_;
+    kotor::BinkVideoFrame movieFrame_;
+    int movieFrameIndex_ = -1;
     std::unique_ptr<PazaakGame> pazaak_;
     std::string pazaakEndScript_;
     std::uint32_t pazaakOpponent_ = 0;

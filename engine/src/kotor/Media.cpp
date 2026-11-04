@@ -42,8 +42,13 @@ BikMovie parseBik(const std::vector<std::uint8_t>& bytes, const std::string& nam
     }
     movie.width = readU32(bytes.data(), bytes.size(), 20, "BIK width");
     movie.height = readU32(bytes.data(), bytes.size(), 24, "BIK height");
-    const float fpsMilli = readF32(bytes.data(), bytes.size(), 28, "BIK fps");
-    movie.framesPerSecond = fpsMilli > 0.0f ? fpsMilli / 1000.0f : 30.0f;
+    // Bink 1 stores the frame rate as a u32 numerator/denominator pair
+    // (shipped movies: 2997/100 = 29.97 fps), not as a float.
+    const std::uint32_t fpsNumerator = readU32(bytes.data(), bytes.size(), 28, "BIK fps numerator");
+    const std::uint32_t fpsDenominator = readU32(bytes.data(), bytes.size(), 32, "BIK fps denominator");
+    movie.framesPerSecond = fpsDenominator > 0
+        ? static_cast<float>(fpsNumerator) / static_cast<float>(fpsDenominator)
+        : 30.0f;
     if (movie.frames == 0 || movie.width == 0 || movie.height == 0
         || movie.width > 8192 || movie.height > 8192) {
         throw FormatError(name + ": implausible BIK video header");

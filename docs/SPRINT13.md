@@ -35,9 +35,10 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
    `footstepsounds.2da` surface steps.
 9. **Movies and lip sync** - Bink 1 containers validate on all 61 shipped
    movies (header, frame table, dimensions, frame clock, script movie actions
-   and queues); LIP V1.0 parses all 18,206 lip resources and exposes
-   `visemeAt(time)` for dialogue voice-over. Pixel decode and facial morph
-   application are the Sprint 14 renderer step.
+   and queues); native FFmpeg pixel decode produces the recorded 640x272 RGBA
+   frame (SHA-256 `301f27f0...f1430`) and presents GL/Vulkan movie frames;
+   LIP V1.0 parses all 18,206 lip resources and exposes `visemeAt(time)` for
+   dialogue voice-over. Facial morph application remains the Sprint 14 rig step.
 10. **GUI screens** - all 86 unique `.gui` screens (91 resources including
     patch.erf), 2,302 controls, 7 known control types and 640x480 extents
     parse; `--gui-screen` renders the control tree in the debug UI.

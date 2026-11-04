@@ -372,6 +372,42 @@ public:
         return writeBmp(path, static_cast<int>(extent_.width), static_cast<int>(extent_.height), rgba);
     }
 
+    bool uploadMovieFrame(int width, int height, const std::uint8_t* rgba,
+                          std::uint64_t& textureId, std::string& error) override
+    {
+        if (!initialized_ || !sceneReady_) {
+            error = "Vulkan scene is not ready for movie frames";
+            return false;
+        }
+        if (!sceneRenderer_.uploadMovieFrame(width, height, rgba, error)) {
+            return false;
+        }
+        if (textureId != 0) {
+            ImGui_ImplVulkan_RemoveTexture(
+                reinterpret_cast<VkDescriptorSet>(static_cast<std::uintptr_t>(textureId)));
+            textureId = 0;
+        }
+        const VkDescriptorSet descriptor = ImGui_ImplVulkan_AddTexture(
+            sceneRenderer_.sampler(), sceneRenderer_.movieFrameView(),
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        if (descriptor == VK_NULL_HANDLE) {
+            error = "ImGui Vulkan texture registration failed";
+            return false;
+        }
+        textureId = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(descriptor));
+        return true;
+    }
+
+    void releaseMovieFrame(std::uint64_t& textureId) override
+    {
+        if (textureId != 0 && imguiInitialized_) {
+            ImGui_ImplVulkan_RemoveTexture(
+                reinterpret_cast<VkDescriptorSet>(static_cast<std::uintptr_t>(textureId)));
+        }
+        textureId = 0;
+        sceneRenderer_.destroyMovieFrame();
+    }
+
     FrameStatus renderFrame(std::string& error) override
     {
         if (!initialized_ || device_ == VK_NULL_HANDLE || swapchain_ == VK_NULL_HANDLE) {

@@ -39,6 +39,9 @@ struct Options {
     bool minigameTest = false;
     std::string guiScreen;
     std::string minigameScript;
+    std::string moviePlay;
+    std::string movieShot;
+    float movieTime = -1.0f;
     std::string audioScript;
     std::string animationScript;
     std::string combatForceScript;

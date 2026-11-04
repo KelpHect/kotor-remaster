@@ -1,33 +1,28 @@
-# Sprint 14 - media renderer, facial rig and the remaining parity systems
+# Sprint 14 - facial rig, Bink audio and the remaining parity systems
 
-Status: **planned**. Sprint 13 closed audio, SSF sound sets, Bink containers/
-movie state, LIP viseme timelines, GUI screens and the pazaak/swoop/turret
-state machines. Sprint 14 covers the renderer/facial layer and the systems
-that remain.
+Status: **planned**. Sprint 13 closed audio, SSF sound sets, Bink containers,
+native Bink pixel decode/presentation, LIP viseme timelines, GUI screens and
+the pazaak/swoop/turret state machines. Sprint 14 covers the facial rig and the
+systems that remain.
 
 ## Why this is a separate sprint
 
-- **Bink pixels**: the 61 shipped BIK files carry valid headers and frame
-  tables, but KotOR uses Bink 1 video payloads. Sprint 13 validates the
-  container and drives the movie clock; a pixel decoder/presenter is a media
-  renderer. FFmpeg 9.0.2 decodes `01a.bik` to a 640x272 RGBA frame (696,320
-  bytes, SHA-256 `301f27f0...f1430`, preview
-  `docs/evidence/s13/bik-oracle.png`), so the pixel oracle is established.
 - **Facial morphs**: `visemes.2da` has 16 rows mapping viseme ids to animation
   names (`Silence`, `Eat`, `If`, ...). A scan of all 107 `heads.2da` rows (106 parsed models)
   finds **0** head models carrying any of those clips (and no morph-target
   data); shipped heads carry only `pause1`/`pause2`-style clips. Sprint 13
   therefore exposes the deterministic LIP timeline (`lipTime`, `lipViseme`)
   but cannot invent facial deformation without an engine facial rig.
+- **Bink audio**: the native decoder currently presents video frames only.
+  The Bink audio tracks need a synchronized audio path.
 
 ## Gate S14
 
-1. **Bink pixel renderer** - decode Bink 1 frames (FFmpeg/libavcodec or a
-   first-party decoder), present at the header frame clock, sync movie audio,
-   and keep the container/clock contract from Sprint 13.
-2. **Facial rig / lip sync application** - map `visemes.2da` rows to rig
+1. **Facial rig / lip sync application** - map `visemes.2da` rows to rig
    controls, drive them from `LipSync::visemeAt`, and support the head/body
    model setup without corrupting the existing animation state.
+2. **Bink audio sync** - decode the Bink audio tracks and keep them locked to
+   the video frame clock.
 3. **GUI interaction/state** - wire control actions, screen transitions and
    panel state on top of the Sprint 13 parser/renderer.
 4. **Localization** - TLK language selection and localized path handling.
@@ -41,8 +36,11 @@ that remain.
 
 ## Evidence carried into Sprint 14
 
-- `docs/evidence/s13/media.log` - 61 BIK containers, 18,206 LIP timelines,
-  107 head rows / 106 models with 0 viseme clips.
+- `docs/evidence/s13/media.log` - 61 BIK containers, native pixel decode with
+  the recorded SHA-256, 18,206 LIP timelines, 107 head rows / 106 models with
+  0 viseme clips.
 - `docs/evidence/s13/bik-oracle.txt`, `bik-oracle.png` - FFmpeg Bink frame
   oracle.
+- `docs/evidence/s13/movie-gl.png`, `movie-vk.png`, `movie-frame.png` - movie
+  presentation on both backends and the decoded frame itself.
 - `docs/recon/51_AUDIO.md` - stream, mixer, sound-set and media formats.

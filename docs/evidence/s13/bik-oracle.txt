@@ -1,11 +1,13 @@
 Bink pixel-decoder oracle evidence
 build: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
-tool: ffmpeg 9.0.2-full_build (Gyan)
+tool: ffmpeg 9.0.2-full_build (Gyan) and BtbN n9.0.2-45-g1e65c6cd5d
 input: movies/01a.bik
 command: ffmpeg -v error -i 01a.bik -frames:v 1 -f rawvideo -pix_fmt rgba -
 decoded frame: 640x272 RGBA = 696320 bytes
 rgba sha256: 301f27f0e6022367e847de4861de2be72c25c1ffd0ccfdadbd920673f9bf1430
 preview: docs/evidence/s13/bik-oracle.png
 
-The engine validates the Bink container, frame table and playback clock in
-Sprint 13; pixel decode/presentation uses this FFmpeg oracle in Sprint 14.
+The engine's native BinkPlayer (libavcodec/libavformat/swscale) decodes the
+same frame to the same SHA-256. --media-test asserts the hash, frame 1,
+rewind/replay and the playback frame clock. Presentation evidence:
+docs/evidence/s13/movie-gl.png, movie-vk.png, movie-frame.png.

@@ -193,6 +193,24 @@ public:
         return sceneRenderer_.screenshot(path, width, height);
     }
 
+    bool uploadMovieFrame(int width, int height, const std::uint8_t* rgba,
+                          std::uint64_t& textureId, std::string& error) override
+    {
+        GlUint texture = static_cast<GlUint>(textureId);
+        if (!sceneRenderer_.uploadMovieFrame(width, height, rgba, texture, error)) {
+            return false;
+        }
+        textureId = texture;
+        return true;
+    }
+
+    void releaseMovieFrame(std::uint64_t& textureId) override
+    {
+        GlUint texture = static_cast<GlUint>(textureId);
+        sceneRenderer_.destroyMovieFrame(texture);
+        textureId = texture;
+    }
+
     FrameStatus renderFrame(std::string& error) override
     {
         if (!initialized_ || window_ == nullptr) {
