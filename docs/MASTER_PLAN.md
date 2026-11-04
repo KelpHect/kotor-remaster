@@ -235,7 +235,20 @@ re-derives high-impact claims (action table, VM semantics, save layout) before a
   Classic remains the 1:1 oracle and is selectable at runtime.
 - Documentation, modding APIs, platform builds.
 
-Estimates assume 6–12 engineers plus the 10-agent RE swarm; a solo effort scales to multiple years.
+Estimates assume 6-12 engineers plus the 10-agent RE swarm; a solo effort scales to multiple years.
+
+### Sprint mapping (current)
+
+The remaining work is scheduled so every known residual closes before the
+remaster path starts at Sprint 17.
+
+| Sprint | Plan | Focus |
+|---|---|---|
+| 14 | [`SPRINT14.md`](SPRINT14.md) | P6 correctness, differential playthroughs, save/load matrix, TSLPatcher TLK merges, faction parent inheritance, `CamVidEffect` audit, P6 baseline maintenance |
+| 15 | [`SPRINT15.md`](SPRINT15.md) | KotOR 2 gameplay parity: K2 rules, influence, crafting/upgrades, K2 actions and all-module sweep |
+| 16 | [`SPRINT16.md`](SPRINT16.md) | Release candidate: performance budgets, controller/accessibility, legal review, installer/launcher, packaging |
+| 17 | [`SPRINT17.md`](SPRINT17.md) | Remaster stage 1: high-res textures, HFR/widescreen, MSAA/anisotropy, SSAO/bloom |
+| 18 | [`SPRINT18.md`](SPRINT18.md) | Remaster stages 2-4, modding API and platform builds |
 
 ## 7. Architecture summary
 

@@ -108,10 +108,12 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
 
 Gate S13 covers audio, Bink/LIP media, Bink audio, the facial rig, GUI
 interaction, localization, mods/Override, KotOR 2 world loading, faction
-reputation and the P6 all-area content checklist. The remaining release
-verification (differential playthroughs, performance budgets,
-controller/accessibility and legal review) is tracked in
-[`docs/SPRINT14.md`](SPRINT14.md).
+reputation and the P6 all-area content checklist. Sprint 14
+([`docs/SPRINT14.md`](SPRINT14.md)) covers P6 correctness and the residuals,
+Sprint 15 ([`docs/SPRINT15.md`](SPRINT15.md)) K2 gameplay, Sprint 16
+([`docs/SPRINT16.md`](SPRINT16.md)) the release candidate, and Sprints 17-18
+the remaster path ([`docs/SPRINT17.md`](SPRINT17.md),
+[`docs/SPRINT18.md`](SPRINT18.md)).
 
 ## Running the gate
 
