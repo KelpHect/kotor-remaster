@@ -1,16 +1,18 @@
 {
   "choices_ok": true,
-  "engine_actions": 7761,
+  "engine_actions": 7763,
   "engine_details": {
     "choices": 9,
     "phases": {
       "generic": 4206,
       "host": 719,
-      "probe": 13,
+      "probe": 15,
       "specific": 2823
     },
     "transitions": 1
   },
+  "engine_module": "end_m01aa",
+  "engine_module_ok": true,
   "engine_only": [
     {
       "action": 13,
@@ -49,6 +51,10 @@
       "name": "GetFirstInPersistentObject"
     },
     {
+      "action": 263,
+      "name": "GetNextInPersistentObject"
+    },
+    {
       "action": 319,
       "name": "GetDistanceBetween2D"
     },
@@ -81,13 +87,17 @@
       "name": "RemoveAvailableNPC"
     },
     {
+      "action": 734,
+      "name": "SaveNPCState"
+    },
+    {
       "action": 759,
       "name": "NoClicksFor"
     }
   ],
   "engine_trace": "docs\\evidence\\s14\\engine-semantic-end_m01aa.jsonl",
-  "engine_unique": 82,
-  "executed_union": 372,
+  "engine_unique": 84,
+  "executed_union": 374,
   "expected_choices": 9,
   "expected_transitions": 1,
   "missing_all_execution": [],
@@ -98,6 +108,8 @@
   "module_used_actions": 190,
   "pass": true,
   "retail_actions": 21491,
+  "retail_module_ok": true,
+  "retail_modules": [],
   "retail_only_not_in_module": [
     66,
     195,

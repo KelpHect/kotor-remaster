@@ -117,22 +117,26 @@ path and the Taris, Taris Lower City and two Unknown World saves
 diffs them against every recorded retail path (`live-02` through `live-05` plus
 the four save loads):
 
-- engine traces: **7,761 / 1,043 / 2,497 / 1,680 / 1,238** actions for
+- engine traces: **7,763 / 1,045 / 2,499 / 1,682 / 1,240** actions for
   `end_m01aa`, `tar_m02af`, `tar_m03aa`, `unk_m41ad` and `unk_m41ab`;
   **9 / 0 / 0 / 0 / 0** dialogue choices and one transition each;
-- retail traces: **110 / 124 / 124 / 102** live and **86 / 86 / 86 / 85**
-  save-load action IDs, **127 unique** overall;
-- **93 / 108 / 108 / 89**, **16**, **77**, **73**, **70** retail actions used
+- retail traces: **110 / 124 / 124 / 102** live and **54 / 54 / 57 / 43**
+  save-load action IDs, **152 unique** overall;
+- **93 / 108 / 108 / 89**, **27**, **48**, **43**, **30** retail actions used
   by the corresponding module scripts;
-- **372** (`end_m01aa`) and **370** (later modules) executed action IDs across
-  the playthroughs, drained functional VM corpus (357) and thirteen probes;
+- **374** (`end_m01aa`) and **372** (later modules) executed action IDs across
+  the playthroughs, drained functional VM corpus (357) and fifteen probes;
 - **0 missing execution**, **0 missing implementation** for every path (both
-  the module-restricted and full retail sets).
+  the module-restricted and full retail sets), with a module-identity check
+  that rejects a trace whose recorded module differs from the engine module.
 
 The VM corpus drain executes delayed/queued closures (`--vm-drain`) so AI
-actions behind `DelayCommand` are covered. Thirteen branch-gated actions are
-recorded with phase `probe` (talent/AI, perception/movement and combat-result
-queries) because their branches are state-gated. The four later-module traces
+actions behind `DelayCommand` are covered. Fifteen branch-gated actions are
+recorded with phase `probe` (talent/AI, perception/movement, combat-result and
+persistent-object queries) because their branches are state-gated. The four
+save traces were recorded by replacing the profile QUICKSAVE slot with each
+retail fixture and loading the first slot; the converter writes a module header
+from the observed `modules\<name>_s.rim` load. The four later-module traces
 were recorded from the retail executable by loading the saved game and
 converted with `tools/harness/semantic_from_events.py`.
 

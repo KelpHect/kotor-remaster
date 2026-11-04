@@ -1,4 +1,4 @@
-{"kind":"header","seq":0,"payload":{"schema":"kotor.engine-semantic/1","module":"end_m01ab","build":"0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6"}}
+{"kind":"header","seq":0,"payload":{"schema":"kotor.engine-semantic/1","module":"end_m01aa","final_module":"end_m01ab","build":"0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6"}}
 {"kind":"kotor.action","seq":1,"payload":{"action":323,"name":"SetIsDestroyable","phase":"generic","time":0}}
 {"kind":"kotor.action","seq":2,"payload":{"action":175,"name":"SetListening","phase":"generic","time":0}}
 {"kind":"kotor.action","seq":3,"payload":{"action":176,"name":"SetListenPattern","phase":"specific","time":0}}
@@ -7751,22 +7751,24 @@
 {"kind":"kotor.action","seq":7750,"payload":{"action":256,"name":"GetLastPerceived","phase":"probe","time":1799.43}}
 {"kind":"kotor.action","seq":7751,"payload":{"action":259,"name":"GetLastPerceptionSeen","phase":"probe","time":1799.43}}
 {"kind":"kotor.action","seq":7752,"payload":{"action":261,"name":"GetLastPerceptionVanished","phase":"probe","time":1799.43}}
-{"kind":"kotor.action","seq":7753,"payload":{"action":286,"name":"GetHasSkill","phase":"probe","time":1799.43}}
-{"kind":"kotor.action","seq":7754,"payload":{"action":307,"name":"GetCreatureTalentRandom","phase":"probe","time":1799.43}}
-{"kind":"kotor.action","seq":7755,"payload":{"action":489,"name":"GetAttemptedMovementTarget","phase":"probe","time":1799.43}}
-{"kind":"kotor.action","seq":7756,"payload":{"action":522,"name":"GetCurrentAction","phase":"probe","time":1799.43}}
-{"kind":"kotor.action","seq":7757,"payload":{"action":723,"name":"GetLastForcePowerUsed","phase":"probe","time":1799.43}}
-{"kind":"kotor.action","seq":7758,"payload":{"action":724,"name":"GetLastCombatFeatUsed","phase":"probe","time":1799.43}}
-{"kind":"kotor.action","seq":7759,"payload":{"action":725,"name":"GetLastAttackResult","phase":"probe","time":1799.43}}
-{"kind":"kotor.action","seq":7760,"payload":{"action":726,"name":"GetWasForcePowerSuccessful","phase":"probe","time":1799.43}}
-{"kind":"kotor.action","seq":7761,"payload":{"action":735,"name":"GetCategoryFromTalent","phase":"probe","time":1799.43}}
-{"kind":"kotor.dialogue","seq":7762,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":55,"option":0,"text":"Who are you? [Left-click this answer to select highlighted response.]"}}
-{"kind":"kotor.dialogue","seq":7763,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":57,"option":0,"text":"(Continue)"}}
-{"kind":"kotor.dialogue","seq":7764,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":58,"option":0,"text":"Who's Bastila? [Left-click this answer to select highlighted response.]"}}
-{"kind":"kotor.dialogue","seq":7765,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":61,"option":0,"text":"(Continue)"}}
-{"kind":"kotor.dialogue","seq":7766,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":62,"option":0,"text":"(Continue)"}}
-{"kind":"kotor.dialogue","seq":7767,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":69,"option":0,"text":"(Continue)"}}
-{"kind":"kotor.dialogue","seq":7768,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":70,"option":0,"text":"(Continue)"}}
-{"kind":"kotor.dialogue","seq":7769,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":71,"option":0,"text":"Okay, let's go help Bastila!"}}
-{"kind":"kotor.dialogue","seq":7770,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":73,"option":0,"text":"Okay."}}
-{"kind":"kotor.transition","seq":7771,"payload":{"from":"end_m01aa","to":"end_m01ab"}}
+{"kind":"kotor.action","seq":7753,"payload":{"action":263,"name":"GetNextInPersistentObject","phase":"probe","time":1799.43}}
+{"kind":"kotor.action","seq":7754,"payload":{"action":286,"name":"GetHasSkill","phase":"probe","time":1799.43}}
+{"kind":"kotor.action","seq":7755,"payload":{"action":307,"name":"GetCreatureTalentRandom","phase":"probe","time":1799.43}}
+{"kind":"kotor.action","seq":7756,"payload":{"action":489,"name":"GetAttemptedMovementTarget","phase":"probe","time":1799.43}}
+{"kind":"kotor.action","seq":7757,"payload":{"action":522,"name":"GetCurrentAction","phase":"probe","time":1799.43}}
+{"kind":"kotor.action","seq":7758,"payload":{"action":723,"name":"GetLastForcePowerUsed","phase":"probe","time":1799.43}}
+{"kind":"kotor.action","seq":7759,"payload":{"action":724,"name":"GetLastCombatFeatUsed","phase":"probe","time":1799.43}}
+{"kind":"kotor.action","seq":7760,"payload":{"action":725,"name":"GetLastAttackResult","phase":"probe","time":1799.43}}
+{"kind":"kotor.action","seq":7761,"payload":{"action":726,"name":"GetWasForcePowerSuccessful","phase":"probe","time":1799.43}}
+{"kind":"kotor.action","seq":7762,"payload":{"action":734,"name":"SaveNPCState","phase":"probe","time":1799.43}}
+{"kind":"kotor.action","seq":7763,"payload":{"action":735,"name":"GetCategoryFromTalent","phase":"probe","time":1799.43}}
+{"kind":"kotor.dialogue","seq":7764,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":55,"option":0,"text":"Who are you? [Left-click this answer to select highlighted response.]"}}
+{"kind":"kotor.dialogue","seq":7765,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":57,"option":0,"text":"(Continue)"}}
+{"kind":"kotor.dialogue","seq":7766,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":58,"option":0,"text":"Who's Bastila? [Left-click this answer to select highlighted response.]"}}
+{"kind":"kotor.dialogue","seq":7767,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":61,"option":0,"text":"(Continue)"}}
+{"kind":"kotor.dialogue","seq":7768,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":62,"option":0,"text":"(Continue)"}}
+{"kind":"kotor.dialogue","seq":7769,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":69,"option":0,"text":"(Continue)"}}
+{"kind":"kotor.dialogue","seq":7770,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":70,"option":0,"text":"(Continue)"}}
+{"kind":"kotor.dialogue","seq":7771,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":71,"option":0,"text":"Okay, let's go help Bastila!"}}
+{"kind":"kotor.dialogue","seq":7772,"payload":{"module":"end_m01aa","dialogue":"end_trask01","entry":73,"option":0,"text":"Okay."}}
+{"kind":"kotor.transition","seq":7773,"payload":{"from":"end_m01aa","to":"end_m01ab"}}
