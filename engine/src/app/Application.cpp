@@ -1574,6 +1574,81 @@ std::string resolveInstallPath(const Options& options)
     return "E:/SteamLibrary/steamapps/common/swkotor";
 }
 
+int runLocalizationTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("localization test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    const auto lower = [](std::string text) {
+        for (char& ch : text) {
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        }
+        return text;
+    };
+
+    kotor::Localization localization(game.installPath());
+    std::string error;
+    check(localization.load(-1, error), "tlk_load");
+    check(localization.languageId() == 0 && localization.languageName() == "English",
+          "tlk_language");
+    check(localization.entryCount() == 49265, "tlk_entries");
+    check(localization.tlk().sound(38167) == "c_drdastro_bat1", "tlk_sound");
+    check(localization.load(0, error), "language_explicit");
+    check(!localization.load(1, error), "language_missing");
+    check(localization.languageId() == 0, "language_retained");
+    check(kotor::languageId("English") == 0 && kotor::languageId("german") == 2,
+          "language_names");
+    check(kotor::languageId("99") == -1, "language_bad_id");
+
+    const std::filesystem::path voice = localization.voiceFile("nm01aatras02000_");
+    check(!voice.empty(), "localized_voice");
+    check(lower(voice.filename().string()) == "nm01aatras02000_.wav",
+          "voice_file");
+    check(voice.parent_path().filename().string() == "tras02", "voice_speaker_path");
+    check(voice.parent_path().parent_path().filename().string() == "m01aa",
+          "voice_module_path");
+    check(localization.voiceFile("does_not_exist").empty(), "voice_missing");
+    check(localization.localizedLipArchives() == 118, "localized_lips");
+
+    kotor::Install install(game.installPath());
+    install.bindModule(game.module());
+    install.addPacks();
+    install.addLips();
+    const auto lipData = install.find("nglobebant00102_",
+                                      kotor::resType(kotor::ResType::Lip));
+    check(lipData.has_value(), "localized_lip_resource");
+    if (lipData.has_value()) {
+        try {
+            const kotor::LipSync lip = kotor::parseLip(*lipData, "nglobebant00102_.lip");
+            check(lip.frames.size() > 0 && lip.duration > 0.0f, "localized_lip");
+        } catch (const kotor::FormatError&) {
+            check(false, "localized_lip");
+        }
+    }
+
+    check(game.localization().loaded() && game.languageId() == 0,
+          "session_language");
+    audio::SoundData voiceData;
+    std::string voiceError;
+    check(game.audio().decodeProbe("nm01aatras02000_", voiceData, voiceError),
+          "voice_decode");
+    check(voiceData.sampleRate == 32000 && voiceData.channels == 1
+              && voiceData.frameCount() > 0,
+          "voice_pcm");
+    logInfo(concat("localization test: voice rate=", voiceData.sampleRate,
+                   " ch=", voiceData.channels,
+                   " frames=", voiceData.frameCount(),
+                   " error=", voiceError));
+    logInfo(concat("localization test: language=", localization.languageName(),
+                   " tlk=", localization.entryCount(),
+                   " voice=", voice.filename().string(),
+                   " localizedLips=", localization.localizedLipArchives()));
+    logInfo(ok ? "localization test: PASS" : "localization test: FAIL");
+    return ok ? 0 : 64;
+}
+
 int runGuiTest(GameSession& game)
 {
     bool ok = true;
@@ -3794,7 +3869,10 @@ int runApplication(const Options& options)
             }
         }
         try {
-            game.emplace(installPath, options.module);
+            game.emplace(installPath, options.module, options.language);
+            logInfo(concat("Language: ", game->localization().languageName(),
+                           " (", game->languageId(), ") tlk entries=",
+                           game->localization().entryCount()));
             game->setAnimationEnabled(!options.headless && options.backend != BackendKind::Null);
             const ke::kotor::Scene& loaded = game->scene();
             const auto countKind = [&](ke::kotor::EntityKind kind) {
@@ -3980,6 +4058,9 @@ int runApplication(const Options& options)
             }
             if (options.minigameTest) {
                 return runMinigameTest(*game, options.minigameScript);
+            }
+            if (options.localizationTest) {
+                return runLocalizationTest(*game);
             }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);

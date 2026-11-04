@@ -533,24 +533,22 @@ void GameSession::initAnimations()
     ++animationRevision_;
 }
 
-GameSession::GameSession(std::string installPath, std::string module)
+GameSession::GameSession(std::string installPath, std::string module, int language)
     : installPath_(std::move(installPath))
     , install_(installPath_)
     , rules_(install_)
 {
-    const std::filesystem::path tlkPath = std::filesystem::path(installPath_) / "dialog.tlk";
-    std::ifstream tlkFile(tlkPath, std::ios::binary | std::ios::ate);
-    if (tlkFile) {
-        const std::streamoff size = tlkFile.tellg();
-        tlkFile.seekg(0, std::ios::beg);
-        std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
-        if (bytes.empty() || tlkFile.read(reinterpret_cast<char*>(bytes.data()), size)) {
-            try {
-                tlk_ = kotor::Tlk::parse(std::move(bytes), "dialog.tlk");
-            } catch (const kotor::FormatError&) {
-                tlk_.reset();
-            }
+    localization_ = std::make_unique<kotor::Localization>(
+        std::filesystem::path(installPath_));
+    std::string localizationError;
+    if (!localization_->load(language, localizationError)) {
+        if (language >= 0) {
+            throw kotor::FormatError(localizationError);
         }
+        logEvent("localization: " + localizationError);
+    } else {
+        tlk_ = localization_->tlk();
+        languageId_ = localization_->languageId();
     }
     if (rules_.loaded()) {
         character_ = rules_.createCharacter(0, 1);

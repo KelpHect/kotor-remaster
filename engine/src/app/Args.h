@@ -37,12 +37,14 @@ struct Options {
     bool mediaTest = false;
     bool guiTest = false;
     bool minigameTest = false;
+    bool localizationTest = false;
     std::string guiScreen;
     std::string guiAction;
     std::string minigameScript;
     std::string moviePlay;
     std::string movieShot;
     float movieTime = -1.0f;
+    int language = -1;
     int facialDemo = -1;
     std::string audioScript;
     std::string animationScript;

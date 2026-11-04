@@ -1,5 +1,7 @@
 #include "app/Args.h"
 
+#include "kotor/Localization.h"
+
 #include <cerrno>
 #include <cstdlib>
 #include <iostream>
@@ -233,12 +235,29 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.facialDemo = static_cast<int>(viseme);
             continue;
         }
+        if (arg == "--language") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--language requires an id or name");
+            }
+            const int id = kotor::languageId(value);
+            if (id < 0) {
+                return fail(std::move(result),
+                            std::string("unknown language '") + value + "'");
+            }
+            result.options.language = id;
+            continue;
+        }
         if (arg == "--gui-test") {
             result.options.guiTest = true;
             continue;
         }
         if (arg == "--minigame-test") {
             result.options.minigameTest = true;
+            continue;
+        }
+        if (arg == "--localization-test") {
+            result.options.localizationTest = true;
             continue;
         }
         if (arg == "--minigame-script") {
@@ -551,8 +570,10 @@ void printUsage()
         << "  --movie-time <sec>    Seek the movie before presenting\n"
         << "  --movie-shot <bmp>    Save the first presented movie frame\n"
         << "  --facial-demo <0-15>  Drive the lip-sync rig with a demo viseme\n"
+        << "  --language <id|name>  Select the TLK language (default: auto)\n"
         << "  --gui-test            Assert all shipped GUI screens and control trees\n"
         << "  --minigame-test       Assert pazaak/swoop/turret state machines\n"
+        << "  --localization-test   Assert TLK language and localized paths\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"
         << "  --gui-screen <resref> Render one .gui screen in the debug UI\n"
         << "  --gui-action <tag>    Activate one control before rendering\n"

@@ -1,4 +1,4 @@
-# Sprint 13 report - audio, media, GUI and minigame parity
+# Sprint 13 report - audio, media, GUI, localization and minigame parity
 
 Status: **complete - gate S13 met (2026-11-04)**. Sprint 12 closed
 animation/skinning, weapons, cutscene cameras and visual FX. Sprint 13 adds
@@ -6,14 +6,14 @@ the runtime audio layer: shipped WAV/MP3 streams decode, area music/ambience
 and UTS sound emitters load, dialogue voice-over plays, a deterministic mixer
 provides 3D attenuation/pan and EAX-style reverb, and the script sound/music
 actions are bridged. It also closes SSF sound sets, Bink container/pixel
-decode and presentation, LIP visemes, GUI screens and the three minigame state
-machines.
+decode and presentation, LIP visemes, GUI screens/interaction, localization
+and the three minigame state machines.
 
 ## 1. Build and test result
 
 ```text
-100% tests passed, 0 tests failed out of 40
-Total Test time (real) = 170.38 sec
+100% tests passed, 0 tests failed out of 41
+Total Test time (real) = 173.49 sec
 ```
 
 The new targets are `kotor_audio`, `kotor_media`, `kotor_gui` and
@@ -186,7 +186,32 @@ Gate assertions: `screens`, `controls`, `control_types`,
 `screen_checkbox`, `checkbox_control`, `checkbox_on`, `checkbox_off`,
 `panel_character`, `panel_toggle`, `panel_inventory`.
 
-## 9. Minigames
+## 9. Localization
+
+- **TLK V3.0** now exposes the header language id. The shipped `dialog.tlk` is
+  English (`0`), **49,265** entries; entry 38167's sound resref is
+  `c_drdastro_bat1`.
+- `Localization::load(-1)` uses the TLK's own language. `--language <id|name>`
+  accepts the supported language table, prefers `dialog_<id>.tlk` /
+  `dialog_<name>.tlk`, and otherwise requires `dialog.tlk` to match. A failed
+  explicit load (e.g. French on this English install) reports both languages and
+  leaves the previous language loaded.
+- **Localized voice paths**: `streamwaves/<module>/<speaker>/<resref>.wav` for
+  `n<module><speaker>...` resrefs, with flat `streamwaves`/`streamsounds`
+  fallbacks. `nm01aatras02000_` resolves to `m01aa/tras02/` and decodes as
+  **32,000 Hz mono, 177,872 frames**.
+- **Localized LIPs**: 117 `<module>_loc.mod` archives plus
+  `lips/localization.mod` (118); `Install::addLips` mounts them and the gate
+  parses `nglobebant00102_` with a non-empty timeline.
+
+Gate assertions: `tlk_load`, `tlk_language`, `tlk_entries`, `tlk_sound`,
+`language_explicit`, `language_missing`, `language_retained`, `language_names`,
+`language_bad_id`, `localized_voice`, `voice_file`, `voice_speaker_path`,
+`voice_module_path`, `voice_missing`, `localized_lips`,
+`localized_lip_resource`, `localized_lip`, `session_language`, `voice_decode`,
+`voice_pcm`.
+
+## 10. Minigames
 
 Deterministic rule/state machines in `engine/src/game/Minigames.*`:
 
@@ -219,34 +244,35 @@ Gate assertions: `pazaak_deterministic`, `pazaak_seed_varies`,
 `pazaak_script_result`, `pazaak_session_start`, `pazaak_session_match_over`,
 `pazaak_session_result`, `pazaak_wager`.
 
-## 10. Device
+## 11. Device
 
 `audio::Output` opens an SDL3 playback stream (48 kHz float stereo) and pulls
 the mixer in the audio callback. Live runs log `Audio device: <name>`; headless
 tests use the same mixer without a device. The output stream is destroyed
 before `SDL_Quit` (the parity crash fix).
 
-## 11. Regression
+## 12. Regression
 
-- **CTest: 40/40 passed** (170.38 s).
+- **CTest: 41/41 passed** (173.49 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0000**, PASS.
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
-## 12. Next sprint
+## 13. Next sprint
 
 Sprint 13 closes audio, Bink/LIP media, native movie presentation, Bink audio,
-GUI interaction and the facial rig. Localization, mods/Override, KotOR 2 world
+GUI interaction, localization and the facial rig. Mods/Override, KotOR 2 world
 loading and faction/P6 are planned in
 [`docs/SPRINT14.md`](SPRINT14.md); the shipped-data evidence is `media.log`
 (61 BIK, native RGBA SHA-256, 18,206 LIP, 107 head rows / 106 models / 0 viseme
-clips) and `bik-oracle.txt`.
+clips), `localization.log` and `bik-oracle.txt`.
 
 ## Evidence index
 
 - `docs/evidence/s13/audio.log`
+- `docs/evidence/s13/localization.log`
 - `docs/evidence/s13/media.log`
 - `docs/evidence/s13/gui.log`
 - `docs/evidence/s13/gui-state.png`, `gui-mainmenu.png`

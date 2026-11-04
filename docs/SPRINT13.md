@@ -1,4 +1,4 @@
-# Sprint 13 - audio, media, GUI and minigame parity
+# Sprint 13 - audio, media, GUI, localization and minigame parity
 
 Status: **complete - gate S13 met (2026-11-04)**. Sprint 12 closed animation/skinning, weapons, cutscene
 cameras and visual FX. Sprint 13 adds the runtime audio layer: shipped WAV/MP3
@@ -50,17 +50,21 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
     button/checkbox/listbox actions, slider/scrollbar/progress clamping, a
     screen stack and panel actions; `--gui-screen` renders the interactive
     tree and `--gui-action` drives a deterministic control.
-11. **Minigames** - deterministic pazaak (40-card deck, four side cards,
+11. **Localization** - TLK V3.0 language ids, `--language <id|name>`,
+    `dialog_<id>.tlk` fallback and mismatch retention; localized voice paths
+    `streamwaves/<module>/<speaker>/<resref>.wav`; 117 `_loc.mod` archives plus
+    `localization.mod` (118 localized LIPs) parsed and asserted.
+12. **Minigames** - deterministic pazaak (40-card deck, four side cards,
     first to two sets, `PlayPazaak`/`GetLastPazaakResult` and wager
     settlement), swoop (throttle/boost/brake, 3 x 3,000 m laps) and turret
     (five approaching targets, shots/hits/score, arrival damage) state
     machines with seeded transcripts.
-12. **Device** - SDL3 audio stream pulls the mixer in live frames; headless
+13. **Device** - SDL3 audio stream pulls the mixer in live frames; headless
     tests exercise the same mixer without a device.
-13. **Regression** - 40/40 CTest, 117/117 modules with 0 warnings, VM
+14. **Regression** - 41/41 CTest, 117/117 modules with 0 warnings, VM
     8,666/8,666, scene parity PASS, Python 143 tests / 7 skips, install
     sentinel 0 session changes.
-14. **Evidence and docs** - audio/media/GUI/minigame tests, phase log,
+15. **Evidence and docs** - audio/media/localization/GUI/minigame tests, phase log,
     module/VM/parity/tools/install logs, report and technical note.
 
 ## Lanes
@@ -77,7 +81,8 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
 | s13-08-media | Bink container/pixels/audio, LIP visemes and facial rig | `engine/src/kotor/Media.*`, `BinkDecoder.*`, `engine/src/game/FacialRig.*`, `GameSession.*` |
 | s13-09-gui | `.gui` parser, corpus assertions, interaction and renderer | `engine/src/kotor/Gui.*`, `engine/src/game/GuiSystem.*`, `Application.cpp` |
 | s13-10-minigames | pazaak/swoop/turret state machines and gate | `engine/src/game/Minigames.*`, `Application.cpp` |
-| s13-11-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
+| s13-11-localization | TLK language and localized voice/LIP paths | `engine/src/kotor/Localization.*`, `GameSession.*` |
+| s13-12-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
 
 ## Next sprint
 

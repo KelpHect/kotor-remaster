@@ -5,6 +5,7 @@
 #include "game/Minigames.h"
 #include "game/Rules.h"
 #include "kotor/BinkDecoder.h"
+#include "kotor/Localization.h"
 #include "kotor/Media.h"
 #include "kotor/Formats.h"
 #include "kotor/SaveGame.h"
@@ -66,7 +67,7 @@ const char* combatModeName(CombatMode mode);
 // on the engine's own NCS VM and mutate the same world the renderer uses.
 class GameSession : public script::ActionHost {
 public:
-    GameSession(std::string installPath, std::string module);
+    GameSession(std::string installPath, std::string module, int language = -1);
     ~GameSession() override;
 
     const kotor::Scene& scene() const { return scene_; }
@@ -75,6 +76,8 @@ public:
     const std::string& installPath() const { return installPath_; }
     const std::string& buildSha256() const { return install_.buildSha256(); }
     const Rules& rules() const { return rules_; }
+    const kotor::Localization& localization() const { return *localization_; }
+    std::uint32_t languageId() const { return languageId_; }
     AudioSystem& audio() { return *audio_; }
     const AudioSystem& audio() const { return *audio_; }
     FacialRig& facialRig() { return facialRig_; }
@@ -329,6 +332,8 @@ private:
     std::string installPath_;
     std::string module_;
     kotor::Install install_;
+    std::unique_ptr<kotor::Localization> localization_;
+    std::uint32_t languageId_ = 0;
     std::unique_ptr<AudioSystem> audio_;
     kotor::Scene scene_;
     kotor::Vec3 position_;
