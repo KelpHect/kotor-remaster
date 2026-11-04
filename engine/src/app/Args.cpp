@@ -320,6 +320,36 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.bugParityTest = true;
             continue;
         }
+        if (arg == "--third-person") {
+            result.options.thirdPerson = true;
+            continue;
+        }
+        if (arg == "--no-movies") {
+            result.options.noMovies = true;
+            continue;
+        }
+        if (arg == "--camera-noclip") {
+            result.options.cameraNoClip = true;
+            continue;
+        }
+        if (arg == "--player-appearance") {
+            const char* value = requireValue();
+            int appearance = 0;
+            if (!parseInteger(value, 0, appearance) || appearance > 508) {
+                return fail(std::move(result),
+                            "--player-appearance requires a row 0..508");
+            }
+            result.options.playerAppearance = appearance;
+            continue;
+        }
+        if (arg == "--player-name") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--player-name requires text");
+            }
+            result.options.playerName = value;
+            continue;
+        }
         if (arg == "--save-fixtures") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -680,6 +710,11 @@ void printUsage()
         << "  --save-fixture <dir> Load this save for the engine trace\n"
         << "  --module-playthrough-test  All-module conversation matrix only\n"
         << "  --bug-parity-test     Classic bug-parity vs fixed-mode assertions\n"
+        << "  --third-person        Render the player avatar with an orbit camera\n"
+        << "  --no-movies           Suppress module/movie overlays for inspection\n"
+        << "  --camera-noclip       Disable third-person camera collision (debug)\n"
+        << "  --player-appearance <row>  appearance.2da row for the player (default 92)\n"
+        << "  --player-name <text>  Player display name (default Player)\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"
         << "  --gui-screen <resref> Render one .gui screen in the debug UI\n"
         << "  --gui-action <tag>    Activate one control before rendering\n"

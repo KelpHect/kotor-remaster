@@ -851,6 +851,11 @@ struct EntityMesh {
     std::string attachNode;
     std::string attachAnimation;
     float attachTime = 0.0f;
+    // Separate head geometry merged into this body mesh. The head follows the
+    // body node `headNode` (normally `headhook`) through body animations.
+    std::shared_ptr<Mdl> headModel;
+    std::string headNode;
+    bool visible = true;
     std::uint32_t revision = 0;
 };
 
@@ -1001,6 +1006,12 @@ std::optional<ItemTemplate> loadItemTemplate(Install& install, const std::string
 // encounter spawner.
 std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utcResref,
                           Vec3 position, float bearing);
+
+// Create the player's rendered avatar (body + head) without a UTC template.
+// The avatar is a normal scene creature tagged `PC`, so scripts and the
+// renderer see the same entity the player controls.
+std::size_t spawnPlayerAvatar(Scene& scene, Install& install, std::uint32_t appearance,
+                              const std::string& name, Vec3 position, float bearing);
 
 // Resolves GIT templates, model geometry and trigger polygons after the base
 // module has been loaded. Kept separate from loadModule so the room pass stays

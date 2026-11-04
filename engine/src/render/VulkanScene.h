@@ -50,6 +50,7 @@ private:
         VkDeviceMemory indexMemory = VK_NULL_HANDLE;
         std::vector<kotor::TextureBatch> batches;
         std::uint32_t entity = UINT32_MAX;
+        bool visible = true;
     };
 
     struct PushConstants {

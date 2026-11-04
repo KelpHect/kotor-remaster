@@ -296,6 +296,22 @@ public:
         playerMaxHp_ = sheet.maxHp;
         playerDead_ = false;
     }
+    // Apply a fully-built character sheet (character generation/level-up) to
+    // the live session and refresh the script world and rendered avatar.
+    void applyCharacter(const CharacterSheet& sheet);
+    void setPlayerAppearance(std::uint32_t appearance, const std::string& name = {});
+    void setThirdPerson(bool enabled) {
+        thirdPerson_ = enabled;
+        if (enabled) {
+            spawnPlayerAvatar();
+        } else if (playerEntity_ != static_cast<std::size_t>(-1)
+                   && playerEntity_ < scene_.entities.size()) {
+            scene_.entities[playerEntity_].dead = true;
+        }
+    }
+    void setCameraNoClip(bool enabled) { cameraNoClip_ = enabled; }
+    bool thirdPerson() const { return thirdPerson_; }
+    std::size_t playerEntity() const { return playerEntity_; }
     void attackPlayerForTest(std::size_t index) { npcAttack(index); }
     std::int32_t forceArmorBonus() const;
     std::int32_t forceAttackBonus() const;
@@ -379,6 +395,8 @@ private:
     void runSpawnAndEnterScripts();
     bool scriptValueTruthy(const std::optional<script::Value>& value) const;
     void syncPlayerToScriptWorld();
+    void spawnPlayerAvatar();
+    void updatePlayerAvatar(float dt, bool moving);
     void syncEntityToScriptWorld(std::size_t index);
     std::string scriptSource(const std::string& resref);
 
@@ -393,6 +411,13 @@ private:
     kotor::Vec3 position_;
     float yaw_ = 0.0f;
     float pitch_ = 0.0f;
+    std::size_t playerEntity_ = static_cast<std::size_t>(-1);
+    std::uint32_t playerAppearance_ = 92;
+    std::string playerName_ = "Player";
+    float playerBearing_ = 0.0f;
+    bool thirdPerson_ = false;
+    mutable bool playerVisible_ = true;
+    bool cameraNoClip_ = false;
     float verticalVelocity_ = 0.0f;
     bool grounded_ = false;
     float elapsed_ = 0.0f;

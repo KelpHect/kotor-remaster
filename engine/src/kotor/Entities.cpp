@@ -242,25 +242,59 @@ void refreshEntityMeshImpl(EntityMesh& mesh);
 void buildFxMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
                  const std::shared_ptr<Mdl>& model);
 
-void buildMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
-               const std::shared_ptr<Mdl>& model,
-               const std::shared_ptr<Mdl>& attachModel = nullptr,
-               const std::string& attachNode = {})
+void appendHeadTriangles(const std::shared_ptr<Mdl>& body,
+                         const std::shared_ptr<Mdl>& head,
+                         const std::string& headNode,
+                         const std::string& animation, float time,
+                         std::map<std::string, std::vector<MdlMeshTriangle>>& byTexture)
 {
-    if (!model) {
+    if (!head) {
         return;
     }
-    std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
-    for (MdlMeshTriangle& triangle : model->meshTriangles()) {
+    const std::optional<Mdl::Pose> pose = body
+        ? body->nodePose(headNode, animation, time) : std::nullopt;
+    for (MdlMeshTriangle& triangle : head->posedTriangles({}, 0.0f)) {
+        if (pose.has_value()) {
+            for (MdlMeshVertex& vertex : triangle.v) {
+                const Vec3 rotated = rotate(pose->rotation, vertex.position);
+                vertex.position = {pose->translation.x + rotated.x,
+                                   pose->translation.y + rotated.y,
+                                   pose->translation.z + rotated.z};
+                vertex.normal = normalized(rotate(pose->rotation, vertex.normal));
+            }
+        }
         std::string texture = lower(triangle.texture);
         if (texture.empty()) {
             texture = "__default";
         }
         byTexture[texture].push_back(std::move(triangle));
     }
+}
+
+void buildMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
+               const std::shared_ptr<Mdl>& model,
+               const std::shared_ptr<Mdl>& attachModel = nullptr,
+               const std::string& attachNode = {},
+               const std::shared_ptr<Mdl>& headModel = nullptr,
+               const std::string& headNode = {})
+{
+    if (!model) {
+        return;
+    }
+    std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
+    for (MdlMeshTriangle& triangle : model->posedTriangles({}, 0.0f)) {
+        std::string texture = lower(triangle.texture);
+        if (texture.empty()) {
+            texture = "__default";
+        }
+        byTexture[texture].push_back(std::move(triangle));
+    }
+    appendHeadTriangles(model, headModel, headNode, {}, 0.0f, byTexture);
     EntityMesh mesh;
     mesh.entity = entityIndex;
     mesh.model = model;
+    mesh.headModel = headModel;
+    mesh.headNode = headNode;
     for (const auto& [textureName, list] : byTexture) {
         const std::uint32_t texture = ensureTexture(scene, install, textureName);
         TextureBatch batch;
@@ -436,6 +470,8 @@ void refreshEntityMeshImpl(EntityMesh& mesh)
         }
         byTexture[texture].push_back(std::move(triangle));
     }
+    appendHeadTriangles(mesh.model, mesh.headModel, mesh.headNode,
+                        mesh.animation, mesh.animationTime, byTexture);
     mesh.triangles.clear();
     mesh.vertices.clear();
     for (const auto& [textureName, list] : byTexture) {
@@ -519,6 +555,51 @@ std::string creatureModel(const TwoDa& appearances, std::uint32_t appearance, st
         model = appearances.cell(row, "race");
     }
     return model;
+}
+
+std::string creatureHeadModel(Install& install, const TwoDa& appearances,
+                              std::uint32_t appearance)
+{
+    const std::string row = std::to_string(appearance);
+    if (appearances.rowIndex(row) < 0) {
+        return {};
+    }
+    int head = 0;
+    const auto parseInt = [](const std::string& text) {
+        if (text.empty() || text == "****") {
+            return -1;
+        }
+        try {
+            return std::stoi(text);
+        } catch (const std::exception&) {
+            return -1;
+        }
+    };
+    head = parseInt(appearances.cell(row, "normalhead"));
+    if (head < 0) {
+        head = parseInt(appearances.cell(row, "backuphead"));
+    }
+    if (head < 0) {
+        return {};
+    }
+    auto data = install.find("heads", 2017);
+    if (!data.has_value()) {
+        return {};
+    }
+    try {
+        const TwoDa heads = TwoDa::parse(std::move(*data), "heads");
+        const std::string headRow = std::to_string(head);
+        if (heads.rowIndex(headRow) < 0) {
+            return {};
+        }
+        std::string model = heads.cell(headRow, "head");
+        if (model == "****") {
+            model.clear();
+        }
+        return model;
+    } catch (const FormatError&) {
+        return {};
+    }
 }
 
 void applyCreatureAudio(Entity& entity, const TwoDa& appearances,
@@ -809,6 +890,55 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
     } catch (const FormatError&) {
         return static_cast<std::size_t>(-1);
     }
+}
+
+std::size_t spawnPlayerAvatar(Scene& scene, Install& install, std::uint32_t appearance,
+                              const std::string& name, Vec3 position, float bearing)
+{
+    const std::optional<TwoDa> appearances = loadTable(install, "appearance");
+    if (!appearances.has_value()) {
+        return static_cast<std::size_t>(-1);
+    }
+    Entity entity;
+    entity.kind = EntityKind::Creature;
+    entity.templateResref = "player";
+    entity.tag = "PC";
+    entity.name = name.empty() ? "Player" : name;
+    entity.position = position;
+    entity.bearing = bearing;
+    entity.appearance = appearance;
+    entity.faction = 0;
+    entity.hitPoints = 30;
+    entity.maxHitPoints = 30;
+    entity.defense = 10;
+    entity.walkRate = 3.8f;
+    entity.hostile = false;
+    std::string texture;
+    entity.model = creatureModel(*appearances, appearance, texture);
+    entity.texture = texture;
+    scene.entities.push_back(std::move(entity));
+    const std::size_t index = scene.entities.size() - 1;
+    if (scene.entities[index].model.empty()) {
+        return index;
+    }
+    std::string error;
+    const std::shared_ptr<Mdl> model = loadModel(install, scene.entities[index].model, error);
+    if (!model) {
+        scene.warnings.push_back(scene.entities[index].model + ": " + error);
+        return index;
+    }
+    std::shared_ptr<Mdl> head;
+    const std::string headName = creatureHeadModel(install, *appearances, appearance);
+    if (!headName.empty()) {
+        std::string headError;
+        head = loadModel(install, headName, headError);
+        if (!head && !headError.empty()) {
+            scene.warnings.push_back(headName + ": " + headError);
+        }
+    }
+    buildMesh(scene, install, static_cast<std::uint32_t>(index), model,
+              nullptr, {}, head, "headhook");
+    return index;
 }
 
 void loadEntityAssets(Scene& scene, Install& install, const Gff& git)

@@ -521,6 +521,7 @@ void VulkanScene::refreshEntityMeshes(const kotor::Scene& scene)
             || entityMesh.vertices.size() * sizeof(kotor::SceneVertex) != mesh.vertexBytes) {
             continue;
         }
+        mesh.visible = entityMesh.visible;
         void* mapped = nullptr;
         if (vkMapMemory(device_, mesh.vertexMemory, 0, mesh.vertexBytes, 0, &mapped) == VK_SUCCESS) {
             std::memcpy(mapped, entityMesh.vertices.data(), mesh.vertexBytes);
@@ -617,6 +618,7 @@ bool VulkanScene::upload(const kotor::Scene& scene, std::string& error)
         GpuMesh mesh = uploadMesh(entityMesh.vertices, entityMesh.indices, entityMesh.batches,
                                   entityMesh.entity, error);
         if (mesh.vertexBuffer != VK_NULL_HANDLE) {
+            mesh.visible = entityMesh.visible;
             meshes_.push_back(std::move(mesh));
         }
     }
@@ -732,6 +734,9 @@ void VulkanScene::draw(VkCommandBuffer commandBuffer, const SceneCamera& camera,
     const VkDeviceSize offset = 0;
     std::size_t drawnMeshes = 0;
     for (const GpuMesh& mesh : meshes_) {
+        if (!mesh.visible) {
+            continue;
+        }
         float model[16] = {1.0f, 0.0f, 0.0f, 0.0f,
                            0.0f, 1.0f, 0.0f, 0.0f,
                            0.0f, 0.0f, 1.0f, 0.0f,

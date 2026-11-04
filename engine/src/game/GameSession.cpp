@@ -534,7 +534,7 @@ void GameSession::updateAnimations(float dt)
 void GameSession::initAnimations()
 {
     for (kotor::EntityMesh& mesh : scene_.entityMeshes) {
-        if (!mesh.model) {
+        if (!mesh.model || mesh.entity == playerEntity_) {
             continue;
         }
         for (const char* name : {"pause1", "pause", "cpause1", "default"}) {
@@ -639,6 +639,7 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
     kotor::Scene loaded = kotor::loadModule(install_, module);
     module_ = module;
     scene_ = std::move(loaded);
+    playerEntity_ = static_cast<std::size_t>(-1);
     if (traceActions_ && !previousModule.empty() && previousModule != module_) {
         transitions_.push_back({previousModule, module_});
     }
@@ -689,6 +690,9 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
     if (runtime_) {
         initScriptWorld();
         syncPlayerToScriptWorld();
+    }
+    if (thirdPerson_) {
+        spawnPlayerAvatar();
     }
     initAnimations();
     return true;
@@ -942,6 +946,101 @@ void GameSession::syncPlayerToScriptWorld()
     pc->attrs["force_points"] = static_cast<std::int64_t>(character_.fp);
     pc->attrs["max_force_points"] = static_cast<std::int64_t>(character_.maxFp);
     pc->attrs["faction"] = static_cast<std::int64_t>(0);
+}
+
+void GameSession::applyCharacter(const CharacterSheet& sheet)
+{
+    character_ = sheet;
+    playerMaxHp_ = std::max(1, sheet.maxHp);
+    playerHp_ = std::clamp(sheet.hp, 0, playerMaxHp_);
+    playerDead_ = false;
+    gold_ = sheet.gold;
+    if (!sheet.name.empty()) {
+        playerName_ = sheet.name;
+    }
+    syncPlayerToScriptWorld();
+    if (thirdPerson_) {
+        spawnPlayerAvatar();
+    }
+}
+
+void GameSession::setPlayerAppearance(std::uint32_t appearance, const std::string& name)
+{
+    playerAppearance_ = appearance;
+    if (!name.empty()) {
+        playerName_ = name;
+    }
+    if (!thirdPerson_) {
+        return;
+    }
+    for (auto it = scene_.entityMeshes.begin(); it != scene_.entityMeshes.end();) {
+        if (it->entity == playerEntity_ && playerEntity_ != static_cast<std::size_t>(-1)) {
+            it = scene_.entityMeshes.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    playerEntity_ = static_cast<std::size_t>(-1);
+    spawnPlayerAvatar();
+}
+
+void GameSession::spawnPlayerAvatar()
+{
+    if (!thirdPerson_) {
+        return;
+    }
+    if (playerEntity_ != static_cast<std::size_t>(-1)
+        && playerEntity_ < scene_.entities.size()
+        && scene_.entities[playerEntity_].tag == "PC") {
+        kotor::Entity& entity = scene_.entities[playerEntity_];
+        entity.position = position_;
+        entity.bearing = playerBearing_;
+        entity.dead = false;
+        return;
+    }
+    playerEntity_ = kotor::spawnPlayerAvatar(scene_, install_, playerAppearance_,
+                                             playerName_, position_, playerBearing_);
+    if (playerEntity_ != static_cast<std::size_t>(-1)) {
+        syncScriptWorld();
+        initAnimations();
+    }
+}
+
+void GameSession::updatePlayerAvatar(float dt, bool moving)
+{
+    (void)dt;
+    if (!thirdPerson_ || playerEntity_ == static_cast<std::size_t>(-1)
+        || playerEntity_ >= scene_.entities.size()) {
+        return;
+    }
+    kotor::Entity& entity = scene_.entities[playerEntity_];
+    entity.position = position_;
+    entity.bearing = playerBearing_;
+    const kotor::Vec3 target{position_.x, position_.y, position_.z + 1.3f};
+    const kotor::Vec3 back{std::cos(yaw_), std::sin(yaw_), 0.0f};
+    float distance = 3.2f;
+    kotor::Vec3 eye{target.x - back.x * distance, target.y - back.y * distance,
+                    position_.z + 1.55f};
+    const bool noClip = cameraNoClip_;
+    while (!noClip && distance > 0.65f
+           && wallBlocked(scene_, {target.x, target.y, eye.z}, eye, 0.22f)) {
+        distance -= 0.2f;
+        eye.x = target.x - back.x * distance;
+        eye.y = target.y - back.y * distance;
+    }
+    const bool visible = noClip || distance >= 1.6f;
+    if (visible != playerVisible_) {
+        playerVisible_ = visible;
+        for (kotor::EntityMesh& mesh : scene_.entityMeshes) {
+            if (mesh.entity == playerEntity_) {
+                mesh.visible = visible;
+            }
+        }
+        ++animationRevision_;
+    }
+    // Player skinning needs the supermodel skeleton; keep the avatar in bind
+    // pose until that is merged.
+    (void)moving;
 }
 
 void GameSession::refreshHostility()
@@ -1872,6 +1971,11 @@ void GameSession::update(float dt, const InputState& input)
         grounded_ = false;
     }
 
+    if (magnitude > 1.0e-5f) {
+        playerBearing_ = std::atan2(desired.y, desired.x);
+    }
+    updatePlayerAvatar(dt, magnitude > 1.0e-5f);
+
     if (audio_) {
         if (magnitude > 1.0e-5f && grounded_) {
             footstepTimer_ += dt;
@@ -1948,6 +2052,42 @@ SceneCamera GameSession::camera() const
         if (camera.fovYDegrees > 0.0f) {
             return camera;
         }
+    }
+    if (thirdPerson_ && playerVisible_) {
+        const kotor::Vec3 forward{std::cos(pitch_) * std::cos(yaw_),
+                                  std::cos(pitch_) * std::sin(yaw_),
+                                  std::sin(pitch_)};
+        const kotor::Vec3 target{position_.x, position_.y, position_.z + 1.3f};
+        const kotor::Vec3 back{std::cos(yaw_), std::sin(yaw_), 0.0f};
+        float distance = 3.2f;
+        kotor::Vec3 eye{target.x - back.x * distance, target.y - back.y * distance,
+                        std::clamp(position_.z + 1.55f - std::sin(pitch_) * 1.4f,
+                                   position_.z + 0.55f, position_.z + 2.3f)};
+        const bool noClip = cameraNoClip_;
+        while (!noClip && distance > 0.65f
+               && wallBlocked(scene_, {target.x, target.y, eye.z}, eye, 0.22f)) {
+            distance -= 0.2f;
+            eye.x = target.x - back.x * distance;
+            eye.y = target.y - back.y * distance;
+        }
+        if (distance < 1.5f) {
+            eye.x = target.x - back.x * 0.8f;
+            eye.y = target.y - back.y * 0.8f;
+            eye.z = position_.z + 2.25f;
+        }
+        float floor = eye.z;
+        if (floorHeight(scene_, eye.x, eye.y, eye.z + 1.0f, floor)
+            && eye.z < floor + 0.25f) {
+            eye.z = floor + 0.25f;
+        }
+        SceneCamera camera;
+        camera.eye = eye;
+        camera.forward = kotor::normalize(kotor::Vec3{target.x - eye.x,
+                                                      target.y - eye.y,
+                                                      target.z - eye.z});
+        camera.up = {0.0f, 0.0f, 1.0f};
+        camera.fovYDegrees = 62.0f;
+        return camera;
     }
     SceneCamera camera;
     camera.eye = {position_.x, position_.y, position_.z + kEyeHeight};
