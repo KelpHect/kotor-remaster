@@ -1,0 +1,12 @@
+{"callstack": null, "kind": "header", "payload": {"modules": ["stunt_44"], "schema": "kotor.retail-semantic/1"}, "seq": 0}
+{"callstack": null, "kind": "kotor.command", "payload": {"command": "0x12e190d4", "hook": "run-command", "site": "run-command"}, "seq": 5008, "t_mono_ns": 1793815078571000000, "thread_id": null}
+{"callstack": null, "kind": "kotor.exec", "payload": {"hook": "execute-code", "length": 385, "program": "0x12d68b78", "site": "execute-code"}, "seq": 5009, "t_mono_ns": 1793815078571000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 25, "hook": "script-action", "site": "script-action"}, "seq": 5010, "t_mono_ns": 1793815078571000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 217, "hook": "script-action", "site": "script-action"}, "seq": 5011, "t_mono_ns": 1793815078571000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.command", "payload": {"command": "0x12e190d4", "hook": "run-command", "site": "run-command"}, "seq": 5014, "t_mono_ns": 1793815078571000000, "thread_id": null}
+{"callstack": null, "kind": "kotor.exec", "payload": {"hook": "execute-code", "length": 385, "program": "0x12d68b78", "site": "execute-code"}, "seq": 5015, "t_mono_ns": 1793815078571000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 25, "hook": "script-action", "site": "script-action"}, "seq": 5016, "t_mono_ns": 1793815078572000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 217, "hook": "script-action", "site": "script-action"}, "seq": 5017, "t_mono_ns": 1793815078572000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.command", "payload": {"command": "0x12e3ed38", "hook": "run-command", "site": "run-command"}, "seq": 5020, "t_mono_ns": 1793815078572000000, "thread_id": null}
+{"callstack": null, "kind": "kotor.command", "payload": {"command": "0x4b1c900", "hook": "run-command", "site": "run-command"}, "seq": 5022, "t_mono_ns": 1793815078572000000, "thread_id": null}
+{"callstack": null, "kind": "kotor.command", "payload": {"command": "0x4b1ea18", "hook": "run-command", "site": "run-command"}, "seq": 5024, "t_mono_ns": 1793815078572000000, "thread_id": null}

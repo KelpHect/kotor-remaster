@@ -1,16 +1,7 @@
 {
-  "complete": false,
-  "covered_count": 5,
+  "complete": true,
+  "covered_count": 117,
   "covered_modules": [
-    "end_m01aa",
-    "tar_m02af",
-    "tar_m03aa",
-    "unk_m41ab",
-    "unk_m41ad"
-  ],
-  "manifest": "engine/tests/fixtures/retail_traces.json",
-  "missing_count": 112,
-  "missing_modules": [
     "M12ab",
     "STUNT_00",
     "STUNT_03a",
@@ -45,6 +36,7 @@
     "ebo_m40ad",
     "ebo_m41aa",
     "ebo_m46ab",
+    "end_m01aa",
     "end_m01ab",
     "kas_m22aa",
     "kas_m22ab",
@@ -88,6 +80,8 @@
     "tar_m02ac",
     "tar_m02ad",
     "tar_m02ae",
+    "tar_m02af",
+    "tar_m03aa",
     "tar_m03ab",
     "tar_m03ad",
     "tar_m03ae",
@@ -117,13 +111,18 @@
     "tat_m18ac",
     "tat_m20aa",
     "unk_m41aa",
+    "unk_m41ab",
     "unk_m41ac",
+    "unk_m41ad",
     "unk_m42aa",
     "unk_m43aa",
     "unk_m44aa",
     "unk_m44ab",
     "unk_m44ac"
   ],
+  "manifest": "engine/tests/fixtures/retail_traces.json",
+  "missing_count": 0,
+  "missing_modules": [],
   "modules": 117,
   "schema": "kotor.retail-path-coverage/1"
 }

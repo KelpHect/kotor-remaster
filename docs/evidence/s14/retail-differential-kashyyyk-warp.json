@@ -1,0 +1,112 @@
+{
+  "choices_ok": true,
+  "engine_actions": 990,
+  "engine_details": {
+    "choices": 0,
+    "phases": {
+      "generic": 260,
+      "host": 67,
+      "probe": 19,
+      "specific": 644
+    },
+    "transitions": 0
+  },
+  "engine_module": "kas_m22aa",
+  "engine_module_ok": true,
+  "engine_only": [
+    {
+      "action": 96,
+      "name": "d3"
+    },
+    {
+      "action": 236,
+      "name": "GetIsFriend"
+    },
+    {
+      "action": 263,
+      "name": "GetNextInPersistentObject"
+    },
+    {
+      "action": 286,
+      "name": "GetHasSkill"
+    },
+    {
+      "action": 307,
+      "name": "GetCreatureTalentRandom"
+    },
+    {
+      "action": 723,
+      "name": "GetLastForcePowerUsed"
+    },
+    {
+      "action": 724,
+      "name": "GetLastCombatFeatUsed"
+    },
+    {
+      "action": 725,
+      "name": "GetLastAttackResult"
+    },
+    {
+      "action": 726,
+      "name": "GetWasForcePowerSuccessful"
+    },
+    {
+      "action": 734,
+      "name": "SaveNPCState"
+    },
+    {
+      "action": 735,
+      "name": "GetCategoryFromTalent"
+    }
+  ],
+  "engine_trace": "docs\\evidence\\s14\\engine-semantic-kas_m22aa.jsonl",
+  "engine_unique": 54,
+  "executed_union": 377,
+  "expected_choices": 0,
+  "expected_transitions": 0,
+  "missing_all_execution": [],
+  "missing_all_implementation": [],
+  "missing_execution": [],
+  "missing_implementation": [],
+  "module": "kas_m22aa",
+  "module_used_actions": 162,
+  "pass": true,
+  "retail_actions": 12000,
+  "retail_module_ok": true,
+  "retail_modules": [
+    "kas_m22aa",
+    "tar_m02af"
+  ],
+  "retail_only_not_in_module": [
+    8,
+    44,
+    95,
+    195,
+    254,
+    255,
+    256,
+    259,
+    261,
+    323,
+    375,
+    445,
+    489,
+    490,
+    495,
+    515,
+    522,
+    565,
+    582,
+    696,
+    701
+  ],
+  "retail_script_actions": 64,
+  "retail_trace": "docs\\evidence\\s14\\live-kas_m22aa-semantic.jsonl",
+  "retail_unique": 85,
+  "schema": "kotor.retail-differential/1",
+  "transitions_ok": true,
+  "vm_coverage": [
+    "docs\\evidence\\s14\\vm-actions.jsonl"
+  ],
+  "vm_unique": 357
+}

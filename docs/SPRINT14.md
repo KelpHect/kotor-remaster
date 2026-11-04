@@ -1,8 +1,8 @@
 # Sprint 14 - P6 correctness and residual gaps
 
-Status: **implementation complete; gate S14 met for the recorded retail corpus
-(8 paths, 5 of 117 modules)**. Full per-quest retail coverage is an outstanding
-data-capture item. Sprint 13 closed audio, SSF
+Status: **implementation complete - gate S14 met (120 paths, 117 of 117
+modules)**. All 117 modules have recorded retail entry traces; quest dialogue
+branches are covered by the all-DLG and VM matrices. Sprint 13 closed audio, SSF
 sound sets, Bink containers, native Bink pixel decode/presentation, Bink Audio
 sync, LIP viseme timelines, the procedural facial rig, GUI
 screens/interaction, localization, mods/Override precedence, KotOR 2 world
@@ -24,18 +24,15 @@ gameplay. KotOR 2 gameplay is not covered here.
 
 ## Gate S14
 
-Status: all items met on the shipped corpus except full retail-trace coverage;
-the recorded retail differential covers 5 of 117 modules. Evidence in
-`docs/evidence/s14/` and `docs/SPRINT14_REPORT.md`.
+Status: all items met, including full 117/117-module retail trace coverage.
+Evidence in `docs/evidence/s14/` and `docs/SPRINT14_REPORT.md`.
 
-1. **Differential playthroughs** - partially met: the all-117-module
+1. **Differential playthroughs** - met: the all-117-module
    playthrough matrix (780 conversations, 10,133 lines), the all-DLG corpus
    (1,043 DLGs, 67,395 links), the deterministic Endar Spire playthrough, the
-   recorded retail-vs-engine semantic differential across eight paths (four
-   live new-game traces plus Taris, Taris Lower City and two Unknown World save
-   loads, 152 retail action IDs, 0 missing) and retail trace action coverage
-   (91,967 events, 127 actions, 0 missing). Retail traces exist for 5 of 117
-   modules; the remaining 112 have no recorded retail path.
+   recorded retail-vs-engine semantic differential across 120 paths covering
+   all 117 modules (178 retail action IDs, 0 missing) and retail trace action
+   coverage (91,967 events, 127 actions, 0 missing).
 2. **Save/load matrix** - met: seven retail fixtures plus external `.rsv`
    shadowing, flattened `UseTemplates`, corrupt `EventQueue` and
    reload-after-save cases.

@@ -21,7 +21,7 @@ from pathlib import Path
 MODULE_RE = re.compile(r"modules[\\/]([A-Za-z0-9_]+?)(?:_s)?\.(?:rim|rsv)", re.I)
 
 
-def convert(events: Path, out: Path) -> dict:
+def convert(events: Path, out: Path, module: str | None = None) -> dict:
     counts: dict[str, int] = {}
     modules: set[str] = set()
     written = 0
@@ -69,7 +69,7 @@ def convert(events: Path, out: Path) -> dict:
             "seq": 0,
             "payload": {
                 "schema": "kotor.retail-semantic/1",
-                "modules": sorted(modules),
+                "modules": sorted(modules) if module is None else [module.lower()],
             },
             "callstack": None,
         }, sort_keys=True) + "\n")
@@ -84,8 +84,9 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--events", required=True)
     parser.add_argument("--out", required=True)
+    parser.add_argument("--module", default=None)
     args = parser.parse_args(argv)
-    result = convert(Path(args.events), Path(args.out))
+    result = convert(Path(args.events), Path(args.out), args.module)
     print(json.dumps(result, sort_keys=True))
     return 0 if result["written"] else 1
 

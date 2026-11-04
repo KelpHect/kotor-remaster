@@ -1,0 +1,261 @@
+{
+  "choices_ok": true,
+  "engine_actions": 530,
+  "engine_details": {
+    "choices": 0,
+    "phases": {
+      "generic": 95,
+      "host": 33,
+      "probe": 19,
+      "specific": 383
+    },
+    "transitions": 0
+  },
+  "engine_module": "manm26ac",
+  "engine_module_ok": true,
+  "engine_only": [
+    {
+      "action": 0,
+      "name": "Random"
+    },
+    {
+      "action": 6,
+      "name": "AssignCommand"
+    },
+    {
+      "action": 8,
+      "name": "ExecuteScript"
+    },
+    {
+      "action": 25,
+      "name": "GetEnteringObject"
+    },
+    {
+      "action": 31,
+      "name": "CreateItemOnObject"
+    },
+    {
+      "action": 42,
+      "name": "GetIsObjectValid"
+    },
+    {
+      "action": 44,
+      "name": "ActionCloseDoor"
+    },
+    {
+      "action": 59,
+      "name": "GetStringLength"
+    },
+    {
+      "action": 63,
+      "name": "GetStringLeft"
+    },
+    {
+      "action": 92,
+      "name": "IntToString"
+    },
+    {
+      "action": 96,
+      "name": "d3"
+    },
+    {
+      "action": 98,
+      "name": "d6"
+    },
+    {
+      "action": 107,
+      "name": "GetRacialType"
+    },
+    {
+      "action": 166,
+      "name": "GetHitDice"
+    },
+    {
+      "action": 168,
+      "name": "GetTag"
+    },
+    {
+      "action": 175,
+      "name": "SetListening"
+    },
+    {
+      "action": 176,
+      "name": "SetListenPattern"
+    },
+    {
+      "action": 197,
+      "name": "GetWaypointByTag"
+    },
+    {
+      "action": 200,
+      "name": "GetObjectByTag"
+    },
+    {
+      "action": 217,
+      "name": "GetIsPC"
+    },
+    {
+      "action": 236,
+      "name": "GetIsFriend"
+    },
+    {
+      "action": 239,
+      "name": "GetStringByStrRef"
+    },
+    {
+      "action": 256,
+      "name": "GetLastPerceived"
+    },
+    {
+      "action": 259,
+      "name": "GetLastPerceptionSeen"
+    },
+    {
+      "action": 261,
+      "name": "GetLastPerceptionVanished"
+    },
+    {
+      "action": 263,
+      "name": "GetNextInPersistentObject"
+    },
+    {
+      "action": 286,
+      "name": "GetHasSkill"
+    },
+    {
+      "action": 294,
+      "name": "ActionDoCommand"
+    },
+    {
+      "action": 307,
+      "name": "GetCreatureTalentRandom"
+    },
+    {
+      "action": 319,
+      "name": "GetDistanceBetween2D"
+    },
+    {
+      "action": 324,
+      "name": "SetLocked"
+    },
+    {
+      "action": 335,
+      "name": "GetDistanceToObject2D"
+    },
+    {
+      "action": 377,
+      "name": "GetHasSpell"
+    },
+    {
+      "action": 383,
+      "name": "ActionForceMoveToObject"
+    },
+    {
+      "action": 409,
+      "name": "GetIsEncounterCreature"
+    },
+    {
+      "action": 489,
+      "name": "GetAttemptedMovementTarget"
+    },
+    {
+      "action": 490,
+      "name": "GetBlockingCreature"
+    },
+    {
+      "action": 495,
+      "name": "GetFoundEnemyCreature"
+    },
+    {
+      "action": 497,
+      "name": "GetSubRace"
+    },
+    {
+      "action": 522,
+      "name": "GetCurrentAction"
+    },
+    {
+      "action": 548,
+      "name": "GetFirstPC"
+    },
+    {
+      "action": 578,
+      "name": "GetGlobalBoolean"
+    },
+    {
+      "action": 579,
+      "name": "SetGlobalBoolean"
+    },
+    {
+      "action": 679,
+      "name": "GetLocalBoolean"
+    },
+    {
+      "action": 680,
+      "name": "SetLocalBoolean"
+    },
+    {
+      "action": 681,
+      "name": "GetLocalNumber"
+    },
+    {
+      "action": 682,
+      "name": "SetLocalNumber"
+    },
+    {
+      "action": 713,
+      "name": "GetStandardFaction"
+    },
+    {
+      "action": 723,
+      "name": "GetLastForcePowerUsed"
+    },
+    {
+      "action": 724,
+      "name": "GetLastCombatFeatUsed"
+    },
+    {
+      "action": 725,
+      "name": "GetLastAttackResult"
+    },
+    {
+      "action": 726,
+      "name": "GetWasForcePowerSuccessful"
+    },
+    {
+      "action": 734,
+      "name": "SaveNPCState"
+    },
+    {
+      "action": 735,
+      "name": "GetCategoryFromTalent"
+    }
+  ],
+  "engine_trace": "docs\\evidence\\s14\\engine-semantic-manm26ac.jsonl",
+  "engine_unique": 54,
+  "executed_union": 377,
+  "expected_choices": 0,
+  "expected_transitions": 0,
+  "missing_all_execution": [],
+  "missing_all_implementation": [],
+  "missing_execution": [],
+  "missing_implementation": [],
+  "module": "manm26ac",
+  "module_used_actions": 75,
+  "pass": true,
+  "retail_actions": 0,
+  "retail_module_ok": true,
+  "retail_modules": [
+    "manm26ac"
+  ],
+  "retail_only_not_in_module": [],
+  "retail_script_actions": 0,
+  "retail_trace": "docs\\evidence\\s14\\live-modules\\manm26ac-semantic.jsonl",
+  "retail_unique": 0,
+  "schema": "kotor.retail-differential/1",
+  "transitions_ok": true,
+  "vm_coverage": [
+    "docs\\evidence\\s14\\vm-actions.jsonl"
+  ],
+  "vm_unique": 357
+}

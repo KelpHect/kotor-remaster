@@ -1,0 +1,152 @@
+{
+  "choices_ok": true,
+  "engine_actions": 1239,
+  "engine_details": {
+    "choices": 0,
+    "phases": {
+      "generic": 362,
+      "host": 118,
+      "probe": 19,
+      "specific": 740
+    },
+    "transitions": 0
+  },
+  "engine_module": "danm16",
+  "engine_module_ok": true,
+  "engine_only": [
+    {
+      "action": 6,
+      "name": "AssignCommand"
+    },
+    {
+      "action": 8,
+      "name": "ExecuteScript"
+    },
+    {
+      "action": 25,
+      "name": "GetEnteringObject"
+    },
+    {
+      "action": 38,
+      "name": "GetNearestCreature"
+    },
+    {
+      "action": 96,
+      "name": "d3"
+    },
+    {
+      "action": 200,
+      "name": "GetObjectByTag"
+    },
+    {
+      "action": 204,
+      "name": "ActionStartConversation"
+    },
+    {
+      "action": 236,
+      "name": "GetIsFriend"
+    },
+    {
+      "action": 256,
+      "name": "GetLastPerceived"
+    },
+    {
+      "action": 259,
+      "name": "GetLastPerceptionSeen"
+    },
+    {
+      "action": 261,
+      "name": "GetLastPerceptionVanished"
+    },
+    {
+      "action": 286,
+      "name": "GetHasSkill"
+    },
+    {
+      "action": 307,
+      "name": "GetCreatureTalentRandom"
+    },
+    {
+      "action": 489,
+      "name": "GetAttemptedMovementTarget"
+    },
+    {
+      "action": 490,
+      "name": "GetBlockingCreature"
+    },
+    {
+      "action": 495,
+      "name": "GetFoundEnemyCreature"
+    },
+    {
+      "action": 522,
+      "name": "GetCurrentAction"
+    },
+    {
+      "action": 548,
+      "name": "GetFirstPC"
+    },
+    {
+      "action": 576,
+      "name": "IsObjectPartyMember"
+    },
+    {
+      "action": 577,
+      "name": "GetPartyMemberByIndex"
+    },
+    {
+      "action": 723,
+      "name": "GetLastForcePowerUsed"
+    },
+    {
+      "action": 724,
+      "name": "GetLastCombatFeatUsed"
+    },
+    {
+      "action": 725,
+      "name": "GetLastAttackResult"
+    },
+    {
+      "action": 726,
+      "name": "GetWasForcePowerSuccessful"
+    },
+    {
+      "action": 734,
+      "name": "SaveNPCState"
+    },
+    {
+      "action": 735,
+      "name": "GetCategoryFromTalent"
+    }
+  ],
+  "engine_trace": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\engine-modules\\danm16.jsonl",
+  "engine_unique": 58,
+  "executed_union": 377,
+  "expected_choices": 0,
+  "expected_transitions": 0,
+  "missing_all_execution": [],
+  "missing_all_implementation": [],
+  "missing_execution": [],
+  "missing_implementation": [],
+  "module": "danm16",
+  "module_used_actions": 165,
+  "pass": true,
+  "retail_actions": 919,
+  "retail_module_ok": true,
+  "retail_modules": [
+    "danm16"
+  ],
+  "retail_only_not_in_module": [
+    262,
+    263
+  ],
+  "retail_script_actions": 30,
+  "retail_trace": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\live-modules\\danm16-semantic.jsonl",
+  "retail_unique": 32,
+  "schema": "kotor.retail-differential/1",
+  "transitions_ok": true,
+  "vm_coverage": [
+    "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\vm-actions.jsonl"
+  ],
+  "vm_unique": 357
+}

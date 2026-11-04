@@ -1,0 +1,2 @@
+{"callstack": null, "kind": "header", "payload": {"modules": ["stunt_31b"], "schema": "kotor.retail-semantic/1"}, "seq": 0}
+{"callstack": null, "kind": "kotor.command", "payload": {"command": "0x468afd8", "hook": "run-command", "site": "run-command"}, "seq": 4876, "t_mono_ns": 1793815070517000000, "thread_id": null}

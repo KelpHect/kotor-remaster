@@ -1,0 +1,35 @@
+{"callstack": null, "kind": "header", "payload": {"modules": ["stunt_42"], "schema": "kotor.retail-semantic/1"}, "seq": 0}
+{"callstack": null, "kind": "kotor.command", "payload": {"command": "0x127be804", "hook": "run-command", "site": "run-command"}, "seq": 4945, "t_mono_ns": 1793815076557000000, "thread_id": null}
+{"callstack": null, "kind": "kotor.exec", "payload": {"hook": "execute-code", "length": 347, "program": "0x4bed690", "site": "execute-code"}, "seq": 4946, "t_mono_ns": 1793815076557000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 25, "hook": "script-action", "site": "script-action"}, "seq": 4947, "t_mono_ns": 1793815076557000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 217, "hook": "script-action", "site": "script-action"}, "seq": 4948, "t_mono_ns": 1793815076557000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.command", "payload": {"command": "0x127be804", "hook": "run-command", "site": "run-command"}, "seq": 4951, "t_mono_ns": 1793815076557000000, "thread_id": null}
+{"callstack": null, "kind": "kotor.exec", "payload": {"hook": "execute-code", "length": 347, "program": "0x4bed690", "site": "execute-code"}, "seq": 4952, "t_mono_ns": 1793815076557000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 25, "hook": "script-action", "site": "script-action"}, "seq": 4953, "t_mono_ns": 1793815076557000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 217, "hook": "script-action", "site": "script-action"}, "seq": 4954, "t_mono_ns": 1793815076557000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.command", "payload": {"command": "0x12e3ed38", "hook": "run-command", "site": "run-command"}, "seq": 4957, "t_mono_ns": 1793815076557000000, "thread_id": null}
+{"callstack": null, "kind": "kotor.command", "payload": {"command": "0x4b1c900", "hook": "run-command", "site": "run-command"}, "seq": 4959, "t_mono_ns": 1793815076557000000, "thread_id": null}
+{"callstack": null, "kind": "kotor.command", "payload": {"command": "0x4b1d408", "hook": "run-command", "site": "run-command"}, "seq": 4961, "t_mono_ns": 1793815076559000000, "thread_id": null}
+{"callstack": null, "kind": "kotor.exec", "payload": {"hook": "execute-code", "length": 8213, "program": "0x144e4400", "site": "execute-code"}, "seq": 4962, "t_mono_ns": 1793815076560000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 323, "hook": "script-action", "site": "script-action"}, "seq": 4963, "t_mono_ns": 1793815076560000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 175, "hook": "script-action", "site": "script-action"}, "seq": 4964, "t_mono_ns": 1793815076561000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 176, "hook": "script-action", "site": "script-action"}, "seq": 4965, "t_mono_ns": 1793815076561000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 176, "hook": "script-action", "site": "script-action"}, "seq": 4966, "t_mono_ns": 1793815076561000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 176, "hook": "script-action", "site": "script-action"}, "seq": 4967, "t_mono_ns": 1793815076561000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 377, "hook": "script-action", "site": "script-action"}, "seq": 4968, "t_mono_ns": 1793815076561000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 377, "hook": "script-action", "site": "script-action"}, "seq": 4969, "t_mono_ns": 1793815076561000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 176, "hook": "script-action", "site": "script-action"}, "seq": 4970, "t_mono_ns": 1793815076561000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 176, "hook": "script-action", "site": "script-action"}, "seq": 4971, "t_mono_ns": 1793815076562000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 176, "hook": "script-action", "site": "script-action"}, "seq": 4972, "t_mono_ns": 1793815076562000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 681, "hook": "script-action", "site": "script-action"}, "seq": 4973, "t_mono_ns": 1793815076562000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 168, "hook": "script-action", "site": "script-action"}, "seq": 4974, "t_mono_ns": 1793815076562000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 197, "hook": "script-action", "site": "script-action"}, "seq": 4975, "t_mono_ns": 1793815076562000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 42, "hook": "script-action", "site": "script-action"}, "seq": 4976, "t_mono_ns": 1793815076562000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 168, "hook": "script-action", "site": "script-action"}, "seq": 4977, "t_mono_ns": 1793815076562000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 217, "hook": "script-action", "site": "script-action"}, "seq": 4978, "t_mono_ns": 1793815076564000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 107, "hook": "script-action", "site": "script-action"}, "seq": 4979, "t_mono_ns": 1793815076564000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 713, "hook": "script-action", "site": "script-action"}, "seq": 4980, "t_mono_ns": 1793815076564000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 497, "hook": "script-action", "site": "script-action"}, "seq": 4981, "t_mono_ns": 1793815076564000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 0, "hook": "script-action", "site": "script-action"}, "seq": 4982, "t_mono_ns": 1793815076564000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 679, "hook": "script-action", "site": "script-action"}, "seq": 4983, "t_mono_ns": 1793815076564000000, "thread_id": 35876}
+{"callstack": null, "kind": "kotor.action", "payload": {"action": 409, "hook": "script-action", "site": "script-action"}, "seq": 4984, "t_mono_ns": 1793815076564000000, "thread_id": 35876}

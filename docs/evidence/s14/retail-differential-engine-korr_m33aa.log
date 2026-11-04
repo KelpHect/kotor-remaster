@@ -1,0 +1,35 @@
+[INFO] Language: English (0) tlk entries=49265
+[INFO] KotOR module korr_m33aa area m33aa from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 9 vertices: 169950 indices: 169950 batches: 21
+[INFO]   textures: 55 collision vertices: 836 facets: 1355
+[INFO]   entities: 201 (door 4, placeable 47, creature 30, waypoint 74, store 3, encounter 1)
+[INFO]   encounter volumes: 1
+[INFO]   entry: 107.444, 188.098, 8.22507
+[INFO]   entity meshes: 103 triggers: 14 warnings: 0
+[INFO]   script hooks: 382 on 47 entities; scene hooks: 1; script runs: 31
+[INFO]   entity mesh 0 kor33a_kor33b verts=2796 local=-2.8214,-0.223921,0 .. 2.6161,0.293472,3.00178
+[INFO]   entity mesh 1 kor33a_locked verts=2796 local=-2.8214,-0.223921,0 .. 2.6161,0.293472,3.00178
+[INFO]   entity mesh 2 kor33_door_stat verts=2796 local=-2.8214,-0.223921,0 .. 2.6161,0.293472,3.00178
+[INFO]   creature mesh kor33_portauthor verts=7728 local=-0.606383,-0.187539,-0.00207151 .. 0.610334,0.167699,1.81556
+[INFO]   bounds: -959.527, -908.244, -873.607 .. 1143.52, 1194.78, 885.148
+[INFO] retail differential: probe action=96
+[INFO] retail differential: probe action=236
+[INFO] retail differential: probe action=256
+[INFO] retail differential: probe action=259
+[INFO] retail differential: probe action=261
+[INFO] retail differential: probe action=263
+[INFO] retail differential: probe action=286
+[INFO] retail differential: probe action=307
+[INFO] retail differential: probe action=489
+[INFO] retail differential: probe action=490
+[INFO] retail differential: probe action=495
+[INFO] retail differential: probe action=522
+[INFO] retail differential: probe action=723
+[INFO] retail differential: probe action=724
+[INFO] retail differential: probe action=725
+[INFO] retail differential: probe action=726
+[INFO] retail differential: probe action=734
+[INFO] retail differential: probe action=735
+[INFO] retail differential: trace=docs/evidence/s14/engine-semantic-korr_m33aa.jsonl actions=1831 dialogueChoices=0 transitions=0
+[INFO] retail differential: TRACE PASS

@@ -24,9 +24,9 @@
 [INFO] ImGui 1.93.0 renderer initialized
 [INFO] ImGui draw data at frame 0: 1 list(s), 4 vertices
 [INFO] Scene frame: eye 15.4248, 20.1215, 0.351596 meshes 143/143 textures 84 alpha batches 24 additive batches 17
-[INFO] Screenshot: E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s14-parity\parity-gl.bmp
+[INFO] Screenshot: E:\Projects\kotor-remaster\kotor-remaster\docs\evidence\s14\parity-gl.bmp
 [INFO] Exit: frame limit reached (3)
-[INFO] Frames: 3 in 0.0936374 s (avg 31.2125 ms/frame)
+[INFO] Frames: 3 in 0.154154 s (avg 51.3846 ms/frame)
 [INFO] Backend summary: opengl | 4.5.0 Core Profile Context 26.10.1.261008 | double-buffered SDL window
 [INFO] Language: English (0) tlk entries=49265
 [INFO] KotOR module end_m01aa area m01aa from E:/SteamLibrary/steamapps/common/swkotor
@@ -58,22 +58,22 @@
 [INFO] ImGui 1.93.0 renderer initialized
 [INFO] ImGui draw data at frame 0: 1 list(s), 4 vertices
 [INFO] Vulkan scene draw: meshes 143/143 textures 84 alpha batches 24 additive batches 17 alpha pipeline ready additive pipeline ready eye 15.4248, 20.1215, 0.351596
-[INFO] Screenshot: E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s14-parity\parity-vulkan.bmp
+[INFO] Screenshot: E:\Projects\kotor-remaster\kotor-remaster\docs\evidence\s14\parity-vulkan.bmp
 [INFO] Exit: frame limit reached (3)
-[INFO] Frames: 3 in 0.0912398 s (avg 30.4133 ms/frame)
+[INFO] Frames: 3 in 0.155029 s (avg 51.6764 ms/frame)
 [INFO] Backend summary: vulkan | instance 1.4.0 / device 1.4.359 | VK_FORMAT_B8G8R8A8_UNORM 960x540, 3 images, FIFO
-+ E:\Projects\kotor-remaster\kotor-remaster\engine\build\msvc-release\kotor_engine.exe --module end_m01aa --gl --width 960 --height 540 --frames 3 --screenshot E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s14-parity\parity-gl.bmp
-+ E:\Projects\kotor-remaster\kotor-remaster\engine\build\msvc-release\kotor_engine.exe --module end_m01aa --vulkan --width 960 --height 540 --frames 3 --screenshot E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s14-parity\parity-vulkan.bmp
-attempt 1: mean=0.0000 rms=0.0000
++ E:\Projects\kotor-remaster\kotor-remaster\engine\build\msvc-release\kotor_engine.exe --module end_m01aa --gl --width 960 --height 540 --frames 3 --screenshot E:\Projects\kotor-remaster\kotor-remaster\docs\evidence\s14\parity-gl.bmp
++ E:\Projects\kotor-remaster\kotor-remaster\engine\build\msvc-release\kotor_engine.exe --module end_m01aa --vulkan --width 960 --height 540 --frames 3 --screenshot E:\Projects\kotor-remaster\kotor-remaster\docs\evidence\s14\parity-vulkan.bmp
+attempt 1: mean=0.0815 rms=0.5237
 module=end_m01aa
 resolution=960x540
 scene_region=(499, 118, 940, 520)
-gl_capture=E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s14-parity\parity-gl.png
-vulkan_capture=E:\Projects\kotor-remaster\kotor-remaster\engine\artifacts\engine\s14-parity\parity-vk.png
+gl_capture=E:\Projects\kotor-remaster\kotor-remaster\docs\evidence\s14\parity-gl.png
+vulkan_capture=E:\Projects\kotor-remaster\kotor-remaster\docs\evidence\s14\parity-vk.png
 attempts=1
-attempt_means=0.0000
-mean_abs_channel_diff=0.0000
-rms_channel_diff=0.0000
+attempt_means=0.0815
+mean_abs_channel_diff=0.0815
+rms_channel_diff=0.5237
 threshold=1.0000
 verdict=PASS
 

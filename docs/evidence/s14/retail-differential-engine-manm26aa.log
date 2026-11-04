@@ -1,0 +1,35 @@
+[INFO] Language: English (0) tlk entries=49265
+[INFO] KotOR module manm26aa area m26aa from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 11 vertices: 120270 indices: 120270 batches: 61
+[INFO]   textures: 82 collision vertices: 1134 facets: 1780
+[INFO]   entities: 125 (door 3, placeable 21, creature 29, waypoint 43, store 1, encounter 0)
+[INFO]   encounter volumes: 0
+[INFO]   entry: 29.7381, 12.3269, 58.5987
+[INFO]   entity meshes: 62 triggers: 7 warnings: 0
+[INFO]   script hooks: 52 on 30 entities; scene hooks: 3; script runs: 19
+[INFO]   entity mesh 0 man26aa_door05 verts=1428 local=-3.06981,-0.545476,-0.0103358 .. 3.04959,0.545061,4.03773
+[INFO]   entity mesh 1 man26aa_door02 verts=360 local=-1.12088,-0.2,-0.038757 .. 1.12371,0.2,3.40922
+[INFO]   entity mesh 2 man26aa_door05 verts=1428 local=-3.06981,-0.545476,-0.0103358 .. 3.04959,0.545061,4.03773
+[INFO]   creature mesh man26_duan verts=6996 local=-0.52675,-0.153577,-0.00567735 .. 0.522686,0.194326,1.69895
+[INFO]   bounds: -1212.39, -621.241, -442.348 .. 621.241, 898.35, 565.153
+[INFO] retail differential: probe action=96
+[INFO] retail differential: probe action=236
+[INFO] retail differential: probe action=256
+[INFO] retail differential: probe action=259
+[INFO] retail differential: probe action=261
+[INFO] retail differential: probe action=263
+[INFO] retail differential: probe action=286
+[INFO] retail differential: probe action=307
+[INFO] retail differential: probe action=489
+[INFO] retail differential: probe action=490
+[INFO] retail differential: probe action=495
+[INFO] retail differential: probe action=522
+[INFO] retail differential: probe action=723
+[INFO] retail differential: probe action=724
+[INFO] retail differential: probe action=725
+[INFO] retail differential: probe action=726
+[INFO] retail differential: probe action=734
+[INFO] retail differential: probe action=735
+[INFO] retail differential: trace=docs/evidence/s14/engine-semantic-manm26aa.jsonl actions=350 dialogueChoices=0 transitions=0
+[INFO] retail differential: TRACE PASS

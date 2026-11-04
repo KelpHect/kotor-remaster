@@ -58,6 +58,8 @@ def main(argv=None) -> int:
                "--install", args.install, "--null", "--headless"]
         if spec.get("save"):
             cmd += ["--save-fixture", str(resolve(root, spec["save"]))]
+        elif spec.get("module_trace"):
+            cmd += ["--module-trace"]
         code = run(cmd)
         if code != 0:
             return code

@@ -1,10 +1,122 @@
 {
   "engines": {
+    "M12ab": "docs\\evidence\\s14\\engine-semantic-M12ab.jsonl",
+    "STUNT_00": "docs\\evidence\\s14\\engine-semantic-STUNT_00.jsonl",
+    "STUNT_03a": "docs\\evidence\\s14\\engine-semantic-STUNT_03a.jsonl",
+    "STUNT_06": "docs\\evidence\\s14\\engine-semantic-STUNT_06.jsonl",
+    "STUNT_07": "docs\\evidence\\s14\\engine-semantic-STUNT_07.jsonl",
+    "STUNT_12": "docs\\evidence\\s14\\engine-semantic-STUNT_12.jsonl",
+    "STUNT_14": "docs\\evidence\\s14\\engine-semantic-STUNT_14.jsonl",
+    "STUNT_16": "docs\\evidence\\s14\\engine-semantic-STUNT_16.jsonl",
+    "STUNT_18": "docs\\evidence\\s14\\engine-semantic-STUNT_18.jsonl",
+    "STUNT_19": "docs\\evidence\\s14\\engine-semantic-STUNT_19.jsonl",
+    "STUNT_31b": "docs\\evidence\\s14\\engine-semantic-STUNT_31b.jsonl",
+    "STUNT_34": "docs\\evidence\\s14\\engine-semantic-STUNT_34.jsonl",
+    "STUNT_35": "docs\\evidence\\s14\\engine-semantic-STUNT_35.jsonl",
+    "STUNT_42": "docs\\evidence\\s14\\engine-semantic-STUNT_42.jsonl",
+    "STUNT_44": "docs\\evidence\\s14\\engine-semantic-STUNT_44.jsonl",
+    "STUNT_50a": "docs\\evidence\\s14\\engine-semantic-STUNT_50a.jsonl",
+    "STUNT_51a": "docs\\evidence\\s14\\engine-semantic-STUNT_51a.jsonl",
+    "STUNT_54a": "docs\\evidence\\s14\\engine-semantic-STUNT_54a.jsonl",
+    "STUNT_55a": "docs\\evidence\\s14\\engine-semantic-STUNT_55a.jsonl",
+    "STUNT_56a": "docs\\evidence\\s14\\engine-semantic-STUNT_56a.jsonl",
+    "STUNT_57": "docs\\evidence\\s14\\engine-semantic-STUNT_57.jsonl",
+    "danm13": "docs\\evidence\\s14\\engine-semantic-danm13.jsonl",
+    "danm14aa": "docs\\evidence\\s14\\engine-semantic-danm14aa.jsonl",
+    "danm14ab": "docs\\evidence\\s14\\engine-semantic-danm14ab.jsonl",
+    "danm14ac": "docs\\evidence\\s14\\engine-semantic-danm14ac.jsonl",
+    "danm14ad": "docs\\evidence\\s14\\engine-semantic-danm14ad.jsonl",
+    "danm14ae": "docs\\evidence\\s14\\engine-semantic-danm14ae.jsonl",
+    "danm15": "docs\\evidence\\s14\\engine-semantic-danm15.jsonl",
+    "danm16": "docs\\evidence\\s14\\engine-semantic-danm16.jsonl",
+    "ebo_m12aa": "docs\\evidence\\s14\\engine-semantic-ebo_m12aa.jsonl",
+    "ebo_m40aa": "docs\\evidence\\s14\\engine-semantic-ebo_m40aa.jsonl",
+    "ebo_m40ad": "docs\\evidence\\s14\\engine-semantic-ebo_m40ad.jsonl",
+    "ebo_m41aa": "docs\\evidence\\s14\\engine-semantic-ebo_m41aa.jsonl",
+    "ebo_m46ab": "docs\\evidence\\s14\\engine-semantic-ebo_m46ab.jsonl",
     "end_m01aa": "docs\\evidence\\s14\\engine-semantic-end_m01aa.jsonl",
+    "end_m01ab": "docs\\evidence\\s14\\engine-semantic-end_m01ab.jsonl",
+    "kas_m22aa": "docs\\evidence\\s14\\engine-semantic-kas_m22aa.jsonl",
+    "kas_m22ab": "docs\\evidence\\s14\\engine-semantic-kas_m22ab.jsonl",
+    "kas_m23aa": "docs\\evidence\\s14\\engine-semantic-kas_m23aa.jsonl",
+    "kas_m23ab": "docs\\evidence\\s14\\engine-semantic-kas_m23ab.jsonl",
+    "kas_m23ac": "docs\\evidence\\s14\\engine-semantic-kas_m23ac.jsonl",
+    "kas_m23ad": "docs\\evidence\\s14\\engine-semantic-kas_m23ad.jsonl",
+    "kas_m24aa": "docs\\evidence\\s14\\engine-semantic-kas_m24aa.jsonl",
+    "kas_m25aa": "docs\\evidence\\s14\\engine-semantic-kas_m25aa.jsonl",
+    "korr_m33aa": "docs\\evidence\\s14\\engine-semantic-korr_m33aa.jsonl",
+    "korr_m33ab": "docs\\evidence\\s14\\engine-semantic-korr_m33ab.jsonl",
+    "korr_m34aa": "docs\\evidence\\s14\\engine-semantic-korr_m34aa.jsonl",
+    "korr_m35aa": "docs\\evidence\\s14\\engine-semantic-korr_m35aa.jsonl",
+    "korr_m36aa": "docs\\evidence\\s14\\engine-semantic-korr_m36aa.jsonl",
+    "korr_m37aa": "docs\\evidence\\s14\\engine-semantic-korr_m37aa.jsonl",
+    "korr_m38aa": "docs\\evidence\\s14\\engine-semantic-korr_m38aa.jsonl",
+    "korr_m38ab": "docs\\evidence\\s14\\engine-semantic-korr_m38ab.jsonl",
+    "korr_m39aa": "docs\\evidence\\s14\\engine-semantic-korr_m39aa.jsonl",
+    "lev_m40aa": "docs\\evidence\\s14\\engine-semantic-lev_m40aa.jsonl",
+    "lev_m40ab": "docs\\evidence\\s14\\engine-semantic-lev_m40ab.jsonl",
+    "lev_m40ac": "docs\\evidence\\s14\\engine-semantic-lev_m40ac.jsonl",
+    "lev_m40ad": "docs\\evidence\\s14\\engine-semantic-lev_m40ad.jsonl",
+    "liv_m99aa": "docs\\evidence\\s14\\engine-semantic-liv_m99aa.jsonl",
+    "manm26aa": "docs\\evidence\\s14\\engine-semantic-manm26aa.jsonl",
+    "manm26ab": "docs\\evidence\\s14\\engine-semantic-manm26ab.jsonl",
+    "manm26ac": "docs\\evidence\\s14\\engine-semantic-manm26ac.jsonl",
+    "manm26ad": "docs\\evidence\\s14\\engine-semantic-manm26ad.jsonl",
+    "manm26ae": "docs\\evidence\\s14\\engine-semantic-manm26ae.jsonl",
+    "manm26mg": "docs\\evidence\\s14\\engine-semantic-manm26mg.jsonl",
+    "manm27aa": "docs\\evidence\\s14\\engine-semantic-manm27aa.jsonl",
+    "manm28aa": "docs\\evidence\\s14\\engine-semantic-manm28aa.jsonl",
+    "manm28ab": "docs\\evidence\\s14\\engine-semantic-manm28ab.jsonl",
+    "manm28ac": "docs\\evidence\\s14\\engine-semantic-manm28ac.jsonl",
+    "manm28ad": "docs\\evidence\\s14\\engine-semantic-manm28ad.jsonl",
+    "sta_m45aa": "docs\\evidence\\s14\\engine-semantic-sta_m45aa.jsonl",
+    "sta_m45ab": "docs\\evidence\\s14\\engine-semantic-sta_m45ab.jsonl",
+    "sta_m45ac": "docs\\evidence\\s14\\engine-semantic-sta_m45ac.jsonl",
+    "sta_m45ad": "docs\\evidence\\s14\\engine-semantic-sta_m45ad.jsonl",
+    "tar_m02aa": "docs\\evidence\\s14\\engine-semantic-tar_m02aa.jsonl",
+    "tar_m02ab": "docs\\evidence\\s14\\engine-semantic-tar_m02ab.jsonl",
+    "tar_m02ac": "docs\\evidence\\s14\\engine-semantic-tar_m02ac.jsonl",
+    "tar_m02ad": "docs\\evidence\\s14\\engine-semantic-tar_m02ad.jsonl",
+    "tar_m02ae": "docs\\evidence\\s14\\engine-semantic-tar_m02ae.jsonl",
     "tar_m02af": "docs\\evidence\\s14\\engine-semantic-tar_m02af.jsonl",
     "tar_m03aa": "docs\\evidence\\s14\\engine-semantic-tar_m03aa.jsonl",
+    "tar_m03ab": "docs\\evidence\\s14\\engine-semantic-tar_m03ab.jsonl",
+    "tar_m03ad": "docs\\evidence\\s14\\engine-semantic-tar_m03ad.jsonl",
+    "tar_m03ae": "docs\\evidence\\s14\\engine-semantic-tar_m03ae.jsonl",
+    "tar_m03af": "docs\\evidence\\s14\\engine-semantic-tar_m03af.jsonl",
+    "tar_m03mg": "docs\\evidence\\s14\\engine-semantic-tar_m03mg.jsonl",
+    "tar_m04aa": "docs\\evidence\\s14\\engine-semantic-tar_m04aa.jsonl",
+    "tar_m05aa": "docs\\evidence\\s14\\engine-semantic-tar_m05aa.jsonl",
+    "tar_m05ab": "docs\\evidence\\s14\\engine-semantic-tar_m05ab.jsonl",
+    "tar_m08aa": "docs\\evidence\\s14\\engine-semantic-tar_m08aa.jsonl",
+    "tar_m09aa": "docs\\evidence\\s14\\engine-semantic-tar_m09aa.jsonl",
+    "tar_m09ab": "docs\\evidence\\s14\\engine-semantic-tar_m09ab.jsonl",
+    "tar_m10aa": "docs\\evidence\\s14\\engine-semantic-tar_m10aa.jsonl",
+    "tar_m10ab": "docs\\evidence\\s14\\engine-semantic-tar_m10ab.jsonl",
+    "tar_m10ac": "docs\\evidence\\s14\\engine-semantic-tar_m10ac.jsonl",
+    "tar_m11aa": "docs\\evidence\\s14\\engine-semantic-tar_m11aa.jsonl",
+    "tar_m11ab": "docs\\evidence\\s14\\engine-semantic-tar_m11ab.jsonl",
+    "tat_m17aa": "docs\\evidence\\s14\\engine-semantic-tat_m17aa.jsonl",
+    "tat_m17ab": "docs\\evidence\\s14\\engine-semantic-tat_m17ab.jsonl",
+    "tat_m17ac": "docs\\evidence\\s14\\engine-semantic-tat_m17ac.jsonl",
+    "tat_m17ad": "docs\\evidence\\s14\\engine-semantic-tat_m17ad.jsonl",
+    "tat_m17ae": "docs\\evidence\\s14\\engine-semantic-tat_m17ae.jsonl",
+    "tat_m17af": "docs\\evidence\\s14\\engine-semantic-tat_m17af.jsonl",
+    "tat_m17ag": "docs\\evidence\\s14\\engine-semantic-tat_m17ag.jsonl",
+    "tat_m17mg": "docs\\evidence\\s14\\engine-semantic-tat_m17mg.jsonl",
+    "tat_m18aa": "docs\\evidence\\s14\\engine-semantic-tat_m18aa.jsonl",
+    "tat_m18ab": "docs\\evidence\\s14\\engine-semantic-tat_m18ab.jsonl",
+    "tat_m18ac": "docs\\evidence\\s14\\engine-semantic-tat_m18ac.jsonl",
+    "tat_m20aa": "docs\\evidence\\s14\\engine-semantic-tat_m20aa.jsonl",
+    "unk_m41aa": "docs\\evidence\\s14\\engine-semantic-unk_m41aa.jsonl",
     "unk_m41ab": "docs\\evidence\\s14\\engine-semantic-unk_m41ab.jsonl",
-    "unk_m41ad": "docs\\evidence\\s14\\engine-semantic-unk_m41ad.jsonl"
+    "unk_m41ac": "docs\\evidence\\s14\\engine-semantic-unk_m41ac.jsonl",
+    "unk_m41ad": "docs\\evidence\\s14\\engine-semantic-unk_m41ad.jsonl",
+    "unk_m42aa": "docs\\evidence\\s14\\engine-semantic-unk_m42aa.jsonl",
+    "unk_m43aa": "docs\\evidence\\s14\\engine-semantic-unk_m43aa.jsonl",
+    "unk_m44aa": "docs\\evidence\\s14\\engine-semantic-unk_m44aa.jsonl",
+    "unk_m44ab": "docs\\evidence\\s14\\engine-semantic-unk_m44ab.jsonl",
+    "unk_m44ac": "docs\\evidence\\s14\\engine-semantic-unk_m44ac.jsonl"
   },
   "manifest": "engine/tests/fixtures/retail_traces.json",
   "pass": true,
@@ -65,6 +177,790 @@
       "pass": true,
       "report": "docs\\evidence\\s14\\retail-differential-unkgame1-save.json",
       "retail": "docs/evidence/s14/live-unkgame1-semantic.jsonl"
+    },
+    {
+      "engine": "danm14aa",
+      "id": "dantooine-warp",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-dantooine-warp.json",
+      "retail": "docs/evidence/s14/live-dantooine-semantic.jsonl"
+    },
+    {
+      "engine": "kas_m22aa",
+      "id": "kashyyyk-warp",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-kashyyyk-warp.json",
+      "retail": "docs/evidence/s14/live-kas_m22aa-semantic.jsonl"
+    },
+    {
+      "engine": "manm26aa",
+      "id": "manaan-warp",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-manaan-warp.json",
+      "retail": "docs/evidence/s14/live-manm26aa-semantic.jsonl"
+    },
+    {
+      "engine": "korr_m33aa",
+      "id": "korriban-warp",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-korriban-warp.json",
+      "retail": "docs/evidence/s14/live-korr_m33aa-semantic.jsonl"
+    },
+    {
+      "engine": "M12ab",
+      "id": "module-m12ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-m12ab.json",
+      "retail": "docs/evidence/s14/live-modules/m12ab-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_00",
+      "id": "module-stunt_00",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_00.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_00-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_03a",
+      "id": "module-stunt_03a",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_03a.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_03a-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_06",
+      "id": "module-stunt_06",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_06.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_06-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_07",
+      "id": "module-stunt_07",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_07.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_07-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_12",
+      "id": "module-stunt_12",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_12.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_12-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_14",
+      "id": "module-stunt_14",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_14.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_14-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_16",
+      "id": "module-stunt_16",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_16.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_16-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_18",
+      "id": "module-stunt_18",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_18.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_18-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_19",
+      "id": "module-stunt_19",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_19.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_19-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_31b",
+      "id": "module-stunt_31b",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_31b.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_31b-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_34",
+      "id": "module-stunt_34",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_34.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_34-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_35",
+      "id": "module-stunt_35",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_35.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_35-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_42",
+      "id": "module-stunt_42",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_42.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_42-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_44",
+      "id": "module-stunt_44",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_44.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_44-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_50a",
+      "id": "module-stunt_50a",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_50a.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_50a-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_51a",
+      "id": "module-stunt_51a",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_51a.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_51a-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_54a",
+      "id": "module-stunt_54a",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_54a.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_54a-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_55a",
+      "id": "module-stunt_55a",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_55a.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_55a-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_56a",
+      "id": "module-stunt_56a",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_56a.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_56a-semantic.jsonl"
+    },
+    {
+      "engine": "STUNT_57",
+      "id": "module-stunt_57",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-stunt_57.json",
+      "retail": "docs/evidence/s14/live-modules/stunt_57-semantic.jsonl"
+    },
+    {
+      "engine": "danm13",
+      "id": "module-danm13",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-danm13.json",
+      "retail": "docs/evidence/s14/live-modules/danm13-semantic.jsonl"
+    },
+    {
+      "engine": "danm14ab",
+      "id": "module-danm14ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-danm14ab.json",
+      "retail": "docs/evidence/s14/live-modules/danm14ab-semantic.jsonl"
+    },
+    {
+      "engine": "danm14ac",
+      "id": "module-danm14ac",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-danm14ac.json",
+      "retail": "docs/evidence/s14/live-modules/danm14ac-semantic.jsonl"
+    },
+    {
+      "engine": "danm14ad",
+      "id": "module-danm14ad",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-danm14ad.json",
+      "retail": "docs/evidence/s14/live-modules/danm14ad-semantic.jsonl"
+    },
+    {
+      "engine": "danm14ae",
+      "id": "module-danm14ae",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-danm14ae.json",
+      "retail": "docs/evidence/s14/live-modules/danm14ae-semantic.jsonl"
+    },
+    {
+      "engine": "danm15",
+      "id": "module-danm15",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-danm15.json",
+      "retail": "docs/evidence/s14/live-modules/danm15-semantic.jsonl"
+    },
+    {
+      "engine": "danm16",
+      "id": "module-danm16",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-danm16.json",
+      "retail": "docs/evidence/s14/live-modules/danm16-semantic.jsonl"
+    },
+    {
+      "engine": "ebo_m12aa",
+      "id": "module-ebo_m12aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-ebo_m12aa.json",
+      "retail": "docs/evidence/s14/live-modules/ebo_m12aa-semantic.jsonl"
+    },
+    {
+      "engine": "ebo_m40aa",
+      "id": "module-ebo_m40aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-ebo_m40aa.json",
+      "retail": "docs/evidence/s14/live-modules/ebo_m40aa-semantic.jsonl"
+    },
+    {
+      "engine": "ebo_m40ad",
+      "id": "module-ebo_m40ad",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-ebo_m40ad.json",
+      "retail": "docs/evidence/s14/live-modules/ebo_m40ad-semantic.jsonl"
+    },
+    {
+      "engine": "ebo_m41aa",
+      "id": "module-ebo_m41aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-ebo_m41aa.json",
+      "retail": "docs/evidence/s14/live-modules/ebo_m41aa-semantic.jsonl"
+    },
+    {
+      "engine": "ebo_m46ab",
+      "id": "module-ebo_m46ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-ebo_m46ab.json",
+      "retail": "docs/evidence/s14/live-modules/ebo_m46ab-semantic.jsonl"
+    },
+    {
+      "engine": "end_m01ab",
+      "id": "module-end_m01ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-end_m01ab.json",
+      "retail": "docs/evidence/s14/live-modules/end_m01ab-semantic.jsonl"
+    },
+    {
+      "engine": "kas_m22ab",
+      "id": "module-kas_m22ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-kas_m22ab.json",
+      "retail": "docs/evidence/s14/live-modules/kas_m22ab-semantic.jsonl"
+    },
+    {
+      "engine": "kas_m23aa",
+      "id": "module-kas_m23aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-kas_m23aa.json",
+      "retail": "docs/evidence/s14/live-modules/kas_m23aa-semantic.jsonl"
+    },
+    {
+      "engine": "kas_m23ab",
+      "id": "module-kas_m23ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-kas_m23ab.json",
+      "retail": "docs/evidence/s14/live-modules/kas_m23ab-semantic.jsonl"
+    },
+    {
+      "engine": "kas_m23ac",
+      "id": "module-kas_m23ac",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-kas_m23ac.json",
+      "retail": "docs/evidence/s14/live-modules/kas_m23ac-semantic.jsonl"
+    },
+    {
+      "engine": "kas_m23ad",
+      "id": "module-kas_m23ad",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-kas_m23ad.json",
+      "retail": "docs/evidence/s14/live-modules/kas_m23ad-semantic.jsonl"
+    },
+    {
+      "engine": "kas_m24aa",
+      "id": "module-kas_m24aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-kas_m24aa.json",
+      "retail": "docs/evidence/s14/live-modules/kas_m24aa-semantic.jsonl"
+    },
+    {
+      "engine": "kas_m25aa",
+      "id": "module-kas_m25aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-kas_m25aa.json",
+      "retail": "docs/evidence/s14/live-modules/kas_m25aa-semantic.jsonl"
+    },
+    {
+      "engine": "korr_m33ab",
+      "id": "module-korr_m33ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-korr_m33ab.json",
+      "retail": "docs/evidence/s14/live-modules/korr_m33ab-semantic.jsonl"
+    },
+    {
+      "engine": "korr_m34aa",
+      "id": "module-korr_m34aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-korr_m34aa.json",
+      "retail": "docs/evidence/s14/live-modules/korr_m34aa-semantic.jsonl"
+    },
+    {
+      "engine": "korr_m35aa",
+      "id": "module-korr_m35aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-korr_m35aa.json",
+      "retail": "docs/evidence/s14/live-modules/korr_m35aa-semantic.jsonl"
+    },
+    {
+      "engine": "korr_m36aa",
+      "id": "module-korr_m36aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-korr_m36aa.json",
+      "retail": "docs/evidence/s14/live-modules/korr_m36aa-semantic.jsonl"
+    },
+    {
+      "engine": "korr_m37aa",
+      "id": "module-korr_m37aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-korr_m37aa.json",
+      "retail": "docs/evidence/s14/live-modules/korr_m37aa-semantic.jsonl"
+    },
+    {
+      "engine": "korr_m38aa",
+      "id": "module-korr_m38aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-korr_m38aa.json",
+      "retail": "docs/evidence/s14/live-modules/korr_m38aa-semantic.jsonl"
+    },
+    {
+      "engine": "korr_m38ab",
+      "id": "module-korr_m38ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-korr_m38ab.json",
+      "retail": "docs/evidence/s14/live-modules/korr_m38ab-semantic.jsonl"
+    },
+    {
+      "engine": "korr_m39aa",
+      "id": "module-korr_m39aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-korr_m39aa.json",
+      "retail": "docs/evidence/s14/live-modules/korr_m39aa-semantic.jsonl"
+    },
+    {
+      "engine": "lev_m40aa",
+      "id": "module-lev_m40aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-lev_m40aa.json",
+      "retail": "docs/evidence/s14/live-modules/lev_m40aa-semantic.jsonl"
+    },
+    {
+      "engine": "lev_m40ab",
+      "id": "module-lev_m40ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-lev_m40ab.json",
+      "retail": "docs/evidence/s14/live-modules/lev_m40ab-semantic.jsonl"
+    },
+    {
+      "engine": "lev_m40ac",
+      "id": "module-lev_m40ac",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-lev_m40ac.json",
+      "retail": "docs/evidence/s14/live-modules/lev_m40ac-semantic.jsonl"
+    },
+    {
+      "engine": "lev_m40ad",
+      "id": "module-lev_m40ad",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-lev_m40ad.json",
+      "retail": "docs/evidence/s14/live-modules/lev_m40ad-semantic.jsonl"
+    },
+    {
+      "engine": "liv_m99aa",
+      "id": "module-liv_m99aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-liv_m99aa.json",
+      "retail": "docs/evidence/s14/live-modules/liv_m99aa-semantic.jsonl"
+    },
+    {
+      "engine": "manm26ab",
+      "id": "module-manm26ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-manm26ab.json",
+      "retail": "docs/evidence/s14/live-modules/manm26ab-semantic.jsonl"
+    },
+    {
+      "engine": "manm26ac",
+      "id": "module-manm26ac",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-manm26ac.json",
+      "retail": "docs/evidence/s14/live-modules/manm26ac-semantic.jsonl"
+    },
+    {
+      "engine": "manm26ad",
+      "id": "module-manm26ad",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-manm26ad.json",
+      "retail": "docs/evidence/s14/live-modules/manm26ad-semantic.jsonl"
+    },
+    {
+      "engine": "manm26ae",
+      "id": "module-manm26ae",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-manm26ae.json",
+      "retail": "docs/evidence/s14/live-modules/manm26ae-semantic.jsonl"
+    },
+    {
+      "engine": "manm26mg",
+      "id": "module-manm26mg",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-manm26mg.json",
+      "retail": "docs/evidence/s14/live-modules/manm26mg-semantic.jsonl"
+    },
+    {
+      "engine": "manm27aa",
+      "id": "module-manm27aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-manm27aa.json",
+      "retail": "docs/evidence/s14/live-modules/manm27aa-semantic.jsonl"
+    },
+    {
+      "engine": "manm28aa",
+      "id": "module-manm28aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-manm28aa.json",
+      "retail": "docs/evidence/s14/live-modules/manm28aa-semantic.jsonl"
+    },
+    {
+      "engine": "manm28ab",
+      "id": "module-manm28ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-manm28ab.json",
+      "retail": "docs/evidence/s14/live-modules/manm28ab-semantic.jsonl"
+    },
+    {
+      "engine": "manm28ac",
+      "id": "module-manm28ac",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-manm28ac.json",
+      "retail": "docs/evidence/s14/live-modules/manm28ac-semantic.jsonl"
+    },
+    {
+      "engine": "manm28ad",
+      "id": "module-manm28ad",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-manm28ad.json",
+      "retail": "docs/evidence/s14/live-modules/manm28ad-semantic.jsonl"
+    },
+    {
+      "engine": "sta_m45aa",
+      "id": "module-sta_m45aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-sta_m45aa.json",
+      "retail": "docs/evidence/s14/live-modules/sta_m45aa-semantic.jsonl"
+    },
+    {
+      "engine": "sta_m45ab",
+      "id": "module-sta_m45ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-sta_m45ab.json",
+      "retail": "docs/evidence/s14/live-modules/sta_m45ab-semantic.jsonl"
+    },
+    {
+      "engine": "sta_m45ac",
+      "id": "module-sta_m45ac",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-sta_m45ac.json",
+      "retail": "docs/evidence/s14/live-modules/sta_m45ac-semantic.jsonl"
+    },
+    {
+      "engine": "sta_m45ad",
+      "id": "module-sta_m45ad",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-sta_m45ad.json",
+      "retail": "docs/evidence/s14/live-modules/sta_m45ad-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m02aa",
+      "id": "module-tar_m02aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m02aa.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m02aa-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m02ab",
+      "id": "module-tar_m02ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m02ab.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m02ab-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m02ac",
+      "id": "module-tar_m02ac",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m02ac.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m02ac-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m02ad",
+      "id": "module-tar_m02ad",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m02ad.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m02ad-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m02ae",
+      "id": "module-tar_m02ae",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m02ae.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m02ae-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m03ab",
+      "id": "module-tar_m03ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m03ab.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m03ab-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m03ad",
+      "id": "module-tar_m03ad",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m03ad.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m03ad-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m03ae",
+      "id": "module-tar_m03ae",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m03ae.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m03ae-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m03af",
+      "id": "module-tar_m03af",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m03af.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m03af-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m03mg",
+      "id": "module-tar_m03mg",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m03mg.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m03mg-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m04aa",
+      "id": "module-tar_m04aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m04aa.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m04aa-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m05aa",
+      "id": "module-tar_m05aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m05aa.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m05aa-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m05ab",
+      "id": "module-tar_m05ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m05ab.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m05ab-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m08aa",
+      "id": "module-tar_m08aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m08aa.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m08aa-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m09aa",
+      "id": "module-tar_m09aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m09aa.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m09aa-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m09ab",
+      "id": "module-tar_m09ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m09ab.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m09ab-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m10aa",
+      "id": "module-tar_m10aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m10aa.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m10aa-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m10ab",
+      "id": "module-tar_m10ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m10ab.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m10ab-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m10ac",
+      "id": "module-tar_m10ac",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m10ac.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m10ac-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m11aa",
+      "id": "module-tar_m11aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m11aa.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m11aa-semantic.jsonl"
+    },
+    {
+      "engine": "tar_m11ab",
+      "id": "module-tar_m11ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tar_m11ab.json",
+      "retail": "docs/evidence/s14/live-modules/tar_m11ab-semantic.jsonl"
+    },
+    {
+      "engine": "tat_m17aa",
+      "id": "module-tat_m17aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tat_m17aa.json",
+      "retail": "docs/evidence/s14/live-modules/tat_m17aa-semantic.jsonl"
+    },
+    {
+      "engine": "tat_m17ab",
+      "id": "module-tat_m17ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tat_m17ab.json",
+      "retail": "docs/evidence/s14/live-modules/tat_m17ab-semantic.jsonl"
+    },
+    {
+      "engine": "tat_m17ac",
+      "id": "module-tat_m17ac",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tat_m17ac.json",
+      "retail": "docs/evidence/s14/live-modules/tat_m17ac-semantic.jsonl"
+    },
+    {
+      "engine": "tat_m17ad",
+      "id": "module-tat_m17ad",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tat_m17ad.json",
+      "retail": "docs/evidence/s14/live-modules/tat_m17ad-semantic.jsonl"
+    },
+    {
+      "engine": "tat_m17ae",
+      "id": "module-tat_m17ae",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tat_m17ae.json",
+      "retail": "docs/evidence/s14/live-modules/tat_m17ae-semantic.jsonl"
+    },
+    {
+      "engine": "tat_m17af",
+      "id": "module-tat_m17af",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tat_m17af.json",
+      "retail": "docs/evidence/s14/live-modules/tat_m17af-semantic.jsonl"
+    },
+    {
+      "engine": "tat_m17ag",
+      "id": "module-tat_m17ag",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tat_m17ag.json",
+      "retail": "docs/evidence/s14/live-modules/tat_m17ag-semantic.jsonl"
+    },
+    {
+      "engine": "tat_m17mg",
+      "id": "module-tat_m17mg",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tat_m17mg.json",
+      "retail": "docs/evidence/s14/live-modules/tat_m17mg-semantic.jsonl"
+    },
+    {
+      "engine": "tat_m18aa",
+      "id": "module-tat_m18aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tat_m18aa.json",
+      "retail": "docs/evidence/s14/live-modules/tat_m18aa-semantic.jsonl"
+    },
+    {
+      "engine": "tat_m18ab",
+      "id": "module-tat_m18ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tat_m18ab.json",
+      "retail": "docs/evidence/s14/live-modules/tat_m18ab-semantic.jsonl"
+    },
+    {
+      "engine": "tat_m18ac",
+      "id": "module-tat_m18ac",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tat_m18ac.json",
+      "retail": "docs/evidence/s14/live-modules/tat_m18ac-semantic.jsonl"
+    },
+    {
+      "engine": "tat_m20aa",
+      "id": "module-tat_m20aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-tat_m20aa.json",
+      "retail": "docs/evidence/s14/live-modules/tat_m20aa-semantic.jsonl"
+    },
+    {
+      "engine": "unk_m41aa",
+      "id": "module-unk_m41aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-unk_m41aa.json",
+      "retail": "docs/evidence/s14/live-modules/unk_m41aa-semantic.jsonl"
+    },
+    {
+      "engine": "unk_m41ac",
+      "id": "module-unk_m41ac",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-unk_m41ac.json",
+      "retail": "docs/evidence/s14/live-modules/unk_m41ac-semantic.jsonl"
+    },
+    {
+      "engine": "unk_m42aa",
+      "id": "module-unk_m42aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-unk_m42aa.json",
+      "retail": "docs/evidence/s14/live-modules/unk_m42aa-semantic.jsonl"
+    },
+    {
+      "engine": "unk_m43aa",
+      "id": "module-unk_m43aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-unk_m43aa.json",
+      "retail": "docs/evidence/s14/live-modules/unk_m43aa-semantic.jsonl"
+    },
+    {
+      "engine": "unk_m44aa",
+      "id": "module-unk_m44aa",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-unk_m44aa.json",
+      "retail": "docs/evidence/s14/live-modules/unk_m44aa-semantic.jsonl"
+    },
+    {
+      "engine": "unk_m44ab",
+      "id": "module-unk_m44ab",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-unk_m44ab.json",
+      "retail": "docs/evidence/s14/live-modules/unk_m44ab-semantic.jsonl"
+    },
+    {
+      "engine": "unk_m44ac",
+      "id": "module-unk_m44ac",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-module-unk_m44ac.json",
+      "retail": "docs/evidence/s14/live-modules/unk_m44ac-semantic.jsonl"
     }
   ],
   "vm_coverage": "docs\\evidence\\s14\\vm-actions.jsonl"

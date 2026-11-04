@@ -1,12 +1,12 @@
 {
   "choices_ok": true,
-  "engine_actions": 2499,
+  "engine_actions": 2503,
   "engine_details": {
     "choices": 0,
     "phases": {
       "generic": 650,
       "host": 217,
-      "probe": 15,
+      "probe": 19,
       "specific": 1617
     },
     "transitions": 1
@@ -33,6 +33,14 @@
     {
       "action": 51,
       "name": "EffectAssuredHit"
+    },
+    {
+      "action": 63,
+      "name": "GetStringLeft"
+    },
+    {
+      "action": 96,
+      "name": "d3"
     },
     {
       "action": 107,
@@ -89,6 +97,14 @@
     {
       "action": 341,
       "name": "GetClassByPosition"
+    },
+    {
+      "action": 490,
+      "name": "GetBlockingCreature"
+    },
+    {
+      "action": 495,
+      "name": "GetFoundEnemyCreature"
     },
     {
       "action": 497,
@@ -156,8 +172,8 @@
     }
   ],
   "engine_trace": "docs\\evidence\\s14\\engine-semantic-tar_m03aa.jsonl",
-  "engine_unique": 70,
-  "executed_union": 372,
+  "engine_unique": 74,
+  "executed_union": 376,
   "expected_choices": 0,
   "expected_transitions": 1,
   "missing_all_execution": [],

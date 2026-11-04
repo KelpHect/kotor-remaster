@@ -472,6 +472,10 @@ def serve_control(sess: Session, run: Path, steps_out: list) -> int:
             return {"ok": True, **sess.rpc("startgame")}
         if op == "quicksave":
             return {"ok": True, **sess.rpc("quicksave")}
+        if op == "loadmodule":
+            return {"ok": True, **sess.rpc("loadModule", str(cmd.get("name", "")))}
+        if op == "loadmoduleresult":
+            return {"ok": True, **sess.rpc("loadModuleResult")}
         if op == "hwkey":
             vk = int(cmd["vk"])
             hold = float(cmd.get("hold", 0.08))

@@ -1,0 +1,191 @@
+{
+  "choices_ok": true,
+  "engine_actions": 120,
+  "engine_details": {
+    "choices": 0,
+    "phases": {
+      "generic": 36,
+      "host": 6,
+      "probe": 19,
+      "specific": 59
+    },
+    "transitions": 0
+  },
+  "engine_module": "STUNT_55a",
+  "engine_module_ok": true,
+  "engine_only": [
+    {
+      "action": 8,
+      "name": "ExecuteScript"
+    },
+    {
+      "action": 13,
+      "name": "SetPartyLeader"
+    },
+    {
+      "action": 63,
+      "name": "GetStringLeft"
+    },
+    {
+      "action": 96,
+      "name": "d3"
+    },
+    {
+      "action": 204,
+      "name": "ActionStartConversation"
+    },
+    {
+      "action": 213,
+      "name": "GetLocation"
+    },
+    {
+      "action": 236,
+      "name": "GetIsFriend"
+    },
+    {
+      "action": 256,
+      "name": "GetLastPerceived"
+    },
+    {
+      "action": 259,
+      "name": "GetLastPerceptionSeen"
+    },
+    {
+      "action": 261,
+      "name": "GetLastPerceptionVanished"
+    },
+    {
+      "action": 263,
+      "name": "GetNextInPersistentObject"
+    },
+    {
+      "action": 286,
+      "name": "GetHasSkill"
+    },
+    {
+      "action": 307,
+      "name": "GetCreatureTalentRandom"
+    },
+    {
+      "action": 489,
+      "name": "GetAttemptedMovementTarget"
+    },
+    {
+      "action": 490,
+      "name": "GetBlockingCreature"
+    },
+    {
+      "action": 495,
+      "name": "GetFoundEnemyCreature"
+    },
+    {
+      "action": 519,
+      "name": "IsCreditSequenceInProgress"
+    },
+    {
+      "action": 522,
+      "name": "GetCurrentAction"
+    },
+    {
+      "action": 548,
+      "name": "GetFirstPC"
+    },
+    {
+      "action": 578,
+      "name": "GetGlobalBoolean"
+    },
+    {
+      "action": 579,
+      "name": "SetGlobalBoolean"
+    },
+    {
+      "action": 696,
+      "name": "IsAvailableCreature"
+    },
+    {
+      "action": 697,
+      "name": "AddAvailableNPCByTemplate"
+    },
+    {
+      "action": 698,
+      "name": "SpawnAvailableNPC"
+    },
+    {
+      "action": 699,
+      "name": "IsNPCPartyMember"
+    },
+    {
+      "action": 710,
+      "name": "ClearAllEffects"
+    },
+    {
+      "action": 723,
+      "name": "GetLastForcePowerUsed"
+    },
+    {
+      "action": 724,
+      "name": "GetLastCombatFeatUsed"
+    },
+    {
+      "action": 725,
+      "name": "GetLastAttackResult"
+    },
+    {
+      "action": 726,
+      "name": "GetWasForcePowerSuccessful"
+    },
+    {
+      "action": 734,
+      "name": "SaveNPCState"
+    },
+    {
+      "action": 735,
+      "name": "GetCategoryFromTalent"
+    }
+  ],
+  "engine_trace": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\engine-modules\\stunt_55a.jsonl",
+  "engine_unique": 53,
+  "executed_union": 376,
+  "expected_choices": 0,
+  "expected_transitions": 0,
+  "missing_all_execution": [],
+  "missing_all_implementation": [],
+  "missing_execution": [],
+  "missing_implementation": [],
+  "module": "STUNT_55a",
+  "module_used_actions": 24,
+  "pass": true,
+  "retail_actions": 65,
+  "retail_module_ok": true,
+  "retail_modules": [
+    "stunt_55a"
+  ],
+  "retail_only_not_in_module": [
+    0,
+    31,
+    42,
+    107,
+    166,
+    168,
+    175,
+    176,
+    197,
+    335,
+    377,
+    409,
+    497,
+    679,
+    680,
+    681,
+    713
+  ],
+  "retail_script_actions": 6,
+  "retail_trace": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\live-modules\\stunt_55a-semantic.jsonl",
+  "retail_unique": 23,
+  "schema": "kotor.retail-differential/1",
+  "transitions_ok": true,
+  "vm_coverage": [
+    "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\vm-actions.jsonl"
+  ],
+  "vm_unique": 357
+}
