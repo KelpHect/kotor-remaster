@@ -90,7 +90,8 @@ std::string hex(std::int32_t value)
 } // namespace
 
 CorpusRun runNcsCorpus(const std::filesystem::path& directory, bool functional,
-                       std::uint64_t budget, std::size_t limit, bool trace)
+                       std::uint64_t budget, std::size_t limit, bool trace,
+                       bool selfAware, bool drain)
 {
     std::vector<std::filesystem::path> paths;
     for (const auto& entry : std::filesystem::directory_iterator(directory)) {
@@ -121,6 +122,8 @@ CorpusRun runNcsCorpus(const std::filesystem::path& directory, bool functional,
             if (functional) {
                 world = std::make_unique<World>();
                 runtime = std::make_unique<ActionRuntime>(world.get());
+                runtime->setSelfAware(selfAware);
+                runtime->setTraceEvents(drain);
                 sink = runtime.get();
             }
             Vm vm(instructions, sink, budget, {202}, trace);
@@ -129,6 +132,65 @@ CorpusRun runNcsCorpus(const std::filesystem::path& directory, bool functional,
                 result.trace = vm.traceOffsets();
             }
             if (runtime != nullptr) {
+                const auto mergeActions = [&]() {
+                    for (const std::uint16_t id : runtime->observedActions()) {
+                        result.executedActions.insert(id);
+                    }
+                    runtime->clearTrace();
+                    world->events.clear();
+                };
+                mergeActions();
+                if (drain) {
+                    const auto runFunctor = [&](const Functor& functor,
+                                                std::uint32_t target) {
+                        runtime->setContext(functor.context);
+                        if (target != 0 && target != kObjectInvalid) {
+                            runtime->setContextObject("self", target);
+                            runtime->setContextObject("speaker", target);
+                        }
+                        Vm functorVm(functor.instructions, runtime.get(), 200000);
+                        functorVm.setEntry(functor.ip, functor.stack, functor.bp);
+                        functorVm.run();
+                    };
+                    for (int tick = 0; tick < 64; ++tick) {
+                        bool ran = false;
+                        for (const Timer& timer : world->advance(1.0)) {
+                            if (timer.functor < 0) {
+                                continue;
+                            }
+                            const std::shared_ptr<Functor> functor =
+                                world->functor(timer.functor);
+                            if (functor != nullptr) {
+                                runFunctor(*functor, timer.target);
+                                world->functors.erase(timer.functor);
+                                mergeActions();
+                                ran = true;
+                            }
+                        }
+                        std::deque<QueuedAction> remaining;
+                        while (!world->actionQueue.empty()) {
+                            QueuedAction action =
+                                std::move(world->actionQueue.front());
+                            world->actionQueue.pop_front();
+                            if (action.functor < 0) {
+                                remaining.push_back(std::move(action));
+                                continue;
+                            }
+                            const std::shared_ptr<Functor> functor =
+                                world->functor(action.functor);
+                            if (functor != nullptr) {
+                                runFunctor(*functor, action.target);
+                                world->functors.erase(action.functor);
+                                mergeActions();
+                                ran = true;
+                            }
+                        }
+                        world->actionQueue.swap(remaining);
+                        if (!ran) {
+                            break;
+                        }
+                    }
+                }
                 result.runtime = runtime->summary();
             }
         } catch (const NcsError& error) {
@@ -193,8 +255,16 @@ void writeCorpusJsonl(const std::filesystem::path& path, const CorpusRun& run)
             first = false;
             out << "\"" << id << "\":" << count;
         }
-        out << "},\"notes\":{";
-        first = true;
+        out << "},\"executed_actions\":[";
+        bool firstAction = true;
+        for (const std::uint16_t id : result.executedActions) {
+            if (!firstAction) {
+                out << ",";
+            }
+            firstAction = false;
+            out << id;
+        }
+        out << "],\"notes\":{";        first = true;
         for (const auto& [name, count] : result.vm.notes) {
             if (!first) {
                 out << ",";

@@ -27,16 +27,16 @@ entity meshes) against a committed baseline; deterministic
 pazaak, swoop and
 turret state machines pass their
 seeded gates; SDL3 pulls the mixer for live playback while headless tests use
-the same mixer deterministically. **50/50 CTest targets** pass.
+the same mixer deterministically. **51/51 CTest targets** pass.
 Sprint 14 adds the retail save matrix (7/7 slots plus external `.rsv` and
 corrupt `EventQueue` fixtures), the all-DLG corpus (1,043 DLGs / 22,572
 entries / 67,395 links), TSLPatcher TLK merges with `replace.tlk`/`append.tlk`
 VFS precedence and StrRef resolution, faction parent inheritance, explicit
 `CamVidEffect` rejection with a deterministic fixture, an all-117-module
 playthrough matrix (780 conversations / 10,133 lines), classic-vs-fixed
-bug-parity checks for the Anywhere Menu Glitch and Displaced Load Zone, retail
-trace action coverage (91,967 events / 127 actions / 0 missing) and the
-differential gate; see
+bug-parity checks for all seven documented glitches, retail trace action
+coverage (91,967 events / 127 actions / 0 missing), and a recorded
+retail-vs-engine semantic differential (89 `end_m01aa` actions, 0 missing); see
 [`docs/SPRINT14_REPORT.md`](docs/SPRINT14_REPORT.md).
 Sprint 12 remains complete (creature animation, skinning, weapons and cutscene
 cameras: MDL clips/controllers/skinning, `pause1`/`pause` playback, weapon hand
@@ -303,6 +303,7 @@ Start with:
 - [`docs/SPRINT16.md`](docs/SPRINT16.md) - Sprint 16 plan: remaster stage 1
 - [`docs/SPRINT17.md`](docs/SPRINT17.md) - Sprint 17 plan: remaster stages 2-4, modding and platforms
 - [`docs/SPRINT18.md`](docs/SPRINT18.md) - Sprint 18 plan: KotOR 2 gameplay parity (final)
+- [`docs/recon/62_BUG_PARITY.md`](docs/recon/62_BUG_PARITY.md) - classic-vs-fixed models for all seven documented glitches
 - [`docs/recon/61_SPRINT14_CORRECTNESS.md`](docs/recon/61_SPRINT14_CORRECTNESS.md) - TLK merge, save matrix, DLG corpus and differential gate
 - [`docs/recon/60_P6_CONTENT.md`](docs/recon/60_P6_CONTENT.md) - 117-module content checklist and baseline
 - [`docs/recon/59_FACTIONS.md`](docs/recon/59_FACTIONS.md) - repute matrix, faction actions and FAC round-trip

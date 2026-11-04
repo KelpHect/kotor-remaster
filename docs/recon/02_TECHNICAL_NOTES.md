@@ -173,7 +173,8 @@ Key documented rules and test targets:
   Ebon Hawk serves as the hub. AI/RNG internals need measurement.
 - Bug-parity candidates: Anywhere Menu Glitch, Displaced Load Zone, Spawn Warps, Hotshot,
   The Routine, Fake Level Up, item duping; vanilla Rancor double XP, Saul revive, Yuthura XP loop,
-  Dak Vessar respawn. Classic mode should reproduce them; fixed mode should opt out.
+  Dak Vessar respawn. Classic mode should reproduce them; fixed mode should opt out. Sprint 14
+  models the first seven deterministically in `docs/recon/62_BUG_PARITY.md`.
 
 Sources: official KotOR manual (Steam CDN), StrategyWiki system pages, DeadlyStream 2DA/script
 notes, PyKotor/xoreos GFF/format docs, K1 Community Patch, KotOR speedrun guides. See lane D's

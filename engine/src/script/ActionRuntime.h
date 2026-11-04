@@ -63,6 +63,17 @@ public:
     void setHost(ActionHost* host) { host_ = host; }
     ActionHost* host() const { return host_; }
     void setTraceEvents(bool enabled) { traceEvents_ = enabled; }
+    const std::vector<WorldEvent>& traceHistory() const { return traceHistory_; }
+    void markLastTracePhase(const std::string& phase) {
+        if (!traceHistory_.empty()) {
+            traceHistory_.back().kind = phase;
+        }
+    }
+    const std::set<std::uint16_t>& observedActions() const { return observedActions_; }
+    void clearTrace() {
+        traceHistory_.clear();
+        observedActions_.clear();
+    }
 
     RuntimeSummary summary() const;
     std::uint64_t timerCount() const { return timersScheduled_; }
@@ -189,6 +200,8 @@ private:
     World* world_ = nullptr;
     ActionHost* host_ = nullptr;
     bool traceEvents_ = false;
+    std::vector<WorldEvent> traceHistory_;
+    std::set<std::uint16_t> observedActions_;
     std::map<std::uint16_t, std::uint32_t> calls_;
     std::set<std::string> specific_;
     std::set<std::string> generic_;

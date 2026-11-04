@@ -9,13 +9,13 @@ evidence.
 ## 1. Build and test result
 
 ```text
-100% tests passed, 0 tests failed out of 50
-Total Test Time (real) = 871.10 sec
+100% tests passed, 0 tests failed out of 51
+Total Test Time (real) = 982.14 sec
 ```
 
 New CTest targets: `kotor_save_matrix`, `kotor_differential`,
-`kotor_dialogue_corpus`, `kotor_bug_parity` and `kotor_retail_trace`. The
-existing 45 targets still pass.
+`kotor_dialogue_corpus`, `kotor_bug_parity`, `kotor_retail_trace` and
+`kotor_retail_differential`. The existing 45 targets still pass.
 
 ## 2. Differential playthrough gate
 
@@ -101,18 +101,29 @@ Evidence: `docs/evidence/s14/dialogue-corpus.log`.
 
 ## 7. Bug-parity mode
 
-`--bug-parity-test` runs the same scenario in classic and fixed modes:
+`--bug-parity-test` runs every documented glitch in classic and fixed modes:
 
 - **Anywhere Menu Glitch** - classic mode opens the character panel during
   dialogue; fixed mode refuses it.
 - **Displaced Load Zone** - classic mode transitions through a door from an
   arbitrary position; fixed mode requires proximity.
+- **Spawn Warps** - classic mode keeps party coordinates across a module
+  transition; fixed mode spawns at the destination entry.
+- **Hotshot** - classic mode restores the destination snapshot's level/XP while
+  keeping inventory and quests; fixed mode refuses the warp.
+- **Fake Level Up** - classic mode advances the level with XP unchanged; fixed
+  mode refuses the level-up.
+- **Item duping** - classic mode copies equipped items into the inventory on the
+  airlock cycle; fixed mode does not duplicate them.
+- **The Routine** - the documented chain of menu glitch, hotshot, spawn warp,
+  fake level and duping completes only in classic mode.
 
-Gate: `classic_anywhere_menu=1`, `fixed_anywhere_menu=1`,
-`classic_displaced_load=1`, `fixed_displaced_load=1`.
+Gate: `classic_*`/`fixed_*` pairs for all seven glitches, including
+`classic_spawn_warp`, `classic_hotshot`, `classic_fake_level`,
+`classic_dupe` and `classic_routine`.
 Evidence: `docs/evidence/s14/bug-parity.log`.
 
-## 8. Retail trace coverage
+## 8. Retail trace coverage and differential
 
 `check_retail_traces.py` reads the recorded s4 retail semantic traces and
 asserts every action ID the retail engine executed is implemented:
@@ -122,8 +133,27 @@ asserts every action ID the retail engine executed is implemented:
 - **772 implemented action-table entries**;
 - **0 missing**.
 
+`kotor_retail_differential` then records the engine's own semantic trace for the
+same new-game/Endar Spire path and diffs it against `live-05-semantic.jsonl`:
+
+- engine trace: **7,751 actions**, **9 dialogue choices**, **1 transition**
+  (choice and transition counts asserted);
+- retail `end_m01aa` script actions: **89**;
+- executed across the playthrough + drained VM corpus (357 action IDs) +
+  eight branch-gated probes: **367 action IDs**, **0 missing execution**;
+- **0 missing implementation** across the full 102-ID retail set.
+
+Action IDs are restricted to the actions the shipped `end_m01aa` scripts use;
+menu/chargen-only retail IDs are reported separately. Eight branch-gated
+actions are recorded with phase `probe` (three talent/AI and five
+perception/movement queries) because their combat or perception branches are
+state-gated.
+
 Evidence: `docs/evidence/s14/retail-trace.log`,
-`docs/evidence/s14/retail-trace-coverage.json`.
+`docs/evidence/s14/retail-trace-coverage.json`,
+`docs/evidence/s14/engine-semantic.jsonl`,
+`docs/evidence/s14/retail-differential.json`,
+`docs/evidence/s14/retail-differential-engine.log`.
 
 ## 9. P6 baseline maintenance
 
@@ -133,10 +163,11 @@ comparison. The 117-module baseline is unchanged and still green.
 
 ## 10. Regression
 
-- **CTest: 50/50 passed** (871.10 s).
+- **CTest: 51/51 passed** (982.14 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
-- **GL/Vulkan parity: 0.0815 mean abs channel diff**, PASS (tolerance gate).
+- **GL/Vulkan parity: 0.0000 mean abs channel diff this run**, PASS (tolerance
+  gate; previous runs stay below 0.09).
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
@@ -147,17 +178,20 @@ comparison. The 117-module baseline is unchanged and still green.
   one known data anomaly and fails on any other missing conversation.
 - External `.rsv` support covers the module-ERF form used by the gate. A retail
   `.rsv` with a different container layout would need its own fixture.
-- Retail trace evidence is action-ID coverage from the recorded s4 semantic
-  traces, paired with the all-117-module playthrough and all-DLG matrices; it
-  is not a separately recorded retail trace for every quest.
-- Bug-parity mode currently models **Anywhere Menu Glitch** and **Displaced Load
-  Zone**. Spawn Warps, Hotshot, The Routine, Fake Level Up and item duping are
-  documented but not modeled.
+- The recorded s4 retail traces cover the new-game/Endar Spire path, not a
+  separate trace per quest. The differential harness accepts any future
+  per-quest trace; the all-117-module conversation matrix and the all-DLG corpus
+  cover the paths that have no retail recording.
+- Bug-parity models the seven documented glitches at their observable state
+  transitions (menu, load-zone proximity, party spawn coordinates, hotshot
+  snapshot restore, XP-free level-up, airlock duplication and the Routine
+  chain); it does not replay full multi-hour quest sequences for each glitch.
 - Non-default `CamVidEffect` semantics are not implemented because the shipped
   KotOR 1 corpus contains none; the runtime now rejects them explicitly.
 
 ## Evidence index
 
+- `docs/recon/62_BUG_PARITY.md`
 - `docs/recon/61_SPRINT14_CORRECTNESS.md`
 - `docs/evidence/s14/ctest.log`
 - `docs/evidence/s14/differential.log`
@@ -168,6 +202,11 @@ comparison. The 117-module baseline is unchanged and still green.
 - `docs/evidence/s14/bug-parity.log`
 - `docs/evidence/s14/retail-trace.log`
 - `docs/evidence/s14/retail-trace-coverage.json`
+- `docs/evidence/s14/engine-semantic.jsonl`
+- `docs/evidence/s14/retail-differential.json`
+- `docs/evidence/s14/retail-differential-engine.log`
+- `docs/evidence/s14/vm-actions.log`
+- `docs/evidence/s14/vm-actions.jsonl`
 - `docs/evidence/s14/all-modules.log`
 - `docs/evidence/s14/vm-corpus.log`
 - `docs/evidence/s14/parity.log`, `parity-gl.png`, `parity-vk.png`
