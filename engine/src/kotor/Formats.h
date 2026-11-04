@@ -403,6 +403,7 @@ private:
 
     struct Skin {
         std::vector<std::int32_t> boneMap;
+        std::vector<std::int32_t> slotNode;
         std::vector<std::array<float, 4>> qbones;
         std::vector<Vec3> tbones;
         std::uint32_t weightsOffset = 0;
@@ -458,6 +459,7 @@ private:
 
     std::vector<Node> parseNodes(std::uint32_t rootOffset) const;
     std::vector<Controller> parseControllers(std::uint32_t nodeHeader) const;
+    void resolveSkins();
     static std::vector<float> sampleController(const Controller& controller, float time);
     Animation parseAnimation(std::uint32_t offset) const;
     std::map<std::uint16_t, const Node*> animationNodes(const Animation& animation) const;
@@ -800,6 +802,7 @@ struct Entity {
     bool hostile = false;
     bool hostileOverride = false;
     bool dead = false;
+    bool partyAvatar = false;
     bool useable = false;
     bool open = false;
     bool locked = false;

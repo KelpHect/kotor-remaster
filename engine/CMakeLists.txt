@@ -346,6 +346,10 @@ if(KOTOR_ENGINE_BUILD_TESTS)
             set_tests_properties(kotor_campaign
                                  PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
         endif()
+        add_test(NAME kotor_avatar
+                 COMMAND kotor_engine --module end_m01aa --avatar-test --null --headless)
+        set_tests_properties(kotor_avatar
+                             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 180)
         add_test(NAME kotor_profile_k1
                  COMMAND kotor_engine --profile-info "${KOTOR_TEST_INSTALL}" --null --headless)
         set(KOTOR2_TEST_INSTALL "$ENV{KOTOR2_INSTALL}")

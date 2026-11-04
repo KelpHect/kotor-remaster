@@ -2742,6 +2742,80 @@ int runCampaignTest(GameSession& base, const std::string& fixtureDirectory)
     return ok ? 0 : 74;
 }
 
+int runAvatarTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const std::string& label) {
+        logInfo(concat("avatar: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    game.setAnimationEnabled(true);
+    game.setPlayerAppearance(92, "Revan");
+    game.setThirdPerson(true);
+    check(game.playerEntity() != static_cast<std::size_t>(-1), "player_entity");
+    check(!game.scene().entityMeshes.empty(), "player_mesh");
+    check(game.findEntity("PC") == game.playerEntity(), "player_tag");
+
+    bool playerFinite = true;
+    for (int frame = 0; frame < 60; ++frame) {
+        InputState input;
+        input.forward = true;
+        input.run = true;
+        game.update(1.0f / 60.0f, input);
+    }
+    const std::string clip = game.animationName(game.playerEntity());
+    check(clip == "run" || clip == "walk", "player_locomotion");
+    check(game.animationTime(game.playerEntity()) > 0.0f, "player_clock");
+    for (const kotor::EntityMesh& mesh : game.scene().entityMeshes) {
+        if (mesh.entity != game.playerEntity()) {
+            continue;
+        }
+        for (const kotor::SceneVertex& vertex : mesh.vertices) {
+            playerFinite = playerFinite && std::isfinite(vertex.position.x)
+                && std::isfinite(vertex.position.y) && std::isfinite(vertex.position.z);
+        }
+    }
+    check(playerFinite, "player_finite");
+
+    GameSession companionGame(game.installPath(), "tar_m02af");
+    check(companionGame.addPartyMember("Mission"), "companion_join");
+    const std::size_t mission = companionGame.findEntity("Mission");
+    check(mission != static_cast<std::size_t>(-1), "companion_entity");
+    if (mission != static_cast<std::size_t>(-1)) {
+        check(companionGame.scene().entities[mission].partyAvatar, "companion_avatar");
+        bool hasMesh = false;
+        for (const kotor::EntityMesh& mesh : companionGame.scene().entityMeshes) {
+            if (mesh.entity == mission) {
+                hasMesh = true;
+                break;
+            }
+        }
+        check(hasMesh, "companion_mesh");
+        const kotor::Vec3 start = companionGame.scene().entities[mission].position;
+        for (int frame = 0; frame < 120; ++frame) {
+            InputState input;
+            input.forward = true;
+            companionGame.update(1.0f / 60.0f, input);
+        }
+        const kotor::Vec3 end = companionGame.scene().entities[mission].position;
+        const float moved = std::sqrt((end.x - start.x) * (end.x - start.x)
+                                      + (end.y - start.y) * (end.y - start.y));
+        logInfo(concat("avatar: companion moved ", moved));
+        check(moved > 0.01f, "companion_follow");
+    }
+
+    const std::filesystem::path savePath =
+        std::filesystem::temp_directory_path() / "kotor-s14-avatar.save";
+    check(companionGame.save(savePath), "companion_save");
+    GameSession restored(companionGame.installPath(), companionGame.module());
+    check(restored.load(savePath), "companion_load");
+    check(restored.findEntity("Mission") != static_cast<std::size_t>(-1),
+          "companion_restored");
+
+    logInfo(ok ? "avatar: PASS" : "avatar: FAIL");
+    return ok ? 0 : 75;
+}
+
 int runBugParityTest(GameSession& game)
 {
     bool ok = true;
@@ -4443,6 +4517,42 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
               && std::fabs(rootA.z - rootB.z) < 0.0001f,
           "root_motion_in_place");
 
+    const std::optional<kotor::Mdl> player = loadModel("PFBAM");
+    check(player.has_value(), "player_loaded");
+    if (player.has_value()) {
+        kotor::Mdl mergedPlayer = *player;
+        if (const std::optional<kotor::Mdl> female = loadModel("S_Female03");
+            female.has_value()) {
+            mergedPlayer.mergeAnimations(*female);
+        }
+        check(mergedPlayer.skinnedNodeCount() > 0, "player_skin_nodes");
+        check(mergedPlayer.skinBindError() < 0.001f, "player_skin_bind");
+        const std::vector<kotor::MdlMeshTriangle> playerBind = mergedPlayer.meshTriangles();
+        const std::vector<kotor::MdlMeshTriangle> playerRun =
+            mergedPlayer.posedTriangles("run", 0.3f);
+        check(!playerBind.empty() && playerBind.size() == playerRun.size(), "player_mesh_stable");
+        float bindLowZ = 1.0e9f;
+        float bindHighZ = -1.0e9f;
+        float maxMove = 0.0f;
+        bool playerFinite = !playerRun.empty();
+        for (std::size_t i = 0; i < playerBind.size() && i < playerRun.size(); ++i) {
+            for (int v = 0; v < 3; ++v) {
+                const kotor::Vec3 a = playerBind[i].v[v].position;
+                const kotor::Vec3 b = playerRun[i].v[v].position;
+                bindLowZ = std::min(bindLowZ, a.z);
+                bindHighZ = std::max(bindHighZ, a.z);
+                playerFinite = playerFinite && std::isfinite(b.x) && std::isfinite(b.y)
+                    && std::isfinite(b.z);
+                maxMove = std::max(maxMove, std::sqrt((a.x - b.x) * (a.x - b.x)
+                                                      + (a.y - b.y) * (a.y - b.y)
+                                                      + (a.z - b.z) * (a.z - b.z)));
+            }
+        }
+        check(playerFinite, "player_pose_finite");
+        check(bindLowZ > -0.15f && bindHighZ < 1.8f, "player_bind_bounds");
+        check(maxMove > 0.01f && maxMove < 1.5f, "player_pose_motion");
+    }
+
     const std::optional<kotor::Mdl> bantha = loadModel("c_bantha");
     check(bantha.has_value(), "bantha_loaded");
     if (bantha.has_value()) {
@@ -5852,7 +5962,7 @@ int runApplication(const Options& options)
                     && loaded.vertices.size() == 237594
                     && loaded.indices.size() == 237594
                     && loaded.batches.size() == 49
-                    && loaded.textures.size() == 84
+                    && loaded.textures.size() == 88
                     && loaded.collisionVertices.size() == 850
                     && loaded.collision.size() == 1365
                     && loaded.entities.size() == 218
@@ -5958,6 +6068,9 @@ int runApplication(const Options& options)
             }
             if (options.campaignTest) {
                 return runCampaignTest(*game, options.saveFixtures);
+            }
+            if (options.avatarTest) {
+                return runAvatarTest(*game);
             }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);

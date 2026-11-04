@@ -472,7 +472,34 @@ Mdl Mdl::parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std
         }
     }
     model.bindWorld_ = model.poseWorld(nullptr, 0.0f);
+    model.resolveSkins();
     return model;
+}
+
+void Mdl::resolveSkins()
+{
+    for (Node& node : nodes_) {
+        if (!node.skin.has_value()) {
+            continue;
+        }
+        Skin& skin = *node.skin;
+        std::int32_t maxSlot = -1;
+        for (const std::int32_t slot : skin.boneMap) {
+            maxSlot = std::max(maxSlot, slot);
+        }
+        skin.slotNode.assign(static_cast<std::size_t>(maxSlot + 1), -1);
+        for (std::size_t nodeNumber = 0; nodeNumber < skin.boneMap.size(); ++nodeNumber) {
+            const std::int32_t slot = skin.boneMap[nodeNumber];
+            if (slot < 0) {
+                continue;
+            }
+            const auto it = nodeById_.find(static_cast<std::uint16_t>(nodeNumber));
+            if (it != nodeById_.end()) {
+                skin.slotNode[static_cast<std::size_t>(slot)] =
+                    static_cast<std::int32_t>(it->second);
+            }
+        }
+    }
 }
 
 std::vector<Mdl::Node> Mdl::parseNodes(std::uint32_t rootOffset) const
@@ -589,6 +616,11 @@ std::vector<Mdl::Controller> Mdl::parseControllers(std::uint32_t nodeHeader) con
                     key.data.push_back(readF32(bytes, mdl_.size(),
                                                valueBase + (row * effectiveColumns + column) * 4u,
                                                "MDL controller value"));
+                }
+                if (controller.type == 20 && !controller.bezier && effectiveColumns == 4) {
+                    // Uncompressed orientation keys are stored XYZW; the VM
+                    // and quatSlerp use WXYZ.
+                    key.data = {key.data[3], key.data[0], key.data[1], key.data[2]};
                 }
                 controller.keys.push_back(std::move(key));
             }
@@ -849,7 +881,6 @@ float Mdl::skinBindError() const
             continue;
         }
         const Skin& skin = *node.skin;
-        const Vec3 bindOrigin = bindWorld_[nodeIndex].translation;
         for (std::uint32_t i = 0; i < node.vertexCount; ++i) {
             const std::size_t o = node.mdxOffset + static_cast<std::size_t>(i) * node.stride;
             const Vec3 p{readF32(mdx_.data(), mdx_.size(), o, "MDX x"),
@@ -864,25 +895,29 @@ float Mdl::skinBindError() const
                 if (weight <= 0.0f) {
                     continue;
                 }
-                const std::int32_t boneId = static_cast<std::int32_t>(
+                const std::int32_t boneSlot = static_cast<std::int32_t>(
                     std::lround(readF32(mdx_.data(), mdx_.size(),
                                         o + skin.bonesOffset + static_cast<std::size_t>(slot) * 4u,
                                         "MDX bone index")));
-                const auto boneIt = nodeById_.find(static_cast<std::uint16_t>(boneId));
-                if (boneIt == nodeById_.end()) {
+                if (boneSlot < 0 || static_cast<std::size_t>(boneSlot) >= skin.slotNode.size()) {
                     continue;
                 }
-                const std::size_t boneIndex = boneIt->second;
+                const std::int32_t boneIndex = skin.slotNode[static_cast<std::size_t>(boneSlot)];
+                if (boneIndex < 0 || static_cast<std::size_t>(boneIndex) >= nodes_.size()) {
+                    continue;
+                }
+                const std::size_t boneNode = static_cast<std::size_t>(boneIndex);
+                const std::uint16_t boneId = nodes_[boneNode].nodeId;
                 const std::size_t qIndex = static_cast<std::size_t>(boneId) < skin.qbones.size()
-                    ? static_cast<std::size_t>(boneId) : boneIndex;
+                    ? static_cast<std::size_t>(boneId) : boneNode;
                 const std::array<float, 4> q = qIndex < skin.qbones.size()
                     ? skin.qbones[qIndex] : std::array<float, 4>{1.0f, 0.0f, 0.0f, 0.0f};
                 const Vec3 t = qIndex < skin.tbones.size()
                     ? skin.tbones[qIndex] : Vec3{0.0f, 0.0f, 0.0f};
-                const Vec3 local{p.x - bindOrigin.x, p.y - bindOrigin.y, p.z - bindOrigin.z};
+                const Vec3 local = p;
                 const Vec3 rotated = transform(quatMatrix(q[0], q[1], q[2], q[3]), local);
                 const Vec3 bonePoint{rotated.x + t.x, rotated.y + t.y, rotated.z + t.z};
-                const Pose& bonePose = bindWorld_[boneIndex];
+                const Pose& bonePose = bindWorld_[boneNode];
                 const Vec3 transformed = transform(bonePose.rotation, bonePoint);
                 out.x += weight * (bonePose.translation.x + transformed.x);
                 out.y += weight * (bonePose.translation.y + transformed.y);
@@ -892,9 +927,10 @@ float Mdl::skinBindError() const
             if (totalWeight <= 0.0f) {
                 continue;
             }
-            const float dx = out.x - p.x;
-            const float dy = out.y - p.y;
-            const float dz = out.z - p.z;
+            const Vec3 expected = transform(bindWorld_[nodeIndex].rotation, p);
+            const float dx = out.x - (bindWorld_[nodeIndex].translation.x + expected.x);
+            const float dy = out.y - (bindWorld_[nodeIndex].translation.y + expected.y);
+            const float dz = out.z - (bindWorld_[nodeIndex].translation.z + expected.z);
             maxError = std::max(maxError, std::sqrt(dx * dx + dy * dy + dz * dz));
         }
     }
@@ -1150,7 +1186,6 @@ Vec3 Mdl::rootMotion(const std::string& animation, float time) const
 std::vector<MdlMeshTriangle> Mdl::trianglesFromPose(const std::vector<Pose>& world,
                                                     float danglyTime) const
 {
-    const std::vector<Pose>& bind = bindWorld_;
     std::vector<MdlMeshTriangle> out;
     for (std::size_t nodeIndex = 0; nodeIndex < nodes_.size(); ++nodeIndex) {
         const Node& node = nodes_[nodeIndex];
@@ -1158,7 +1193,6 @@ std::vector<MdlMeshTriangle> Mdl::trianglesFromPose(const std::vector<Pose>& wor
             continue;
         }
         const Pose& nodePose = world[nodeIndex];
-        const Vec3 bindOrigin = bind[nodeIndex].translation;
         std::vector<Vec3> positions;
         std::vector<Vec3> normals;
         std::vector<Vec2> uvs;
@@ -1201,31 +1235,36 @@ std::vector<MdlMeshTriangle> Mdl::trianglesFromPose(const std::vector<Pose>& wor
                     if (weight <= 0.0f) {
                         continue;
                     }
-                    const std::int32_t boneId = static_cast<std::int32_t>(
+                    const std::int32_t boneSlotIndex = static_cast<std::int32_t>(
                         std::lround(readF32(mdx_.data(), mdx_.size(),
                                             boneBase + static_cast<std::size_t>(boneSlot) * 4u,
                                             "MDX bone index")));
-                    const auto boneIt = nodeById_.find(static_cast<std::uint16_t>(boneId));
-                    if (boneIt == nodeById_.end()) {
+                    if (boneSlotIndex < 0
+                        || static_cast<std::size_t>(boneSlotIndex) >= skin.slotNode.size()) {
                         continue;
                     }
-                    const std::size_t boneIndex = boneIt->second;
+                    const std::int32_t boneIndex =
+                        skin.slotNode[static_cast<std::size_t>(boneSlotIndex)];
+                    if (boneIndex < 0 || static_cast<std::size_t>(boneIndex) >= world.size()) {
+                        continue;
+                    }
+                    const std::size_t boneNode = static_cast<std::size_t>(boneIndex);
+                    const std::uint16_t boneId = nodes_[boneNode].nodeId;
                     const std::size_t qIndex = static_cast<std::size_t>(boneId) < skin.qbones.size()
                         ? static_cast<std::size_t>(boneId)
-                        : boneIndex;
+                        : boneNode;
                     const std::array<float, 4> q = qIndex < skin.qbones.size()
                         ? skin.qbones[qIndex]
                         : std::array<float, 4>{1.0f, 0.0f, 0.0f, 0.0f};
                     const Vec3 t = qIndex < skin.tbones.size()
                         ? skin.tbones[qIndex]
                         : Vec3{0.0f, 0.0f, 0.0f};
-                    const Vec3 localOffset{local.x - bindOrigin.x, local.y - bindOrigin.y,
-                                            local.z - bindOrigin.z};
+                    const Vec3 localOffset = local;
                     const Vec3 inverseRotated = transform(quatMatrix(q[0], q[1], q[2], q[3]),
                                                           localOffset);
                     const Vec3 bonePoint{inverseRotated.x + t.x, inverseRotated.y + t.y,
                                          inverseRotated.z + t.z};
-                    const Pose& bonePose = world[boneIndex];
+                    const Pose& bonePose = world[boneNode];
                     const Vec3 transformed = transform(bonePose.rotation, bonePoint);
                     position.x += weight * (bonePose.translation.x + transformed.x);
                     position.y += weight * (bonePose.translation.y + transformed.y);

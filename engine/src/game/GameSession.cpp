@@ -534,7 +534,7 @@ void GameSession::updateAnimations(float dt)
 void GameSession::initAnimations()
 {
     for (kotor::EntityMesh& mesh : scene_.entityMeshes) {
-        if (!mesh.model || mesh.entity == playerEntity_) {
+        if (!mesh.model) {
             continue;
         }
         for (const char* name : {"pause1", "pause", "cpause1", "default"}) {
@@ -693,6 +693,9 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
     }
     if (thirdPerson_) {
         spawnPlayerAvatar();
+    }
+    for (const CompanionState& companion : companions_) {
+        ensureCompanionEntity(companion);
     }
     initAnimations();
     return true;
@@ -1038,9 +1041,15 @@ void GameSession::updatePlayerAvatar(float dt, bool moving)
         }
         ++animationRevision_;
     }
-    // Player skinning needs the supermodel skeleton; keep the avatar in bind
-    // pose until that is merged.
-    (void)moving;
+    const char* wanted = moving ? "run" : "pause1";
+    for (const kotor::EntityMesh& mesh : scene_.entityMeshes) {
+        if (mesh.entity == playerEntity_ && mesh.model
+            && mesh.model->animationDuration(wanted) > 0.0f
+            && mesh.animation != wanted) {
+            playAnimation(playerEntity_, wanted, true);
+            break;
+        }
+    }
 }
 
 bool GameSession::entityHasFacialPose(std::size_t entityIndex) const
@@ -1493,6 +1502,58 @@ void GameSession::updateEncounters(float dt)
                      + " respawned " + std::to_string(spawned));
         }
     }
+}
+
+std::size_t GameSession::ensureCompanionEntity(const CompanionState& companion)
+{
+    const std::size_t existing = findEntity(companion.tag);
+    if (existing != static_cast<std::size_t>(-1)) {
+        return existing;
+    }
+    const std::string tag = lower(companion.tag);
+    static const std::pair<const char*, const char*> templates[] = {
+        {"carth", "p_carth"}, {"bastila", "p_bastilla"}, {"mission", "p_mission"},
+        {"zaalbar", "p_zaalbar"}, {"canderous", "p_cand"}, {"cand", "p_cand"},
+        {"jolee", "p_jolee"}, {"juhani", "p_juhani"}, {"hk-47", "p_hk47"},
+        {"hk47", "p_hk47"}, {"t3-m4", "p_t3m4"}, {"t3m4", "p_t3m4"},
+    };
+    std::string utc;
+    for (const auto& [name, resref] : templates) {
+        if (tag == name) {
+            utc = resref;
+            break;
+        }
+    }
+    if (utc.empty()) {
+        return static_cast<std::size_t>(-1);
+    }
+    const std::size_t slot = companions_.size();
+    const kotor::Vec3 forward{std::cos(yaw_), std::sin(yaw_), 0.0f};
+    const kotor::Vec3 right{-forward.y, forward.x, 0.0f};
+    const float side = (slot % 2 == 0) ? -1.2f : 1.2f;
+    const float row = static_cast<float>(slot / 2);
+    const kotor::Vec3 spawn = position_ - forward * (2.0f + row * 1.1f) + right * side;
+    const std::size_t index = kotor::spawnCreature(scene_, install_, utc, spawn, yaw_);
+    if (index == static_cast<std::size_t>(-1)) {
+        return index;
+    }
+    kotor::Entity& entity = scene_.entities[index];
+    entity.tag = companion.tag;
+    entity.partyAvatar = true;
+    entity.hostile = false;
+    entity.faction = 0;
+    while (entityObjects_.size() < scene_.entities.size()) {
+        entityObjects_.push_back(0);
+    }
+    script::GameObject& object = scriptWorld_.addObject(companion.tag, 100, 0, true);
+    object.position = {entity.position.x, entity.position.y, entity.position.z};
+    object.hp = entity.hitPoints;
+    entityObjects_[index] = object.id;
+    std::erase(scriptWorld_.party, object.id);
+    scriptWorld_.party.push_back(object.id);
+    syncEntityToScriptWorld(index);
+    logEvent("party avatar spawn " + companion.tag + " utc=" + utc);
+    return index;
 }
 
 void GameSession::updateParty(float dt)
@@ -3220,7 +3281,6 @@ bool GameSession::addPartyMember(const std::string& tag)
         }
     }
     partyTags_.push_back(tag);
-    const std::size_t entityIndex = findEntity(tag);
     CompanionState companion;
     companion.tag = tag;
     if (rules_.loaded()) {
@@ -3228,6 +3288,7 @@ bool GameSession::addPartyMember(const std::string& tag)
                                                  character_.xp);
     }
     companion.sheet.name = tag;
+    const std::size_t entityIndex = ensureCompanionEntity(companion);
     if (entityIndex != static_cast<std::size_t>(-1)) {
         const kotor::Entity& entity = scene_.entities[entityIndex];
         if (!entity.name.empty()) {
@@ -3266,6 +3327,16 @@ bool GameSession::removePartyMember(const std::string& tag)
     const std::uint32_t object = objectForTag(tag);
     if (object != script::kObjectInvalid) {
         std::erase(scriptWorld_.party, object);
+    }
+    const std::size_t index = findEntity(tag);
+    if (index != static_cast<std::size_t>(-1) && scene_.entities[index].partyAvatar) {
+        scene_.entities[index].dead = true;
+        for (kotor::EntityMesh& mesh : scene_.entityMeshes) {
+            if (mesh.entity == index) {
+                mesh.visible = false;
+            }
+        }
+        ++animationRevision_;
     }
     return partyTags_.size() != old;
 }
@@ -4731,6 +4802,7 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder)
         for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
             const kotor::Entity& candidate = scene_.entities[i];
             if (objectUsed[i] || candidate.tag != state.tag
+                || candidate.partyAvatar
                 || (kind != kotor::EntityKind::Unknown && candidate.kind != kind)) {
                 continue;
             }
@@ -4892,7 +4964,7 @@ bool GameSession::saveOriginalSave(const std::filesystem::path& folder,
         save.globals.push_back(std::move(global));
     }
     for (const kotor::Entity& entity : scene_.entities) {
-        if (entity.tag.empty()) {
+        if (entity.tag.empty() || entity.partyAvatar) {
             continue;
         }
         kotor::SavedObjectState state;
