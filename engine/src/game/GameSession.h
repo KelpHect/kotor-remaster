@@ -404,6 +404,7 @@ private:
     std::int32_t spawnEncounterCreatures(std::size_t index);
     void updateEncounters(float dt);
     void updateParty(float dt);
+    std::size_t ensureCompanionEntity(const CompanionState& companion);
     std::uint32_t objectForEntity(std::size_t index) const;
     void runHook(const std::string& hook, std::size_t entityIndex,
                  std::uint32_t entering = 0);

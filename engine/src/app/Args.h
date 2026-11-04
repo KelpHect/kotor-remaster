@@ -52,6 +52,7 @@ struct Options {
     bool chargen = false;
     bool chargenTest = false;
     bool campaignTest = false;
+    bool avatarTest = false;
     bool thirdPerson = false;
     bool noMovies = false;
     bool cameraNoClip = false;

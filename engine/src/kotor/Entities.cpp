@@ -867,7 +867,20 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
             std::string error;
             if (const std::shared_ptr<Mdl> model =
                     loadModel(install, scene.entities[index].model, error)) {
-                buildMesh(scene, install, static_cast<std::uint32_t>(index), model);
+                std::shared_ptr<Mdl> head;
+                if (appearances.has_value() && !model->hasNode("head_g")) {
+                    const std::string headName = creatureHeadModel(
+                        install, *appearances, scene.entities[index].appearance);
+                    if (!headName.empty()) {
+                        std::string headError;
+                        head = loadModel(install, headName, headError);
+                        if (!head && !headError.empty()) {
+                            scene.warnings.push_back(headName + ": " + headError);
+                        }
+                    }
+                }
+                buildMesh(scene, install, static_cast<std::uint32_t>(index), model,
+                          nullptr, {}, head, head ? "headhook" : "");
                 const Entity& spawned = scene.entities[index];
                 if (!spawned.weaponModel.empty()) {
                     std::string weaponError;
@@ -1099,7 +1112,21 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                 || entity.kind == EntityKind::Placeable)) {
             std::string error;
             if (const std::shared_ptr<Mdl> model = loadModel(install, entity.model, error)) {
-                buildMesh(scene, install, static_cast<std::uint32_t>(index), model);
+                std::shared_ptr<Mdl> head;
+                if (entity.kind == EntityKind::Creature && appearances.has_value()
+                    && !model->hasNode("head_g")) {
+                    const std::string headName = creatureHeadModel(
+                        install, *appearances, entity.appearance);
+                    if (!headName.empty()) {
+                        std::string headError;
+                        head = loadModel(install, headName, headError);
+                        if (!head && !headError.empty()) {
+                            scene.warnings.push_back(headName + ": " + headError);
+                        }
+                    }
+                }
+                buildMesh(scene, install, static_cast<std::uint32_t>(index), model,
+                          nullptr, {}, head, head ? "headhook" : "");
                 if (!entity.weaponModel.empty()) {
                     std::string weaponError;
                     if (const std::shared_ptr<Mdl> weapon =

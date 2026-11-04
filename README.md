@@ -41,6 +41,10 @@ modules: four live new-game traces, four retail saves, and a native-loader
 module sweep (178 retail action IDs, 0 missing). Quest dialogue branches are
 covered by the all-117-module matrix and all-DLG corpus; see
 [`docs/SPRINT14_REPORT.md`](docs/SPRINT14_REPORT.md).
+The post-Sprint-14 K1 playability closeout adds character generation, a
+third-person player avatar, in-scene dialogue faces, spendable level-up points
+and interactive Pazaak/swoop/turret panels; see
+[`docs/K1_PLAYABILITY.md`](docs/K1_PLAYABILITY.md).
 Sprint 12 remains complete (creature animation, skinning, weapons and cutscene
 cameras: MDL clips/controllers/skinning, `pause1`/`pause` playback, weapon hand
 hooks, GIT/DLG cameras with `CUT###W` clips and height presets, dangly/saber
