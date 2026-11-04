@@ -1,0 +1,149 @@
+{
+  "choices_ok": true,
+  "engine_actions": 1680,
+  "engine_details": {
+    "choices": 0,
+    "phases": {
+      "generic": 369,
+      "host": 161,
+      "probe": 13,
+      "specific": 1137
+    },
+    "transitions": 1
+  },
+  "engine_only": [
+    {
+      "action": 24,
+      "name": "GetArea"
+    },
+    {
+      "action": 31,
+      "name": "CreateItemOnObject"
+    },
+    {
+      "action": 51,
+      "name": "EffectAssuredHit"
+    },
+    {
+      "action": 62,
+      "name": "GetStringRight"
+    },
+    {
+      "action": 93,
+      "name": "GetFirstObjectInArea"
+    },
+    {
+      "action": 152,
+      "name": "SetReturnStrref"
+    },
+    {
+      "action": 220,
+      "name": "ApplyEffectToObject"
+    },
+    {
+      "action": 232,
+      "name": "StringToInt"
+    },
+    {
+      "action": 251,
+      "name": "GetLoadFromSaveGame"
+    },
+    {
+      "action": 262,
+      "name": "GetFirstInPersistentObject"
+    },
+    {
+      "action": 286,
+      "name": "GetHasSkill"
+    },
+    {
+      "action": 335,
+      "name": "GetDistanceToObject2D"
+    },
+    {
+      "action": 341,
+      "name": "GetClassByPosition"
+    },
+    {
+      "action": 497,
+      "name": "GetSubRace"
+    },
+    {
+      "action": 578,
+      "name": "GetGlobalBoolean"
+    },
+    {
+      "action": 580,
+      "name": "GetGlobalNumber"
+    },
+    {
+      "action": 581,
+      "name": "SetGlobalNumber"
+    },
+    {
+      "action": 713,
+      "name": "GetStandardFaction"
+    },
+    {
+      "action": 716,
+      "name": "SetMinOneHP"
+    },
+    {
+      "action": 719,
+      "name": "SetGlobalFadeIn"
+    },
+    {
+      "action": 720,
+      "name": "SetGlobalFadeOut"
+    },
+    {
+      "action": 723,
+      "name": "GetLastForcePowerUsed"
+    },
+    {
+      "action": 726,
+      "name": "GetWasForcePowerSuccessful"
+    },
+    {
+      "action": 733,
+      "name": "PlayMovie"
+    }
+  ],
+  "engine_trace": "docs\\evidence\\s14\\engine-semantic-unk_m41ad.jsonl",
+  "engine_unique": 57,
+  "executed_union": 370,
+  "expected_choices": 0,
+  "expected_transitions": 1,
+  "missing_all_execution": [],
+  "missing_all_implementation": [],
+  "missing_execution": [],
+  "missing_implementation": [],
+  "module": "unk_m41ad",
+  "module_used_actions": 163,
+  "pass": true,
+  "retail_actions": 12000,
+  "retail_only_not_in_module": [
+    8,
+    195,
+    221,
+    254,
+    256,
+    259,
+    261,
+    323,
+    375,
+    489,
+    522,
+    565,
+    701
+  ],
+  "retail_script_actions": 73,
+  "retail_trace": "docs\\evidence\\s14\\live-unkautosave-semantic.jsonl",
+  "retail_unique": 86,
+  "schema": "kotor.retail-differential/1",
+  "transitions_ok": true,
+  "vm_coverage": [
+    "docs\\evidence\\s14\\vm-actions.jsonl"
+  ],
+  "vm_unique": 357
+}
