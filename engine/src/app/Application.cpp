@@ -1574,6 +1574,182 @@ std::string resolveInstallPath(const Options& options)
     return "E:/SteamLibrary/steamapps/common/swkotor";
 }
 
+int runVfsTest(GameSession& game, const std::string& fixtureDirectory)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("vfs test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    const auto readBytes = [](const std::filesystem::path& path) {
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        std::vector<std::uint8_t> bytes;
+        if (!file) {
+            return bytes;
+        }
+        const std::streamoff size = file.tellg();
+        if (size <= 0) {
+            return bytes;
+        }
+        file.seekg(0, std::ios::beg);
+        bytes.resize(static_cast<std::size_t>(size));
+        if (!file.read(reinterpret_cast<char*>(bytes.data()), size)) {
+            bytes.clear();
+        }
+        return bytes;
+    };
+    const auto writeBytes = [](const std::filesystem::path& path,
+                               const std::vector<std::uint8_t>& bytes) {
+        std::error_code error;
+        if (path.has_parent_path()) {
+            std::filesystem::create_directories(path.parent_path(), error);
+        }
+        std::ofstream file(path, std::ios::binary | std::ios::trunc);
+        if (!file) {
+            return false;
+        }
+        if (!bytes.empty()) {
+            file.write(reinterpret_cast<const char*>(bytes.data()),
+                       static_cast<std::streamsize>(bytes.size()));
+        }
+        return static_cast<bool>(file);
+    };
+
+    const std::filesystem::path temporary =
+        std::filesystem::temp_directory_path() / "kotor-remaster-vfs-test";
+    std::error_code error;
+    std::filesystem::remove_all(temporary, error);
+    std::filesystem::create_directories(temporary / "Override", error);
+
+    kotor::Install install(game.installPath());
+    install.bindModule("end_m01aa");
+    install.addPacks();
+    install.addLips();
+    std::string source;
+    const auto moduleUtd = install.find("end_door05", 2042, &source);
+    check(moduleUtd.has_value() && source == "modules/end_m01aa_s.rim",
+          "module_rim_layer");
+    const auto appearance = install.find("appearance",
+                                         kotor::resType(kotor::ResType::TwoDa), &source);
+    check(appearance.has_value() && source.find("(KEY)") != std::string::npos,
+          "bif_layer");
+    check(install.find("abilities", 2047, &source).has_value()
+              && source == "patch.erf",
+          "patch_layer");
+    kotor::Install rawInstall(game.installPath());
+    check(rawInstall.find("gui_click", 4, &source).has_value()
+              && source.find("(KEY)") != std::string::npos,
+          "key_bif_layer");
+
+    if (appearance.has_value()) {
+        std::vector<std::uint8_t> overrideBytes = *appearance;
+        overrideBytes.push_back(0u);
+        check(writeBytes(temporary / "Override" / "appearance.2da", overrideBytes),
+              "override_write");
+        install.setOverlayRoot(temporary);
+        const auto overridden = install.find(
+            "appearance", kotor::resType(kotor::ResType::TwoDa), &source);
+        check(overridden.has_value() && *overridden == overrideBytes
+                  && source.find("(loose)") != std::string::npos,
+              "loose_override");
+        std::filesystem::remove(temporary / "Override" / "appearance.2da", error);
+        install.setOverlayRoot(temporary);
+        check(install.find("appearance", kotor::resType(kotor::ResType::TwoDa),
+                           &source).has_value()
+                  && source.find("(KEY)") != std::string::npos,
+              "override_removed");
+    }
+    if (moduleUtd.has_value()) {
+        std::vector<std::uint8_t> overrideBytes = *moduleUtd;
+        overrideBytes.push_back(0u);
+        check(writeBytes(temporary / "Override" / "end_door05.utd", overrideBytes),
+              "module_override_write");
+        install.setOverlayRoot(temporary);
+        const auto overridden = install.find("end_door05", 2042, &source);
+        check(overridden.has_value() && *overridden == overrideBytes
+                  && source.find("(loose)") != std::string::npos,
+              "override_beats_rim");
+        std::filesystem::remove(temporary / "Override" / "end_door05.utd", error);
+        install.setOverlayRoot(temporary);
+    }
+
+    const auto patchGui = install.find("abilities", 2047, &source);
+    if (patchGui.has_value()) {
+        std::vector<std::uint8_t> overrideBytes = *patchGui;
+        overrideBytes.push_back(0u);
+        check(writeBytes(temporary / "Override" / "abilities.gui", overrideBytes),
+              "patch_override_write");
+        install.setOverlayRoot(temporary);
+        const auto overridden = install.find("abilities", 2047, &source);
+        check(overridden.has_value() && *overridden == overrideBytes
+                  && source.find("(loose)") != std::string::npos,
+              "override_beats_patch");
+        std::filesystem::remove(temporary / "Override" / "abilities.gui", error);
+    }
+
+    const std::filesystem::path sourceLip =
+        std::filesystem::path(game.installPath()) / "lips" / "localization.mod";
+    std::error_code copyError;
+    std::filesystem::create_directories(temporary / "modules", copyError);
+    std::filesystem::copy_file(sourceLip, temporary / "modules" / "end_m01aa.mod",
+                               std::filesystem::copy_options::overwrite_existing,
+                               copyError);
+    check(!copyError, "mod_fixture");
+    install.setOverlayRoot(temporary);
+    install.bindModule("end_m01aa");
+    install.addPacks();
+    install.addLips();
+    const auto modLip = install.find("nglobebant00102_",
+                                     kotor::resType(kotor::ResType::Lip), &source);
+    check(modLip.has_value() && source == "modules/end_m01aa.mod", "mod_layer");
+    std::filesystem::remove(temporary / "modules" / "end_m01aa.mod", error);
+    install.setOverlayRoot(temporary);
+    install.bindModule("end_m01aa");
+    install.addPacks();
+    install.addLips();
+    const auto lipsLip = install.find("nglobebant00102_",
+                                      kotor::resType(kotor::ResType::Lip), &source);
+    check(lipsLip.has_value() && source.find("lips/") != std::string::npos,
+          "lips_layer");
+
+    if (!fixtureDirectory.empty()) {
+        const auto baseBytes = readBytes(
+            std::filesystem::path(fixtureDirectory) / "merge_base.2da");
+        const auto patchBytes = readBytes(
+            std::filesystem::path(fixtureDirectory) / "merge_patch.2da");
+        check(!baseBytes.empty() && !patchBytes.empty(), "merge_fixtures");
+        if (!baseBytes.empty() && !patchBytes.empty()) {
+            try {
+                const kotor::TwoDa base = kotor::TwoDa::parse(baseBytes, "merge_base.2da");
+                const kotor::TwoDa patch = kotor::TwoDa::parse(patchBytes, "merge_patch.2da");
+                const kotor::TwoDa merged = kotor::TwoDa::merge(base, patch, "merged.2da");
+                check(merged.columnIndex("added") >= 0, "merge_column");
+                check(merged.cell("0", "value") == "99"
+                          && merged.cell("0", "added") == "P"
+                          && merged.cell("0", "name") == "alpha",
+                      "merge_overwrite");
+                check(merged.cell("1", "value") == "20"
+                          && merged.cell("1", "added").empty(),
+                      "merge_untouched");
+                check(merged.rowIndex("2") >= 0
+                          && merged.cell("2", "value") == "30"
+                          && merged.cell("2", "added") == "Q",
+                      "merge_append");
+            } catch (const kotor::FormatError& exception) {
+                logWarn(concat("vfs test: merge parse failed: ", exception.what()));
+                check(false, "merge_parse");
+            }
+        }
+    } else {
+        check(false, "merge_fixtures");
+    }
+
+    install.setOverlayRoot(game.installPath());
+    std::filesystem::remove_all(temporary, error);
+    logInfo("vfs test: PASS");
+    return ok ? 0 : 65;
+}
+
 int runLocalizationTest(GameSession& game)
 {
     bool ok = true;
@@ -4061,6 +4237,9 @@ int runApplication(const Options& options)
             }
             if (options.localizationTest) {
                 return runLocalizationTest(*game);
+            }
+            if (options.vfsTest) {
+                return runVfsTest(*game, options.vfsFixtures);
             }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);

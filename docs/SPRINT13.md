@@ -1,4 +1,4 @@
-# Sprint 13 - audio, media, GUI, localization and minigame parity
+# Sprint 13 - audio, media, GUI, localization, mods and minigame parity
 
 Status: **complete - gate S13 met (2026-11-04)**. Sprint 12 closed animation/skinning, weapons, cutscene
 cameras and visual FX. Sprint 13 adds the runtime audio layer: shipped WAV/MP3
@@ -54,17 +54,21 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
     `dialog_<id>.tlk` fallback and mismatch retention; localized voice paths
     `streamwaves/<module>/<speaker>/<resref>.wav`; 117 `_loc.mod` archives plus
     `localization.mod` (118 localized LIPs) parsed and asserted.
-12. **Minigames** - deterministic pazaak (40-card deck, four side cards,
+12. **Mods/Override VFS** - explicit five-pass first-match overlay (flat
+    Override/streams, patch/textures ERF, module RIMs, `.mod`/lips/texture
+    packs, KEY/BIF), overlay-root support, source provenance and TSLPatcher-
+    style 2DA row/column merges.
+13. **Minigames** - deterministic pazaak (40-card deck, four side cards,
     first to two sets, `PlayPazaak`/`GetLastPazaakResult` and wager
     settlement), swoop (throttle/boost/brake, 3 x 3,000 m laps) and turret
     (five approaching targets, shots/hits/score, arrival damage) state
     machines with seeded transcripts.
-13. **Device** - SDL3 audio stream pulls the mixer in live frames; headless
+14. **Device** - SDL3 audio stream pulls the mixer in live frames; headless
     tests exercise the same mixer without a device.
-14. **Regression** - 41/41 CTest, 117/117 modules with 0 warnings, VM
+15. **Regression** - 42/42 CTest, 117/117 modules with 0 warnings, VM
     8,666/8,666, scene parity PASS, Python 143 tests / 7 skips, install
     sentinel 0 session changes.
-15. **Evidence and docs** - audio/media/localization/GUI/minigame tests, phase log,
+16. **Evidence and docs** - audio/media/localization/VFS/GUI/minigame tests, phase log,
     module/VM/parity/tools/install logs, report and technical note.
 
 ## Lanes
@@ -82,7 +86,8 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
 | s13-09-gui | `.gui` parser, corpus assertions, interaction and renderer | `engine/src/kotor/Gui.*`, `engine/src/game/GuiSystem.*`, `Application.cpp` |
 | s13-10-minigames | pazaak/swoop/turret state machines and gate | `engine/src/game/Minigames.*`, `Application.cpp` |
 | s13-11-localization | TLK language and localized voice/LIP paths | `engine/src/kotor/Localization.*`, `GameSession.*` |
-| s13-12-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
+| s13-12-mods | five-pass VFS, Override root and 2DA merge | `engine/src/kotor/Install.*`, `TwoDa.*`, `Application.cpp` |
+| s13-13-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
 
 ## Next sprint
 

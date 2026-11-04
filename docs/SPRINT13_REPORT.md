@@ -1,4 +1,4 @@
-# Sprint 13 report - audio, media, GUI, localization and minigame parity
+# Sprint 13 report - audio, media, GUI, localization, mods and minigame parity
 
 Status: **complete - gate S13 met (2026-11-04)**. Sprint 12 closed
 animation/skinning, weapons, cutscene cameras and visual FX. Sprint 13 adds
@@ -6,14 +6,14 @@ the runtime audio layer: shipped WAV/MP3 streams decode, area music/ambience
 and UTS sound emitters load, dialogue voice-over plays, a deterministic mixer
 provides 3D attenuation/pan and EAX-style reverb, and the script sound/music
 actions are bridged. It also closes SSF sound sets, Bink container/pixel
-decode and presentation, LIP visemes, GUI screens/interaction, localization
-and the three minigame state machines.
+decode and presentation, LIP visemes, GUI screens/interaction, localization,
+mods/Override precedence and the three minigame state machines.
 
 ## 1. Build and test result
 
 ```text
-100% tests passed, 0 tests failed out of 41
-Total Test time (real) = 173.49 sec
+100% tests passed, 0 tests failed out of 42
+Total Test time (real) = 176.46 sec
 ```
 
 The new targets are `kotor_audio`, `kotor_media`, `kotor_gui` and
@@ -211,7 +211,36 @@ Gate assertions: `tlk_load`, `tlk_language`, `tlk_entries`, `tlk_sound`,
 `localized_lip_resource`, `localized_lip`, `session_language`, `voice_decode`,
 `voice_pcm`.
 
-## 10. Minigames
+## 10. Mods/Override VFS
+
+- `Install` now searches explicit first-match passes: (1) flat `Override/`,
+  `movies/`, `streamwaves/`, `streammusic/`; (2) `patch.erf` before
+  `Override/textures.erf`; (3) active module `_a`/`_adx`/`_s` RIMs; (4)
+  module `.mod`/`<stem>.rim`, `lips/*.mod`, texture packs; (5) KEY/BIF.
+  Within a pass the last-added table wins; within a table the first duplicate
+  `(resref, type)` wins.
+- `setOverlayRoot` supports a profile overlay outside the install; loose files
+  are mapped by extension and searched overlay-last/first. `find(..., &source)`
+  reports the winning table for diagnostics.
+- `rims/global.rim` is deliberately not mounted for area loads: its 2DA copies
+  reference models absent from the shipped BIF set (mounting it lost 93 entity
+  meshes and produced 61 model warnings). The guard preserves the baseline.
+- `TwoDa::merge` implements TSLPatcher-style appends: new columns are added,
+  non-empty/non-`****` patch cells overwrite, untouched cells remain, and new
+  rows append without renumbering the base rows. The ASCII V2.0 parser was
+  also completed (it was previously stubbed).
+- Verified: Override beats the BIF, the `_s` RIM and `patch.erf`; a temporary
+  `modules/<stem>.mod` beats `lips/localization.mod` for a shared LIP; removing
+  it restores the lips source.
+
+Gate assertions: `module_rim_layer`, `bif_layer`, `patch_layer`,
+`key_bif_layer`, `override_write`, `loose_override`, `override_removed`,
+`module_override_write`, `override_beats_rim`, `patch_override_write`,
+`override_beats_patch`, `mod_fixture`, `mod_layer`, `lips_layer`,
+`merge_fixtures`, `merge_column`, `merge_overwrite`, `merge_untouched`,
+`merge_append`.
+
+## 11. Minigames
 
 Deterministic rule/state machines in `engine/src/game/Minigames.*`:
 
@@ -244,35 +273,36 @@ Gate assertions: `pazaak_deterministic`, `pazaak_seed_varies`,
 `pazaak_script_result`, `pazaak_session_start`, `pazaak_session_match_over`,
 `pazaak_session_result`, `pazaak_wager`.
 
-## 11. Device
+## 12. Device
 
 `audio::Output` opens an SDL3 playback stream (48 kHz float stereo) and pulls
 the mixer in the audio callback. Live runs log `Audio device: <name>`; headless
 tests use the same mixer without a device. The output stream is destroyed
 before `SDL_Quit` (the parity crash fix).
 
-## 12. Regression
+## 13. Regression
 
-- **CTest: 41/41 passed** (173.49 s).
+- **CTest: 42/42 passed** (176.46 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0000**, PASS.
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
-## 13. Next sprint
+## 14. Next sprint
 
 Sprint 13 closes audio, Bink/LIP media, native movie presentation, Bink audio,
-GUI interaction, localization and the facial rig. Mods/Override, KotOR 2 world
+GUI interaction, localization, mods/Override and the facial rig. KotOR 2 world
 loading and faction/P6 are planned in
 [`docs/SPRINT14.md`](SPRINT14.md); the shipped-data evidence is `media.log`
 (61 BIK, native RGBA SHA-256, 18,206 LIP, 107 head rows / 106 models / 0 viseme
-clips), `localization.log` and `bik-oracle.txt`.
+clips), `localization.log`, `vfs.log` and `bik-oracle.txt`.
 
 ## Evidence index
 
 - `docs/evidence/s13/audio.log`
 - `docs/evidence/s13/localization.log`
+- `docs/evidence/s13/vfs.log`
 - `docs/evidence/s13/media.log`
 - `docs/evidence/s13/gui.log`
 - `docs/evidence/s13/gui-state.png`, `gui-mainmenu.png`
@@ -288,4 +318,6 @@ clips), `localization.log` and `bik-oracle.txt`.
 - `docs/evidence/s13/tools-tests.log`
 - `docs/evidence/s13/install-sentinel.log`
 - Fixture: `engine/tests/fixtures/audio_script_test.nss/.ncs`
-- Technical note: [docs/recon/51_AUDIO.md](recon/51_AUDIO.md)
+- VFS fixtures: `engine/tests/fixtures/vfs/merge_base.2da`, `merge_patch.2da`
+- Technical notes: [docs/recon/51_AUDIO.md](recon/51_AUDIO.md),
+  [docs/recon/57_MODS_VFS.md](recon/57_MODS_VFS.md)
