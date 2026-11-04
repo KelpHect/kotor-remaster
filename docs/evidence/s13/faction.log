@@ -1,0 +1,49 @@
+[INFO] Language: English (0) tlk entries=49265
+[INFO] KotOR module end_m01aa area m01aa from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 15 vertices: 237594 indices: 237594 batches: 49
+[INFO]   textures: 84 collision vertices: 850 facets: 1365
+[INFO]   entities: 218 (door 15, placeable 60, creature 26, waypoint 58, store 0, encounter 0)
+[INFO]   encounter volumes: 0
+[INFO]   entry: 15.4248, 20.1215, -1.275
+[INFO]   entity meshes: 142 triggers: 13 warnings: 0
+[INFO]   script hooks: 284 on 54 entities; scene hooks: 3; script runs: 25
+[INFO]   entity mesh 0 end_door05 verts=564 local=-3.07263,-0.121998,-0.047403 .. 3.08736,0.123205,3.00955
+[INFO]   entity mesh 1 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   entity mesh 2 end_door06 verts=216 local=-3.27325,-2.27388,2.55884 .. 0.366864,-1.71284,3.09327
+[INFO]   creature mesh Carth verts=8208 local=-0.612183,-0.286822,-0.00207151 .. 0.612183,0.167699,1.5574
+[INFO]   bounds: -170.51, -32.6442, -204.652 .. 238.793, 471.187, 291.201
+[INFO] faction test: loaded=1
+[INFO] faction test: count=1
+[INFO] faction test: names=1
+[INFO] faction test: parents=1
+[INFO] faction test: relations=1
+[INFO] faction test: player_hostile1=1
+[INFO] faction test: player_friendly1=1
+[INFO] faction test: player_neutral=1
+[INFO] faction test: player_endar_spire=1
+[INFO] faction test: player_mirror=1
+[INFO] faction test: self_friendly=1
+[INFO] faction test: czerka_sacrifice=1
+[INFO] faction test: zone_czerka=1
+[INFO] faction test: hostility=1
+[INFO] faction test: entity_targets=1
+[INFO] faction test: sith_hostile=1
+[INFO] faction test: soldier_friendly=1
+[INFO] faction test: script_loaded=1
+[INFO] faction test: script_ran=1
+[INFO] faction test: script_before=1
+[INFO] faction test: script_after=1
+[INFO] faction test: script_bridge=1
+[INFO] faction test: adjust=1
+[INFO] faction test: adjust_value=1
+[INFO] faction test: save=1
+[INFO] faction test: fac_parse=1
+[INFO] faction test: fac_names=1
+[INFO] faction test: fac_value=1
+[INFO] faction test: fac_script_reset=1
+[INFO] faction test: reload=1
+[INFO] faction test: fac_reload=1
+[INFO] faction test: fac_reload_hostility=1
+[INFO] faction test: count=21 relations=405 player/hostile1=0 player/friendly1=100 player/endar=0
+[INFO] faction test: PASS

@@ -2,6 +2,7 @@
 
 #include "game/AudioSystem.h"
 #include "game/FacialRig.h"
+#include "game/Factions.h"
 #include "game/Minigames.h"
 #include "game/Rules.h"
 #include "kotor/BinkDecoder.h"
@@ -82,6 +83,23 @@ public:
     const AudioSystem& audio() const { return *audio_; }
     FacialRig& facialRig() { return facialRig_; }
     const FacialRig& facialRig() const { return facialRig_; }
+    FactionSystem& factions() { return factions_; }
+    const FactionSystem& factions() const { return factions_; }
+
+    int reputation(int factionA, int factionB) const {
+        return factions_.reputation(factionA, factionB);
+    }
+    bool setReputation(int factionA, int factionB, int value) {
+        const bool changed = factions_.setReputation(factionA, factionB, value);
+        refreshHostility();
+        return changed;
+    }
+    bool adjustReputation(int factionA, int factionB, int delta) {
+        const bool changed = factions_.adjustReputation(factionA, factionB, delta);
+        refreshHostility();
+        return changed;
+    }
+    int factionOfObject(std::uint32_t object) const;
 
     void update(float dt, const InputState& input);
     SceneCamera camera() const;
@@ -314,6 +332,7 @@ private:
 
     void initScriptWorld();
     void syncScriptWorld();
+    void refreshHostility();
     void initMerchants();
     void spawnEncounters();
     std::int32_t spawnEncounterCreatures(std::size_t index);
@@ -353,6 +372,7 @@ private:
     std::optional<kotor::LipSync> activeLip_;
     float lipTime_ = 0.0f;
     FacialRig facialRig_;
+    FactionSystem factions_;
     bool moviePlaying_ = false;
     std::string movieName_;
     float movieTime_ = 0.0f;

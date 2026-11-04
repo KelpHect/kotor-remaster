@@ -2,6 +2,8 @@
 
 #include "audio/Output.h"
 #include "core/Log.h"
+#include "game/AudioSystem.h"
+#include "game/Factions.h"
 #include "game/GameSession.h"
 #include "game/GuiSystem.h"
 #include "game/Minigames.h"
@@ -1572,6 +1574,116 @@ std::string resolveInstallPath(const Options& options)
     }
 #endif
     return "E:/SteamLibrary/steamapps/common/swkotor";
+}
+
+int runFactionTest(GameSession& game, const std::string& scriptPath)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("faction test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+
+    const FactionSystem& factions = game.factions();
+    check(factions.loaded(), "loaded");
+    check(factions.count() == 21, "count");
+    check(factions.name(0) == "Player" && factions.name(1) == "Hostile_1"
+              && factions.name(14) == "Endar_Spire" && factions.name(20) == "Sacrifice",
+          "names");
+    check(factions.parent(0) == -1, "parents");
+    check(factions.relations() == 405, "relations");
+
+    // repute.2da defaults: column 0 holds the name, row 0 holds player
+    // relations, and the remaining cells are faction-to-faction standings.
+    check(factions.reputation(0, 1) == 0, "player_hostile1");
+    check(factions.reputation(0, 2) == 100, "player_friendly1");
+    check(factions.reputation(0, 5) == 50, "player_neutral");
+    check(factions.reputation(0, 14) == 0, "player_endar_spire");
+    check(factions.reputation(0, 7) == factions.reputation(7, 0), "player_mirror");
+    check(factions.reputation(1, 1) == 100, "self_friendly");
+    check(factions.reputation(18, 20) == 0, "czerka_sacrifice");
+    check(factions.reputation(19, 18) == 100, "zone_czerka");
+    check(factions.hostile(0, 1) && !factions.hostile(0, 2)
+              && !factions.hostile(0, 5) && factions.hostile(0, 14),
+          "hostility");
+
+    // GIT creatures are classified by faction rather than a hardcoded id.
+    std::size_t sith = static_cast<std::size_t>(-1);
+    std::size_t soldier = static_cast<std::size_t>(-1);
+    for (std::size_t i = 0; i < game.scene().entities.size(); ++i) {
+        const kotor::Entity& entity = game.scene().entities[i];
+        if (entity.kind != kotor::EntityKind::Creature) {
+            continue;
+        }
+        if (sith == static_cast<std::size_t>(-1) && entity.faction == 1) {
+            sith = i;
+        }
+        if (soldier == static_cast<std::size_t>(-1) && entity.faction == 4) {
+            soldier = i;
+        }
+    }
+    check(sith != static_cast<std::size_t>(-1) && soldier != static_cast<std::size_t>(-1),
+          "entity_targets");
+    if (sith != static_cast<std::size_t>(-1) && soldier != static_cast<std::size_t>(-1)) {
+        check(game.scene().entities[sith].hostile, "sith_hostile");
+        check(!game.scene().entities[soldier].hostile, "soldier_friendly");
+    }
+
+    // Script bridge: GetReputation/AdjustReputation on OBJECT_SELF and a
+    // shipped faction-1 creature.
+    std::ifstream scriptFile(scriptPath, std::ios::binary | std::ios::ate);
+    std::vector<std::uint8_t> scriptBytes;
+    if (scriptFile) {
+        const std::streamoff size = scriptFile.tellg();
+        scriptFile.seekg(0, std::ios::beg);
+        scriptBytes.resize(static_cast<std::size_t>(size));
+        if (!scriptBytes.empty()) {
+            scriptFile.read(reinterpret_cast<char*>(scriptBytes.data()), size);
+        }
+    }
+    check(!scriptBytes.empty(), "script_loaded");
+    const std::uint32_t pc = game.scriptWorld().pc;
+    check(game.runScriptNcsForTest("faction_script_test", scriptBytes, pc),
+          "script_ran");
+    check(game.scriptWorld().getLocal(pc, "10").asInt() == 0, "script_before");
+    check(game.scriptWorld().getLocal(pc, "11").asInt() == 25, "script_after");
+    check(game.reputation(0, 1) == 25, "script_bridge");
+    game.setReputation(0, 1, 0);
+
+    // FAC round-trip through an original save.
+    const int base = game.reputation(0, 7);
+    check(game.adjustReputation(0, 7, 30), "adjust");
+    const int expected = std::min(100, base + 30);
+    check(game.reputation(0, 7) == expected, "adjust_value");
+    const std::filesystem::path saveFolder =
+        std::filesystem::temp_directory_path() / "kotor-faction-test-save";
+    std::error_code error;
+    std::filesystem::remove_all(saveFolder, error);
+    const bool saved = game.saveOriginalSave(saveFolder, "Faction Test");
+    check(saved, "save");
+    if (saved) {
+        const kotor::OriginalSave written = kotor::readOriginalSave(saveFolder);
+        FactionSystem restored;
+        std::string facError;
+        check(restored.loadFac(written.repute, facError), "fac_parse");
+        check(restored.count() == 21 && restored.name(0) == "Player", "fac_names");
+        check(restored.reputation(0, 7) == expected, "fac_value");
+        check(restored.reputation(0, 1) == 0, "fac_script_reset");
+        GameSession reloaded(game.installPath(), game.module());
+        check(reloaded.loadOriginalSave(saveFolder), "reload");
+        check(reloaded.reputation(0, 7) == expected, "fac_reload");
+        check(reloaded.reputation(0, 1) == 0, "fac_reload_hostility");
+    }
+    std::filesystem::remove_all(saveFolder, error);
+    game.setReputation(0, 7, base);
+
+    logInfo(concat("faction test: count=", factions.count(),
+                   " relations=", factions.relations(),
+                   " player/hostile1=", factions.reputation(0, 1),
+                   " player/friendly1=", factions.reputation(0, 2),
+                   " player/endar=", factions.reputation(0, 14)));
+    logInfo(ok ? "faction test: PASS" : "faction test: FAIL");
+    return ok ? 0 : 67;
 }
 
 int runK2Test(GameSession& game)
@@ -4357,6 +4469,9 @@ int runApplication(const Options& options)
             }
             if (options.k2Test) {
                 return runK2Test(*game);
+            }
+            if (options.factionTest) {
+                return runFactionTest(*game, options.factionScript);
             }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);

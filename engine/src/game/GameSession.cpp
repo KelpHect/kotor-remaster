@@ -571,6 +571,10 @@ GameSession::GameSession(std::string installPath, std::string module, int langua
     if (!facialRig_.load(install_, facialError)) {
         logEvent("facial rig: " + facialError);
     }
+    std::string factionError;
+    if (!factions_.load(install_, factionError)) {
+        logEvent("factions: " + factionError);
+    }
     if (!loadModule(module, nullptr, {})) {
         throw kotor::FormatError("cannot load module " + module);
     }
@@ -588,6 +592,7 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
     kotor::Scene loaded = kotor::loadModule(install_, module);
     module_ = module;
     scene_ = std::move(loaded);
+    refreshHostility();
     if (spawn != nullptr) {
         position_ = *spawn;
         yaw_ = std::atan2(scene_.entryDirection.y, scene_.entryDirection.x);
@@ -886,6 +891,34 @@ void GameSession::syncPlayerToScriptWorld()
     pc->attrs["good_evil"] = static_cast<std::int64_t>(character_.alignment);
     pc->attrs["force_points"] = static_cast<std::int64_t>(character_.fp);
     pc->attrs["max_force_points"] = static_cast<std::int64_t>(character_.maxFp);
+    pc->attrs["faction"] = static_cast<std::int64_t>(0);
+}
+
+void GameSession::refreshHostility()
+{
+    if (!factions_.loaded()) {
+        return;
+    }
+    for (kotor::Entity& entity : scene_.entities) {
+        if (entity.kind != kotor::EntityKind::Creature) {
+            continue;
+        }
+        entity.hostile = entity.hostileOverride
+            || factions_.hostile(0, static_cast<int>(entity.faction));
+    }
+}
+
+int GameSession::factionOfObject(std::uint32_t object) const
+{
+    const script::GameObject* entry = scriptWorld_.get(object);
+    if (entry == nullptr) {
+        return 0;
+    }
+    const auto it = entry->attrs.find("faction");
+    if (it != entry->attrs.end() && std::holds_alternative<std::int64_t>(it->second)) {
+        return static_cast<int>(std::get<std::int64_t>(it->second));
+    }
+    return 0;
 }
 
 void GameSession::syncEntityToScriptWorld(std::size_t index)
@@ -1207,6 +1240,7 @@ std::int32_t GameSession::spawnEncounterCreatures(std::size_t encounterIndex)
         }
         const kotor::Entity& spawned = scene_.entities[entityIndex];
         scene_.entities[entityIndex].hostile = true;
+        scene_.entities[entityIndex].hostileOverride = true;
         script::GameObject& object =
             scriptWorld_.addObject(spawned.tag, 100, 0, true);
         object.position = {spawned.position.x, spawned.position.y, spawned.position.z};
@@ -1223,6 +1257,7 @@ std::int32_t GameSession::spawnEncounterCreatures(std::size_t encounterIndex)
             std::max(1, static_cast<int>(creature.challengeRating)));
         object.attrs["class_id"] = static_cast<std::int64_t>(0);
         object.attrs["xp"] = static_cast<std::int64_t>(0);
+        object.attrs["faction"] = static_cast<std::int64_t>(spawned.faction);
         entityObjects_.push_back(object.id);
         if (creature.singleSpawn) {
             singleSpawnUsed.insert(creature.resref);
@@ -1403,6 +1438,7 @@ void GameSession::initScriptWorld()
         object.attrs["level"] = static_cast<std::int64_t>(1);
         object.attrs["class_id"] = static_cast<std::int64_t>(0);
         object.attrs["xp"] = static_cast<std::int64_t>(0);
+        object.attrs["faction"] = static_cast<std::int64_t>(entity.faction);
         entityObjects_[i] = object.id;
     }
     scriptWorld_.party.clear();
@@ -3335,6 +3371,27 @@ std::optional<std::vector<script::Value>> GameSession::action(
             }
         }
         return intCells(0);
+    case 208: // GetReputation
+        return intCells(factions_.reputation(factionOfObject(objectArg(0)),
+                                             factionOfObject(objectArg(1))));
+    case 209: // AdjustReputation
+        adjustReputation(factionOfObject(objectArg(0)),
+                         factionOfObject(objectArg(1)),
+                         static_cast<int>(intArg(2)));
+        return std::vector<script::Value>{};
+    case 186: { // GetFactionAverageReputation
+        const int target = factionOfObject(objectArg(1));
+        std::int64_t sum = 0;
+        std::int64_t count = 0;
+        for (const std::uint32_t member : world.party) {
+            if (world.get(member) == nullptr) {
+                continue;
+            }
+            sum += factions_.reputation(factionOfObject(member), target);
+            ++count;
+        }
+        return intCells(count > 0 ? sum / count : 0);
+    }
     case 367: // AddJournalQuestEntry
         scriptLog_.push_back("journal action " + stringArg(0) + " = "
                              + std::to_string(intArg(1)));
@@ -4329,6 +4386,14 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder)
     originalPortrait_ = saved.portrait;
     originalTimePlayed_ = saved.timePlayed;
     originalRepute_ = saved.repute;
+    if (!originalRepute_.empty()) {
+        std::string factionError;
+        if (!factions_.loadFac(originalRepute_, factionError)) {
+            logEvent("REPUTE: " + factionError);
+        } else {
+            refreshHostility();
+        }
+    }
     originalOuterExtras_ = saved.preservedOuter;
     originalPreservedModules_ = saved.preservedModules;
     position_ = saved.position;
@@ -4380,7 +4445,7 @@ bool GameSession::saveOriginalSave(const std::filesystem::path& folder,
     save.cha = character_.cha;
     save.playedSeconds = originalTimePlayed_ + static_cast<std::int32_t>(elapsed_);
     save.timePlayed = save.playedSeconds;
-    save.repute = originalRepute_;
+    save.repute = factions_.loaded() ? factions_.saveFac() : originalRepute_;
     save.preservedOuter = originalOuterExtras_;
     save.preservedModules = originalPreservedModules_;
     for (const std::int32_t feat : character_.feats) {

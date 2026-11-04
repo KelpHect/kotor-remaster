@@ -788,6 +788,7 @@ struct Entity {
     float forceSuppressedTimer = 0.0f;
     std::vector<ActiveEffect> effects;
     bool hostile = false;
+    bool hostileOverride = false;
     bool dead = false;
     bool useable = false;
     bool open = false;

@@ -1,21 +1,26 @@
-# Sprint 14 - faction reputation, P6 and the remaining content parity
+# Sprint 14 - P6 all-area content parity
 
 Status: **planned**. Sprint 13 closed audio, SSF sound sets, Bink containers,
 native Bink pixel decode/presentation, Bink Audio sync, LIP viseme timelines,
 the procedural facial rig, GUI screens/interaction, localization,
-mods/Override precedence, KotOR 2 world loading and the pazaak/swoop/turret
-state machines. Sprint 14 covers the remaining content/simulation layers.
+mods/Override precedence, KotOR 2 world loading, faction reputation and the
+pazaak/swoop/turret state machines. Sprint 14 covers the remaining P6 content
+checklist.
 
 ## Why this is a separate sprint
 
-- **Faction reputation** is a rules/simulation layer over the shipped `.fac`
-  tables and script actions.
-- **P6** is the all-area content checklist across the 117 KotOR 1 modules.
+P6 is the full-game checklist from `docs/MASTER_PLAN.md`: every module, quest,
+dialogue, cutscene, item, creature, encounter and localization path, plus
+differential playthroughs, save/load matrix, performance, controller support
+and legal review. It is a content/verification program, not a single runtime
+feature.
 
 ## Gate S14
 
-1. **Faction reputation** - faction simulation and script/store consequences.
-2. **P6** - all-area content checklist and remaining parity.
+1. **P6 content checklist** - all-area content coverage and differential
+   playthroughs.
+2. **Release checks** - performance budgets, controller/accessibility and
+   legal review.
 3. **Regression** - full CTest, 117-module sweep, VM parity, GL/Vulkan parity,
    Python suite and install sentinel.
 
@@ -37,5 +42,7 @@ state machines. Sprint 14 covers the remaining content/simulation layers.
   2DA merge evidence.
 - `docs/evidence/s13/k2.log`, `docs/recon/58_KOTOR2.md` - K2 profile, geometry
   layout and three loaded areas.
+- `docs/evidence/s13/faction.log`, `docs/recon/59_FACTIONS.md` - repute matrix,
+  script actions, hostility and FAC round-trip.
 - `docs/recon/51_AUDIO.md`, `docs/recon/54_FACIAL_RIG.md` - stream/mixer and
   viseme rig details.
