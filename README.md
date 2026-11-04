@@ -34,7 +34,7 @@ parity). Sprint 14+ remains: Bink pixel presentation and facial morphs,
 non-default `CamVidEffect` semantics (none in the K1 corpus), full `.gui`,
 minigames, localization, mods/Override, KotOR 2 world loading, faction
 reputation simulation and the P6 content checklist.
-Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT13.md` and their
+Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT14.md` and their
 `*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
@@ -258,6 +258,7 @@ Start with:
 - [`docs/SPRINT11.md`](docs/SPRINT11.md) - Sprint 11 plan: gate S11, lanes, non-goals
 - [`docs/SPRINT13_REPORT.md`](docs/SPRINT13_REPORT.md) - Sprint 13 (audio/EAX) exit report
 - [`docs/SPRINT13.md`](docs/SPRINT13.md) - Sprint 13 plan: gate S13, lanes, non-goals
+- [`docs/SPRINT14.md`](docs/SPRINT14.md) - Sprint 14 plan: Bink renderer, facial rig and remaining parity
 - [`docs/recon/51_AUDIO.md`](docs/recon/51_AUDIO.md) - audio streams, mixer, area sound and EAX
 - [`docs/SPRINT12_REPORT.md`](docs/SPRINT12_REPORT.md) - Sprint 12 (animation/skinning) exit report
 - [`docs/SPRINT12.md`](docs/SPRINT12.md) - Sprint 12 plan: gate S12, lanes, non-goals
