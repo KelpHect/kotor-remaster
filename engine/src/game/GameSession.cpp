@@ -42,6 +42,30 @@ const char* uiPanelName(UiPanel panel)
     return "none";
 }
 
+bool GameSession::applyGuiAction(const std::string& tag)
+{
+    if (tag == "LBL_ICON1") {
+        toggleUiPanel(UiPanel::Character);
+        return true;
+    }
+    if (tag == "LBL_ICON2") {
+        toggleUiPanel(UiPanel::Inventory);
+        return true;
+    }
+    if (tag == "LBL_ICON3") {
+        toggleUiPanel(UiPanel::Party);
+        return true;
+    }
+    if (tag == "LBL_ICON4") {
+        toggleUiPanel(UiPanel::Journal);
+        return true;
+    }
+    if (tag == "BTN_EXIT") {
+        return true;
+    }
+    return false;
+}
+
 namespace {
 
 constexpr float kPi = 3.14159265358979323846f;

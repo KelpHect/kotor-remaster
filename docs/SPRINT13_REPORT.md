@@ -13,7 +13,7 @@ machines.
 
 ```text
 100% tests passed, 0 tests failed out of 40
-Total Test time (real) = 171.28 sec
+Total Test time (real) = 170.38 sec
 ```
 
 The new targets are `kotor_audio`, `kotor_media`, `kotor_gui` and
@@ -153,19 +153,38 @@ Gate assertions: `bik_movies`, `bik_headers`, `bik_frames`, `bink_decoder`,
 `facial_head_bones`, `facial_geometry`, `facial_silence_bind`,
 `facial_lip_drive`, `facial_pose_drive`.
 
-## 8. GUI screens
+## 8. GUI screens and interaction
 
 - **86 unique `.gui` screens** (84 in `gui.bif` + 7 patch resources, 2
   patch-only) parse as GFF `GUI V3.2`.
-- **2,302 controls** across **7** control types (control, panel, image, label,
-  button, checkbox, slider, scrollbar, progress, listbox); no unknown type.
-- `mainmenu` is `TGuiPanel` with **14** controls; the largest screen has
-  **121** controls. Extents are 640x480 GUI space.
-- `--gui-screen <resref>` renders the parsed control tree in the ImGui debug
-  overlay (rectangles, labels, text, border colors); screenshot evidence:
-  `docs/evidence/s13/gui-mainmenu.png`.
+- **2,383 controls** across **8** control types (panel, image, label, button,
+  checkbox, slider, scrollbar, progress, listbox), including the 81 nested
+  listbox scrollbars; no unknown type.
+- `mainmenu` is `TGuiPanel` with **15** controls; the largest screen has
+  **127** controls. Extents are 640x480 GUI space.
+- `GuiSystem` adds engine-side interaction: per-control visible/enabled/
+  selected/hovered/pressed/value state, 640x480 hit-testing, button/checkbox/
+  listbox actions, slider/scrollbar/progress clamping, a screen push/pop stack
+  and a stable hierarchy key (e.g. `LB_DESC/SCROLLBAR`).
+- `GameSession::applyGuiAction` maps HUD icon tags (`LBL_ICON1..4`) to the
+  character/inventory/party/journal panels; mainmenu actions drive
+  `BTN_LOADGAME` -> `loadscreen`, `BTN_NEWGAME` -> close and `BTN_EXIT` ->
+  quit.
+- `--gui-screen <resref>` renders the interactive tree with a hover/pressed/
+  selected colour state; `--gui-action <tag>` activates a control for a
+  deterministic screenshot. Evidence: `docs/evidence/s13/gui-state.png`.
 
-Gate assertions: `screens`, `controls`, `control_types`, `mainmenu`.
+Gate assertions: `screens`, `controls`, `control_types`,
+`unknown_control_types`, `mainmenu`, `gui_open`, `gui_screen`, `button_found`,
+`hit_test`, `pointer_down`, `pointer_pressed`, `pointer_up`, `button_action`,
+`action_log`, `pointer_released`, `control_hide`, `hidden_no_hit`,
+`control_show`, `exit_activate`, `quit_requested`, `screen_push`,
+`screen_push_state`, `screen_pop`, `screen_slider`, `slider_control`,
+`slider_set`, `slider_clamp_high`, `slider_set_low`, `slider_clamp_low`,
+`screen_progress`, `progress_control`, `progress_value`, `screen_listbox`,
+`listbox_control`, `scrollbar_control`, `list_selection`, `scrollbar_value`,
+`screen_checkbox`, `checkbox_control`, `checkbox_on`, `checkbox_off`,
+`panel_character`, `panel_toggle`, `panel_inventory`.
 
 ## 9. Minigames
 
@@ -209,7 +228,7 @@ before `SDL_Quit` (the parity crash fix).
 
 ## 11. Regression
 
-- **CTest: 40/40 passed** (171.28 s).
+- **CTest: 40/40 passed** (170.38 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0000**, PASS.
@@ -218,9 +237,9 @@ before `SDL_Quit` (the parity crash fix).
 
 ## 12. Next sprint
 
-Sprint 13 closes audio, Bink/LIP media, native movie presentation, Bink audio
-and the facial rig. GUI interaction and the remaining UI/content systems are
-planned in
+Sprint 13 closes audio, Bink/LIP media, native movie presentation, Bink audio,
+GUI interaction and the facial rig. Localization, mods/Override, KotOR 2 world
+loading and faction/P6 are planned in
 [`docs/SPRINT14.md`](SPRINT14.md); the shipped-data evidence is `media.log`
 (61 BIK, native RGBA SHA-256, 18,206 LIP, 107 head rows / 106 models / 0 viseme
 clips) and `bik-oracle.txt`.
@@ -230,6 +249,7 @@ clips) and `bik-oracle.txt`.
 - `docs/evidence/s13/audio.log`
 - `docs/evidence/s13/media.log`
 - `docs/evidence/s13/gui.log`
+- `docs/evidence/s13/gui-state.png`, `gui-mainmenu.png`
 - `docs/evidence/s13/minigame.log`
 - `docs/evidence/s13/movie-gl.png`, `movie-vk.png`, `movie-frame.png`
 - `docs/evidence/s13/facial-roar.png`

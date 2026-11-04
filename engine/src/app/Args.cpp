@@ -257,6 +257,14 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.guiScreen = value;
             continue;
         }
+        if (arg == "--gui-action") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--gui-action requires a control tag");
+            }
+            result.options.guiAction = value;
+            continue;
+        }
         if (arg == "--audio-script") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -547,6 +555,7 @@ void printUsage()
         << "  --minigame-test       Assert pazaak/swoop/turret state machines\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"
         << "  --gui-screen <resref> Render one .gui screen in the debug UI\n"
+        << "  --gui-action <tag>    Activate one control before rendering\n"
         << "  --audio-script <ncs>  Sound/music/ambient script bridge assertions\n"
         << "  --animation-script <ncs>  PlayAnimation script bridge assertions\n"
         << "  --combat-force-script <ncs>  Script bridge assertions for the combat-force gate\n"

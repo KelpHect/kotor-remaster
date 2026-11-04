@@ -50,12 +50,17 @@ std::string resrefField(const Gff& gff, std::uint32_t structure, const char* sub
     return text(gff, gff.structIndex(*f), label);
 }
 
-GuiControl parseControl(const Gff& gff, std::uint32_t structure, int depth)
+GuiControl parseControl(const Gff& gff, std::uint32_t structure, int depth,
+                        const std::string& parentKey)
 {
     GuiControl control;
     control.type = number(gff, structure, "CONTROLTYPE", 0);
     control.id = number(gff, structure, "ID", -1);
     control.tag = text(gff, structure, "TAG");
+    control.key = parentKey + "/"
+        + (control.tag.empty()
+               ? "#" + std::to_string(control.id) + ":" + std::to_string(control.type)
+               : control.tag);
     control.extent = extent(gff, structure);
     if (const GffField* color = field(gff, structure, "COLOR");
         color != nullptr && color->type == GffType::Vector3) {
@@ -69,11 +74,37 @@ GuiControl parseControl(const Gff& gff, std::uint32_t structure, int depth)
     control.fill = resrefField(gff, structure, "BORDER", "FILL");
     control.edge = resrefField(gff, structure, "BORDER", "EDGE");
     control.corner = resrefField(gff, structure, "BORDER", "CORNER");
+    if (const GffField* maxValue = field(gff, structure, "MAXVALUE")) {
+        control.maxValue = gff.number(*maxValue);
+    }
+    if (const GffField* curValue = field(gff, structure, "CURVALUE")) {
+        control.curValue = gff.number(*curValue);
+    }
+    if (const GffField* start = field(gff, structure, "STARTFROMLEFT")) {
+        control.startFromLeft = gff.integer(*start) != 0;
+    }
+    if (const GffField* selected = field(gff, structure, "ISSELECTED")) {
+        control.isSelected = gff.integer(*selected) != 0;
+    }
+    if (const GffField* selected = field(gff, structure, "SELECTED")) {
+        control.selected = gff.integer(*selected) != 0;
+    }
+    if (control.maxValue <= 0.0f) {
+        control.maxValue = 1.0f;
+    }
     if (depth < 64) {
         if (const GffField* children = field(gff, structure, "CONTROLS");
             children != nullptr && children->type == GffType::List) {
             for (const std::uint32_t child : gff.list(*children)) {
-                control.children.push_back(parseControl(gff, child, depth + 1));
+                control.children.push_back(parseControl(gff, child, depth + 1,
+                                                        control.key));
+            }
+        }
+        if (control.type == 11) {
+            if (const GffField* scroll = field(gff, structure, "SCROLLBAR");
+                scroll != nullptr && scroll->type == GffType::Struct) {
+                control.children.push_back(parseControl(
+                    gff, gff.structIndex(*scroll), depth + 1, control.key));
             }
         }
     }
@@ -121,7 +152,8 @@ GuiScreen parseGui(const std::vector<std::uint8_t>& bytes, const std::string& na
         throw FormatError(name + ": GUI root has no CONTROLS list");
     }
     for (const std::uint32_t structure : gff.list(*controls)) {
-        screen.controls.push_back(parseControl(gff, structure, 1));
+        screen.controls.push_back(parseControl(gff, structure, 1,
+                                               screen.tag.empty() ? name : screen.tag));
     }
     screen.controlCount = 1;
     for (const GuiControl& control : screen.controls) {

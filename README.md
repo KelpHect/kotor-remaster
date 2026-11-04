@@ -13,9 +13,10 @@ LIP timelines validate, native FFmpeg pixel decode reproduces the recorded
 640x272 RGBA SHA-256 and presents the movie on GL and Vulkan, Bink Audio
 matches the FFmpeg PCM SHA-256 and follows the movie clock, dialogue viseme
 sampling is wired, and a procedural 16-viseme facial rig drives the shipped
-jaw/mouth/brow bones from the LIP clock; all 86 unique `.gui` screens (2,302
-controls) parse and render in the
-debug overlay; deterministic pazaak, swoop and turret state machines pass their
+jaw/mouth/brow bones from the LIP clock; all 86 unique `.gui` screens (2,383
+controls, 8 types) parse and render interactively (hit-testing, control state,
+actions, screen stack and panel mapping); deterministic pazaak, swoop and
+turret state machines pass their
 seeded gates; SDL3 pulls the mixer for live playback while headless tests use
 the same mixer deterministically. **40/40 CTest targets** pass.
 Sprint 12 remains complete (creature animation, skinning, weapons and cutscene
@@ -37,8 +38,8 @@ companion XP, systems UI); Sprint 6 remains complete (native script VM
 8,666/8,666 default and functional, 303,616 ACTION calls, dialogue entry 54,
 d20 rounds); Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255
 parity). Sprint 14+ remains: non-default `CamVidEffect` semantics (none in the
-K1 corpus), GUI interaction/state, localization, mods/Override, KotOR 2 world
-loading, faction reputation simulation and the P6 content checklist.
+K1 corpus), localization, mods/Override, KotOR 2 world loading, faction
+reputation simulation and the P6 content checklist.
 Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT14.md` and their
 `*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
 
@@ -201,8 +202,9 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   state, native FFmpeg Bink pixel decode with the recorded RGBA SHA-256 and
   GL/Vulkan movie presentation, Bink Audio decode with the FFmpeg PCM SHA-256
   and movie-clock sync, LIP viseme timelines, a procedural facial rig
-  on the shipped jaw/mouth/brow bones, 86 `.gui` screens/2,302
-  controls with a debug renderer, deterministic pazaak/swoop/turret state
+  on the shipped jaw/mouth/brow bones, 86 `.gui` screens/2,383 controls with
+  an interactive control-state/screen-stack layer, deterministic
+  pazaak/swoop/turret state
   machines, script sound/music/ambient actions, SDL3 output stream.
   CTest **40/40**; 117-module sweep 0/0; VM parity 0; scene parity 0.0000;
   Python 143 tests / 7 skips; install unchanged. See
@@ -267,7 +269,7 @@ Start with:
 - [`docs/SPRINT11.md`](docs/SPRINT11.md) - Sprint 11 plan: gate S11, lanes, non-goals
 - [`docs/SPRINT13_REPORT.md`](docs/SPRINT13_REPORT.md) - Sprint 13 (audio/media/GUI/minigames) exit report
 - [`docs/SPRINT13.md`](docs/SPRINT13.md) - Sprint 13 plan: gate S13, lanes, non-goals
-- [`docs/SPRINT14.md`](docs/SPRINT14.md) - Sprint 14 plan: GUI interaction and remaining parity
+- [`docs/SPRINT14.md`](docs/SPRINT14.md) - Sprint 14 plan: localization, mods and remaining parity
 - [`docs/recon/55_BINK_AUDIO.md`](docs/recon/55_BINK_AUDIO.md) - Bink Audio decode, PCM oracle and movie-clock sync
 - [`docs/recon/54_FACIAL_RIG.md`](docs/recon/54_FACIAL_RIG.md) - viseme channels and the shipped head bone rig
 - [`docs/recon/53_MINIGAMES.md`](docs/recon/53_MINIGAMES.md) - pazaak, swoop and turret deterministic rules

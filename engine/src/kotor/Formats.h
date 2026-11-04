@@ -86,6 +86,7 @@ enum class ResType : std::uint32_t {
     Uts = 2035,
     Bik = 2063,
     Lip = 3004,
+    Gui = 2047,
 };
 
 inline std::uint32_t resType(ResType type) { return static_cast<std::uint32_t>(type); }

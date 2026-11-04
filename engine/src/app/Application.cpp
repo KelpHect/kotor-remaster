@@ -3,6 +3,7 @@
 #include "audio/Output.h"
 #include "core/Log.h"
 #include "game/GameSession.h"
+#include "game/GuiSystem.h"
 #include "game/Minigames.h"
 #include "kotor/BinkDecoder.h"
 #include "kotor/Formats.h"
@@ -42,7 +43,8 @@ struct RuntimeState {
     std::unique_ptr<IRenderBackend> backend;
     bool imguiReady = false;
     BackendKind activeBackend = BackendKind::Null;
-    std::optional<kotor::GuiScreen> guiScreen;
+    std::unique_ptr<kotor::Install> guiInstall;
+    std::unique_ptr<GuiSystem> guiSystem;
 };
 
 SDL_WindowFlags windowFlagsFor(BackendKind kind, const Options& options)
@@ -433,35 +435,83 @@ void drawFacialRigOverlay(const FacialRig& rig)
     ImGui::End();
 }
 
-void drawGuiScreenOverlay(const kotor::GuiScreen& screen)
+void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game)
 {
+    const kotor::GuiScreen* screen = gui.screen();
+    if (screen == nullptr) {
+        return;
+    }
+    ImGui::SetNextWindowFocus();
     ImGui::SetNextWindowPos(ImVec2(40.0f, 40.0f), ImGuiCond_Once);
-    ImGui::SetNextWindowSize(ImVec2(700.0f, 560.0f), ImGuiCond_Once);
+    ImGui::SetNextWindowSize(ImVec2(700.0f, 620.0f), ImGuiCond_Once);
     if (!ImGui::Begin("GUI screen", nullptr, ImGuiWindowFlags_NoCollapse)) {
         ImGui::End();
         return;
     }
-    ImGui::Text("%s  type=%d  tag=%s  controls=%zu", screen.name.c_str(), screen.type,
-                screen.tag.c_str(), screen.controlCount);
-    const ImVec2 origin = ImGui::GetCursorScreenPos();
-    const float scale = 1.0f;
+    ImGui::Text("%s  controls=%zu  hover=%s  action=%s", gui.screenName().c_str(),
+                screen->controlCount,
+                gui.hovered().empty() ? "-" : gui.hovered().c_str(),
+                gui.lastAction().empty() ? "-" : gui.lastAction().c_str());
     ImDrawList* draw = ImGui::GetWindowDrawList();
+    draw->AddRectFilled(ImGui::GetWindowPos(),
+                        ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowSize().x,
+                               ImGui::GetWindowPos().y + ImGui::GetWindowSize().y),
+                        IM_COL32(20, 20, 24, 255));
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    constexpr float kScale = 1.0f;
+    ImGui::InvisibleButton("gui_canvas", ImVec2(640.0f * kScale, 480.0f * kScale));
+    const ImVec2 mouse = ImGui::GetIO().MousePos;
+    const float localX = (mouse.x - origin.x) / kScale;
+    const float localY = (mouse.y - origin.y) / kScale;
+    if (ImGui::IsItemHovered()) {
+        gui.pointerMove(localX, localY);
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            gui.pointerDown(localX, localY);
+        }
+    }
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        gui.pointerUp(localX, localY);
+    }
     std::function<void(const kotor::GuiControl&)> drawControl =
         [&](const kotor::GuiControl& control) {
-            const ImVec2 low(origin.x + static_cast<float>(control.extent.left) * scale,
-                             origin.y + static_cast<float>(control.extent.top) * scale);
-            const ImVec2 high(low.x + static_cast<float>(control.extent.width) * scale,
-                              low.y + static_cast<float>(control.extent.height) * scale);
+            const GuiControlState state = gui.state(control.key);
+            if (!state.visible) {
+                return;
+            }
+            const ImVec2 low(origin.x + static_cast<float>(control.extent.left) * kScale,
+                             origin.y + static_cast<float>(control.extent.top) * kScale);
+            const ImVec2 high(low.x + static_cast<float>(control.extent.width) * kScale,
+                              low.y + static_cast<float>(control.extent.height) * kScale);
             ImU32 fill = IM_COL32(40, 46, 58, 180);
             if (control.type == 6) {
-                fill = IM_COL32(70, 90, 120, 220);
+                fill = state.pressed ? IM_COL32(110, 140, 180, 240)
+                                     : IM_COL32(70, 90, 120, 220);
+            } else if (control.type == 7) {
+                fill = state.selected ? IM_COL32(80, 150, 100, 230)
+                                      : IM_COL32(60, 70, 80, 200);
+            } else if (control.type == 8 || control.type == 9 || control.type == 10) {
+                fill = IM_COL32(50, 60, 72, 200);
             } else if (control.type == 5 || control.type == 4) {
                 fill = IM_COL32(30, 34, 40, 80);
             } else if (control.type == 11) {
                 fill = IM_COL32(50, 60, 80, 160);
             }
+            if (control.key == gui.hovered()) {
+                fill = IM_COL32(120, 150, 190, 230);
+            }
             draw->AddRectFilled(low, high, fill);
-            draw->AddRect(low, high, IM_COL32(160, 170, 190, 255));
+            draw->AddRect(low, high, state.enabled ? IM_COL32(160, 170, 190, 255)
+                                                    : IM_COL32(90, 90, 90, 255));
+            if (control.type == 8 || control.type == 9 || control.type == 10) {
+                const float ratio = control.maxValue > 0.0f
+                    ? std::clamp(state.value / control.maxValue, 0.0f, 1.0f) : 0.0f;
+                const ImVec2 barHigh(control.startFromLeft
+                        ? low.x + (high.x - low.x) * ratio : high.x,
+                    high.y);
+                const ImVec2 barLow(control.startFromLeft ? low.x : low.x + (high.x - low.x) * ratio,
+                    low.y);
+                draw->AddRectFilled(barLow, barHigh, IM_COL32(100, 170, 220, 220));
+            }
             const std::string label = !control.text.empty() ? control.text : control.tag;
             if (!label.empty() && control.extent.width > 8 && control.extent.height > 8) {
                 draw->AddText(ImVec2(low.x + 3.0f, low.y + 2.0f),
@@ -471,10 +521,22 @@ void drawGuiScreenOverlay(const kotor::GuiScreen& screen)
                 drawControl(child);
             }
         };
-    for (const kotor::GuiControl& control : screen.controls) {
+    for (const kotor::GuiControl& control : screen->controls) {
         drawControl(control);
     }
-    ImGui::Dummy(ImVec2(640.0f, 480.0f));
+    if (!gui.lastAction().empty()) {
+        const std::string action = gui.lastAction();
+        gui.clearActions();
+        if (!game.applyGuiAction(action)) {
+            if (action == "BTN_LOADGAME") {
+                gui.push("loadscreen");
+            } else if (action == "BTN_NEWGAME") {
+                gui.close();
+            } else if (action == "BTN_MOVIES") {
+                gui.push("credits");
+            }
+        }
+    }
     ImGui::End();
 }
 
@@ -1556,7 +1618,7 @@ int runGuiTest(GameSession& game)
                 walk(control);
             }
             if (name == "mainmenu") {
-                mainMenu = screen.tag == "TGuiPanel" && screen.controlCount == 14;
+                mainMenu = screen.tag == "TGuiPanel" && screen.controlCount == 15;
             }
         } catch (const kotor::FormatError&) {
             ok = false;
@@ -1566,9 +1628,139 @@ int runGuiTest(GameSession& game)
                    " types=", types.size(), " unknown=", unknownTypes,
                    " maxControls=", deepTrees));
     check(screens == 86, "screens");
-    check(controls > 500, "controls");
-    check(unknownTypes == 0, "control_types");
+    check(controls == 2383, "controls");
+    check(types.size() == 8, "control_types");
+    check(unknownTypes == 0, "unknown_control_types");
     check(mainMenu, "mainmenu");
+
+    const auto findControl = [](const std::vector<kotor::GuiControl>& list,
+                                const std::string& tag)
+        -> const kotor::GuiControl* {
+        std::function<const kotor::GuiControl*(const kotor::GuiControl&)> walk =
+            [&](const kotor::GuiControl& control) -> const kotor::GuiControl* {
+                if (control.tag == tag) {
+                    return &control;
+                }
+                for (const kotor::GuiControl& child : control.children) {
+                    if (const kotor::GuiControl* found = walk(child)) {
+                        return found;
+                    }
+                }
+                return nullptr;
+            };
+        for (const kotor::GuiControl& control : list) {
+            if (const kotor::GuiControl* found = walk(control)) {
+                return found;
+            }
+        }
+        return nullptr;
+    };
+    const auto findType = [](const std::vector<kotor::GuiControl>& list, int type)
+        -> const kotor::GuiControl* {
+        std::function<const kotor::GuiControl*(const kotor::GuiControl&)> walk =
+            [&](const kotor::GuiControl& control) -> const kotor::GuiControl* {
+                if (control.type == type) {
+                    return &control;
+                }
+                for (const kotor::GuiControl& child : control.children) {
+                    if (const kotor::GuiControl* found = walk(child)) {
+                        return found;
+                    }
+                }
+                return nullptr;
+            };
+        for (const kotor::GuiControl& control : list) {
+            if (const kotor::GuiControl* found = walk(control)) {
+                return found;
+            }
+        }
+        return nullptr;
+    };
+
+    GuiSystem gui(install);
+    check(gui.open("mainmenu"), "gui_open");
+    check(gui.screenName() == "mainmenu", "gui_screen");
+    const kotor::GuiControl* newGame = findControl(gui.screen()->controls, "BTN_NEWGAME");
+    check(newGame != nullptr, "button_found");
+    if (newGame != nullptr) {
+        const float cx = static_cast<float>(newGame->extent.left)
+            + static_cast<float>(newGame->extent.width) * 0.5f;
+        const float cy = static_cast<float>(newGame->extent.top)
+            + static_cast<float>(newGame->extent.height) * 0.5f;
+        check(gui.controlAt(cx, cy) == newGame->key, "hit_test");
+        check(gui.pointerDown(cx, cy), "pointer_down");
+        check(gui.state(newGame->key).pressed, "pointer_pressed");
+        check(gui.pointerUp(cx, cy), "pointer_up");
+        check(gui.lastAction() == "BTN_NEWGAME", "button_action");
+        check(gui.actionLog().size() == 1, "action_log");
+        check(!gui.state(newGame->key).pressed, "pointer_released");
+        gui.clearActions();
+        check(gui.setVisible(newGame->key, false), "control_hide");
+        check(gui.controlAt(cx, cy) != newGame->key, "hidden_no_hit");
+        check(gui.setVisible(newGame->key, true), "control_show");
+    }
+    check(gui.activate("BTN_EXIT"), "exit_activate");
+    check(gui.quitRequested(), "quit_requested");
+    gui.clearActions();
+    check(gui.push("loadscreen"), "screen_push");
+    check(gui.screenName() == "loadscreen" && gui.historyDepth() == 1,
+          "screen_push_state");
+    check(gui.pop() && gui.screenName() == "mainmenu" && gui.historyDepth() == 0,
+          "screen_pop");
+
+    check(gui.open("character"), "screen_slider");
+    const kotor::GuiControl* slider = findControl(gui.screen()->controls, "SLD_ALIGN");
+    check(slider != nullptr && slider->type == 8 && slider->maxValue == 100.0f,
+          "slider_control");
+    if (slider != nullptr) {
+        check(gui.setValue(slider->key, 250.0f), "slider_set");
+        check(gui.value(slider->key) == 100.0f, "slider_clamp_high");
+        check(gui.setValue(slider->key, -5.0f), "slider_set_low");
+        check(gui.value(slider->key) == 0.0f, "slider_clamp_low");
+    }
+
+    check(gui.open("loadscreen"), "screen_progress");
+    const kotor::GuiControl* progress = findControl(gui.screen()->controls, "PB_PROGRESS");
+    check(progress != nullptr && progress->type == 10 && progress->maxValue == 100.0f,
+          "progress_control");
+    if (progress != nullptr) {
+        check(gui.setValue(progress->key, 42.0f) && gui.value(progress->key) == 42.0f,
+              "progress_value");
+    }
+
+    check(gui.open("abchrgen"), "screen_listbox");
+    const kotor::GuiControl* listBox = findControl(gui.screen()->controls, "LB_DESC");
+    const kotor::GuiControl* scrollBar = findType(gui.screen()->controls, 9);
+    check(listBox != nullptr && listBox->type == 11, "listbox_control");
+    check(scrollBar != nullptr && scrollBar->maxValue > 0.0f, "scrollbar_control");
+    if (listBox != nullptr) {
+        check(gui.setListSelection(listBox->key, 3) && gui.listSelection(listBox->key) == 3,
+              "list_selection");
+    }
+    if (scrollBar != nullptr) {
+        check(gui.setValue(scrollBar->key, 33.0f)
+                  && gui.value(scrollBar->key) == 33.0f,
+              "scrollbar_value");
+    }
+
+    check(gui.open("mipc10x7"), "screen_checkbox");
+    const kotor::GuiControl* checkbox = findControl(gui.screen()->controls, "TB_SOLO");
+    check(checkbox != nullptr && checkbox->type == 7, "checkbox_control");
+    if (checkbox != nullptr) {
+        check(gui.activate(checkbox->key) && gui.state(checkbox->key).selected,
+              "checkbox_on");
+        check(gui.activate(checkbox->key) && !gui.state(checkbox->key).selected,
+              "checkbox_off");
+    }
+
+    check(game.applyGuiAction("LBL_ICON1") && game.activePanel() == UiPanel::Character,
+          "panel_character");
+    check(game.applyGuiAction("LBL_ICON1") && game.activePanel() == UiPanel::None,
+          "panel_toggle");
+    check(game.applyGuiAction("LBL_ICON2")
+              && game.activePanel() == UiPanel::Inventory,
+          "panel_inventory");
+    game.setUiPanel(UiPanel::None);
     return ok ? 0 : 62;
 }
 
@@ -3921,15 +4113,19 @@ int runApplication(const Options& options)
         }
     }
     if (game && !options.guiScreen.empty()) {
+        game->stopMovie();
         try {
-            kotor::Install guiInstall(game->installPath());
-            guiInstall.bindModule(game->module());
-            guiInstall.addPacks();
-            if (const auto data = guiInstall.find(options.guiScreen, 2047);
-                data.has_value()) {
-                state.guiScreen = kotor::parseGui(*data, options.guiScreen + ".gui");
-                logInfo(concat("GUI screen loaded: ", state.guiScreen->name,
-                               " controls=", state.guiScreen->controlCount));
+            state.guiInstall = std::make_unique<kotor::Install>(game->installPath());
+            state.guiInstall->bindModule(game->module());
+            state.guiInstall->addPacks();
+            state.guiSystem = std::make_unique<GuiSystem>(*state.guiInstall);
+            if (state.guiSystem->open(options.guiScreen)) {
+                logInfo(concat("GUI screen loaded: ", state.guiSystem->screenName(),
+                               " controls=", state.guiSystem->screen()->controlCount));
+                if (!options.guiAction.empty()
+                    && !state.guiSystem->activate(options.guiAction)) {
+                    logWarn(concat("GUI action not found: ", options.guiAction));
+                }
             } else {
                 logWarn(concat("GUI screen not found: ", options.guiScreen));
             }
@@ -4192,14 +4388,12 @@ int runApplication(const Options& options)
             ImGui_ImplSDL3_NewFrame();
             ImGui::NewFrame();
             const bool movieMode = game && game->moviePlaying();
-            if (!movieMode) {
+            const bool guiMode = state.guiSystem && state.guiSystem->active();
+            if (!movieMode && !guiMode) {
                 drawDebugUi(state, frames, smoothedFrameMs, elapsedSeconds, exitReason);
-                if (state.guiScreen) {
-                    drawGuiScreenOverlay(*state.guiScreen);
-                }
             }
             if (game) {
-                if (!movieMode) {
+                if (!movieMode && !guiMode) {
                     drawGameUi(*game, smoothedFrameMs > 0.0 ? static_cast<float>(1000.0 / smoothedFrameMs) : 0.0f,
                                game->interactionPrompt());
                     if (options.facialDemo >= 0 || game->lipSyncActive()) {
@@ -4223,6 +4417,13 @@ int runApplication(const Options& options)
                         drawMovieOverlay(*game->movieFrame(), movieTexture);
                     }
                 }
+            }
+            if (!movieMode && guiMode && game) {
+                drawGuiScreenOverlay(*state.guiSystem, *game);
+            }
+            if (!movieMode && state.guiSystem && state.guiSystem->quitRequested()) {
+                exitReason = "GUI exit";
+                running = false;
             }
             ImGui::Render();
 

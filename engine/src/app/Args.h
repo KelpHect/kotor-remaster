@@ -38,6 +38,7 @@ struct Options {
     bool guiTest = false;
     bool minigameTest = false;
     std::string guiScreen;
+    std::string guiAction;
     std::string minigameScript;
     std::string moviePlay;
     std::string movieShot;

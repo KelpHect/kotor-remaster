@@ -192,6 +192,7 @@ public:
     UiPanel activePanel() const { return activePanel_; }
     void setUiPanel(UiPanel panel) { activePanel_ = panel; }
     void toggleUiPanel(UiPanel panel) { activePanel_ = activePanel_ == panel ? UiPanel::None : panel; }
+    bool applyGuiAction(const std::string& tag);
     std::int32_t journalState(const std::string& plotId) const;
     std::size_t journalSize() const { return journal_.size(); }
     const std::map<std::string, std::int32_t>& journal() const { return journal_; }
