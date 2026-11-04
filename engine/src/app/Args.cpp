@@ -119,6 +119,10 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.sceneStats = true;
             continue;
         }
+        if (arg == "--content-stats") {
+            result.options.contentStats = true;
+            continue;
+        }
         if (arg == "--walk-test") {
             result.options.walkTest = true;
             continue;
@@ -574,6 +578,7 @@ void printUsage()
         << "  --install <dir>       KotOR install (default: KOTOR_INSTALL or the Steam path)\n"
         << "  --module <stem>       Load one module, e.g. end_m01aa or tar_m02af\n"
         << "  --scene-stats         Parse the module, print counts, then exit\n"
+        << "  --content-stats       Print one JSON content line, then exit\n"
         << "  --walk-test           Run the headless player/collision smoke test\n"
         << "  --door-test           Load a linked door transition and report the target module\n"
         << "  --dialogue-test       Load a real DLG, start it and follow one branch\n"

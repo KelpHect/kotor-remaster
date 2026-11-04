@@ -382,6 +382,13 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                              --install "${KOTOR_TEST_INSTALL}"
                              --out "${CMAKE_BINARY_DIR}/all-modules.json")
             set_tests_properties(kotor_all_modules PROPERTIES TIMEOUT 900)
+            add_test(NAME kotor_p6_content
+                     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/check_p6_content.py
+                             --exe $<TARGET_FILE:kotor_engine>
+                             --install "${KOTOR_TEST_INSTALL}"
+                             --baseline "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/p6_content_baseline.json"
+                             --out "${CMAKE_BINARY_DIR}/p6-content.json")
+            set_tests_properties(kotor_p6_content PROPERTIES TIMEOUT 900)
         endif()
     endif()
 endif()

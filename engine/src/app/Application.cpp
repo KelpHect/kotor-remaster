@@ -30,6 +30,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -4308,6 +4309,50 @@ int runApplication(const Options& options)
             logInfo(concat("  script hooks: ", hookCount, " on ", entitiesWithHooks,
                            " entities; scene hooks: ", loaded.scripts.size(),
                            "; script runs: ", game->scriptLog().size()));
+            if (options.contentStats) {
+                const auto jsonText = [](const std::string& value) {
+                    std::string out = "\"";
+                    for (const char ch : value) {
+                        if (ch == '"' || ch == '\\') {
+                            out += '\\';
+                        }
+                        out += ch;
+                    }
+                    out += '"';
+                    return out;
+                };
+                std::ostringstream json;
+                json << "{\"module\":" << jsonText(loaded.module)
+                     << ",\"area\":" << jsonText(loaded.area)
+                     << ",\"area_tag\":" << jsonText(loaded.areaTag)
+                     << ",\"rooms\":" << loaded.rooms.size()
+                     << ",\"vertices\":" << loaded.vertices.size()
+                     << ",\"indices\":" << loaded.indices.size()
+                     << ",\"batches\":" << loaded.batches.size()
+                     << ",\"textures\":" << loaded.textures.size()
+                     << ",\"collision_vertices\":" << loaded.collisionVertices.size()
+                     << ",\"collision_facets\":" << loaded.collision.size()
+                     << ",\"entities\":" << loaded.entities.size()
+                     << ",\"doors\":" << countKind(ke::kotor::EntityKind::Door)
+                     << ",\"placeables\":" << countKind(ke::kotor::EntityKind::Placeable)
+                     << ",\"creatures\":" << countKind(ke::kotor::EntityKind::Creature)
+                     << ",\"waypoints\":" << countKind(ke::kotor::EntityKind::Waypoint)
+                     << ",\"stores\":" << countKind(ke::kotor::EntityKind::Store)
+                     << ",\"encounter_entities\":" << countKind(ke::kotor::EntityKind::Encounter)
+                     << ",\"sound_entities\":" << countKind(ke::kotor::EntityKind::Sound)
+                     << ",\"entity_meshes\":" << loaded.entityMeshes.size()
+                     << ",\"triggers\":" << loaded.triggers.size()
+                     << ",\"encounter_volumes\":" << loaded.encounters.size()
+                     << ",\"cameras\":" << loaded.cameras.size()
+                     << ",\"sounds\":" << loaded.soundEmitters.size()
+                     << ",\"script_hooks\":" << hookCount
+                     << ",\"scripted_entities\":" << entitiesWithHooks
+                     << ",\"scene_scripts\":" << loaded.scripts.size()
+                     << ",\"script_runs\":" << game->scriptLog().size()
+                     << ",\"warnings\":" << loaded.warnings.size() << "}";
+                logInfo(concat("content-stats: ", json.str()));
+                return 0;
+            }
             if (!options.panel.empty()) {
                 UiPanel panel = UiPanel::None;
                 if (options.panel == "character") panel = UiPanel::Character;
