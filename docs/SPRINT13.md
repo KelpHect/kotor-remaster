@@ -1,10 +1,12 @@
-# Sprint 13 - audio, music, voice and EAX approximation
+# Sprint 13 - audio, media, GUI and minigame parity
 
 Status: **complete - gate S13 met (2026-11-04)**. Sprint 12 closed animation/skinning, weapons, cutscene
 cameras and visual FX. Sprint 13 adds the runtime audio layer: shipped WAV/MP3
 streams, area music and ambience, UTS sound emitters, dialogue voice-over, a
 deterministic mixer with 3D panning/attenuation, EAX-style room reverb, and the
-script sound/music actions.
+script sound/music actions. It also closes SSF sound sets/footsteps/barks,
+Bink container/pixel decode and presentation, LIP visemes, GUI screens and the
+three minigame state machines.
 
 Baseline: Sprint 12 `36/36` CTest, 117/117 modules, VM 8,666/8,666, scene
 parity 0.0449, Python 143 tests / 7 skips, install unchanged.

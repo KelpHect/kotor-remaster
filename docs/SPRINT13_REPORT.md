@@ -1,4 +1,4 @@
-# Sprint 13 report - audio, music, voice and EAX approximation
+# Sprint 13 report - audio, media, GUI and minigame parity
 
 Status: **complete - gate S13 met (2026-11-04)**. Sprint 12 closed
 animation/skinning, weapons, cutscene cameras and visual FX. Sprint 13 adds
