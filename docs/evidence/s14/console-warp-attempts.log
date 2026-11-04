@@ -1,0 +1,16 @@
+Retail console-warp attempt (2026-11-04)
+Profile: artifacts/lanes/s1-06-dynamic/profile (patched exe, EnableCheats=1)
+Harness: tools/harness/sprint1_dynamic_run.py --scenario ... --consent
+Hook: tools/harness/live_hooks.js (Mesa llvmpipe)
+
+Runs:
+- s14-warp-dantooine-01: hwscan 0x29 (~), text "warp danm14aa", hwscan 0x1C
+  result: only modules/END_M01AA_s.rim loaded; no module change; 25,083 events
+- s14-warp-dantooine-02: in-process key VK 192, text, key VK 13
+  result: only modules/END_M01AA_s.rim loaded; no module change; 23,961 events
+- s14-warp-dantooine-03: SendInput hwkey VK 192, text, hwkey VK 13
+  result: only modules/END_M01AA_s.rim loaded; no module change; 24,026 events
+
+Conclusion: the retail console did not accept synthetic input in this headless
+profile, so console-warp cannot expand module coverage here. Additional retail
+saves or traces are required for the 112 uncovered modules.

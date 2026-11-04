@@ -190,11 +190,12 @@ comparison. The 117-module baseline is unchanged and still green.
 - External `.rsv` support covers the module-ERF form used by the gate. A retail
   `.rsv` with a different container layout would need its own fixture.
 - Retail traces now cover the new-game/Endar Spire path, Taris, Taris Lower City
-  and two Unknown World saves (5 of 117 modules). Quests without a recorded
-  retail session still rely on the all-117-module conversation matrix and the
-  all-DLG corpus; `docs/evidence/s14/retail-path-coverage.json` records the
-  112 uncovered modules, and the manifest accepts additional recorded traces
-  without code changes.
+  and two Unknown World saves (5 of 117 modules). A console-warp attempt using
+  three input paths did not open the retail console in this headless profile
+  (`docs/evidence/s14/console-warp-attempts.log`), so the 112 uncovered modules
+  require additional retail saves or traces. Quests without a recorded retail
+  session rely on the all-117-module conversation matrix and the all-DLG
+  corpus; the manifest accepts additional recorded traces without code changes.
 - Bug-parity models the seven documented glitches at their observable state
   transitions (menu, load-zone proximity, party spawn coordinates, hotshot
   snapshot restore, XP-free level-up, airlock duplication and the Routine
@@ -229,6 +230,7 @@ comparison. The 117-module baseline is unchanged and still green.
 - `docs/evidence/s14/retail-differential.json`
 - `docs/evidence/s14/retail-trace-sources.json`
 - `docs/evidence/s14/retail-path-coverage.json`
+- `docs/evidence/s14/console-warp-attempts.log`
 - `docs/evidence/s14/retail-differential-s4-live-02.json`
 - `docs/evidence/s14/retail-differential-s4-live-03.json`
 - `docs/evidence/s14/retail-differential-s4-live-04.json`
