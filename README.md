@@ -1,6 +1,6 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 13 (audio, music, voice and EAX approximation) complete - gate
+Status: **Sprint 13 (audio, media, GUI and minigames) complete - gate
 S13 met (2026-11-04).** Shipped `streamwaves`, `streamsounds` and `streammusic`
 audio decodes (PCM 8/16, IMA ADPCM, MP3, KotOR `0x1d6` prefix); a 48 kHz
 stereo mixer provides music/ambient/effects/voice buses, per-voice
@@ -193,7 +193,7 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   CTest **36/36**; 117-module sweep 0/0; VM parity 0; scene parity 0.0449;
   Python 143 tests / 7 skips; install unchanged. See
   `docs/recon/50_ANIMATION_SKINNING.md` and `docs/SPRINT12_REPORT.md`.
-- Sprint 13 (audio/EAX): PCM/IMA ADPCM/MP3 decode with KotOR prefix handling,
+- Sprint 13 (audio/media/GUI/minigames): PCM/IMA ADPCM/MP3 decode with KotOR prefix handling,
   48 kHz four-bus mixer, 3D attenuation/pan, `soundeax.2da` reverb presets,
   GIT `AreaProperties` music/ambience, 45 UTS sound emitters, DLG voice-over,
   SSF sound sets/barks, appearance-driven footsteps, Bink container/movie
@@ -262,7 +262,7 @@ Start with:
 - [`docs/SPRINT10.md`](docs/SPRINT10.md) - Sprint 10 plan: gate S10, lanes, non-goals
 - [`docs/SPRINT11_REPORT.md`](docs/SPRINT11_REPORT.md) - Sprint 11 (combat/Force/alignment) exit report
 - [`docs/SPRINT11.md`](docs/SPRINT11.md) - Sprint 11 plan: gate S11, lanes, non-goals
-- [`docs/SPRINT13_REPORT.md`](docs/SPRINT13_REPORT.md) - Sprint 13 (audio/EAX) exit report
+- [`docs/SPRINT13_REPORT.md`](docs/SPRINT13_REPORT.md) - Sprint 13 (audio/media/GUI/minigames) exit report
 - [`docs/SPRINT13.md`](docs/SPRINT13.md) - Sprint 13 plan: gate S13, lanes, non-goals
 - [`docs/SPRINT14.md`](docs/SPRINT14.md) - Sprint 14 plan: Bink renderer, facial rig and remaining parity
 - [`docs/recon/53_MINIGAMES.md`](docs/recon/53_MINIGAMES.md) - pazaak, swoop and turret deterministic rules
