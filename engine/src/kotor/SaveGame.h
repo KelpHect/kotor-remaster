@@ -97,6 +97,10 @@ struct OriginalSave {
     std::map<std::string, std::int32_t> journal;
     std::vector<SavedGlobal> globals;
     std::vector<SavedObjectState> objects;
+    // Saved GITs are flattened snapshots: the writer removes UseTemplates and
+    // readers must not re-template GIT objects.
+    bool hasUseTemplates = false;
+    bool useTemplates = false;
     std::vector<ActiveEffect> effects;
     float forceSuppressedTimer = 0.0f;
     // Raw REPUTE payload from the source slot, when present. The engine does

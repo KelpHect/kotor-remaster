@@ -24,6 +24,7 @@ public:
     int reputation(int factionA, int factionB) const;
     bool setReputation(int factionA, int factionB, int value);
     bool adjustReputation(int factionA, int factionB, int delta);
+    bool setParent(int faction, int parent);
     static bool hostileStanding(int reputation) { return reputation < 50; }
     bool hostile(int factionA, int factionB) const {
         return hostileStanding(reputation(factionA, factionB));
@@ -36,10 +37,12 @@ public:
 
 private:
     void resize(std::size_t count);
+    int reputationAt(int factionA, int factionB, int depth) const;
 
     std::vector<std::string> names_;
     std::vector<int> parents_;
     std::vector<int> matrix_;
+    std::vector<char> explicit_;
     std::size_t relations_ = 0;
 };
 

@@ -24,6 +24,7 @@ void FactionSystem::resize(std::size_t count)
     names_.resize(count);
     parents_.assign(count, -1);
     matrix_.assign(count * count, 100);
+    explicit_.assign(count * count, 0);
     relations_ = 0;
 }
 
@@ -58,6 +59,7 @@ bool FactionSystem::load(kotor::Install& install, std::string& error)
             }
         }
         matrix_[0] = 50;
+        explicit_.assign(count * count, 1);
         relations_ = 0;
         for (const int value : matrix_) {
             if (value != 100) {
@@ -86,13 +88,32 @@ int FactionSystem::parent(int faction) const
 
 int FactionSystem::reputation(int factionA, int factionB) const
 {
+    return reputationAt(factionA, factionB, 0);
+}
+
+int FactionSystem::reputationAt(int factionA, int factionB, int depth) const
+{
     if (!loaded() || factionA < 0 || factionB < 0
         || static_cast<std::size_t>(factionA) >= names_.size()
         || static_cast<std::size_t>(factionB) >= names_.size()) {
         return 50;
     }
-    return matrix_[static_cast<std::size_t>(factionA) * names_.size()
-                   + static_cast<std::size_t>(factionB)];
+    const std::size_t index = static_cast<std::size_t>(factionA) * names_.size()
+        + static_cast<std::size_t>(factionB);
+    if (explicit_[index]) {
+        return matrix_[index];
+    }
+    if (depth < 8 && factionA != factionB) {
+        const int parentA = parent(factionA);
+        if (parentA >= 0 && parentA != factionA) {
+            return reputationAt(parentA, factionB, depth + 1);
+        }
+        const int parentB = parent(factionB);
+        if (parentB >= 0 && parentB != factionB) {
+            return reputationAt(factionA, parentB, depth + 1);
+        }
+    }
+    return matrix_[index];
 }
 
 bool FactionSystem::setReputation(int factionA, int factionB, int value)
@@ -102,14 +123,26 @@ bool FactionSystem::setReputation(int factionA, int factionB, int value)
         || static_cast<std::size_t>(factionB) >= names_.size()) {
         return false;
     }
-    matrix_[static_cast<std::size_t>(factionA) * names_.size()
-            + static_cast<std::size_t>(factionB)] = std::clamp(value, 0, 100);
+    const std::size_t index = static_cast<std::size_t>(factionA) * names_.size()
+        + static_cast<std::size_t>(factionB);
+    matrix_[index] = std::clamp(value, 0, 100);
+    explicit_[index] = 1;
     relations_ = 0;
-    for (const int cell : matrix_) {
-        if (cell != 100) {
+    for (std::size_t i = 0; i < matrix_.size(); ++i) {
+        if (explicit_[i] && matrix_[i] != 100) {
             ++relations_;
         }
     }
+    return true;
+}
+
+bool FactionSystem::setParent(int faction, int parent)
+{
+    if (!loaded() || faction < 0
+        || static_cast<std::size_t>(faction) >= names_.size()) {
+        return false;
+    }
+    parents_[static_cast<std::size_t>(faction)] = parent;
     return true;
 }
 
@@ -151,6 +184,7 @@ bool FactionSystem::loadFac(const std::vector<std::uint8_t>& bytes, std::string&
         names_.swap(names);
         parents_.swap(parents);
         matrix_.assign(names_.size() * names_.size(), 100);
+        explicit_.assign(names_.size() * names_.size(), 0);
         const kotor::GffField* reps = fac.field(fac.rootIndex(), "RepList");
         if (reps != nullptr && reps->type == kotor::GffType::List) {
             for (const std::uint32_t row : fac.list(*reps)) {
@@ -166,14 +200,16 @@ bool FactionSystem::loadFac(const std::vector<std::uint8_t>& bytes, std::string&
                     || static_cast<std::size_t>(b) >= names_.size()) {
                     continue;
                 }
-                matrix_[static_cast<std::size_t>(a) * names_.size()
-                        + static_cast<std::size_t>(b)] =
-                    std::clamp(fac.integer(*value), 0, 100);
+                const std::size_t index =
+                    static_cast<std::size_t>(a) * names_.size()
+                    + static_cast<std::size_t>(b);
+                matrix_[index] = std::clamp(fac.integer(*value), 0, 100);
+                explicit_[index] = 1;
             }
         }
         relations_ = 0;
-        for (const int cell : matrix_) {
-            if (cell != 100) {
+        for (std::size_t i = 0; i < matrix_.size(); ++i) {
+            if (explicit_[i] && matrix_[i] != 100) {
                 ++relations_;
             }
         }
@@ -203,6 +239,9 @@ std::vector<std::uint8_t> FactionSystem::saveFac() const
     std::vector<kotor::GffNodePtr> reps;
     for (std::size_t a = 0; a < names_.size(); ++a) {
         for (std::size_t b = 0; b < names_.size(); ++b) {
+            if (!explicit_[a * names_.size() + b]) {
+                continue;
+            }
             const int value = matrix_[a * names_.size() + b];
             if (value == 100) {
                 continue;

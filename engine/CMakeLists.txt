@@ -312,6 +312,23 @@ if(KOTOR_ENGINE_BUILD_TESTS)
             set_tests_properties(kotor_original_save_party_roundtrip
                                  PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
         endif()
+        set(KOTOR_SAVE_MATRIX_DIR "${CMAKE_SOURCE_DIR}/../artifacts/lanes/06-dynamic/profile/saves")
+        if(EXISTS "${KOTOR_SAVE_MATRIX_DIR}")
+            add_test(NAME kotor_save_matrix
+                     COMMAND kotor_engine --module end_m01aa --save-matrix-test
+                             --save-fixtures "${KOTOR_SAVE_MATRIX_DIR}" --null --headless)
+            set_tests_properties(kotor_save_matrix
+                                 PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+            add_test(NAME kotor_differential
+                     COMMAND kotor_engine --module end_m01aa --differential-test
+                             --save-fixtures "${KOTOR_SAVE_MATRIX_DIR}" --null --headless)
+            set_tests_properties(kotor_differential
+                                 PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 900)
+        endif()
+        add_test(NAME kotor_dialogue_corpus
+                 COMMAND kotor_engine --module end_m01aa --dialogue-corpus-test --null --headless)
+        set_tests_properties(kotor_dialogue_corpus
+                             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
         add_test(NAME kotor_profile_k1
                  COMMAND kotor_engine --profile-info "${KOTOR_TEST_INSTALL}" --null --headless)
         set(KOTOR2_TEST_INSTALL "$ENV{KOTOR2_INSTALL}")

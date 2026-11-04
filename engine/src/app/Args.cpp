@@ -276,6 +276,26 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.factionTest = true;
             continue;
         }
+        if (arg == "--save-matrix-test") {
+            result.options.saveMatrixTest = true;
+            continue;
+        }
+        if (arg == "--dialogue-corpus-test") {
+            result.options.dialogueCorpusTest = true;
+            continue;
+        }
+        if (arg == "--differential-test") {
+            result.options.differentialTest = true;
+            continue;
+        }
+        if (arg == "--save-fixtures") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--save-fixtures requires a directory");
+            }
+            result.options.saveFixtures = value;
+            continue;
+        }
         if (arg == "--faction-script") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -610,6 +630,10 @@ void printUsage()
         << "  --vfs-test            Assert five-pass VFS and 2DA merges\n"
         << "  --k2-test             Assert KotOR 2 profile, geometry and 001EBO\n"
         << "  --faction-test        Assert repute.2da, actions and FAC round-trip\n"
+        << "  --save-matrix-test    Load/round-trip every retail save fixture\n"
+        << "  --save-fixtures <dir> Directory of SAVEGAME.sav fixture slots\n"
+        << "  --dialogue-corpus-test Assert every shipped DLG parses and CamVidEffect\n"
+        << "  --differential-test   Save-matrix + dialogue corpus + playthrough gate\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"
         << "  --gui-screen <resref> Render one .gui screen in the debug UI\n"
         << "  --gui-action <tag>    Activate one control before rendering\n"

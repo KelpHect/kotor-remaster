@@ -516,6 +516,14 @@ private:
 class Tlk {
 public:
     static Tlk parse(std::vector<std::uint8_t> bytes, std::string name);
+    static Tlk fromEntries(std::uint32_t language,
+                           const std::vector<std::pair<std::string, std::string>>& entries,
+                           std::string name);
+    // TSLPatcher-style merge: the first `replaceCount` patch entries overwrite
+    // (empty fields keep the base value); remaining entries append. The
+    // default replaces all patch entries.
+    static Tlk merge(const Tlk& base, const Tlk& patch, std::string name,
+                     std::size_t replaceCount = static_cast<std::size_t>(-1));
 
     std::uint32_t language() const { return language_; }
     std::size_t size() const { return entries_.size(); }

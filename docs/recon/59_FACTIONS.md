@@ -46,10 +46,21 @@ A retail `REPUTE` (`FAC ` GFF) carries:
 pair means 100. The Taris save matches `repute.2da` except for
 `Player / ptat_Tuskan`, which it stores as 50 after play.
 
-`FactionSystem::saveFac` writes the same shape: all factions, then every
-non-100 cell in ascending `(FactionID1, FactionID2)` order. Loading a save
-resets the matrix to 100 and applies `RepList`; an empty FAC (the synthetic
-fresh-save scaffold) keeps the `repute.2da` defaults.
+`FactionSystem::saveFac` writes the same shape: all factions (including
+`FactionParentID`), then every **explicit** non-100 cell in ascending
+`(FactionID1, FactionID2)` order. Loading a save resets the matrix to 100,
+applies `RepList`, and marks only those cells explicit; an empty FAC (the
+synthetic fresh-save scaffold) keeps the `repute.2da` defaults.
+
+## Parent inheritance
+
+A child faction with `FactionParentID` and no explicit cell inherits its
+parent's row. The lookup checks the source parent first, then the target
+parent (for `A -> child`), with an 8-level cycle guard. `saveFac` does not
+materialize inherited cells, so parents survive a save/reload. Gate:
+`fac_parent_parse`, `fac_parent_id`, `fac_parent_source`, `fac_parent_target`,
+`fac_parent_friendly`, `fac_parent_set`, `fac_parent_set_value`,
+`fac_parent_save`, `fac_parent_roundtrip`.
 
 ## Runtime
 

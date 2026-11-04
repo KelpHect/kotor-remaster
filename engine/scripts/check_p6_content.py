@@ -147,12 +147,18 @@ def main(argv=None) -> int:
     parser.add_argument("--baseline", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--write-baseline", action="store_true")
+    parser.add_argument("--accept-baseline-change", action="store_true",
+                        help="required to overwrite an existing baseline")
     parser.add_argument("--jobs", type=int, default=6)
     args = parser.parse_args(argv)
     exe = Path(args.exe).resolve()
     install = Path(args.install).resolve()
     baseline_path = Path(args.baseline)
     out = Path(args.out)
+    if args.write_baseline and baseline_path.exists() and not args.accept_baseline_change:
+        print(f"refusing to overwrite {baseline_path} without "
+              "--accept-baseline-change", file=sys.stderr)
+        return 2
     modules = module_stems(install)
     if not modules:
         print(f"no modules under {install / 'modules'}", file=sys.stderr)
@@ -193,6 +199,9 @@ def main(argv=None) -> int:
         print(json.dumps(totals, sort_keys=True))
         return 0 if totals["warnings"] == 0 and totals["modules"] == len(modules) else 1
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    if baseline.get("schema") != "kotor.p6-content/1":
+        print("baseline schema mismatch", file=sys.stderr)
+        return 2
     failures = validate(rows, baseline, install)
     report["baseline"] = str(baseline_path)
     report["failures"] = failures

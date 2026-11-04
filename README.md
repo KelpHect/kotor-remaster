@@ -1,7 +1,8 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 13 (audio, media, GUI, localization, mods, KotOR 2, factions and minigames) complete - gate
-S13 met (2026-11-04).** Shipped `streamwaves`, `streamsounds` and `streammusic`
+Status: **Sprint 14 (P6 correctness) complete - gate S14 met (2026-11-04).**
+Sprint 13 (audio, media, GUI, localization, mods, KotOR 2, factions and
+minigames) remains complete: shipped `streamwaves`, `streamsounds` and `streammusic`
 audio decodes (PCM 8/16, IMA ADPCM, MP3, KotOR `0x1d6` prefix); a 48 kHz
 stereo mixer provides music/ambient/effects/voice buses, per-voice
 volume/pitch/pan/loop, listener-relative 3D attenuation and `soundeax.2da`
@@ -26,7 +27,11 @@ entity meshes) against a committed baseline; deterministic
 pazaak, swoop and
 turret state machines pass their
 seeded gates; SDL3 pulls the mixer for live playback while headless tests use
-the same mixer deterministically. **45/45 CTest targets** pass.
+the same mixer deterministically. **48/48 CTest targets** pass.
+Sprint 14 adds the retail save matrix (7/7 slots), the all-DLG corpus (1,043
+DLGs / 22,572 entries), TSLPatcher TLK merges, faction parent inheritance,
+explicit `CamVidEffect` rejection and the differential playthrough gate; see
+[`docs/SPRINT14_REPORT.md`](docs/SPRINT14_REPORT.md).
 Sprint 12 remains complete (creature animation, skinning, weapons and cutscene
 cameras: MDL clips/controllers/skinning, `pause1`/`pause` playback, weapon hand
 hooks, GIT/DLG cameras with `CUT###W` clips and height presets, dangly/saber
@@ -45,12 +50,12 @@ complete (7 stores/41 `keblastore` entries, 4 encounter volumes/8 spawns, 80%
 companion XP, systems UI); Sprint 6 remains complete (native script VM
 8,666/8,666 default and functional, 303,616 ACTION calls, dialogue entry 54,
 d20 rounds); Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255
-parity). The remaining schedule is: Sprint 14 P6 correctness (differential
-playthroughs, save matrix, TLK merges, faction parents, `CamVidEffect`,
-baseline maintenance); Sprint 15 release candidate (performance,
-controller/accessibility, legal, installer); Sprint 16 remaster stage 1;
-Sprint 17 remaster stages 2-4, modding and platforms; Sprint 18 KotOR 2
-gameplay parity (final). The all-area content checklist is green.
+parity). Sprint 14 is complete (P6 correctness, save matrix, TLK merges,
+faction parents, CamVidEffect audit). The remaining schedule is: Sprint 15
+release candidate (performance, controller/accessibility, legal, installer);
+Sprint 16 remaster stage 1; Sprint 17 remaster stages 2-4, modding and
+platforms; Sprint 18 KotOR 2 gameplay parity (final). The all-area content
+checklist is green.
 Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT18.md` and their
 `*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
 
@@ -286,11 +291,13 @@ Start with:
 - [`docs/SPRINT11.md`](docs/SPRINT11.md) - Sprint 11 plan: gate S11, lanes, non-goals
 - [`docs/SPRINT13_REPORT.md`](docs/SPRINT13_REPORT.md) - Sprint 13 (audio/media/GUI/localization/mods/KotOR 2/factions/P6/minigames) exit report
 - [`docs/SPRINT13.md`](docs/SPRINT13.md) - Sprint 13 plan: gate S13, lanes, non-goals
+- [`docs/SPRINT14_REPORT.md`](docs/SPRINT14_REPORT.md) - Sprint 14 (P6 correctness) exit report
 - [`docs/SPRINT14.md`](docs/SPRINT14.md) - Sprint 14 plan: P6 correctness and residual gaps
 - [`docs/SPRINT15.md`](docs/SPRINT15.md) - Sprint 15 plan: release candidate checks
 - [`docs/SPRINT16.md`](docs/SPRINT16.md) - Sprint 16 plan: remaster stage 1
 - [`docs/SPRINT17.md`](docs/SPRINT17.md) - Sprint 17 plan: remaster stages 2-4, modding and platforms
 - [`docs/SPRINT18.md`](docs/SPRINT18.md) - Sprint 18 plan: KotOR 2 gameplay parity (final)
+- [`docs/recon/61_SPRINT14_CORRECTNESS.md`](docs/recon/61_SPRINT14_CORRECTNESS.md) - TLK merge, save matrix, DLG corpus and differential gate
 - [`docs/recon/60_P6_CONTENT.md`](docs/recon/60_P6_CONTENT.md) - 117-module content checklist and baseline
 - [`docs/recon/59_FACTIONS.md`](docs/recon/59_FACTIONS.md) - repute matrix, faction actions and FAC round-trip
 - [`docs/recon/58_KOTOR2.md`](docs/recon/58_KOTOR2.md) - K2 profile gate, MDL layout and three loaded areas

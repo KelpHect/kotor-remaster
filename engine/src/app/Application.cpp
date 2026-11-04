@@ -9,6 +9,7 @@
 #include "game/Minigames.h"
 #include "kotor/BinkDecoder.h"
 #include "kotor/Formats.h"
+#include "kotor/GffWrite.h"
 #include "kotor/Gui.h"
 #include "kotor/SaveGame.h"
 #include "render/Backend.h"
@@ -27,6 +28,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
@@ -1678,6 +1680,45 @@ int runFactionTest(GameSession& game, const std::string& scriptPath)
     std::filesystem::remove_all(saveFolder, error);
     game.setReputation(0, 7, base);
 
+    // Parent inheritance: a child faction with no explicit cell inherits its
+    // parent's row (source and target fallback).
+    kotor::GffNode parentRoot(0);
+    const auto factionRow = [](const std::string& name, std::int32_t parentId) {
+        auto node = std::make_shared<kotor::GffNode>(0);
+        node->addString("FactionName", name);
+        node->addInt32("FactionParentID", parentId);
+        node->addInt32("FactionGlobal", 1);
+        return node;
+    };
+    parentRoot.addList("FactionList", {
+        factionRow("Player", -1), factionRow("Parent", -1),
+        factionRow("Child", 1)});
+    const auto repRow = [](std::int32_t a, std::int32_t b, std::int32_t value) {
+        auto node = std::make_shared<kotor::GffNode>(0);
+        node->addInt32("FactionID1", a);
+        node->addInt32("FactionID2", b);
+        node->addInt32("FactionRep", value);
+        return node;
+    };
+    parentRoot.addList("RepList", {
+        repRow(0, 0, 50), repRow(0, 1, 0), repRow(1, 0, 0),
+        repRow(1, 1, 100), repRow(2, 2, 100)});
+    const std::vector<std::uint8_t> parentBytes = kotor::writeGff("FAC ", parentRoot);
+    FactionSystem parented;
+    std::string parentError;
+    check(parented.loadFac(parentBytes, parentError), "fac_parent_parse");
+    check(parented.count() == 3 && parented.parent(2) == 1, "fac_parent_id");
+    check(parented.reputation(2, 0) == 0, "fac_parent_source");
+    check(parented.reputation(0, 2) == 0, "fac_parent_target");
+    check(parented.reputation(2, 1) == 100, "fac_parent_friendly");
+    check(parented.setParent(2, 0), "fac_parent_set");
+    check(parented.reputation(2, 0) == 50, "fac_parent_set_value");
+    FactionSystem parentRestored;
+    check(parentRestored.loadFac(parented.saveFac(), parentError), "fac_parent_save");
+    check(parentRestored.parent(2) == 0
+              && parentRestored.reputation(2, 0) == 50,
+          "fac_parent_roundtrip");
+
     logInfo(concat("faction test: count=", factions.count(),
                    " relations=", factions.relations(),
                    " player/hostile1=", factions.reputation(0, 1),
@@ -1685,6 +1726,318 @@ int runFactionTest(GameSession& game, const std::string& scriptPath)
                    " player/endar=", factions.reputation(0, 14)));
     logInfo(ok ? "faction test: PASS" : "faction test: FAIL");
     return ok ? 0 : 67;
+}
+
+int runSaveMatrixTest(GameSession& base, const std::string& fixtureDirectory)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const std::string& label) {
+        logInfo(concat("save matrix: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    const auto near = [](kotor::Vec3 a, kotor::Vec3 b, float tolerance) {
+        const float dx = a.x - b.x;
+        const float dy = a.y - b.y;
+        const float dz = a.z - b.z;
+        return dx * dx + dy * dy + dz * dz <= tolerance * tolerance;
+    };
+    const auto sameJournal = [](const auto& a, const auto& b) {
+        if (a.size() != b.size()) {
+            return false;
+        }
+        for (const auto& [key, value] : a) {
+            const auto it = b.find(key);
+            if (it == b.end() || it->second != value) {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    const std::filesystem::path root(fixtureDirectory);
+    std::vector<std::filesystem::path> folders;
+    std::error_code error;
+    if (std::filesystem::is_directory(root, error)) {
+        for (const std::filesystem::directory_entry& entry :
+             std::filesystem::directory_iterator(root, error)) {
+            if (entry.is_directory()
+                && std::filesystem::is_regular_file(entry.path() / "SAVEGAME.sav")) {
+                folders.push_back(entry.path());
+            }
+        }
+    }
+    std::sort(folders.begin(), folders.end());
+    check(folders.size() >= 7, "fixture_count");
+    if (folders.empty()) {
+        logInfo(ok ? "save matrix: PASS" : "save matrix: FAIL");
+        return ok ? 0 : 68;
+    }
+
+    const std::filesystem::path scratch =
+        std::filesystem::temp_directory_path() / "kotor-save-matrix";
+    std::filesystem::remove_all(scratch, error);
+    std::size_t loaded = 0;
+    std::size_t roundTrips = 0;
+    for (const std::filesystem::path& folder : folders) {
+        const std::string name = folder.filename().string();
+        try {
+            const kotor::OriginalSave source = kotor::readOriginalSave(folder);
+            GameSession game(base.installPath(), source.module);
+            const bool loadOk = game.loadOriginalSave(folder);
+            check(loadOk, "load_" + name);
+            if (!loadOk) {
+                continue;
+            }
+            ++loaded;
+            check(game.module() == source.module, "module_" + name);
+            check(game.gold() == source.gold, "gold_" + name);
+            check(game.inventory().size() == source.inventory.size(),
+                  "inventory_" + name);
+            check(sameJournal(game.journal(), source.journal), "journal_" + name);
+            check(game.partyTags().size() == source.partyTags.size(),
+                  "party_" + name);
+            check(game.companions().size() == source.partyTags.size(),
+                  "companions_" + name);
+            check(near(game.position(), source.position, 1.0f), "position_" + name);
+
+            std::vector<bool> matchedUsed(game.scene().entities.size(), false);
+            const auto kindMatches = [](kotor::SavedObjectState::Kind saved,
+                                        kotor::EntityKind actual) {
+                switch (saved) {
+                case kotor::SavedObjectState::Kind::Creature: return actual == kotor::EntityKind::Creature;
+                case kotor::SavedObjectState::Kind::Door: return actual == kotor::EntityKind::Door;
+                case kotor::SavedObjectState::Kind::Placeable: return actual == kotor::EntityKind::Placeable;
+                case kotor::SavedObjectState::Kind::Trigger: return actual == kotor::EntityKind::Trigger;
+                case kotor::SavedObjectState::Kind::Store: return actual == kotor::EntityKind::Store;
+                case kotor::SavedObjectState::Kind::Encounter: return actual == kotor::EntityKind::Encounter;
+                case kotor::SavedObjectState::Kind::Waypoint: return actual == kotor::EntityKind::Waypoint;
+                case kotor::SavedObjectState::Kind::Sound: return actual == kotor::EntityKind::Sound;
+                case kotor::SavedObjectState::Kind::Other: return true;
+                }
+                return true;
+            };
+            std::size_t matched = 0;
+            std::size_t mismatched = 0;
+            std::vector<std::string> mismatchDetails;
+            for (const kotor::SavedObjectState& state : source.objects) {
+                std::size_t index = static_cast<std::size_t>(-1);
+                float bestDistance = 1.0e30f;
+                for (std::size_t i = 0; i < game.scene().entities.size(); ++i) {
+                    const kotor::Entity& candidate = game.scene().entities[i];
+                    if (matchedUsed[i] || candidate.tag != state.tag
+                        || !kindMatches(state.kind, candidate.kind)) {
+                        continue;
+                    }
+                    const float dx = candidate.position.x - state.position.x;
+                    const float dy = candidate.position.y - state.position.y;
+                    const float dz = candidate.position.z - state.position.z;
+                    const float distance = dx * dx + dy * dy + dz * dz;
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        index = i;
+                    }
+                }
+                if (index == static_cast<std::size_t>(-1)) {
+                    continue;
+                }
+                matchedUsed[index] = true;
+                ++matched;
+                const kotor::Entity& entity = game.scene().entities[index];
+                std::string why;
+                if (!near(entity.position, state.position, 0.05f)) {
+                    why += "position(" + std::to_string(entity.position.x) + ","
+                        + std::to_string(entity.position.y) + ","
+                        + std::to_string(entity.position.z) + " vs "
+                        + std::to_string(state.position.x) + ","
+                        + std::to_string(state.position.y) + ","
+                        + std::to_string(state.position.z) + ") ";
+                }
+                if (entity.dead != state.dead) {
+                    why += "dead ";
+                }
+                if (state.kind == kotor::SavedObjectState::Kind::Creature
+                    && entity.hitPoints != state.hitPoints) {
+                    why += "hp ";
+                }
+                if (state.kind == kotor::SavedObjectState::Kind::Door
+                    && (entity.open != state.open || entity.locked != state.locked)) {
+                    why += "door ";
+                }
+                if (state.kind == kotor::SavedObjectState::Kind::Placeable
+                    && entity.lootItems != state.loot) {
+                    why += "loot ";
+                }
+                if (!why.empty()) {
+                    ++mismatched;
+                    if (mismatchDetails.size() < 8) {
+                        mismatchDetails.push_back(state.tag + " [" + why + "]");
+                    }
+                }
+            }
+            for (const std::string& detail : mismatchDetails) {
+                logWarn(concat("save matrix: ", name, " object mismatch ", detail));
+            }
+            logInfo(concat("save matrix: ", name, " sourceObjects=", source.objects.size(),
+                           " matched=", matched));
+            const bool synthetic = name.find("SYNTH") != std::string::npos;
+            check(synthetic || source.objects.empty() || matched > 0,
+                  "objects_matched_" + name);
+            check(mismatched == 0, "objects_state_" + name);
+
+            const std::filesystem::path out = scratch / folder.filename();
+            std::filesystem::remove_all(out, error);
+            const bool saved = game.saveOriginalSave(out, source.saveName);
+            check(saved, "save_" + name);
+            if (!saved) {
+                continue;
+            }
+            const kotor::OriginalSave written = kotor::readOriginalSave(out);
+            check(written.module == source.module, "written_module_" + name);
+            check(written.area == source.area, "written_area_" + name);
+            check(written.gold == source.gold, "written_gold_" + name);
+            check(written.inventory.size() == source.inventory.size(),
+                  "written_inventory_" + name);
+            check(sameJournal(written.journal, source.journal),
+                  "written_journal_" + name);
+            check(written.partyTags == source.partyTags, "written_party_" + name);
+            check(!written.hasUseTemplates, "written_flattened_" + name);
+            check(near(written.position, game.position(), 0.05f),
+                  "written_position_" + name);
+            GameSession reloaded(base.installPath(), source.module);
+            const bool reloadOk = reloaded.loadOriginalSave(out);
+            check(reloadOk, "reload_" + name);
+            if (reloadOk) {
+                check(reloaded.gold() == source.gold, "reload_gold_" + name);
+                check(reloaded.inventory().size() == source.inventory.size(),
+                      "reload_inventory_" + name);
+                check(reloaded.journal().size() == source.journal.size(),
+                      "reload_journal_" + name);
+                check(reloaded.partyTags().size() == source.partyTags.size(),
+                      "reload_party_" + name);
+                ++roundTrips;
+            }
+        } catch (const std::exception& exception) {
+            logWarn(concat("save matrix: ", name, ": ", exception.what()));
+            check(false, "exception_" + name);
+        }
+    }
+    std::filesystem::remove_all(scratch, error);
+    logInfo(concat("save matrix: fixtures=", folders.size(), " loaded=", loaded,
+                   " roundTrips=", roundTrips));
+    logInfo(ok ? "save matrix: PASS" : "save matrix: FAIL");
+    return ok ? 0 : 68;
+}
+
+int runDialogueCorpusTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("dialogue corpus: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    kotor::Install install(game.installPath());
+    const auto lowerKey = [](std::string text) {
+        for (char& ch : text) {
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        }
+        return text;
+    };
+    std::set<std::string> seen;
+    std::size_t dlgs = 0;
+    std::size_t entries = 0;
+    std::size_t replies = 0;
+    std::size_t scripts = 0;
+    std::size_t sounds = 0;
+    std::size_t cameraModels = 0;
+    std::size_t camVidEffects = 0;
+    std::size_t parseFailures = 0;
+    const auto parseOne = [&](const std::string& name, std::vector<std::uint8_t> data) {
+        if (!seen.insert(lowerKey(name)).second) {
+            return;
+        }
+        try {
+            const kotor::Gff gff = kotor::Gff::parse(std::move(data), name + ".dlg");
+            const kotor::Dlg dlg = kotor::Dlg::parse(gff, nullptr, name);
+            ++dlgs;
+            entries += dlg.entries.size();
+            replies += dlg.replies.size();
+            if (!dlg.cameraModel.empty()) {
+                ++cameraModels;
+            }
+            for (const kotor::DlgEntry& entry : dlg.entries) {
+                scripts += entry.script.empty() ? 0 : 1;
+                sounds += entry.sound.empty() ? 0 : 1;
+                camVidEffects += entry.camVidEffect > 0 ? 1 : 0;
+            }
+            for (const kotor::DlgReply& reply : dlg.replies) {
+                scripts += reply.script.empty() ? 0 : 1;
+                sounds += reply.sound.empty() ? 0 : 1;
+                camVidEffects += reply.camVidEffect > 0 ? 1 : 0;
+            }
+        } catch (const kotor::FormatError& exception) {
+            ++parseFailures;
+            if (parseFailures <= 5) {
+                logWarn(concat("dialogue corpus: ", name, ": ", exception.what()));
+            }
+        }
+    };
+
+    for (const std::string& name : install.resourceNames(2029)) {
+        if (const auto data = install.find(name, 2029); data.has_value()) {
+            parseOne(name, *data);
+        }
+    }
+    std::error_code error;
+    const std::filesystem::path modules =
+        std::filesystem::path(game.installPath()) / "modules";
+    if (std::filesystem::is_directory(modules, error)) {
+        for (const std::filesystem::directory_entry& item :
+             std::filesystem::directory_iterator(modules, error)) {
+            if (error || !item.is_regular_file()) {
+                continue;
+            }
+            const std::string extension = item.path().extension().string();
+            if (extension != ".rim" && extension != ".mod") {
+                continue;
+            }
+            try {
+                const kotor::Archive archive = kotor::Archive::open(item.path());
+                for (const kotor::ArchiveEntry& entry : archive.entries()) {
+                    if (entry.type == 2029) {
+                        parseOne(entry.resref, archive.read(entry));
+                    }
+                }
+            } catch (const kotor::FormatError&) {
+            }
+        }
+    }
+    check(parseFailures == 0, "parse");
+    check(dlgs > 1000, "dlgs");
+    check(entries > 0, "entries");
+    check(replies > 0, "replies");
+    check(scripts > 0, "scripts");
+    check(sounds > 0, "sounds");
+    check(cameraModels > 0, "camera_models");
+    check(camVidEffects == 0, "camvid_defaults");
+    logInfo(concat("dialogue corpus: dlgs=", dlgs, " entries=", entries,
+                   " replies=", replies, " scripts=", scripts,
+                   " sounds=", sounds, " cameraModels=", cameraModels,
+                   " camVidEffects=", camVidEffects));
+    logInfo(ok ? "dialogue corpus: PASS" : "dialogue corpus: FAIL");
+    return ok ? 0 : 69;
+}
+
+int runDifferentialTest(GameSession& game, const std::string& saveFixtures)
+{
+    const int saveCode = runSaveMatrixTest(game, saveFixtures);
+    const int dialogueCode = runDialogueCorpusTest(game);
+    const int playthroughCode = runPlaythrough(game);
+    const bool ok = saveCode == 0 && dialogueCode == 0 && playthroughCode == 0;
+    logInfo(concat("differential test: saveMatrix=", saveCode,
+                   " dialogueCorpus=", dialogueCode,
+                   " playthrough=", playthroughCode));
+    logInfo(ok ? "differential test: PASS" : "differential test: FAIL");
+    return ok ? 0 : 70;
 }
 
 int runK2Test(GameSession& game)
@@ -1998,6 +2351,23 @@ int runLocalizationTest(GameSession& game)
           "tlk_language");
     check(localization.entryCount() == 49265, "tlk_entries");
     check(localization.tlk().sound(38167) == "c_drdastro_bat1", "tlk_sound");
+
+    // TSLPatcher-style TLK merge: overwrite, sound-only patch, append.
+    const std::string base0 = localization.tlk().text(0);
+    const kotor::Tlk patch = kotor::Tlk::fromEntries(
+        0, {{"PATCHED", ""}, {"", "patch_snd"}, {"APPENDED", "append_snd"}},
+        "patch.tlk");
+    const kotor::Tlk merged = kotor::Tlk::merge(localization.tlk(), patch, "merged.tlk", 2);
+    check(merged.size() == localization.entryCount() + 1, "tlk_merge_size");
+    check(merged.text(0) == "PATCHED", "tlk_merge_overwrite");
+    check(merged.text(1) == localization.tlk().text(1)
+              && merged.sound(1) == "patch_snd",
+          "tlk_merge_sound_only");
+    check(merged.text(static_cast<std::uint32_t>(localization.entryCount())) == "APPENDED"
+              && merged.sound(static_cast<std::uint32_t>(localization.entryCount()))
+                  == "append_snd",
+          "tlk_merge_append");
+    check(localization.tlk().text(0) == base0, "tlk_merge_base_unchanged");
     check(localization.load(0, error), "language_explicit");
     check(!localization.load(1, error), "language_missing");
     check(localization.languageId() == 0, "language_retained");
@@ -4517,6 +4887,15 @@ int runApplication(const Options& options)
             }
             if (options.factionTest) {
                 return runFactionTest(*game, options.factionScript);
+            }
+            if (options.saveMatrixTest) {
+                return runSaveMatrixTest(*game, options.saveFixtures);
+            }
+            if (options.dialogueCorpusTest) {
+                return runDialogueCorpusTest(*game);
+            }
+            if (options.differentialTest) {
+                return runDifferentialTest(*game, options.saveFixtures);
             }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);
