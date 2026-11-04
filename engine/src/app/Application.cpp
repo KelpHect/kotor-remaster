@@ -1,5 +1,6 @@
 #include "app/Application.h"
 
+#include "audio/Output.h"
 #include "core/Log.h"
 #include "game/GameSession.h"
 #include "kotor/Formats.h"
@@ -1393,6 +1394,138 @@ std::string resolveInstallPath(const Options& options)
     return "E:/SteamLibrary/steamapps/common/swkotor";
 }
 
+int runAudioTest(GameSession& game, const std::string& scriptPath)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("audio test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    AudioSystem& audio = game.audio();
+    logInfo(concat("audio test: music=", audio.areaAudio().musicDay,
+                   " ambient=", audio.areaAudio().ambientDay,
+                   " eax=", audio.areaAudio().eaxPreset,
+                   " emitters=", audio.soundEmitterCount()));
+    check(audio.areaAudio().musicDay == "mus_theme_sith", "area_music");
+    check(audio.areaAudio().ambientDay == "al_en_starforge", "area_ambient");
+    check(audio.areaAudio().eaxPreset == "HALLWAY", "area_eax");
+    check(audio.soundEmitterCount() == 45, "sound_emitters");
+    check(audio.playMusic(game.scene().areaAudio.musicDayId), "music_play");
+    check(audio.playAmbient(game.scene().areaAudio.ambientDayId), "ambient_play");
+
+    std::string decodeError;
+    audio::SoundData mp3;
+    const bool mp3Ok = audio.decodeProbe("as_el_alert", mp3, decodeError);
+    if (!mp3Ok) {
+        logWarn(concat("audio test: MP3 decode failed: ", decodeError));
+    }
+    check(mp3Ok && mp3.sampleRate > 0 && mp3.channels > 0 && mp3.frameCount() > 0,
+          "mp3_decode");
+    audio::SoundData wav;
+    decodeError.clear();
+    const bool wavOk = audio.decodeProbe("gui_click", wav, decodeError);
+    if (!wavOk) {
+        logWarn(concat("audio test: WAV decode failed: ", decodeError));
+    }
+    check(wavOk && wav.sampleRate == 22050 && wav.channels == 1 && wav.frameCount() > 0,
+          "wav_decode");
+    audio::SoundData resampled = mp3;
+    check(audio::resample(resampled, 48000, 2) && resampled.sampleRate == 48000
+              && resampled.channels == 2,
+          "resample_48k_stereo");
+
+    bool soundObjectFound = false;
+    for (const kotor::SoundEmitter& emitter : game.scene().soundEmitters) {
+        if (emitter.sounds.empty()) {
+            continue;
+        }
+        soundObjectFound = true;
+        check(audio.playSoundObject(emitter.entity), "sound_object_play");
+        check(audio.setSoundObjectVolume(emitter.entity, 0.5f), "sound_object_volume");
+        check(audio.setSoundObjectPosition(emitter.entity, emitter.position),
+              "sound_object_position");
+        check(audio.stopSoundObject(emitter.entity), "sound_object_stop");
+        break;
+    }
+    check(soundObjectFound, "sound_object_template");
+
+    check(audio.mixer().activeVoices(audio::Bus::Music) > 0, "music_voice");
+    check(audio.mixer().activeVoices(audio::Bus::Ambient) > 0, "ambient_voice");
+    std::vector<float> mixed(4800 * 2);
+    audio.mixer().mix(mixed.data(), 4800);
+    check(audio.mixer().lastRms() > 0.0001f, "area_mix");
+
+    auto tone = std::make_shared<audio::SoundData>();
+    tone->name = "synthetic_tone";
+    tone->sampleRate = 48000;
+    tone->channels = 2;
+    tone->samples.resize(4800 * 2);
+    for (int i = 0; i < 4800; ++i) {
+        const float value = std::sin(6.2831853f * 440.0f * static_cast<float>(i) / 48000.0f)
+            * 0.35f;
+        tone->samples[static_cast<std::size_t>(i) * 2] = value;
+        tone->samples[static_cast<std::size_t>(i) * 2 + 1] = value;
+    }
+    audio::Mixer mixer;
+    mixer.setBusVolume(audio::Bus::Effects, 1.0f);
+    mixer.setReverb("NOREVERB");
+    const int toneVoice = mixer.play(tone, audio::Bus::Effects, 1.0f, true);
+    check(toneVoice > 0, "mixer_voice");
+    std::vector<float> toneMix(4800 * 2);
+    mixer.mix(toneMix.data(), 4800);
+    check(mixer.lastRms() > 0.1f, "mixer_rms");
+    mixer.setListener({0.0f, 0.0f, 0.0f}, 0.0f);
+    mixer.setReverb("CAVE");
+    const int rightVoice = mixer.play(tone, audio::Bus::Effects, 1.0f, true, true,
+                                      {0.0f, -4.0f, 0.0f}, 1.0f, 10.0f);
+    check(mixer.voiceGain(rightVoice) < 1.0f, "distance_attenuation");
+    check(mixer.voicePan(rightVoice) > 0.5f, "stereo_pan");
+    mixer.mix(toneMix.data(), 4800);
+    check(mixer.lastRms() > 0.0001f, "eax_reverb");
+    mixer.stopAll();
+    mixer.mix(toneMix.data(), 4800);
+    check(mixer.activeVoices() == 0 && mixer.lastRms() == 0.0f, "stop_all");
+
+    std::vector<float> loopMix(960 * 2);
+    auto shortTone = std::make_shared<audio::SoundData>(*tone);
+    shortTone->samples.resize(100 * 2);
+    const int loopVoice = mixer.play(shortTone, audio::Bus::Effects, 1.0f, true);
+    mixer.mix(loopMix.data(), 960);
+    check(loopVoice > 0 && mixer.activeVoices() == 1, "loop_wrap");
+    mixer.stopAll();
+
+    if (!scriptPath.empty()) {
+        std::ifstream scriptFile(scriptPath, std::ios::binary | std::ios::ate);
+        std::vector<std::uint8_t> scriptBytes;
+        if (scriptFile) {
+            const std::streamoff size = scriptFile.tellg();
+            scriptFile.seekg(0, std::ios::beg);
+            scriptBytes.resize(static_cast<std::size_t>(size));
+            if (!scriptBytes.empty()) {
+                scriptFile.read(reinterpret_cast<char*>(scriptBytes.data()), size);
+            }
+        }
+        check(!scriptBytes.empty(), "audio_script_loaded");
+        check(game.runScriptNcsForTest("audio_script_test", scriptBytes,
+                                       game.objectForEntityIndex(0)),
+              "audio_script_ran");
+        bool played = false;
+        for (const std::string& line : game.combatLog()) {
+            if (line.find("sound as_el_alert") != std::string::npos) {
+                played = true;
+            }
+        }
+        check(played, "audio_script_play_sound");
+        check(game.scene().areaAudio.musicDayId == 3, "audio_script_music");
+        check(game.scene().areaAudio.ambientDayId == 32, "audio_script_ambient");
+        check(std::fabs(audio.mixer().busVolume(audio::Bus::Ambient) - 0.4f) < 0.01f,
+              "audio_script_ambient_volume");
+    }
+
+    logInfo(ok ? "audio test: PASS" : "audio test: FAIL");
+    return ok ? 0 : 60;
+}
+
 int runAnimationTest(GameSession& game, const std::string& scriptPath)
 {
     game.setAnimationEnabled(true);
@@ -2639,6 +2772,7 @@ int runApplication(const Options& options)
     }
 
     std::optional<GameSession> game;
+    std::unique_ptr<audio::Output> audioOutput;
     if (!options.module.empty()) {
         std::string installPath = options.install;
         if (installPath.empty()) {
@@ -2834,6 +2968,9 @@ int runApplication(const Options& options)
             if (options.animationTest) {
                 return runAnimationTest(*game, options.animationScript);
             }
+            if (options.audioTest) {
+                return runAudioTest(*game, options.audioScript);
+            }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);
             }
@@ -2956,6 +3093,16 @@ int runApplication(const Options& options)
 
     RuntimeState state;
 
+    if (game && !options.headless) {
+        audioOutput = std::make_unique<audio::Output>(game->audio().mixer());
+        if (audioOutput->valid()) {
+            logInfo(concat("Audio device: ", audioOutput->device()));
+        } else {
+            logWarn("Audio device unavailable; continuing silent");
+            audioOutput.reset();
+        }
+    }
+
     std::vector<BackendKind> candidates;
     if (options.backend == BackendKind::Auto) {
         if (options.headless) {
@@ -3005,6 +3152,7 @@ int runApplication(const Options& options)
     if (!state.backend || state.window == nullptr) {
         logError(concat("No usable render backend for the requested selection (",
                         backendName(options.backend), "). See the messages above."));
+        audioOutput.reset();
         SDL_Quit();
         return 5;
     }
@@ -3025,6 +3173,7 @@ int runApplication(const Options& options)
         if (!state.backend->initializeImGui(state.window, error)) {
             logError(concat("ImGui backend initialization failed: ", error));
             destroyRuntime(state);
+            audioOutput.reset();
             SDL_Quit();
             return 5;
         }
@@ -3190,6 +3339,7 @@ int runApplication(const Options& options)
         if (status == FrameStatus::Fatal) {
             logError(concat("Frame failed: ", error));
             destroyRuntime(state);
+            audioOutput.reset();
             SDL_Quit();
             return 6;
         }
@@ -3226,6 +3376,7 @@ int runApplication(const Options& options)
                    state.backend->info().apiVersion, " | ", state.backend->info().swapchain));
 
     destroyRuntime(state);
+    audioOutput.reset();
     SDL_Quit();
     return 0;
 }

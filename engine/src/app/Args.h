@@ -33,6 +33,8 @@ struct Options {
     bool lootTest = false;
     bool combatForceTest = false;
     bool animationTest = false;
+    bool audioTest = false;
+    std::string audioScript;
     std::string animationScript;
     std::string combatForceScript;
     std::string delayedTest;

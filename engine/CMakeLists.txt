@@ -68,6 +68,17 @@ if(MSVC)
 endif()
 
 # ---------------------------------------------------------------------------
+# dr_mp3 (public domain/MIT-0): MP3 stream decode for KotOR audio.
+# ---------------------------------------------------------------------------
+add_library(kotor_dr_mp3 STATIC third_party/dr_libs/dr_mp3_impl.cpp)
+target_include_directories(kotor_dr_mp3 PUBLIC third_party/dr_libs)
+if(MSVC)
+    target_compile_options(kotor_dr_mp3 PRIVATE /W0)
+else()
+    target_compile_options(kotor_dr_mp3 PRIVATE -w)
+endif()
+
+# ---------------------------------------------------------------------------
 # KotOR data layer: archives, GFF, geometry, textures, scene construction.
 # This is engine code, not a Python tool; the research tools remain oracles.
 # ---------------------------------------------------------------------------
@@ -86,6 +97,16 @@ add_library(kotor_data STATIC
     src/kotor/TwoDa.cpp)
 target_include_directories(kotor_data PUBLIC src)
 target_link_libraries(kotor_data PUBLIC kotor_engine_options)
+
+# ---------------------------------------------------------------------------
+# Audio: WAV/MP3 decode, deterministic buses and EAX-style reverb.
+# ---------------------------------------------------------------------------
+add_library(kotor_audio STATIC
+    src/audio/Audio.cpp
+    src/audio/Output.cpp)
+target_include_directories(kotor_audio PUBLIC src)
+target_link_libraries(kotor_audio PUBLIC kotor_engine_options kotor_data kotor_dr_mp3
+                                              SDL3::SDL3-static)
 
 # ---------------------------------------------------------------------------
 # Script runtime: native NCS VM, generated action table and action model.
@@ -109,6 +130,7 @@ add_executable(kotor_engine
     src/app/Application.cpp
     src/app/Args.cpp
     src/core/Log.cpp
+    src/game/AudioSystem.cpp
     src/game/GameSession.cpp
     src/game/Rules.cpp
     src/render/BackendFactory.cpp
@@ -123,6 +145,7 @@ target_include_directories(kotor_engine PRIVATE src)
 target_link_libraries(kotor_engine PRIVATE
     kotor_engine_options
     kotor_data
+    kotor_audio
     kotor_script
     kotor_imgui
     SDL3::SDL3-static
@@ -216,6 +239,10 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                  COMMAND kotor_engine --module end_m01aa --animation-test
                          --animation-script "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/anim_script_test.ncs"
                          --null --headless)
+        add_test(NAME kotor_audio
+                 COMMAND kotor_engine --module end_m01aa --audio-test
+                         --audio-script "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/audio_script_test.ncs"
+                         --null --headless)
         add_test(NAME kotor_playthrough
                  COMMAND kotor_engine --module end_m01aa --playthrough --null --headless)
         add_test(NAME kotor_landmark
@@ -257,7 +284,7 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                              kotor_taris_transition kotor_walk_collision kotor_dialogue
                              kotor_combat kotor_script kotor_rules kotor_systems
                              kotor_merchant kotor_encounter kotor_encounter_reset kotor_party kotor_ui kotor_loot
-                             kotor_delayed_functors kotor_combat_force kotor_animation
+                             kotor_delayed_functors kotor_combat_force kotor_animation kotor_audio
                              kotor_playthrough kotor_landmark kotor_save_load kotor_original_save_create kotor_profile_k1
             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
         if(EXISTS "${KOTOR2_TEST_INSTALL}/swkotor2.exe")

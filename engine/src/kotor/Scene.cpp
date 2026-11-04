@@ -55,6 +55,31 @@ std::string lower(std::string text)
     return text;
 }
 
+std::optional<TwoDa> loadTable(Install& install, const char* name)
+{
+    auto data = install.find(name, resType(ResType::TwoDa));
+    if (!data.has_value()) {
+        return std::nullopt;
+    }
+    try {
+        return TwoDa::parse(std::move(*data), name);
+    } catch (const FormatError&) {
+        return std::nullopt;
+    }
+}
+
+std::string tableResource(const std::optional<TwoDa>& table, std::int32_t id)
+{
+    if (!table.has_value() || id < 0) {
+        return {};
+    }
+    const std::string row = std::to_string(id);
+    if (table->rowIndex(row) < 0) {
+        return {};
+    }
+    return table->cell(row, "resource");
+}
+
 Image checkerboard()
 {
     Image image;
@@ -171,6 +196,102 @@ void addCameras(const Gff& git, std::uint32_t root, Scene& scene)
             camera.fov = git.number(*field);
         }
         scene.cameras.push_back(camera);
+    }
+}
+
+void addAreaAudio(Install& install, const Gff& git, std::uint32_t root, Scene& scene)
+{
+    const GffField* field = git.field(root, "AreaProperties");
+    if (field == nullptr || field->type != GffType::Struct) {
+        return;
+    }
+    const std::uint32_t structure = git.structIndex(*field);
+    AreaAudio& audio = scene.areaAudio;
+    const auto integer = [&](const char* label, std::int32_t fallback) {
+        const GffField* entry = git.field(structure, label);
+        return entry != nullptr ? git.integer(*entry) : fallback;
+    };
+    audio.musicDayId = integer("MusicDay", -1);
+    audio.musicNightId = integer("MusicNight", -1);
+    audio.musicBattleId = integer("MusicBattle", -1);
+    audio.ambientDayId = integer("AmbientSndDay", -1);
+    audio.ambientNightId = integer("AmbientSndNight", -1);
+    audio.ambientDayVolume = integer("AmbientSndDayVol", 0);
+    audio.ambientNightVolume = integer("AmbientSndNitVol", 0);
+    audio.musicDelay = integer("MusicDelay", 0);
+    const std::int32_t eax = integer("EnvAudio", -1);
+
+    const std::optional<TwoDa> music = loadTable(install, "ambientmusic");
+    const std::optional<TwoDa> ambient = loadTable(install, "ambientsound");
+    const std::optional<TwoDa> eaxTable = loadTable(install, "soundeax");
+    audio.musicDay = tableResource(music, audio.musicDayId);
+    audio.musicNight = tableResource(music, audio.musicNightId);
+    audio.musicBattle = tableResource(music, audio.musicBattleId);
+    audio.ambientDay = tableResource(ambient, audio.ambientDayId);
+    audio.ambientNight = tableResource(ambient, audio.ambientNightId);
+    if (eaxTable.has_value() && eax >= 0) {
+        const std::string row = std::to_string(eax);
+        if (eaxTable->rowIndex(row) >= 0) {
+            audio.eaxPreset = eaxTable->cell(row, "label");
+        }
+    }
+}
+
+void addSoundEmitters(Install& install, const Gff& git, std::uint32_t root, Scene& scene)
+{
+    const GffField* listField = git.field(root, "SoundList");
+    if (listField == nullptr || listField->type != GffType::List) {
+        return;
+    }
+    std::vector<std::uint32_t> soundEntities;
+    for (std::uint32_t entity = 0; entity < scene.entities.size(); ++entity) {
+        if (scene.entities[entity].kind == EntityKind::Sound) {
+            soundEntities.push_back(entity);
+        }
+    }
+    std::size_t soundEntityOrdinal = 0;
+    for (const std::uint32_t structure : git.list(*listField)) {
+        SoundEmitter emitter;
+        emitter.templateResref = text(git, structure, "TemplateResRef");
+        emitter.position = {number(git, structure, "XPosition", 0.0f),
+                            number(git, structure, "YPosition", 0.0f),
+                            number(git, structure, "ZPosition", 0.0f)};
+        std::uint32_t soundEntity = 0;
+        if (soundEntityOrdinal < soundEntities.size()) {
+            soundEntity = soundEntities[soundEntityOrdinal++];
+        }
+        emitter.entity = soundEntity;
+
+        auto utsData = install.find(emitter.templateResref, resType(ResType::Uts));
+        if (utsData.has_value()) {
+            try {
+                Gff uts = Gff::parse(std::move(*utsData), emitter.templateResref + ".uts");
+                const std::uint32_t utsRoot = uts.rootIndex();
+                emitter.elevation = number(uts, utsRoot, "Elevation", 0.0f);
+                emitter.maxDistance = number(uts, utsRoot, "MaxDistance", 10.0f);
+                emitter.minDistance = number(uts, utsRoot, "MinDistance", 1.0f);
+                emitter.volume = std::clamp(number(uts, utsRoot, "Volume", 100.0f) / 100.0f,
+                                            0.0f, 1.0f);
+                emitter.active = number(uts, utsRoot, "Active", 1.0f) != 0.0f;
+                emitter.continuous = number(uts, utsRoot, "Continuous", 1.0f) != 0.0f;
+                emitter.looping = number(uts, utsRoot, "Looping", 0.0f) != 0.0f;
+                emitter.positional = number(uts, utsRoot, "Positional", 0.0f) != 0.0f;
+                emitter.random = number(uts, utsRoot, "Random", 0.0f) != 0.0f;
+                emitter.interval = static_cast<int>(number(uts, utsRoot, "Interval", 0.0f));
+                emitter.intervalVariation = static_cast<int>(
+                    number(uts, utsRoot, "IntervalVrtn", 0.0f));
+                if (const GffField* list = uts.field(utsRoot, "Sounds")) {
+                    for (const std::uint32_t sound : uts.list(*list)) {
+                        const std::string resref = text(uts, sound, "Sound");
+                        if (!resref.empty()) {
+                            emitter.sounds.push_back(resref);
+                        }
+                    }
+                }
+            } catch (const FormatError&) {
+            }
+        }
+        scene.soundEmitters.push_back(std::move(emitter));
     }
 }
 
@@ -347,6 +468,8 @@ Scene loadModule(Install& install, const std::string& moduleStem)
     addEntities(git, git.rootIndex(), "SoundList", EntityKind::Sound, scene);
     addEntities(git, git.rootIndex(), "StoreList", EntityKind::Store, scene);
     addCameras(git, git.rootIndex(), scene);
+    addAreaAudio(install, git, git.rootIndex(), scene);
+    addSoundEmitters(install, git, git.rootIndex(), scene);
 
     loadEntityAssets(scene, install, git);
     return scene;
