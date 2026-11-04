@@ -1,0 +1,49 @@
+[INFO] Language: English (0) tlk entries=136329
+[INFO] KotOR module 001EBO area 001ebo from E:\SteamLibrary\steamapps\common\Knights of the Old Republic II
+[INFO]   build sha256: 6a522e71631dcee93467bd2010f3b23d9145326e1e2e89305f13ab104dbbffef
+[INFO]   rooms: 18 vertices: 240252 indices: 240252 batches: 55
+[INFO]   textures: 78 collision vertices: 837 facets: 1237
+[INFO]   entities: 175 (door 11, placeable 43, creature 2, waypoint 24, store 0, encounter 0)
+[INFO]   encounter volumes: 0
+[INFO]   entry: 54.6509, 79.6204, 1.8
+[INFO]   entity meshes: 70 triggers: 17 warnings: 0
+[INFO]   script hooks: 82 on 50 entities; scene hooks: 4; script runs: 3
+[INFO]   entity mesh 0 BlastDoor verts=1968 local=-1.82816,-0.217917,-0.432702 .. 1.82816,0.218455,3.25128
+[INFO]   entity mesh 1 BlastDoor verts=1968 local=-1.82816,-0.217917,-0.432702 .. 1.82816,0.218455,3.25128
+[INFO]   entity mesh 2 001EBODr1 verts=1968 local=-1.82816,-0.217917,-0.432702 .. 1.82816,0.218455,3.25128
+[INFO]   creature mesh HK50 verts=7401 local=-0.552524,-0.163329,-0.074383 .. 0.536423,0.23414,1.99148
+[INFO]   bounds: -367.994, -381.104, -403.005 .. 473.329, 429.454, 407.553
+[INFO] k2 test: profile_kind=1
+[INFO] k2 test: profile_recognized=1
+[INFO] k2 test: profile_sha256=1
+[INFO] k2 test: profile_world=1
+[INFO] k2 test: profile_saves_k1_only=1
+[INFO] k2 test: extra_area=1
+[INFO] k2 test: extra_rooms=1
+[INFO] k2 test: extra_geometry=1
+[INFO] k2 test: module=007EBO area=003ebo rooms=16 vertices=196581
+[INFO] k2 test: extra_area=1
+[INFO] k2 test: extra_rooms=1
+[INFO] k2 test: extra_geometry=1
+[INFO] k2 test: module=002EBO area=002ebo rooms=2 vertices=42081
+[INFO] k2 test: room_model=1
+[INFO] k2 test: mdl_k2_layout=1
+[INFO] k2 test: room_triangles=1
+[INFO] k2 test: room_finite=1
+[INFO] k2 test: room_bounds=1
+[INFO] k2 test: room triangles=921 maxAbs=7.38929
+[INFO] k2 test: dlg_resource=1
+[INFO] k2 test: dlg_erf_layer=1
+[INFO] k2 test: module=1
+[INFO] k2 test: area=1
+[INFO] k2 test: rooms=1
+[INFO] k2 test: entities=1
+[INFO] k2 test: entity_meshes=1
+[INFO] k2 test: triggers=1
+[INFO] k2 test: warnings=1
+[INFO] k2 test: vertices=1
+[INFO] k2 test: batches=1
+[INFO] k2 test: scripts=1
+[INFO] k2 test: language=1
+[INFO] k2 test: area=001ebo rooms=18 vertices=240252 entities=175 meshes=70 triggers=17 warnings=0
+[INFO] k2 test: PASS

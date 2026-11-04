@@ -63,12 +63,16 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
     settlement), swoop (throttle/boost/brake, 3 x 3,000 m laps) and turret
     (five approaching targets, shots/hits/score, arrival damage) state
     machines with seeded transcripts.
-14. **Device** - SDL3 audio stream pulls the mixer in live frames; headless
+14. **KotOR 2 world loading** - profile-gated K2 geometry (token `0x416310`,
+    340-byte trimesh header, MDX offset `+332`) and `_dlg.erf` mounting;
+    `001EBO`, `007EBO` and `002EBO` load through the same path with zero
+    warnings, and `001EBO` builds 18 rooms / 175 entities / 70 meshes.
+15. **Device** - SDL3 audio stream pulls the mixer in live frames; headless
     tests exercise the same mixer without a device.
-15. **Regression** - 42/42 CTest, 117/117 modules with 0 warnings, VM
+16. **Regression** - 43/43 CTest, 117/117 modules with 0 warnings, VM
     8,666/8,666, scene parity PASS, Python 143 tests / 7 skips, install
     sentinel 0 session changes.
-16. **Evidence and docs** - audio/media/localization/VFS/GUI/minigame tests, phase log,
+17. **Evidence and docs** - audio/media/localization/VFS/K2/GUI/minigame tests, phase log,
     module/VM/parity/tools/install logs, report and technical note.
 
 ## Lanes
@@ -87,12 +91,14 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
 | s13-10-minigames | pazaak/swoop/turret state machines and gate | `engine/src/game/Minigames.*`, `Application.cpp` |
 | s13-11-localization | TLK language and localized voice/LIP paths | `engine/src/kotor/Localization.*`, `GameSession.*` |
 | s13-12-mods | five-pass VFS, Override root and 2DA merge | `engine/src/kotor/Install.*`, `TwoDa.*`, `Application.cpp` |
-| s13-13-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
+| s13-13-k2 | K2 profile gate, geometry layout and `_dlg.erf` | `engine/src/kotor/Profile.h`, `Geometry.cpp`, `Install.cpp`, `Application.cpp` |
+| s13-14-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
 
 ## Next sprint
 
-Gate S13 covers audio, Bink/LIP media, Bink audio and the facial rig. GUI
-interaction and the remaining UI/content systems are tracked in
+Gate S13 covers audio, Bink/LIP media, Bink audio, the facial rig, GUI
+interaction, localization, mods/Override and KotOR 2 world loading. Faction
+reputation and the P6 content checklist are tracked in
 [`docs/SPRINT14.md`](SPRINT14.md) with the shipped-data evidence for each
 boundary.
 

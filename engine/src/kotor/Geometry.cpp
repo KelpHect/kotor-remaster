@@ -248,6 +248,17 @@ std::string lowerAscii(std::string text)
     return text;
 }
 
+std::string hex32(std::uint32_t value)
+{
+    static constexpr char digits[] = "0123456789abcdef";
+    std::string text(8, '0');
+    for (int i = 7; i >= 0; --i) {
+        text[static_cast<std::size_t>(i)] = digits[value & 0xFu];
+        value >>= 4;
+    }
+    return text;
+}
+
 } // namespace
 
 Mdl Mdl::parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std::string name)
@@ -260,6 +271,19 @@ Mdl Mdl::parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std
     model.mdl_ = std::move(mdl);
     model.mdx_ = std::move(mdx);
     const auto& b = model.mdl_;
+    const std::uint32_t geometryId = readU32(b.data(), b.size(), 12 + 0, "MDL geometry id");
+    // KotOR 2 uses the same MDL container with a different geometry token and a
+    // 340-byte trimesh header (8 bytes of dirt fields replacing K1's 2-byte
+    // tail). Everything else (node header, name table, animation table) keeps
+    // the K1 offsets.
+    if (geometryId == 0x413670u) {
+        model.k2_ = false;
+    } else if (geometryId == 0x416310u) {
+        model.k2_ = true;
+    } else {
+        throw FormatError(model.name_ + ": unknown MDL geometry id 0x"
+                          + hex32(geometryId));
+    }
     model.supermodel_ = readCString(b.data(), b.size(), 12 + 136, 32, "MDL supermodel", model.name_);    const std::uint32_t root = readU32(b.data(), b.size(), 12 + 40, "MDL root");
     const std::uint32_t nameOff = readU32(b.data(), b.size(), 12 + 184, "MDL name offsets");
     const std::uint32_t nameCount = readU32(b.data(), b.size(), 12 + 188, "MDL name count");
@@ -321,6 +345,7 @@ Mdl Mdl::parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std
         }
         if (node.type & 0x20u) {
             const std::size_t m = a + 80u;
+            const std::size_t trimeshBase = model.k2_ ? 340u : 332u;
             node.trimesh = true;
             node.faceOffset = readU32(b.data(), b.size(), m + 8u, "MDL face offset");
             node.faceCount = readU32(b.data(), b.size(), m + 12u, "MDL face count");
@@ -328,7 +353,8 @@ Mdl Mdl::parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std
             node.texture1 = readCString(b.data(), b.size(), m + 120u, 32, "MDL texture1", model.name_);
             node.stride = readU32(b.data(), b.size(), m + 252u, "MDL stride");
             node.vertexCount = readU32(b.data(), b.size(), m + 304u, "MDL vertex count") & 0xFFFFu;
-            node.mdxOffset = readU32(b.data(), b.size(), m + 324u, "MDL mdx offset");
+            node.mdxOffset = readU32(b.data(), b.size(),
+                                     m + (model.k2_ ? 332u : 324u), "MDL mdx offset");
             if (node.stride < 12u && node.vertexCount != 0 && !(node.type & 0x800u)) {
                 throw FormatError(model.name_ + ": MDL vertex stride "
                                   + std::to_string(node.stride));
@@ -338,7 +364,7 @@ Mdl Mdl::parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std
             requireRange(b.size(), 12u + node.faceOffset,
                          static_cast<std::size_t>(node.faceCount) * 32u, "MDL faces");
             if (node.type & 0x800u) {
-                const std::size_t sh = m + 332u;
+                const std::size_t sh = m + trimeshBase;
                 requireRange(b.size(), sh, 20u, "MDL saber header");
                 const std::uint32_t vertexOffset = readU32(b.data(), b.size(), sh, "MDL saber vertices");
                 const std::uint32_t uvOffset = readU32(b.data(), b.size(), sh + 4u, "MDL saber uvs");
@@ -365,7 +391,7 @@ Mdl Mdl::parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std
                 }
                 node.saber = std::move(saber);
             } else if (node.type & 0x100u) {
-                const std::size_t dh = m + 332u;
+                const std::size_t dh = m + trimeshBase;
                 requireRange(b.size(), dh, 28u, "MDL dangly header");
                 const std::uint32_t constraintOffset = readU32(b.data(), b.size(), dh, "MDL dangly constraints");
                 const std::uint32_t constraintCount = readU32(b.data(), b.size(), dh + 4u, "MDL dangly count");
@@ -382,7 +408,7 @@ Mdl Mdl::parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std
                 }
                 node.dangly = std::move(dangly);
             } else if (node.type & 0x40u) {
-                const std::size_t sh = m + 332u;
+                const std::size_t sh = m + trimeshBase;
                 requireRange(b.size(), sh, 100u, "MDL skin header");
                 Skin skin;
                 skin.weightsOffset = readU32(b.data(), b.size(), sh + 12u, "MDL skin weights");

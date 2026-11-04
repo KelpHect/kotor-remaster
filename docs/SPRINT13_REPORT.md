@@ -1,4 +1,4 @@
-# Sprint 13 report - audio, media, GUI, localization, mods and minigame parity
+# Sprint 13 report - audio, media, GUI, localization, mods, KotOR 2 and minigame parity
 
 Status: **complete - gate S13 met (2026-11-04)**. Sprint 12 closed
 animation/skinning, weapons, cutscene cameras and visual FX. Sprint 13 adds
@@ -7,13 +7,14 @@ and UTS sound emitters load, dialogue voice-over plays, a deterministic mixer
 provides 3D attenuation/pan and EAX-style reverb, and the script sound/music
 actions are bridged. It also closes SSF sound sets, Bink container/pixel
 decode and presentation, LIP visemes, GUI screens/interaction, localization,
-mods/Override precedence and the three minigame state machines.
+mods/Override precedence, KotOR 2 world loading and the three minigame state
+machines.
 
 ## 1. Build and test result
 
 ```text
-100% tests passed, 0 tests failed out of 42
-Total Test time (real) = 176.46 sec
+100% tests passed, 0 tests failed out of 43
+Total Test time (real) = 175.99 sec
 ```
 
 The new targets are `kotor_audio`, `kotor_media`, `kotor_gui` and
@@ -240,7 +241,34 @@ Gate assertions: `module_rim_layer`, `bif_layer`, `patch_layer`,
 `merge_fixtures`, `merge_column`, `merge_overwrite`, `merge_untouched`,
 `merge_append`.
 
-## 11. Minigames
+## 11. KotOR 2 world loading
+
+- **Profile**: `swkotor2.exe` SHA-256
+  `6a522e71631dcee93467bd2010f3b23d9145326e1e2e89305f13ab104dbbffef`;
+  `supportsWorldLoad` now accepts a recognised K1 or K2 build while
+  `supportsOriginalSaves` stays K1-only.
+- **Geometry**: K2 uses geometry token `0x416310` (K1 `0x413670`) and a
+  **340-byte** trimesh header vs 332. The MDX vertex offset is at trimesh
+  `+332` (K1 `+324`); skin/dangly/saber sub-headers start at `+340`. Stride
+  `+252`, vertex count `+304` and the file header offsets are unchanged.
+  `Mdl::parse` accepts both tokens, records the layout and rejects unknown
+  tokens. `001EBO2` proves it: stride 32, 74 vertices, MDX 86,896 bytes,
+  offset 84,496 (`84,496 + 74*32 = 86,864`).
+- **Resources**: `bindModule` mounts `modules/<stem>_dlg.erf` in pass 4; K2
+  keeps dialogue there (`001EBO_dlg.erf`: 47 DLGs) while the area RIM holds
+  ARE/GIT/IFO and the LYT/room models come from the BIF set.
+- **Areas**: `001EBO` (18 rooms, 240,252 vertices, 175 entities, 70 entity
+  meshes, 17 triggers, 55 batches, 0 warnings), `007EBO` (16 rooms) and
+  `002EBO` (2 rooms) all load through the same public path.
+
+Gate assertions: `profile_kind`, `profile_recognized`, `profile_sha256`,
+`profile_world`, `profile_saves_k1_only`, `room_model`, `mdl_k2_layout`,
+`room_triangles`, `room_finite`, `room_bounds`, `dlg_resource`,
+`dlg_erf_layer`, `module`, `area`, `rooms`, `entities`, `entity_meshes`,
+`triggers`, `warnings`, `vertices`, `batches`, `scripts`, `language`,
+`extra_area`, `extra_rooms`, `extra_geometry`.
+
+## 12. Minigames
 
 Deterministic rule/state machines in `engine/src/game/Minigames.*`:
 
@@ -273,36 +301,37 @@ Gate assertions: `pazaak_deterministic`, `pazaak_seed_varies`,
 `pazaak_script_result`, `pazaak_session_start`, `pazaak_session_match_over`,
 `pazaak_session_result`, `pazaak_wager`.
 
-## 12. Device
+## 13. Device
 
 `audio::Output` opens an SDL3 playback stream (48 kHz float stereo) and pulls
 the mixer in the audio callback. Live runs log `Audio device: <name>`; headless
 tests use the same mixer without a device. The output stream is destroyed
 before `SDL_Quit` (the parity crash fix).
 
-## 13. Regression
+## 14. Regression
 
-- **CTest: 42/42 passed** (176.46 s).
+- **CTest: 43/43 passed** (175.99 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0000**, PASS.
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
-## 14. Next sprint
+## 15. Next sprint
 
 Sprint 13 closes audio, Bink/LIP media, native movie presentation, Bink audio,
-GUI interaction, localization, mods/Override and the facial rig. KotOR 2 world
-loading and faction/P6 are planned in
+GUI interaction, localization, mods/Override, KotOR 2 world loading and the
+facial rig. Faction reputation and the P6 content checklist are planned in
 [`docs/SPRINT14.md`](SPRINT14.md); the shipped-data evidence is `media.log`
 (61 BIK, native RGBA SHA-256, 18,206 LIP, 107 head rows / 106 models / 0 viseme
-clips), `localization.log`, `vfs.log` and `bik-oracle.txt`.
+clips), `localization.log`, `vfs.log`, `k2.log` and `bik-oracle.txt`.
 
 ## Evidence index
 
 - `docs/evidence/s13/audio.log`
 - `docs/evidence/s13/localization.log`
 - `docs/evidence/s13/vfs.log`
+- `docs/evidence/s13/k2.log`
 - `docs/evidence/s13/media.log`
 - `docs/evidence/s13/gui.log`
 - `docs/evidence/s13/gui-state.png`, `gui-mainmenu.png`
@@ -320,4 +349,5 @@ clips), `localization.log`, `vfs.log` and `bik-oracle.txt`.
 - Fixture: `engine/tests/fixtures/audio_script_test.nss/.ncs`
 - VFS fixtures: `engine/tests/fixtures/vfs/merge_base.2da`, `merge_patch.2da`
 - Technical notes: [docs/recon/51_AUDIO.md](recon/51_AUDIO.md),
-  [docs/recon/57_MODS_VFS.md](recon/57_MODS_VFS.md)
+  [docs/recon/57_MODS_VFS.md](recon/57_MODS_VFS.md),
+  [docs/recon/58_KOTOR2.md](recon/58_KOTOR2.md)

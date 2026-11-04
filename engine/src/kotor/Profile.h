@@ -2,9 +2,9 @@
 
 // Game-profile identity for the data layer. A profile names the shipped
 // executable, the supported build hash and the capabilities the engine is
-// allowed to claim for that build. KotOR 1 is the supported world target for
-// Sprint 9; KotOR 2 is recognized so its data can be identified and gated
-// explicitly instead of being mistaken for a corrupted KotOR 1 install.
+// allowed to claim for that build. KotOR 1 and KotOR 2 both load worlds; K2
+// uses profile-gated geometry/resource layout differences. Original save
+// round-tripping remains KotOR 1 only.
 
 #include <filesystem>
 #include <string>
@@ -20,7 +20,9 @@ struct GameProfile {
     std::string buildSha256;
     bool recognized = false;
 
-    bool supportsWorldLoad() const { return kind == GameKind::KotOR1; }
+    bool supportsWorldLoad() const {
+        return recognized && (kind == GameKind::KotOR1 || kind == GameKind::KotOR2);
+    }
     bool supportsOriginalSaves() const { return kind == GameKind::KotOR1; }
 
     static GameProfile detect(const std::filesystem::path& gameDir);

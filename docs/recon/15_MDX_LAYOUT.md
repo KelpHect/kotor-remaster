@@ -38,6 +38,18 @@ next block = end of previous pad (== next mesh header's +324)
 * **Stride = 24 + 8·textureCount + 32·skin + 36·TBN**, with `textureCount = mesh+304 >> 16`;
   verified for all 76,703 blocks (79 empty/procedural special cases).
 
+### KotOR 2 variant
+
+K2 keeps the container but changes the geometry id (`0x416310` vs K1
+`0x413670`) and the trimesh header: **340** bytes instead of 332, with the
+MDX vertex offset at trimesh `+332` instead of `+324`, and skin/dangly/saber
+sub-headers at `+340`. The fields before the tail (stride `+252`, vertex
+count `+304`, textures `+88/+120`) and the file header (root `0x34`,
+animations `0x64/0x68`, names `0xC4/0xC8`) are unchanged. The 8-byte
+difference is K2's dirt fields (10 bytes) replacing K1's 2-byte tail short.
+This is implemented in `Mdl::parse` and documented with shipped-model evidence
+in [58_KOTOR2.md](58_KOTOR2.md).
+
 | stride | count | fields |
 |---:|---:|---|
 | 24 | 13,467 | pos, normal |

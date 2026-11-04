@@ -1,22 +1,21 @@
-# Sprint 14 - KotOR 2, factions and the P6 checklist
+# Sprint 14 - faction reputation, P6 and the remaining content parity
 
 Status: **planned**. Sprint 13 closed audio, SSF sound sets, Bink containers,
 native Bink pixel decode/presentation, Bink Audio sync, LIP viseme timelines,
 the procedural facial rig, GUI screens/interaction, localization,
-mods/Override precedence and the pazaak/swoop/turret state machines. Sprint 14
-covers the systems that remain.
+mods/Override precedence, KotOR 2 world loading and the pazaak/swoop/turret
+state machines. Sprint 14 covers the remaining content/simulation layers.
 
 ## Why this is a separate sprint
 
-- **KotOR 2 world loading** is a profile-gated content layer beyond the KotOR 1
-  runtime slice.
-- **Faction reputation and P6** are the remaining content/simulation layers.
+- **Faction reputation** is a rules/simulation layer over the shipped `.fac`
+  tables and script actions.
+- **P6** is the all-area content checklist across the 117 KotOR 1 modules.
 
 ## Gate S14
 
-1. **KotOR 2 world loading** - profile-gated K2 resources and world data.
-2. **Faction reputation and P6** - faction simulation and the all-area content
-   checklist.
+1. **Faction reputation** - faction simulation and script/store consequences.
+2. **P6** - all-area content checklist and remaining parity.
 3. **Regression** - full CTest, 117-module sweep, VM parity, GL/Vulkan parity,
    Python suite and install sentinel.
 
@@ -36,5 +35,7 @@ covers the systems that remain.
   language selection and localized voice/LIP paths.
 - `docs/evidence/s13/vfs.log`, `docs/recon/57_MODS_VFS.md` - five-pass VFS and
   2DA merge evidence.
+- `docs/evidence/s13/k2.log`, `docs/recon/58_KOTOR2.md` - K2 profile, geometry
+  layout and three loaded areas.
 - `docs/recon/51_AUDIO.md`, `docs/recon/54_FACIAL_RIG.md` - stream/mixer and
   viseme rig details.

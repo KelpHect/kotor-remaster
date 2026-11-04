@@ -1574,6 +1574,120 @@ std::string resolveInstallPath(const Options& options)
     return "E:/SteamLibrary/steamapps/common/swkotor";
 }
 
+int runK2Test(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("k2 test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+
+    constexpr const char* kKotor2Sha =
+        "6a522e71631dcee93467bd2010f3b23d9145326e1e2e89305f13ab104dbbffef";
+    const kotor::GameProfile profile = kotor::GameProfile::detect(game.installPath());
+    check(profile.kind == kotor::GameKind::KotOR2, "profile_kind");
+    check(profile.recognized, "profile_recognized");
+    check(profile.buildSha256 == kKotor2Sha, "profile_sha256");
+    check(profile.supportsWorldLoad(), "profile_world");
+    check(!profile.supportsOriginalSaves(), "profile_saves_k1_only");
+
+    kotor::Install install(game.installPath());
+    install.bindModule("001EBO");
+    install.addPacks();
+    install.addLips();
+
+    // More shipped K2 areas load through the same profile-gated path.
+    struct K2Area {
+        const char* module;
+        const char* area;
+        std::size_t rooms;
+    };
+    const K2Area areas[] = {
+        {"007EBO", "003ebo", 16},
+        {"002EBO", "002ebo", 2},
+    };
+    for (const K2Area& expected : areas) {
+        try {
+            const kotor::Scene area = kotor::loadModule(install, expected.module);
+            check(area.area == expected.area, "extra_area");
+            check(area.rooms.size() == expected.rooms, "extra_rooms");
+            check(!area.vertices.empty() && !area.batches.empty(), "extra_geometry");
+            logInfo(concat("k2 test: module=", expected.module, " area=", area.area,
+                           " rooms=", area.rooms.size(),
+                           " vertices=", area.vertices.size()));
+        } catch (const kotor::FormatError& exception) {
+            logWarn(concat("k2 test: module ", expected.module, " failed: ",
+                           exception.what()));
+            check(false, "extra_area");
+        }
+    }
+    install.bindModule("001EBO");
+    install.addPacks();
+    install.addLips();
+
+    // K2 room geometry: 340-byte trimesh header, MDX offset at +332.
+    const auto roomMdl = install.find("001ebo2", kotor::resType(kotor::ResType::Mdl));
+    const auto roomMdx = install.find("001ebo2", kotor::resType(kotor::ResType::Mdx));
+    check(roomMdl.has_value() && roomMdx.has_value(), "room_model");
+    if (roomMdl.has_value() && roomMdx.has_value()) {
+        try {
+            const kotor::Mdl room = kotor::Mdl::parse(*roomMdl, *roomMdx, "001ebo2.mdl");
+            check(room.isKotOR2(), "mdl_k2_layout");
+            const std::vector<kotor::MdlMeshTriangle> triangles = room.meshTriangles();
+            check(!triangles.empty(), "room_triangles");
+            bool finite = true;
+            double maxAbs = 0.0;
+            for (const kotor::MdlMeshTriangle& triangle : triangles) {
+                for (const kotor::MdlMeshVertex& vertex : triangle.v) {
+                    const double x = vertex.position.x;
+                    const double y = vertex.position.y;
+                    const double z = vertex.position.z;
+                    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) {
+                        finite = false;
+                    }
+                    maxAbs = std::max({maxAbs, std::fabs(x), std::fabs(y), std::fabs(z)});
+                }
+            }
+            check(finite, "room_finite");
+            check(maxAbs > 1.0 && maxAbs < 10'000.0, "room_bounds");
+            logInfo(concat("k2 test: room triangles=", triangles.size(),
+                           " maxAbs=", maxAbs));
+        } catch (const kotor::FormatError& exception) {
+            logWarn(concat("k2 test: room parse failed: ", exception.what()));
+            check(false, "mdl_k2_layout");
+        }
+    }
+
+    // K2 ships dialogs in <stem>_dlg.erf, separate from the area RIM.
+    std::string source;
+    const auto dialog = install.find("3cfd", 2029, &source);
+    check(dialog.has_value(), "dlg_resource");
+    check(source.find("001EBO_dlg.erf") != std::string::npos, "dlg_erf_layer");
+
+    // Scene built through GameSession.
+    const kotor::Scene& scene = game.scene();
+    check(game.module() == "001EBO", "module");
+    check(scene.area == "001ebo", "area");
+    check(scene.rooms.size() == 18, "rooms");
+    check(scene.entities.size() == 175, "entities");
+    check(scene.entityMeshes.size() == 70, "entity_meshes");
+    check(scene.triggers.size() == 17, "triggers");
+    check(scene.warnings.empty(), "warnings");
+    check(scene.vertices.size() > 200'000, "vertices");
+    check(scene.batches.size() == 55, "batches");
+    check(!scene.scripts.empty(), "scripts");
+    check(scene.area == "001ebo" && game.languageId() == 0, "language");
+
+    logInfo(concat("k2 test: area=", scene.area, " rooms=", scene.rooms.size(),
+                   " vertices=", scene.vertices.size(),
+                   " entities=", scene.entities.size(),
+                   " meshes=", scene.entityMeshes.size(),
+                   " triggers=", scene.triggers.size(),
+                   " warnings=", scene.warnings.size()));
+    logInfo(ok ? "k2 test: PASS" : "k2 test: FAIL");
+    return ok ? 0 : 66;
+}
+
 int runVfsTest(GameSession& game, const std::string& fixtureDirectory)
 {
     bool ok = true;
@@ -4240,6 +4354,9 @@ int runApplication(const Options& options)
             }
             if (options.vfsTest) {
                 return runVfsTest(*game, options.vfsFixtures);
+            }
+            if (options.k2Test) {
+                return runK2Test(*game);
             }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);

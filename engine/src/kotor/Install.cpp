@@ -196,6 +196,9 @@ void Install::bindModule(const std::string& stem)
     }
     addLayer(4, 0, root_ / "modules" / (stem + ".rim"),
              "modules/" + stem + ".rim");
+    // K2 ships dialog resources separately from the area RIM.
+    addLayer(4, 2, overlayPath("modules/" + stem + "_dlg.erf"),
+             "modules/" + stem + "_dlg.erf");
     if (layers_.empty()) {
         throw FormatError("no module archive for " + stem);
     }
