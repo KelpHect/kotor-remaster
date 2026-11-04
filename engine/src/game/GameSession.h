@@ -319,6 +319,7 @@ private:
     bool stealthActive_ = false;
     std::uint32_t animationRevision_ = 0;
     bool animationEnabled_ = true;
+    float footstepTimer_ = 0.0f;
     std::int32_t forceJumpBonus_ = 0;
     std::vector<float> npcAttackTimers_;
     std::vector<bool> triggerInside_;

@@ -28,10 +28,10 @@ complete (7 stores/41 `keblastore` entries, 4 encounter volumes/8 spawns, 80%
 companion XP, systems UI); Sprint 6 remains complete (native script VM
 8,666/8,666 default and functional, 303,616 ACTION calls, dialogue entry 54,
 d20 rounds); Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255
-parity). Sprint 14+ remains: Bink movies and LIP lip sync, SSF sound sets/
-footsteps/barks, non-default `CamVidEffect` semantics (none in the K1 corpus),
-full `.gui`, minigames, localization, mods/Override, KotOR 2 world loading,
-faction reputation simulation and the P6 content checklist.
+parity). Sprint 14+ remains: Bink movies and LIP lip sync, non-default
+`CamVidEffect` semantics (none in the K1 corpus), full `.gui`, minigames,
+localization, mods/Override, KotOR 2 world loading, faction reputation
+simulation and the P6 content checklist.
 Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT13.md` and their
 `*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
 
@@ -190,7 +190,8 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
 - Sprint 13 (audio/EAX): PCM/IMA ADPCM/MP3 decode with KotOR prefix handling,
   48 kHz four-bus mixer, 3D attenuation/pan, `soundeax.2da` reverb presets,
   GIT `AreaProperties` music/ambience, 45 UTS sound emitters, DLG voice-over,
-  script sound/music/ambient actions, SDL3 output stream.
+  SSF sound sets/barks, appearance-driven footsteps, script sound/music/
+  ambient actions, SDL3 output stream.
   CTest **37/37**; 117-module sweep 0/0; VM parity 0; scene parity 0.0449;
   Python 143 tests / 7 skips; install unchanged. See
   `docs/recon/51_AUDIO.md` and `docs/SPRINT13_REPORT.md`.

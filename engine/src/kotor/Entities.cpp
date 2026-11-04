@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -520,6 +521,24 @@ std::string creatureModel(const TwoDa& appearances, std::uint32_t appearance, st
     return model;
 }
 
+void applyCreatureAudio(Entity& entity, const TwoDa& appearances,
+                        const std::optional<TwoDa>& soundSets, const Gff& utc,
+                        std::uint32_t root)
+{
+    const std::int32_t soundSetId = intField(utc, root, "SoundSetFile", -1);
+    if (soundSets.has_value() && soundSetId >= 0 && soundSetId != 65535) {
+        const std::string row = std::to_string(soundSetId);
+        if (soundSets->rowIndex(row) >= 0) {
+            entity.soundSet = soundSets->cell(row, "resref");
+        }
+    }
+    const std::string appearanceRow = std::to_string(entity.appearance);
+    if (appearances.rowIndex(appearanceRow) >= 0) {
+        entity.footstepType = std::atoi(appearances.cell(appearanceRow, "footsteptype").c_str());
+        entity.soundAppType = std::atoi(appearances.cell(appearanceRow, "soundapptype").c_str());
+    }
+}
+
 void addTriggerGeometry(Scene& scene, const Gff& git)
 {    std::size_t triggerOrdinal = 0;
     for (const std::uint32_t structure : [&]() {
@@ -711,6 +730,7 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
         const std::uint32_t root = utc.rootIndex();
         const std::optional<Tlk> tlk = loadTlk(install);
         const std::optional<TwoDa> appearances = loadTable(install, "appearance");
+        const std::optional<TwoDa> soundSets = loadTable(install, "soundset");
         const std::optional<TwoDa> baseitems = loadTable(install, "baseitems");
 
         Entity entity;
@@ -755,6 +775,7 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
             std::string texture;
             entity.model = creatureModel(*appearances, entity.appearance, texture);
             entity.texture = texture;
+            applyCreatureAudio(entity, *appearances, soundSets, utc, root);
         }
         scene.entities.push_back(std::move(entity));
         const std::size_t index = scene.entities.size() - 1;
@@ -794,6 +815,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
 {
     const std::optional<Tlk> tlk = loadTlk(install);
     const std::optional<TwoDa> appearances = loadTable(install, "appearance");
+    const std::optional<TwoDa> soundSets = loadTable(install, "soundset");
     const std::optional<TwoDa> genericDoors = loadTable(install, "genericdoors");
     const std::optional<TwoDa> placeables = loadTable(install, "placeables");
     const std::optional<TwoDa> baseitems = loadTable(install, "baseitems");
@@ -839,6 +861,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                         std::string texture;
                         entity.model = creatureModel(*appearances, entity.appearance, texture);
                         entity.texture = texture;
+                        applyCreatureAudio(entity, *appearances, soundSets, utc, utc.rootIndex());
                     }
                 } catch (const FormatError&) {
                 }

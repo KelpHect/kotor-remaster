@@ -28,13 +28,18 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
 7. **Script bridge** - `PlaySound`, `SoundObjectPlay/Stop/SetVolume/
    SetPosition`, `MusicBackgroundPlay/Stop/ChangeDay/ChangeNight/Get*`,
    `AmbientSoundPlay/Stop/ChangeDay/ChangeNight/Set*Volume`.
-8. **Device** - SDL3 audio stream pulls the mixer in live frames; headless
+8. **Sound sets** - SSF V1.1 (type 2060) parses; UTC `SoundSetFile` maps
+   through `soundset.2da`; SSF StrRefs resolve through `dialog.tlk` sound
+   resrefs; creature selection/battle/pain/attack/death slots and
+   `BarkString` play; `appearance.footsteptype` drives
+   `footstepsounds.2da` surface steps.
+9. **Device** - SDL3 audio stream pulls the mixer in live frames; headless
    tests exercise the same mixer without a device.
-9. **Regression** - 37/37 CTest, 117/117 modules with 0 warnings, VM
-   8,666/8,666, scene parity PASS, Python 143 tests / 7 skips, install
-   sentinel 0 session changes.
-10. **Evidence and docs** - audio test, phase log, module/VM/parity/tools/install
-   logs, report and technical note.
+10. **Regression** - 37/37 CTest, 117/117 modules with 0 warnings, VM
+    8,666/8,666, scene parity PASS, Python 143 tests / 7 skips, install
+    sentinel 0 session changes.
+11. **Evidence and docs** - audio test, phase log, module/VM/parity/tools/install
+    logs, report and technical note.
 
 ## Lanes
 
@@ -46,12 +51,12 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
 | s13-04-system | decode cache, music/ambient/voice/objects | `engine/src/game/AudioSystem.*` |
 | s13-05-bridge | dialogue voice and script actions | `engine/src/game/GameSession.cpp` |
 | s13-06-device | SDL3 output stream | `engine/src/audio/Output.*`, `Application.cpp` |
-| s13-07-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
+| s13-07-soundsets | SSF, soundset mapping, footsteps and barks | `engine/src/audio`, `game/*` |
+| s13-08-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
 
 ## Outside this sprint
 
 - Bink movie playback and LIP lip sync.
-- Sound sets, footsteps and creature barks (SSF/soundset tables).
 - Full `.gui` screens, minigames, localization, mods/Override precedence and
   KotOR 2 world loading.
 - Faction reputation simulation and the P6 content checklist.

@@ -11,7 +11,7 @@ actions are bridged.
 
 ```text
 100% tests passed, 0 tests failed out of 37
-Total Test time (real) = 231.71 sec
+Total Test time (real) = 257.26 sec
 ```
 
 The new target is `kotor_audio`; all Sprint 12 targets still pass.
@@ -70,26 +70,44 @@ The compiled fixture `engine/tests/fixtures/audio_script_test.ncs` calls
 `PlaySound("as_el_alert")`, changes the day music to row 3, changes ambient to
 row 32 and sets the ambient day volume to 40; all four assertions pass.
 
-## 6. Device
+## 6. Sound sets, footsteps and barks
+
+- **SSF V1.1** (type 2060): `SSF V1.1` header, lead `12`, 40 StrRef slots
+  (172-byte shipped files), `0xFFFFFFFF` empty slots.
+- UTC `SoundSetFile` maps through `soundset.2da` (e.g. `end_bridgerep1` row
+  58 -> `n_repsold` -> `n_repsold.ssf`).
+- SSF StrRefs resolve through `dialog.tlk`; the TLK entry's 16-byte sound
+  resref (e.g. `n_sithsoldr_atk1`) is the stream resref.
+- Bark slots: battle cry 0-5, select 6-8, attack grunt 9-11, pain 12-13,
+  death 15. Combat/dialogue hooks play them positionally; `BarkString`
+  (action 671) plays a requested slot.
+- `appearance.footsteptype` selects a `footstepsounds.2da` row (Soft/Hard/
+  Droid/Droid_Heavy); WOK surface ids select dirt/grass/stone/wood/water/
+  carpet/metal and the 0/1/2 variant is deterministic.
+
+Gate assertions: `creature_soundset`, `ssf_slots`, `ssf_filled`,
+`soundset_2da_mapping`, `appearance_footstep_mapping`, `creature_barks`,
+`footstep_stone`, `footstep_metal`, `footstep_wood`, `footstep_voices`.
+
+## 7. Device
 
 `audio::Output` opens an SDL3 playback stream (48 kHz float stereo) and pulls
 the mixer in the audio callback. Live runs log `Audio device: <name>`; headless
 tests use the same mixer without a device. The output stream is destroyed
 before `SDL_Quit` (the parity crash fix).
 
-## 7. Regression
+## 8. Regression
 
-- **CTest: 37/37 passed** (231.71 s).
+- **CTest: 37/37 passed** (257.26 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0449**, PASS.
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
-## 8. Outside Sprint 13
+## 9. Outside Sprint 13
 
 - Bink movie playback and LIP lip sync.
-- SSF sound sets, footsteps and creature barks.
 - Full `.gui` screens, minigames, localization, mods/Override precedence and
   KotOR 2 world loading.
 - Faction reputation simulation and the P6 content checklist.

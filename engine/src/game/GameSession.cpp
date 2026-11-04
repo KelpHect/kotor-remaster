@@ -194,6 +194,36 @@ bool floorHeight(const kotor::Scene& scene, float x, float y, float maxZ, float&
     return found;
 }
 
+int floorSurface(const kotor::Scene& scene, float x, float y, float maxZ)
+{
+    int bestSurface = -1;
+    float best = -1.0e30f;
+    for (const kotor::CollisionFacet& facet : scene.collision) {
+        if (!facet.floor) {
+            continue;
+        }
+        const kotor::Vec3& a = scene.collisionVertices[facet.a];
+        const kotor::Vec3& b = scene.collisionVertices[facet.b];
+        const kotor::Vec3& c = scene.collisionVertices[facet.c];
+        const float den = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
+        if (std::fabs(den) < 1.0e-8f) {
+            continue;
+        }
+        const float u = ((b.y - c.y) * (x - c.x) + (c.x - b.x) * (y - c.y)) / den;
+        const float v = ((c.y - a.y) * (x - c.x) + (a.x - c.x) * (y - c.y)) / den;
+        const float w = 1.0f - u - v;
+        if (u < -0.001f || v < -0.001f || w < -0.001f) {
+            continue;
+        }
+        const float z = u * a.z + v * b.z + w * c.z;
+        if (z <= maxZ + kStepHeight && z > best) {
+            best = z;
+            bestSurface = static_cast<int>(facet.surface);
+        }
+    }
+    return bestSurface;
+}
+
 bool segmentIntersects(const kotor::Vec3& a, const kotor::Vec3& b,
                        const kotor::Vec3& c, const kotor::Vec3& d)
 {
@@ -514,6 +544,7 @@ GameSession::GameSession(std::string installPath, std::string module)
     playerHp_ = character_.hp;
     gold_ = character_.gold;
     audio_ = std::make_unique<AudioSystem>(install_);
+    audio_->setTlk(tlk_ ? &*tlk_ : nullptr);
     if (!loadModule(module, nullptr, {})) {
         throw kotor::FormatError("cannot load module " + module);
     }
@@ -1502,6 +1533,21 @@ void GameSession::update(float dt, const InputState& input)
         grounded_ = false;
     }
 
+    if (audio_) {
+        if (magnitude > 1.0e-5f && grounded_) {
+            footstepTimer_ += dt;
+            if (footstepTimer_ >= 0.42f) {
+                footstepTimer_ = 0.0f;
+                const int surface = floorSurface(scene_, position_.x, position_.y,
+                                                 position_.z + 2.0f);
+                if (surface >= 0) {
+                    audio_->playFootstep(0, surface, position_, 0.45f);
+                }
+            }
+        } else {
+            footstepTimer_ = 0.0f;
+        }
+    }
     syncPlayerToScriptWorld();
     updateTriggers();
     updateCombat(dt);
@@ -1920,6 +1966,9 @@ bool GameSession::startDialogue(std::size_t entityIndex)
     active.npcObject = objectForEntity(entityIndex);
     active.dlg = std::move(dlg);
     activeDialogue_ = std::move(active);
+    if (audio_) {
+        audio_->playCreatureSound(static_cast<std::uint32_t>(entityIndex), 6); // select
+    }
     loadDialogueCameraModel(activeDialogue_->dlg.cameraModel);
     dialogueCameraClip_.clear();
     dialogueCameraTime_ = 0.0f;
@@ -2127,6 +2176,9 @@ void GameSession::attackNearestHostile()
     }
     combatTarget_ = static_cast<std::uint32_t>(best);
     logEvent("combat target " + combatTargetName());
+    if (audio_) {
+        audio_->playCreatureSound(static_cast<std::uint32_t>(best), 0); // battle cry
+    }
     const kotor::Entity& target = scene_.entities[best];
     const float distance = distance2D(position_, target.position);
     const std::int32_t jump = rules_.forceJumpBonus(character_);
@@ -2196,15 +2248,22 @@ void GameSession::playerAttack(std::size_t target)
         }
     }
     entity.hitPoints -= result.damage + sneakDamage;
+    const std::size_t index = &entity - scene_.entities.data();
     logEvent("player hits " + (entity.name.empty() ? entity.tag : entity.name)
              + " for " + std::to_string(result.damage + sneakDamage)
              + (sneakDamage > 0 ? " (sneak)" : "")
              + (result.critical ? " (critical)" : "") + " ("
              + std::to_string(std::max(0, entity.hitPoints)) + "/" + std::to_string(entity.maxHitPoints) + ")");
+    if (audio_) {
+        audio_->playCreatureSound(static_cast<std::uint32_t>(index),
+                                  result.critical ? 16 : 12); // critical/pain
+    }
     if (entity.hitPoints <= 0) {
         entity.dead = true;
         logEvent("player defeats " + (entity.name.empty() ? entity.tag : entity.name));
-        const std::size_t index = &entity - scene_.entities.data();
+        if (audio_) {
+            audio_->playCreatureSound(static_cast<std::uint32_t>(index), 15); // death
+        }
         const std::int32_t reward = std::max<std::int32_t>(1, entity.maxHitPoints / 2);
         combatTarget_ = UINT32_MAX;
         giveXp(reward);
@@ -2217,6 +2276,9 @@ void GameSession::npcAttack(std::size_t attacker)
     kotor::Entity& entity = scene_.entities[attacker];
     if (entity.stunTimer > 0.0f || entity.fearTimer > 0.0f) {
         return;
+    }
+    if (audio_) {
+        audio_->playCreatureSound(static_cast<std::uint32_t>(attacker), 9); // attack
     }
     const std::int32_t roll = 1 + static_cast<std::int32_t>(random() % 20u);
     const std::int32_t targetAc = rules_.armorClass(character_) + forceArmorBonus();
@@ -3271,6 +3333,14 @@ std::optional<std::vector<script::Value>> GameSession::action(
             audio_->playVoice(stringArg(0));
         }
         return std::vector<script::Value>{};
+    case 671: { // BarkString
+        const std::size_t entity = entityForObject(objectArg(0));
+        if (audio_ && entity != static_cast<std::size_t>(-1)) {
+            audio_->playCreatureSound(static_cast<std::uint32_t>(entity),
+                                      static_cast<int>(intArg(1)));
+        }
+        return std::vector<script::Value>{};
+    }
     case 425: // MusicBackgroundPlay
     case 426: // MusicBackgroundStop
     case 427: // MusicBackgroundSetDelay

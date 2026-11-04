@@ -24,6 +24,7 @@ public:
 
     bool loadScene(const kotor::Scene& scene, std::string& error);
     void setListener(kotor::Vec3 position, float yaw);
+    void setTlk(const kotor::Tlk* tlk) { tlk_ = tlk; }
 
     bool playMusic(std::int32_t musicId);
     bool playAmbient(std::int32_t ambientId);
@@ -33,6 +34,9 @@ public:
     bool playEffect(const std::string& resref, const kotor::Vec3* position = nullptr,
                     float volume = 1.0f, bool loop = false);
     bool playSoundObject(std::uint32_t entity);
+    bool playCreatureSound(std::uint32_t entity, int slot);
+    bool playFootstep(int footstepType, int surface, kotor::Vec3 position,
+                      float volume = 0.6f);
     bool stopSoundObject(std::uint32_t entity);
     bool setSoundObjectVolume(std::uint32_t entity, float volume);
     bool setSoundObjectPosition(std::uint32_t entity, kotor::Vec3 position);
@@ -60,9 +64,15 @@ private:
     std::optional<kotor::TwoDa> musicTable_;
     std::optional<kotor::TwoDa> ambientTable_;
     std::optional<kotor::TwoDa> eaxTable_;
+    std::optional<kotor::TwoDa> footstepTable_;
     kotor::AreaAudio areaAudio_;
     std::vector<kotor::SoundEmitter> soundEmitters_;
+    std::map<std::uint32_t, std::string> entitySoundSets_;
+    std::map<std::uint32_t, kotor::Vec3> entityPositions_;
+    std::map<std::string, kotor::Ssf> soundSetCache_;
     std::map<std::uint32_t, int> objectVoices_;
+    const kotor::Tlk* tlk_ = nullptr;
+    std::uint32_t footstepCounter_ = 0;
     float musicVolume_ = 0.75f;
     float ambientVolume_ = 0.65f;
 };
