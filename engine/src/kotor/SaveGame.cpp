@@ -91,6 +91,31 @@ std::vector<ErfEntry> parseErf(const std::vector<std::uint8_t>& bytes, const std
     if (bytes.size() < 160) {
         throw FormatError(label + ": shorter than a 160-byte ERF header");
     }
+    if (std::memcmp(bytes.data(), "RIM ", 4) == 0) {
+        const std::uint32_t count = readU32(bytes.data(), bytes.size(), 12, "RIM count");
+        const std::uint32_t table = readU32(bytes.data(), bytes.size(), 16, "RIM table");
+        if (count > 1'000'000u) {
+            throw FormatError(label + ": implausible RIM entry count");
+        }
+        requireRange(bytes.size(), table, static_cast<std::size_t>(count) * 32u,
+                     "RIM entry table");
+        std::vector<ErfEntry> entries;
+        entries.reserve(count);
+        for (std::uint32_t i = 0; i < count; ++i) {
+            const std::size_t o = table + static_cast<std::size_t>(i) * 32u;
+            ErfEntry entry;
+            entry.resref = readCString(bytes.data(), bytes.size(), o, 16, "RIM resref");
+            entry.type = readU16(bytes.data(), bytes.size(), o + 16, "RIM type");
+            const std::uint32_t offset = readU32(bytes.data(), bytes.size(), o + 24,
+                                                 "RIM offset");
+            const std::uint32_t size = readU32(bytes.data(), bytes.size(), o + 28,
+                                               "RIM size");
+            requireRange(bytes.size(), offset, size, "RIM payload");
+            entry.data.assign(bytes.begin() + offset, bytes.begin() + offset + size);
+            entries.push_back(std::move(entry));
+        }
+        return entries;
+    }
     if (std::memcmp(bytes.data(), "ERF ", 4) != 0 && std::memcmp(bytes.data(), "MOD ", 4) != 0
         && std::memcmp(bytes.data(), "SAV ", 4) != 0) {
         throw FormatError(label + ": not an ERF/MOD/SAV container");

@@ -324,6 +324,14 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.chargen = true;
             continue;
         }
+        if (arg == "--chargen-gui") {
+            result.options.chargenGui = true;
+            continue;
+        }
+        if (arg == "--chargen-gui-test") {
+            result.options.chargenGuiTest = true;
+            continue;
+        }
         if (arg == "--chargen-test") {
             result.options.chargenTest = true;
             continue;
@@ -735,6 +743,8 @@ void printUsage()
         << "  --module-playthrough-test  All-module conversation matrix only\n"
         << "  --bug-parity-test     Classic bug-parity vs fixed-mode assertions\n"
         << "  --chargen             Start in interactive character generation\n"
+        << "  --chargen-gui         Use the shipped classsel/abilities/skills/name screens\n"
+        << "  --chargen-gui-test    Assert the shipped chargen screen flow headlessly\n"
         << "  --chargen-test        Assert the headless character-generation gate\n"
         << "  --campaign-test       Run the multi-act campaign continuity gate\n"
         << "  --avatar-test         Assert player/companion meshes and locomotion\n"

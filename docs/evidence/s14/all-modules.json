@@ -259,7 +259,7 @@
       "rooms": 16,
       "script hooks": 37,
       "tail": "[INFO]   bounds: -170.51, -32.644, -204.652 .. 238.793, 349.363, 204.652",
-      "textures": 41,
+      "textures": 45,
       "triggers": 0,
       "vertices": 59574,
       "warnings": 0
@@ -275,7 +275,7 @@
       "rooms": 16,
       "script hooks": 63,
       "tail": "[INFO]   bounds: -170.51, -32.644, -204.652 .. 238.793, 349.363, 204.652",
-      "textures": 42,
+      "textures": 47,
       "triggers": 0,
       "vertices": 59574,
       "warnings": 0
@@ -291,7 +291,7 @@
       "rooms": 16,
       "script hooks": 37,
       "tail": "[INFO]   bounds: -170.51, -32.644, -204.652 .. 238.793, 349.363, 204.652",
-      "textures": 43,
+      "textures": 47,
       "triggers": 0,
       "vertices": 59574,
       "warnings": 0
@@ -323,7 +323,7 @@
       "rooms": 16,
       "script hooks": 121,
       "tail": "[INFO]   bounds: -170.51, -32.644, -204.652 .. 238.793, 349.363, 204.652",
-      "textures": 43,
+      "textures": 54,
       "triggers": 0,
       "vertices": 59574,
       "warnings": 0
@@ -339,7 +339,7 @@
       "rooms": 7,
       "script hooks": 40,
       "tail": "[INFO]   bounds: -790.255, -819.56, -478.092 .. 1083.33, 1129.09, 526.908",
-      "textures": 27,
+      "textures": 31,
       "triggers": 0,
       "vertices": 50520,
       "warnings": 0
@@ -355,7 +355,7 @@
       "rooms": 21,
       "script hooks": 206,
       "tail": "[INFO]   bounds: -515.55, -520.642, -405.959 .. 731.597, 726.506, 757.392",
-      "textures": 53,
+      "textures": 62,
       "triggers": 10,
       "vertices": 201954,
       "warnings": 0
@@ -371,7 +371,7 @@
       "rooms": 9,
       "script hooks": 193,
       "tail": "[INFO]   bounds: -1125, -1125, -458.114 .. 1200, 1200, 546.886",
-      "textures": 46,
+      "textures": 50,
       "triggers": 9,
       "vertices": 99405,
       "warnings": 0
@@ -387,7 +387,7 @@
       "rooms": 7,
       "script hooks": 180,
       "tail": "[INFO]   bounds: -345.671, -563.854, -449.596 .. 989.901, 771.718, 555.404",
-      "textures": 46,
+      "textures": 47,
       "triggers": 12,
       "vertices": 132687,
       "warnings": 0
@@ -403,7 +403,7 @@
       "rooms": 8,
       "script hooks": 279,
       "tail": "[INFO]   bounds: -1027.96, -937.498, -372.519 .. 1667.4, 1757.85, 632.481",
-      "textures": 41,
+      "textures": 43,
       "triggers": 16,
       "vertices": 120084,
       "warnings": 0
@@ -451,7 +451,7 @@
       "rooms": 2,
       "script hooks": 45,
       "tail": "[INFO]   bounds: 57.0296, 6.0907, 2.16889 .. 244.97, 275.277, 1007.21",
-      "textures": 31,
+      "textures": 32,
       "triggers": 5,
       "vertices": 139971,
       "warnings": 0
@@ -467,7 +467,7 @@
       "rooms": 21,
       "script hooks": 252,
       "tail": "[INFO]   bounds: -643.571, -629.195, -444.293 .. 735.497, 749.873, 560.707",
-      "textures": 54,
+      "textures": 57,
       "triggers": 9,
       "vertices": 135825,
       "warnings": 0
@@ -563,7 +563,7 @@
       "rooms": 15,
       "script hooks": 284,
       "tail": "[INFO]   bounds: -170.51, -32.6442, -204.652 .. 238.793, 471.187, 291.201",
-      "textures": 84,
+      "textures": 88,
       "triggers": 13,
       "vertices": 237594,
       "warnings": 0
@@ -579,7 +579,7 @@
       "rooms": 5,
       "script hooks": 126,
       "tail": "[INFO]   bounds: -197.168, -79.833, -204.652 .. 212.136, 302.173, 204.652",
-      "textures": 54,
+      "textures": 55,
       "triggers": 6,
       "vertices": 122757,
       "warnings": 0
@@ -595,7 +595,7 @@
       "rooms": 6,
       "script hooks": 202,
       "tail": "[INFO]   bounds: -651.493, -674.391, -188.643 .. 588.79, 524.711, 1005.73",
-      "textures": 57,
+      "textures": 64,
       "triggers": 16,
       "vertices": 72864,
       "warnings": 0
@@ -611,7 +611,7 @@
       "rooms": 12,
       "script hooks": 383,
       "tail": "[INFO]   bounds: -593.358, -648.12, -170.419 .. 605.005, 513.574, 961.072",
-      "textures": 47,
+      "textures": 50,
       "triggers": 30,
       "vertices": 145422,
       "warnings": 0
@@ -675,7 +675,7 @@
       "rooms": 1,
       "script hooks": 109,
       "tail": "[INFO]   bounds: 4.1786, -3.79769, 3.50155 .. 59.966, 30.3551, 20.9849",
-      "textures": 26,
+      "textures": 28,
       "triggers": 1,
       "vertices": 27834,
       "warnings": 0
@@ -691,7 +691,7 @@
       "rooms": 17,
       "script hooks": 381,
       "tail": "[INFO]   bounds: -59.4781, -48.9802, -6.0501 .. 450.495, 365.929, 369.706",
-      "textures": 45,
+      "textures": 51,
       "triggers": 29,
       "vertices": 118032,
       "warnings": 0
@@ -723,7 +723,7 @@
       "rooms": 9,
       "script hooks": 382,
       "tail": "[INFO]   bounds: -959.527, -908.244, -873.607 .. 1143.52, 1194.78, 885.148",
-      "textures": 55,
+      "textures": 60,
       "triggers": 14,
       "vertices": 169950,
       "warnings": 0
@@ -739,7 +739,7 @@
       "rooms": 2,
       "script hooks": 88,
       "tail": "[INFO]   bounds: -1064.07, -941.35, -842.258 .. 1038.98, 1161.67, 916.497",
-      "textures": 51,
+      "textures": 53,
       "triggers": 3,
       "vertices": 88695,
       "warnings": 0
@@ -771,7 +771,7 @@
       "rooms": 23,
       "script hooks": 454,
       "tail": "[INFO]   bounds: 15.75, 28.2, -23.25 .. 202.5, 171.091, 22.65",
-      "textures": 47,
+      "textures": 51,
       "triggers": 7,
       "vertices": 185547,
       "warnings": 0
@@ -867,7 +867,7 @@
       "rooms": 27,
       "script hooks": 333,
       "tail": "[INFO]   bounds: 4.80004, 17.75, -20.1313 .. 193.6, 139.138, 296.536",
-      "textures": 61,
+      "textures": 63,
       "triggers": 19,
       "vertices": 209922,
       "warnings": 0
@@ -947,7 +947,7 @@
       "rooms": 11,
       "script hooks": 52,
       "tail": "[INFO]   bounds: -1212.39, -621.241, -442.348 .. 621.241, 898.35, 565.153",
-      "textures": 82,
+      "textures": 88,
       "triggers": 7,
       "vertices": 120270,
       "warnings": 0
@@ -963,7 +963,7 @@
       "rooms": 19,
       "script hooks": 115,
       "tail": "[INFO]   bounds: -1212.39, -621.241, -442.347 .. 621.241, 898.353, 565.15",
-      "textures": 95,
+      "textures": 97,
       "triggers": 6,
       "vertices": 125316,
       "warnings": 0
@@ -979,7 +979,7 @@
       "rooms": 14,
       "script hooks": 62,
       "tail": "[INFO]   bounds: -1212.39, -621.241, -442.347 .. 621.241, 898.353, 565.15",
-      "textures": 58,
+      "textures": 59,
       "triggers": 3,
       "vertices": 142347,
       "warnings": 0
@@ -995,7 +995,7 @@
       "rooms": 12,
       "script hooks": 134,
       "tail": "[INFO]   bounds: -318.47, -1622.27, -502.347 .. 1363.84, 1123.69, 505.15",
-      "textures": 58,
+      "textures": 59,
       "triggers": 13,
       "vertices": 185946,
       "warnings": 0
@@ -1011,7 +1011,7 @@
       "rooms": 23,
       "script hooks": 97,
       "tail": "[INFO]   bounds: -1212.39, -617.264, -442.347 .. 685.427, 898.353, 565.15",
-      "textures": 85,
+      "textures": 95,
       "triggers": 7,
       "vertices": 161973,
       "warnings": 0
@@ -1027,7 +1027,7 @@
       "rooms": 3,
       "script hooks": 39,
       "tail": "[INFO]   bounds: -5953.9, -2215.14, -4953.85 .. 30000.5, 9439.58, 50000.5",
-      "textures": 24,
+      "textures": 25,
       "triggers": 0,
       "vertices": 58614,
       "warnings": 0
@@ -1091,7 +1091,7 @@
       "rooms": 13,
       "script hooks": 121,
       "tail": "[INFO]   bounds: 157.431, 9.5807, 0 .. 350.297, 201.581, 58.4996",
-      "textures": 61,
+      "textures": 63,
       "triggers": 5,
       "vertices": 62205,
       "warnings": 0
@@ -1123,7 +1123,7 @@
       "rooms": 16,
       "script hooks": 418,
       "tail": "[INFO]   bounds: -193.461, -108.162, -218.542 .. 329.025, 402.051, 177.697",
-      "textures": 42,
+      "textures": 45,
       "triggers": 16,
       "vertices": 197793,
       "warnings": 0
@@ -1155,7 +1155,7 @@
       "rooms": 16,
       "script hooks": 166,
       "tail": "[INFO]   bounds: -136.144, -473.906, -351.743 .. 269.771, 122.459, 342.913",
-      "textures": 33,
+      "textures": 34,
       "triggers": 11,
       "vertices": 150156,
       "warnings": 0
@@ -1187,7 +1187,7 @@
       "rooms": 17,
       "script hooks": 192,
       "tail": "[INFO]   bounds: -539.836, -538.907, -565.383 .. 758.894, 759.823, 439.617",
-      "textures": 63,
+      "textures": 66,
       "triggers": 6,
       "vertices": 124926,
       "warnings": 0
@@ -1203,7 +1203,7 @@
       "rooms": 15,
       "script hooks": 337,
       "tail": "[INFO]   bounds: -502.336, -501.407, -565.383 .. 796.394, 797.323, 439.617",
-      "textures": 75,
+      "textures": 80,
       "triggers": 15,
       "vertices": 202875,
       "warnings": 0
@@ -1219,7 +1219,7 @@
       "rooms": 22,
       "script hooks": 294,
       "tail": "[INFO]   bounds: -542.429, -592.429, -465.383 .. 842.429, 792.429, 539.617",
-      "textures": 98,
+      "textures": 102,
       "triggers": 10,
       "vertices": 205821,
       "warnings": 0
@@ -1235,7 +1235,7 @@
       "rooms": 17,
       "script hooks": 190,
       "tail": "[INFO]   bounds: -539.836, -538.907, -565.383 .. 758.894, 759.823, 439.617",
-      "textures": 57,
+      "textures": 58,
       "triggers": 12,
       "vertices": 130536,
       "warnings": 0
@@ -1251,7 +1251,7 @@
       "rooms": 10,
       "script hooks": 508,
       "tail": "[INFO]   bounds: 77.25, 72.75, -0.25 .. 219.973, 141.25, 76.2278",
-      "textures": 75,
+      "textures": 84,
       "triggers": 7,
       "vertices": 108045,
       "warnings": 0
@@ -1267,7 +1267,7 @@
       "rooms": 2,
       "script hooks": 12,
       "tail": "[INFO]   bounds: -539.674, -538.745, -565.383 .. 758.732, 759.823, 439.617",
-      "textures": 30,
+      "textures": 31,
       "triggers": 2,
       "vertices": 19068,
       "warnings": 0
@@ -1283,7 +1283,7 @@
       "rooms": 15,
       "script hooks": 344,
       "tail": "[INFO]   bounds: 0, 0, -35.6289 .. 529.066, 302.544, 288.111",
-      "textures": 75,
+      "textures": 78,
       "triggers": 11,
       "vertices": 262890,
       "warnings": 0
@@ -1299,7 +1299,7 @@
       "rooms": 15,
       "script hooks": 195,
       "tail": "[INFO]   bounds: 20, 20, -0.4 .. 149.977, 167.945, 154.763",
-      "textures": 51,
+      "textures": 52,
       "triggers": 12,
       "vertices": 135285,
       "warnings": 0
@@ -1331,7 +1331,7 @@
       "rooms": 9,
       "script hooks": 250,
       "tail": "[INFO]   bounds: 77.25, 72.75, -0.45 .. 151.467, 141.25, 76.2278",
-      "textures": 63,
+      "textures": 66,
       "triggers": 6,
       "vertices": 94275,
       "warnings": 0
@@ -1347,7 +1347,7 @@
       "rooms": 4,
       "script hooks": 42,
       "tail": "[INFO]   bounds: 121.508, 159.238, -29.2526 .. 331.232, 247.171, 57.1908",
-      "textures": 45,
+      "textures": 46,
       "triggers": 3,
       "vertices": 90486,
       "warnings": 0
@@ -1379,7 +1379,7 @@
       "rooms": 13,
       "script hooks": 569,
       "tail": "[INFO]   bounds: -110.122, -59.999, -3 .. 460.776, 439.119, 447.63",
-      "textures": 47,
+      "textures": 65,
       "triggers": 36,
       "vertices": 108888,
       "warnings": 0
@@ -1427,7 +1427,7 @@
       "rooms": 31,
       "script hooks": 508,
       "tail": "[INFO]   bounds: -724.615, -710.289, -565.383 .. 683.52, 154.728, 439.62",
-      "textures": 111,
+      "textures": 115,
       "triggers": 14,
       "vertices": 219882,
       "warnings": 0
@@ -1475,7 +1475,7 @@
       "rooms": 17,
       "script hooks": 362,
       "tail": "[INFO]   bounds: 93.9811, 42.3786, -0.0595801 .. 201.82, 149.605, 9.375",
-      "textures": 98,
+      "textures": 100,
       "triggers": 18,
       "vertices": 112881,
       "warnings": 0
@@ -1491,7 +1491,7 @@
       "rooms": 16,
       "script hooks": 465,
       "tail": "[INFO]   bounds: 33.6045, 60.6346, -1.61454 .. 150.171, 133.214, 15.0518",
-      "textures": 106,
+      "textures": 112,
       "triggers": 1,
       "vertices": 147042,
       "warnings": 0
@@ -1523,7 +1523,7 @@
       "rooms": 11,
       "script hooks": 205,
       "tail": "[INFO]   bounds: 22.0385, 13.3107, -0.362768 .. 119.157, 123.006, 22.5518",
-      "textures": 89,
+      "textures": 92,
       "triggers": 9,
       "vertices": 96198,
       "warnings": 0
@@ -1539,7 +1539,7 @@
       "rooms": 2,
       "script hooks": 28,
       "tail": "[INFO]   bounds: 17.4946, 13.8343, 2.20957 .. 28.7446, 36.0554, 18.5253",
-      "textures": 42,
+      "textures": 46,
       "triggers": 1,
       "vertices": 7893,
       "warnings": 0
@@ -1555,7 +1555,7 @@
       "rooms": 53,
       "script hooks": 531,
       "tail": "[INFO]   bounds: -1368.17, -1365.12, -937.69 .. 1447.12, 1488.67, 1077.84",
-      "textures": 56,
+      "textures": 61,
       "triggers": 14,
       "vertices": 174036,
       "warnings": 0
@@ -1571,7 +1571,7 @@
       "rooms": 4,
       "script hooks": 93,
       "tail": "[INFO]   bounds: -1396.32, -1424.85, -869.68 .. 1118.34, 1089.81, 1145.85",
-      "textures": 59,
+      "textures": 61,
       "triggers": 4,
       "vertices": 62844,
       "warnings": 0
@@ -1603,7 +1603,7 @@
       "rooms": 2,
       "script hooks": 96,
       "tail": "[INFO]   bounds: -1378.22, -1334.09, -906.108 .. 1431.16, 1474.44, 1160.49",
-      "textures": 48,
+      "textures": 50,
       "triggers": 0,
       "vertices": 32232,
       "warnings": 0
@@ -1619,7 +1619,7 @@
       "rooms": 2,
       "script hooks": 85,
       "tail": "[INFO]   bounds: -71.293, -267.119, -305.355 .. 68.4164, 262.063, 448.395",
-      "textures": 49,
+      "textures": 51,
       "triggers": 1,
       "vertices": 36576,
       "warnings": 0
@@ -1635,7 +1635,7 @@
       "rooms": 1,
       "script hooks": 46,
       "tail": "[INFO]   bounds: -9.62508, -11.9984, -0.182278 .. 12.375, 11.8029, 12.7834",
-      "textures": 46,
+      "textures": 51,
       "triggers": 1,
       "vertices": 40623,
       "warnings": 0
@@ -1651,7 +1651,7 @@
       "rooms": 2,
       "script hooks": 16,
       "tail": "[INFO]   bounds: -71.293, -267.119, -305.355 .. 68.4164, 262.063, 448.395",
-      "textures": 31,
+      "textures": 32,
       "triggers": 3,
       "vertices": 36576,
       "warnings": 0
@@ -1683,7 +1683,7 @@
       "rooms": 5,
       "script hooks": 240,
       "tail": "[INFO]   bounds: -424.613, -1150.93, -421.464 .. 1055.47, 1595.03, 583.537",
-      "textures": 59,
+      "textures": 62,
       "triggers": 30,
       "vertices": 141729,
       "warnings": 0
@@ -1715,7 +1715,7 @@
       "rooms": 5,
       "script hooks": 127,
       "tail": "[INFO]   bounds: -392.99, -429.459, -364.762 .. 808.739, 772.271, 671.391",
-      "textures": 56,
+      "textures": 58,
       "triggers": 12,
       "vertices": 102276,
       "warnings": 0
@@ -1875,7 +1875,7 @@
       "rooms": 2,
       "script hooks": 40,
       "tail": "[INFO]   bounds: -505.18, -480.573, -470.277 .. 730.891, 733.257, 534.723",
-      "textures": 37,
+      "textures": 38,
       "triggers": 17,
       "vertices": 174633,
       "warnings": 0

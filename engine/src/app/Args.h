@@ -50,6 +50,8 @@ struct Options {
     bool modulePlaythroughTest = false;
     bool bugParityTest = false;
     bool chargen = false;
+    bool chargenGui = false;
+    bool chargenGuiTest = false;
     bool chargenTest = false;
     bool campaignTest = false;
     bool avatarTest = false;

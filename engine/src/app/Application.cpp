@@ -82,6 +82,14 @@ struct RuntimeState {
     bool requestChargen = false;
 };
 
+struct ChargenGuiState {
+    explicit ChargenGuiState(const Rules& rules) : chargen(rules) {}
+    Chargen chargen;
+    int step = 0; // classsel, portcust, abchrgen, skchrgen, ftchrgen, name
+    std::string nameBuffer = "Player";
+    bool active = true;
+};
+
 SDL_WindowFlags windowFlagsFor(BackendKind kind, const Options& options)
 {
     SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE;
@@ -485,7 +493,8 @@ void drawFacialRigOverlay(const FacialRig& rig)
     ImGui::End();
 }
 
-void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game, bool& requestChargen)
+void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game, bool& requestChargen,
+                          const std::function<bool(const std::string&)>& actionHandler = {})
 {
     const kotor::GuiScreen* screen = gui.screen();
     if (screen == nullptr) {
@@ -577,7 +586,9 @@ void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game, bool& requestCharge
     if (!gui.lastAction().empty()) {
         const std::string action = gui.lastAction();
         gui.clearActions();
-        if (!game.applyGuiAction(action)) {
+        if (actionHandler && actionHandler(action)) {
+            // The chargen flow consumed the control.
+        } else if (!game.applyGuiAction(action)) {
             if (action == "BTN_LOADGAME") {
                 gui.push("loadscreen");
             } else if (action == "BTN_NEWGAME") {
@@ -827,6 +838,152 @@ void drawMinigameUi(GameSession& game)
         }
         ImGui::End();
     }
+}
+
+const char* chargenScreenName(int step)
+{
+    switch (step) {
+    case 0: return "classsel";
+    case 1: return "portcust";
+    case 2: return "abchrgen";
+    case 3: return "skchrgen";
+    case 4: return "ftchrgen";
+    case 5: return "name";
+    default: return "classsel";
+    }
+}
+
+bool handleChargenGuiAction(const std::string& action, ChargenGuiState& state,
+                            GuiSystem& gui, GameSession& game)
+{
+    if (!state.active) {
+        return false;
+    }
+    const auto advance = [&](int step) {
+        state.step = step;
+        gui.open(chargenScreenName(step));
+    };
+    const auto back = [&](int step) {
+        state.step = step;
+        gui.open(chargenScreenName(step));
+    };
+    if (state.step == 0) {
+        if (action.rfind("BTN_SEL", 0) == 0 && action.size() == 8) {
+            const int index = action[7] - '1';
+            if (index >= 0 && index < 6) {
+                state.chargen.selectClass(index % 3);
+                advance(1);
+            }
+            return true;
+        }
+        if (action == "BTN_BACK") {
+            state.active = false;
+            gui.close();
+            return true;
+        }
+        return false;
+    }
+    if (action == "BTN_BACK") {
+        back(state.step - 1);
+        return true;
+    }
+    if (state.step == 1) {
+        if (action == "BTN_ARRL") {
+            state.chargen.cyclePortrait(-1);
+            return true;
+        }
+        if (action == "BTN_ARRR") {
+            state.chargen.cyclePortrait(1);
+            return true;
+        }
+        if (action == "BTN_ACCEPT") {
+            advance(2);
+            return true;
+        }
+        return false;
+    }
+    if (state.step == 2) {
+        static const char* names[] = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
+        for (int i = 0; i < 6; ++i) {
+            if (action == std::string(names[i]) + "_PLUS_BTN") {
+                state.chargen.adjustAttribute(i, 1);
+                return true;
+            }
+            if (action == std::string(names[i]) + "_MINUS_BTN") {
+                state.chargen.adjustAttribute(i, -1);
+                return true;
+            }
+        }
+        if (action == "BTN_ACCEPT") {
+            advance(3);
+            return true;
+        }
+        return false;
+    }
+    if (state.step == 3) {
+        static const char* names[] = {"COM", "DEM", "STE", "AWA",
+                                      "PER", "REP", "SEC", "TRE"};
+        for (int i = 0; i < 8; ++i) {
+            if (action == std::string(names[i]) + "_PLUS_BTN") {
+                state.chargen.adjustSkill(i, 1);
+                return true;
+            }
+            if (action == std::string(names[i]) + "_MINUS_BTN") {
+                state.chargen.adjustSkill(i, -1);
+                return true;
+            }
+        }
+        if (action == "BTN_ACCEPT") {
+            advance(4);
+            return true;
+        }
+        return false;
+    }
+    if (state.step == 4) {
+        if (action == "BTN_SELECT") {
+            const std::vector<std::int32_t> feats = state.chargen.availableFeats();
+            if (!feats.empty()) {
+                state.chargen.toggleFeat(feats.front());
+            }
+            return true;
+        }
+        if (action == "BTN_ACCEPT") {
+            advance(5);
+            return true;
+        }
+        return false;
+    }
+    if (state.step == 5) {
+        if (action == "END_BTN") {
+            state.chargen.setName(state.nameBuffer);
+            const CharacterSheet sheet = state.chargen.build();
+            game.applyCharacter(sheet);
+            game.setPlayerAppearance(state.chargen.portrait().appearance,
+                                     state.chargen.name());
+            game.setThirdPerson(true);
+            state.active = false;
+            gui.close();
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+void drawChargenTextOverlay(ChargenGuiState& state)
+{
+    if (!state.active || state.step != 5) {
+        return;
+    }
+    ImGui::SetNextWindowPos(ImVec2(250.0f, 210.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(260.0f, 80.0f), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Character Name", nullptr, ImGuiWindowFlags_NoCollapse);
+    char buffer[32]{};
+    std::snprintf(buffer, sizeof(buffer), "%s", state.nameBuffer.c_str());
+    if (ImGui::InputText("Name", buffer, sizeof(buffer))) {
+        state.nameBuffer = buffer;
+    }
+    ImGui::End();
 }
 
 void drawGameUi(GameSession& game, float fps, const std::string& prompt)
@@ -2742,6 +2899,56 @@ int runCampaignTest(GameSession& base, const std::string& fixtureDirectory)
     return ok ? 0 : 74;
 }
 
+int runChargenGuiTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const std::string& label) {
+        logInfo(concat("chargen_gui: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    kotor::Install install(game.installPath());
+    install.bindModule(game.module());
+    install.addPacks();
+    GuiSystem gui(install);
+    ChargenGuiState state(game.rules());
+    check(gui.open("classsel") && gui.screenName() == "classsel", "classsel_open");
+    const auto act = [&](const std::string& tag) {
+        return handleChargenGuiAction(tag, state, gui, game);
+    };
+    check(act("BTN_SEL2"), "select_scout");
+    check(state.chargen.classId() == 1, "class_id");
+    check(state.step == 1 && gui.screenName() == "portcust", "portrait_screen");
+    check(act("BTN_ARRR"), "portrait_right");
+    check(state.chargen.portraitIndex() == 1, "portrait_index");
+    check(act("BTN_BACK"), "portrait_back");
+    check(state.step == 0 && gui.screenName() == "classsel", "back_to_class");
+    check(act("BTN_SEL2"), "reselect_scout");
+    check(act("BTN_ACCEPT"), "portrait_accept");
+    check(state.step == 2 && gui.screenName() == "abchrgen", "abilities_screen");
+    check(act("STR_PLUS_BTN") && act("STR_PLUS_BTN"), "strength_plus");
+    check(state.chargen.attribute(0) == 10, "strength_value");
+    check(act("BTN_ACCEPT"), "abilities_accept");
+    check(state.step == 3 && gui.screenName() == "skchrgen", "skills_screen");
+    for (int i = 0; i < 4; ++i) {
+        check(act("AWA_PLUS_BTN"), "awareness_plus");
+    }
+    check(state.chargen.skillRank(3) == 4, "awareness_value");
+    check(act("BTN_ACCEPT"), "skills_accept");
+    check(state.step == 4 && gui.screenName() == "ftchrgen", "feats_screen");
+    act("BTN_SELECT");
+    check(act("BTN_ACCEPT"), "feats_accept");
+    check(state.step == 5 && gui.screenName() == "name", "name_screen");
+    state.nameBuffer = "Revan";
+    check(act("END_BTN"), "name_end");
+    check(!state.active, "flow_finished");
+    check(game.character().name == "REVAN", "applied_name");
+    check(game.character().classId == 1, "applied_class");
+    check(game.character().str == 10, "applied_strength");
+    check(game.playerEntity() != static_cast<std::size_t>(-1), "player_entity");
+    logInfo(ok ? "chargen_gui: PASS" : "chargen_gui: FAIL");
+    return ok ? 0 : 76;
+}
+
 int runAvatarTest(GameSession& game)
 {
     bool ok = true;
@@ -3852,6 +4059,24 @@ int runMinigameTest(GameSession& game, const std::string& scriptPath)
             0, goldBefore + (playerWon ? 25 : -25));
         check(game.gold() == expected, "pazaak_wager");
     }
+
+    script::Vm bridgeVm({});
+    const auto enemyCount = game.action(612, {}, game.scriptWorld(), bridgeVm);
+    check(enemyCount.has_value() && enemyCount->front().asInt() == 5,
+          "space_enemy_count");
+    check(game.turretActive(), "space_turret_start");
+    const auto enemy = game.action(613, {{script::Value::makeInt(0)}},
+                                   game.scriptWorld(), bridgeVm);
+    check(enemy.has_value() && enemy->front().type == script::ValueType::Object,
+          "space_enemy_object");
+    if (enemy.has_value()) {
+        const auto hp = game.action(616, {{enemy->front()}}, game.scriptWorld(), bridgeVm);
+        check(hp.has_value() && hp->front().asInt() == 100, "space_enemy_hp");
+        const auto isEnemy = game.action(601, {{enemy->front()}}, game.scriptWorld(), bridgeVm);
+        check(isEnemy.has_value() && isEnemy->front().asInt() == 1, "space_is_enemy");
+    }
+    const auto speed = game.action(643, {}, game.scriptWorld(), bridgeVm);
+    check(speed.has_value() && game.swoopActive(), "space_swoop_start");
 
     logInfo(concat("minigame test: pazaak sets=", std::get<2>(pazaakA), "-",
                    std::get<3>(pazaakA), " turns=", std::get<0>(pazaakA).size(),
@@ -5714,6 +5939,7 @@ int runApplication(const Options& options)
 
     std::optional<GameSession> game;
     std::unique_ptr<Chargen> chargen;
+    std::unique_ptr<ChargenGuiState> chargenGui;
     bool chargenActive = options.chargen;
     std::unique_ptr<audio::Output> audioOutput;
     if (!options.module.empty()) {
@@ -5876,6 +6102,9 @@ int runApplication(const Options& options)
                      << ",\"script_runs\":" << game->scriptLog().size()
                      << ",\"warnings\":" << loaded.warnings.size() << "}";
                 logInfo(concat("content-stats: ", json.str()));
+                for (const auto& [hook, resref] : loaded.scripts) {
+                    logInfo(concat("  scene script ", hook, " -> ", resref));
+                }
                 return 0;
             }
             if (!options.panel.empty()) {
@@ -6072,6 +6301,9 @@ int runApplication(const Options& options)
             if (options.avatarTest) {
                 return runAvatarTest(*game);
             }
+            if (options.chargenGuiTest) {
+                return runChargenGuiTest(*game);
+            }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);
             }
@@ -6203,14 +6435,18 @@ int runApplication(const Options& options)
             audioOutput.reset();
         }
     }
-    if (game && !options.guiScreen.empty()) {
+    if (game && (!options.guiScreen.empty() || options.chargenGui)) {
         game->stopMovie();
         try {
             state.guiInstall = std::make_unique<kotor::Install>(game->installPath());
             state.guiInstall->bindModule(game->module());
             state.guiInstall->addPacks();
             state.guiSystem = std::make_unique<GuiSystem>(*state.guiInstall);
-            if (state.guiSystem->open(options.guiScreen)) {
+            const std::string screen = options.chargenGui ? "classsel" : options.guiScreen;
+            if (options.chargenGui) {
+                chargenGui = std::make_unique<ChargenGuiState>(game->rules());
+            }
+            if (state.guiSystem->open(screen)) {
                 logInfo(concat("GUI screen loaded: ", state.guiSystem->screenName(),
                                " controls=", state.guiSystem->screen()->controlCount));
                 if (!options.guiAction.empty()
@@ -6218,7 +6454,7 @@ int runApplication(const Options& options)
                     logWarn(concat("GUI action not found: ", options.guiAction));
                 }
             } else {
-                logWarn(concat("GUI screen not found: ", options.guiScreen));
+                logWarn(concat("GUI screen not found: ", screen));
             }
         } catch (const kotor::FormatError& error) {
             logWarn(concat("GUI screen parse failed: ", error.what()));
@@ -6429,7 +6665,7 @@ int runApplication(const Options& options)
                     game->toggleUiPanel(UiPanel::Character);
                 } else if (game && event.key.key == SDLK_I) {
                     game->toggleUiPanel(UiPanel::Inventory);
-                } else if (game && event.key.key == SDLK_P) {
+                } else if (game && event.key.key == SDLK_L) {
                     game->toggleUiPanel(UiPanel::Party);
                 } else if (game && event.key.key == SDLK_J) {
                     game->toggleUiPanel(UiPanel::Journal);
@@ -6449,9 +6685,10 @@ int runApplication(const Options& options)
         smoothedFrameMs = (smoothedFrameMs <= 0.0) ? deltaMs : (smoothedFrameMs * 0.9 + deltaMs * 0.1);
         const double elapsedSeconds = static_cast<double>(now - startTicks) / 1'000'000'000.0;
 
+        const bool shippedChargen = chargenGui && chargenGui->active;
         if (game) {
             InputState input;
-            if (!chargenActive) {
+            if (!chargenActive && !shippedChargen) {
                 const bool* keys = SDL_GetKeyboardState(nullptr);
                 input.forward = keys[SDL_SCANCODE_W] != 0;
                 input.back = keys[SDL_SCANCODE_S] != 0;
@@ -6498,7 +6735,7 @@ int runApplication(const Options& options)
                 && (game->pazaakActive() || game->swoopActive() || game->turretActive());
             if (chargenActive && chargen && game) {
                 drawChargenUi(*chargen, *game, chargenActive);
-            } else {
+            } else if (!shippedChargen) {
                 if (!movieMode && !guiMode && !minigameMode) {
                     drawDebugUi(state, frames, smoothedFrameMs, elapsedSeconds, exitReason);
                 }
@@ -6512,11 +6749,12 @@ int runApplication(const Options& options)
                     }
                 }
             }
-            if (!chargenActive && minigameMode) {
+            if (!chargenActive && !shippedChargen && minigameMode) {
                 drawMinigameUi(*game);
             }
             if (game) {
-                if (game->movieFrame() != nullptr) {                    if (game->movieFrameIndex() != uploadedMovieFrame) {
+                if (game->movieFrame() != nullptr) {
+                    if (game->movieFrameIndex() != uploadedMovieFrame) {
                         std::string movieError;
                         const kotor::BinkVideoFrame* frame = game->movieFrame();
                         if (state.backend->uploadMovieFrame(
@@ -6534,7 +6772,17 @@ int runApplication(const Options& options)
                 }
             }
             if (!movieMode && guiMode && game) {
-                drawGuiScreenOverlay(*state.guiSystem, *game, state.requestChargen);
+                std::function<bool(const std::string&)> handler;
+                if (chargenGui) {
+                    handler = [&](const std::string& action) {
+                        return handleChargenGuiAction(action, *chargenGui,
+                                                      *state.guiSystem, *game);
+                    };
+                }
+                drawGuiScreenOverlay(*state.guiSystem, *game, state.requestChargen, handler);
+                if (chargenGui) {
+                    drawChargenTextOverlay(*chargenGui);
+                }
             }
             if (state.requestChargen && game && !chargenActive) {
                 chargen = std::make_unique<Chargen>(game->rules());
