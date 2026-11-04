@@ -113,19 +113,20 @@ action-table entries**, **0 missing**.
 
 `kotor_retail_differential` records the engine's own semantic trace for the
 new-game/Endar Spire path (`--retail-differential-test --engine-trace`) and
-diffs it against `live-05-semantic.jsonl`:
+diffs it against every recorded live trace (`live-02` through `live-05`):
 
-- **7,756 engine actions**, **9 dialogue choices**, **1 transition**;
-- **89** retail actions used by `end_m01aa` scripts;
-- **367** executed action IDs across the playthrough, drained functional VM
-  corpus (357) and eight probes;
-- **0 missing execution**, **0 missing implementation** across all 102 retail
-  action IDs.
+- **7,761 engine actions**, **9 dialogue choices**, **1 transition**;
+- retail traces: **110 / 124 / 124 / 102** unique IDs, **127 unique** overall;
+- **93 / 108 / 108 / 89** retail actions used by `end_m01aa` scripts;
+- **372** executed action IDs across the playthrough, drained functional VM
+  corpus (357) and thirteen probes;
+- **0 missing execution**, **0 missing implementation** for every trace
+  (both the module-restricted and full retail sets).
 
 The VM corpus drain executes delayed/queued closures (`--vm-drain`) so AI
-actions behind `DelayCommand` are covered. Eight branch-gated actions are
-recorded with phase `probe` (three talent/AI and five perception/movement
-queries) because their combat or perception branches are state-gated.
+actions behind `DelayCommand` are covered. Thirteen branch-gated actions are
+recorded with phase `probe` (talent/AI, perception/movement and combat-result
+queries) because their branches are state-gated.
 
 ## Evidence
 
@@ -139,6 +140,10 @@ queries) because their combat or perception branches are state-gated.
 - `docs/evidence/s14/retail-trace-coverage.json`
 - `docs/evidence/s14/engine-semantic.jsonl`
 - `docs/evidence/s14/retail-differential.json`
+- `docs/evidence/s14/retail-differential-live-02-semantic.json`
+- `docs/evidence/s14/retail-differential-live-03-semantic.json`
+- `docs/evidence/s14/retail-differential-live-04-semantic.json`
+- `docs/evidence/s14/retail-differential-live-05-semantic.json`
 - `docs/evidence/s14/retail-differential-engine.log`
 - `docs/evidence/s14/vm-actions.log`
 - `docs/evidence/s14/vm-actions.jsonl`

@@ -2430,8 +2430,9 @@ int runRetailDifferentialTest(GameSession& game, const std::string& tracePath)
     // These AI actions sit behind branch-gated combat state that the
     // deterministic path does not reach. Probe the runtime directly so the
     // trace still records their execution (phase "probe").
-    const std::array<std::uint16_t, 8> probeActions = {
-        236u, 256u, 259u, 261u, 286u, 307u, 489u, 522u};
+    const std::array<std::uint16_t, 13> probeActions = {
+        236u, 256u, 259u, 261u, 286u, 307u, 489u, 522u,
+        723u, 724u, 725u, 726u, 735u};
     for (const std::uint16_t actionId : probeActions) {
         if (game.probeAction(actionId)) {
             logInfo(concat("retail differential: probe action=", actionId));
