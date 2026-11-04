@@ -264,6 +264,10 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.vfsTest = true;
             continue;
         }
+        if (arg == "--k2-test") {
+            result.options.k2Test = true;
+            continue;
+        }
         if (arg == "--vfs-fixtures") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -587,6 +591,7 @@ void printUsage()
         << "  --minigame-test       Assert pazaak/swoop/turret state machines\n"
         << "  --localization-test   Assert TLK language and localized paths\n"
         << "  --vfs-test            Assert five-pass VFS and 2DA merges\n"
+        << "  --k2-test             Assert KotOR 2 profile, geometry and 001EBO\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"
         << "  --gui-screen <resref> Render one .gui screen in the debug UI\n"
         << "  --gui-action <tag>    Activate one control before rendering\n"

@@ -176,6 +176,6 @@ Regression: 35/35 CTest, 117/117 modules, 8,666/8,666 VM, 0.0300 parity,
 - **Battle Meditation is re-scoped out of Sprint 11 by shipped data.** Its
   `feat.2da` TLK description says it is for large fleets/armies and "is not
   applicable to small-scale combat"; there is no small-scale rule to implement.
-- Outside this sprint: cutscenes, animation/skinning, audio/EAX, Bink/lip sync,
-  full `.gui`, minigames, localization, mods/Override, KotOR 2 world loading
-  and P6 content.
+- Outside this sprint (delivered in Sprint 13): cutscenes, animation/skinning,
+  audio/EAX, Bink/lip sync, full `.gui`, minigames, localization, mods/Override
+  and KotOR 2 world loading. P6 content remains.

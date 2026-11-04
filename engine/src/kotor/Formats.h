@@ -353,6 +353,8 @@ public:
 
     static Mdl parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std::string name);
 
+    bool isKotOR2() const { return k2_; }
+
     std::vector<MdlTriangle> triangles(Vec3 roomOrigin) const;
     std::vector<MdlMeshTriangle> meshTriangles() const;
     std::vector<MdlMeshTriangle> posedTriangles(const std::string& animation, float time,
@@ -466,6 +468,7 @@ private:
 
     std::string name_;
     std::string supermodel_;
+    bool k2_ = false;
     std::vector<std::uint8_t> mdl_;
     std::vector<std::uint8_t> mdx_;
     std::vector<Node> nodes_;

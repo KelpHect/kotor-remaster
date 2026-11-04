@@ -109,4 +109,5 @@ Evidence: `docs/evidence/s10/delayed.log`.
 - Pending timers/closures are not serialized in a save; script globals and
   object locals still are.
 - The full behavioural effect of every action, combat/Force/alignment depth,
-  audio, animation, cutscenes, UI and KotOR 2 remain later sprints.
+  audio, animation, cutscenes, UI and KotOR 2 were delivered in later sprints;
+  faction reputation and P6 content remain.

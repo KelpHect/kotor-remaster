@@ -316,6 +316,10 @@ if(KOTOR_ENGINE_BUILD_TESTS)
         if(EXISTS "${KOTOR2_TEST_INSTALL}/swkotor2.exe")
             add_test(NAME kotor_profile_k2
                      COMMAND kotor_engine --profile-info "${KOTOR2_TEST_INSTALL}" --null --headless)
+            add_test(NAME kotor_world_k2
+                     COMMAND kotor_engine --install "${KOTOR2_TEST_INSTALL}" --module 001EBO
+                             --k2-test --null --headless)
+            set_tests_properties(kotor_world_k2 PROPERTIES TIMEOUT 300)
         endif()
         set_tests_properties(kotor_scene_stats kotor_scene_assert kotor_door_transition
                              kotor_taris_transition kotor_walk_collision kotor_dialogue
