@@ -197,6 +197,18 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.mediaTest = true;
             continue;
         }
+        if (arg == "--gui-test") {
+            result.options.guiTest = true;
+            continue;
+        }
+        if (arg == "--gui-screen") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--gui-screen requires a resref");
+            }
+            result.options.guiScreen = value;
+            continue;
+        }
         if (arg == "--audio-script") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -479,6 +491,8 @@ void printUsage()
         << "  --animation-test      Assert MDL clips, skinning and playback\n"
         << "  --audio-test          Assert WAV/MP3 decode, buses and area audio\n"
         << "  --media-test          Assert Bink containers and LIP viseme timelines\n"
+        << "  --gui-test            Assert all shipped GUI screens and control trees\n"
+        << "  --gui-screen <resref> Render one .gui screen in the debug UI\n"
         << "  --audio-script <ncs>  Sound/music/ambient script bridge assertions\n"
         << "  --animation-script <ncs>  PlayAnimation script bridge assertions\n"
         << "  --combat-force-script <ncs>  Script bridge assertions for the combat-force gate\n"

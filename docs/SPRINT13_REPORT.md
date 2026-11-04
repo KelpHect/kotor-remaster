@@ -11,7 +11,7 @@ actions are bridged.
 
 ```text
 100% tests passed, 0 tests failed out of 37
-Total Test time (real) = 256.46 sec
+Total Test time (real) = 244.20 sec
 ```
 
 The new target is `kotor_audio`; all Sprint 12 targets still pass.
@@ -111,23 +111,37 @@ Gate assertions: `bik_movies`, `bik_headers`, `bik_frames`, `lip_mods`,
 `movie_state`, `movie_duration`, `movie_clock`, `movie_queue`,
 `movie_queue_play`.
 
-## 8. Device
+## 8. GUI screens
+
+- **86 unique `.gui` screens** (84 in `gui.bif` + 7 patch resources, 2
+  patch-only) parse as GFF `GUI V3.2`.
+- **2,302 controls** across **7** control types (control, panel, image, label,
+  button, checkbox, slider, scrollbar, progress, listbox); no unknown type.
+- `mainmenu` is `TGuiPanel` with **14** controls; the largest screen has
+  **121** controls. Extents are 640x480 GUI space.
+- `--gui-screen <resref>` renders the parsed control tree in the ImGui debug
+  overlay (rectangles, labels, text, border colors); screenshot evidence:
+  `docs/evidence/s13/gui-mainmenu.png`.
+
+Gate assertions: `screens`, `controls`, `control_types`, `mainmenu`.
+
+## 9. Device
 
 `audio::Output` opens an SDL3 playback stream (48 kHz float stereo) and pulls
 the mixer in the audio callback. Live runs log `Audio device: <name>`; headless
 tests use the same mixer without a device. The output stream is destroyed
 before `SDL_Quit` (the parity crash fix).
 
-## 9. Regression
+## 10. Regression
 
-- **CTest: 38/38 passed** (256.46 s).
+- **CTest: 39/39 passed** (244.20 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0449**, PASS.
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
-## 10. Next sprint
+## 11. Next sprint
 
 Sprint 13 closes audio plus Bink/LIP media data. The pixel renderer, facial
 rig and remaining UI/content systems are planned in

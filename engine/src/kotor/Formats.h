@@ -853,6 +853,7 @@ public:
                                                   std::string* source = nullptr);
     std::optional<std::vector<std::uint8_t>> findTexture(const std::string& resref, std::uint32_t* type,
                                                          std::string* source = nullptr);
+    std::vector<std::string> resourceNames(std::uint32_t type) const;
 
 private:
     const BifFile& bif(std::uint32_t index);

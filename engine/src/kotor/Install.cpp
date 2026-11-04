@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <set>
 
 namespace ke::kotor {
 
@@ -109,6 +110,25 @@ void Install::addLips()
         } catch (const FormatError&) {
         }
     }
+}
+
+std::vector<std::string> Install::resourceNames(std::uint32_t type) const
+{
+    std::vector<std::string> names;
+    std::set<std::string> seen;
+    for (const KeyEntry& entry : key_.entries()) {
+        if (entry.type == type && seen.insert(entry.resref).second) {
+            names.push_back(entry.resref);
+        }
+    }
+    for (const Archive& archive : archives_) {
+        for (const ArchiveEntry& entry : archive.entries()) {
+            if (entry.type == type && seen.insert(entry.resref).second) {
+                names.push_back(entry.resref);
+            }
+        }
+    }
+    return names;
 }
 
 std::optional<std::vector<std::uint8_t>> Install::find(const std::string& resref, std::uint32_t type,

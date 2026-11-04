@@ -38,12 +38,15 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
    and queues); LIP V1.0 parses all 18,206 lip resources and exposes
    `visemeAt(time)` for dialogue voice-over. Pixel decode and facial morph
    application are the Sprint 14 renderer step.
-10. **Device** - SDL3 audio stream pulls the mixer in live frames; headless
+10. **GUI screens** - all 86 unique `.gui` screens (91 resources including
+    patch.erf), 2,302 controls, 7 known control types and 640x480 extents
+    parse; `--gui-screen` renders the control tree in the debug UI.
+11. **Device** - SDL3 audio stream pulls the mixer in live frames; headless
     tests exercise the same mixer without a device.
-11. **Regression** - 38/38 CTest, 117/117 modules with 0 warnings, VM
+12. **Regression** - 39/39 CTest, 117/117 modules with 0 warnings, VM
     8,666/8,666, scene parity PASS, Python 143 tests / 7 skips, install
     sentinel 0 session changes.
-12. **Evidence and docs** - audio/media tests, phase log,
+13. **Evidence and docs** - audio/media/GUI tests, phase log,
     module/VM/parity/tools/install logs, report and technical note.
 
 ## Lanes
@@ -58,7 +61,8 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
 | s13-06-device | SDL3 output stream | `engine/src/audio/Output.*`, `Application.cpp` |
 | s13-07-soundsets | SSF, soundset mapping, footsteps and barks | `engine/src/audio`, `game/*` |
 | s13-08-media | Bink container/movie state and LIP visemes | `engine/src/kotor/Media.*`, `GameSession.*` |
-| s13-09-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
+| s13-09-gui | `.gui` parser, corpus assertions and debug renderer | `engine/src/kotor/Gui.*`, `Application.cpp` |
+| s13-10-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
 
 ## Next sprint
 

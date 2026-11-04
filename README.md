@@ -10,8 +10,9 @@ UTS sound emitters load and play; DLG `Sound` fields play voice-over; the
 script sound/music/ambient actions are wired; SSF sound sets, footsteps and
 barks play; all 61 Bink containers and 18,206
 LIP timelines validate, with movie play/queue state and dialogue viseme
-sampling; SDL3 pulls the mixer for live playback while headless tests use the
-same mixer deterministically. **38/38 CTest targets** pass.
+sampling; all 86 unique `.gui` screens (2,302 controls) parse and render in the
+debug overlay; SDL3 pulls the mixer for live playback while headless tests use
+the same mixer deterministically. **39/39 CTest targets** pass.
 Sprint 12 remains complete (creature animation, skinning, weapons and cutscene
 cameras: MDL clips/controllers/skinning, `pause1`/`pause` playback, weapon hand
 hooks, GIT/DLG cameras with `CUT###W` clips and height presets, dangly/saber
@@ -193,9 +194,9 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   48 kHz four-bus mixer, 3D attenuation/pan, `soundeax.2da` reverb presets,
   GIT `AreaProperties` music/ambience, 45 UTS sound emitters, DLG voice-over,
   SSF sound sets/barks, appearance-driven footsteps, Bink container/movie
-  state, LIP viseme timelines, script sound/music/ambient actions, SDL3
-  output stream.
-  CTest **38/38**; 117-module sweep 0/0; VM parity 0; scene parity 0.0449;
+  state, LIP viseme timelines, 86 `.gui` screens/2,302 controls with a debug
+  renderer, script sound/music/ambient actions, SDL3 output stream.
+  CTest **39/39**; 117-module sweep 0/0; VM parity 0; scene parity 0.0449;
   Python 143 tests / 7 skips; install unchanged. See
   `docs/recon/51_AUDIO.md` and `docs/SPRINT13_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
@@ -259,6 +260,7 @@ Start with:
 - [`docs/SPRINT13_REPORT.md`](docs/SPRINT13_REPORT.md) - Sprint 13 (audio/EAX) exit report
 - [`docs/SPRINT13.md`](docs/SPRINT13.md) - Sprint 13 plan: gate S13, lanes, non-goals
 - [`docs/SPRINT14.md`](docs/SPRINT14.md) - Sprint 14 plan: Bink renderer, facial rig and remaining parity
+- [`docs/recon/52_GUI_SCREENS.md`](docs/recon/52_GUI_SCREENS.md) - GUI V3.2 control trees and renderer
 - [`docs/recon/51_AUDIO.md`](docs/recon/51_AUDIO.md) - audio streams, mixer, area sound and EAX
 - [`docs/SPRINT12_REPORT.md`](docs/SPRINT12_REPORT.md) - Sprint 12 (animation/skinning) exit report
 - [`docs/SPRINT12.md`](docs/SPRINT12.md) - Sprint 12 plan: gate S12, lanes, non-goals
