@@ -27,7 +27,7 @@ bool decodeAudio(const std::vector<std::uint8_t>& bytes, const std::string& name
                  SoundData& out, std::string& error);
 bool resample(SoundData& data, int sampleRate, int channels);
 
-enum class Bus { Music = 0, Ambient = 1, Effects = 2, Voice = 3 };
+enum class Bus { Music = 0, Ambient = 1, Effects = 2, Voice = 3, Movie = 4 };
 
 struct ReverbPreset {
     std::string label;
@@ -64,6 +64,8 @@ public:
     void stopAll();
     void setVoiceVolume(int voice, float volume);
     void setVoicePosition(int voice, kotor::Vec3 position);
+    void setVoiceCursor(int voice, double seconds);
+    double voiceCursor(int voice) const;
     void mix(float* interleavedStereo, int frames);
 
     std::size_t activeVoices() const;

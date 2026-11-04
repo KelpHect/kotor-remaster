@@ -1476,6 +1476,11 @@ bool GameSession::playMovie(const std::string& name)
     if (name.empty()) {
         return false;
     }
+    if (movieAudioVoice_ != 0 && audio_) {
+        audio_->mixer().stopVoice(movieAudioVoice_);
+    }
+    movieAudioVoice_ = 0;
+    movieAudioData_.reset();
     const std::filesystem::path path = std::filesystem::path(installPath_)
         / "movies" / (name + ".bik");
     auto player = std::make_unique<kotor::BinkPlayer>();
@@ -1497,6 +1502,19 @@ bool GameSession::playMovie(const std::string& name)
     } else {
         movieFrameIndex_ = 0;
     }
+    if (audio_ && moviePlayer_->hasAudio()) {
+        auto track = std::make_shared<audio::SoundData>();
+        track->name = name + ".bikaudio";
+        track->sampleRate = moviePlayer_->audio().sampleRate;
+        track->channels = moviePlayer_->audio().channels;
+        track->samples = moviePlayer_->audio().samples;
+        if (audio::resample(*track, 48000, 2)) {
+            movieAudioData_ = track;
+            movieAudioVoice_ = audio_->mixer().play(
+                track, audio::Bus::Movie, 1.0f, false);
+            audio_->mixer().setVoiceCursor(movieAudioVoice_, 0.0);
+        }
+    }
     return true;
 }
 
@@ -1516,11 +1534,19 @@ bool GameSession::seekMovie(float seconds)
         return false;
     }
     movieFrameIndex_ = index;
+    if (audio_ && movieAudioVoice_ != 0) {
+        audio_->mixer().setVoiceCursor(movieAudioVoice_, movieTime_);
+    }
     return true;
 }
 
 void GameSession::stopMovie()
 {
+    if (audio_ && movieAudioVoice_ != 0) {
+        audio_->mixer().stopVoice(movieAudioVoice_);
+    }
+    movieAudioVoice_ = 0;
+    movieAudioData_.reset();
     moviePlaying_ = false;
     moviePlayer_.reset();
     movieFrame_ = {};
@@ -1657,9 +1683,17 @@ void GameSession::update(float dt, const InputState& input)
                 logEvent("movie frame " + std::to_string(index) + ": " + decodeError);
             }
         }
+        if (audio_ && movieAudioVoice_ != 0) {
+            audio_->mixer().setVoiceCursor(movieAudioVoice_, movieTime_);
+        }
         if (movieTime_ >= movieDuration_) {
             moviePlaying_ = false;
             movieTime_ = movieDuration_;
+            if (audio_ && movieAudioVoice_ != 0) {
+                audio_->mixer().stopVoice(movieAudioVoice_);
+            }
+            movieAudioVoice_ = 0;
+            movieAudioData_.reset();
             if (!movieQueue_.empty()) {
                 playMovieQueue();
             }

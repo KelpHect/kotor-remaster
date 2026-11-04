@@ -130,6 +130,7 @@ bool AudioSystem::loadScene(const kotor::Scene& scene, std::string& error)
     mixer_.stopBus(audio::Bus::Ambient);
     mixer_.stopBus(audio::Bus::Effects);
     mixer_.stopBus(audio::Bus::Voice);
+    mixer_.stopBus(audio::Bus::Movie);
 
     const std::int32_t musicId = areaAudio_.musicDayId >= 0 ? areaAudio_.musicDayId
         : (areaAudio_.musicNightId >= 0 ? areaAudio_.musicNightId : areaAudio_.musicBattleId);
