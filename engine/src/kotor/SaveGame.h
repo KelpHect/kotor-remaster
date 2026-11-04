@@ -91,6 +91,7 @@ struct OriginalSave {
     std::int32_t timePlayed = 0;
     std::vector<std::int32_t> feats;
     std::vector<std::int32_t> powers;
+    std::vector<std::int32_t> skills; // SkillList order (ComputerUse..TreatInjury)
     std::vector<SavedInventoryItem> inventory;
     std::vector<std::pair<std::int32_t, bool>> party; // member id, leader
     std::vector<std::string> partyTags;

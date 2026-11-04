@@ -691,7 +691,8 @@ GffNodePtr buildPlayerNode(const OriginalSave& save)
     std::vector<GffNodePtr> skills;
     for (int i = 0; i < 8; ++i) {
         auto skill = std::make_shared<GffNode>(0);
-        skill->addUInt8("Rank", 0);
+        skill->addUInt8("Rank", static_cast<std::uint32_t>(
+            i < static_cast<int>(save.skills.size()) ? std::max(0, save.skills[i]) : 0));
         skills.push_back(std::move(skill));
     }
     node->addList("SkillList", std::move(skills));

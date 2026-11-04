@@ -138,6 +138,7 @@ add_executable(kotor_engine
     src/app/Args.cpp
     src/core/Log.cpp
     src/game/AudioSystem.cpp
+    src/game/Chargen.cpp
     src/game/FacialRig.cpp
     src/game/Factions.cpp
     src/game/GameSession.cpp
@@ -332,6 +333,10 @@ if(KOTOR_ENGINE_BUILD_TESTS)
         add_test(NAME kotor_bug_parity
                  COMMAND kotor_engine --module end_m01aa --bug-parity-test --null --headless)
         set_tests_properties(kotor_bug_parity
+                             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 120)
+        add_test(NAME kotor_chargen
+                 COMMAND kotor_engine --module end_m01aa --chargen-test --null --headless)
+        set_tests_properties(kotor_chargen
                              PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 120)
         add_test(NAME kotor_profile_k1
                  COMMAND kotor_engine --profile-info "${KOTOR_TEST_INSTALL}" --null --headless)

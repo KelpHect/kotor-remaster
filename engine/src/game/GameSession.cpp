@@ -4079,6 +4079,9 @@ bool GameSession::save(const std::filesystem::path& path) const
          << "\nwis=" << character_.wis << "\ncha=" << character_.cha << "\n";
     file << "feat_points=" << character_.featPoints << "\n";
     file << "skill_points=" << character_.skillPoints << "\n";
+    for (const auto& [skill, rank] : character_.skills) {
+        file << "skill=" << skill << "|" << rank << "\n";
+    }
     for (const std::int32_t feat : character_.feats) {
         file << "feat=" << feat << "\n";
     }
@@ -4249,6 +4252,11 @@ bool GameSession::load(const std::filesystem::path& path)
                 sheet.featPoints = std::stoi(value);
             } else if (key == "skill_points") {
                 sheet.skillPoints = std::stoi(value);
+            } else if (key == "skill") {
+                const auto parts = split(value, '|');
+                if (parts.size() >= 2) {
+                    sheet.skills[parts[0]] = std::stoi(parts[1]);
+                }
             } else if (key == "feat") {
                 sheet.feats.insert(std::stoi(value));
             } else if (key == "power") {
@@ -4703,6 +4711,11 @@ bool GameSession::saveOriginalSave(const std::filesystem::path& folder,
     }
     for (const std::int32_t power : character_.powers) {
         save.powers.push_back(power);
+    }
+    for (std::int32_t i = 0; i < 8; ++i) {
+        const std::string name = rules_.skillName(i);
+        const auto it = character_.skills.find(name);
+        save.skills.push_back(it != character_.skills.end() ? it->second : 0);
     }
     save.effects = character_.effects;
     save.forceSuppressedTimer = character_.forceSuppressedTimer;

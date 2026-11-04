@@ -49,6 +49,8 @@ struct Options {
     bool moduleTrace = false;
     bool modulePlaythroughTest = false;
     bool bugParityTest = false;
+    bool chargen = false;
+    bool chargenTest = false;
     bool thirdPerson = false;
     bool noMovies = false;
     bool cameraNoClip = false;
