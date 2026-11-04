@@ -350,6 +350,10 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                  COMMAND kotor_engine --module end_m01aa --avatar-test --null --headless)
         set_tests_properties(kotor_avatar
                              PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 180)
+        add_test(NAME kotor_chargen_gui
+                 COMMAND kotor_engine --module end_m01aa --chargen-gui-test --null --headless)
+        set_tests_properties(kotor_chargen_gui
+                             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 180)
         add_test(NAME kotor_profile_k1
                  COMMAND kotor_engine --profile-info "${KOTOR_TEST_INSTALL}" --null --headless)
         set(KOTOR2_TEST_INSTALL "$ENV{KOTOR2_INSTALL}")

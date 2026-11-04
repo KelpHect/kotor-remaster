@@ -60,6 +60,24 @@ claim that a full quest-completion playthrough has already been played.
   pazaak|swoop|turret` opens one deterministically for captures.
 - Pazaak drives the existing deck/side/set rules; swoop reads W/Shift/S;
   turret fires at live approaching targets.
+- The `SWMG_*` script bridge now creates a real space-minigame session:
+  `SWMG_GetEnemyCount/GetEnemy` start the turret state, `SWMG_GetPlayerSpeed`
+  starts the swoop state, and player/enemy/HP/event queries return live state
+  instead of scalar scratch cells. The shipped minigame scripts therefore
+  drive the same state the panels use.
+- Story triggers still depend on the shipped scripts reaching their SWMG calls;
+  the engine does not force a particular module into a minigame by name.
+
+### Shipped character-generation screens
+
+- `--chargen-gui` runs `classsel` -> `portcust` -> `abchrgen` -> `skchrgen` ->
+  `ftchrgen` -> `name` through `GuiSystem`; `BTN_ACCEPT`, `BTN_BACK`, +/-,
+  portrait arrows, `BTN_SELECT`, `END_BTN` and the name box are routed into
+  `Chargen`.
+- `--chargen-gui-test` exercises the same tag sequence headlessly and asserts
+  class, portrait, attribute, skill, feat, name and final applied sheet.
+- The 3D model preview and portrait textures are not rendered yet; the
+  functional controls and layout are shipped-screen based.
 
 ### Campaign continuity gate
 
@@ -72,10 +90,21 @@ claim that a full quest-completion playthrough has already been played.
 
 - `engine/tests/fixtures/retail_traces.json`
 - `kotor_chargen` (CTest)
+- `kotor_chargen_gui` (CTest)
 - `kotor_campaign` (CTest)
+- `kotor_avatar` (CTest)
 - `kotor_media` facial scene assertions
 - `kotor_minigame` rules gate
 - `docs/evidence/s14/ctest.log`
+
+## Gate
+
+- CTest: **55/55**, 1286.79 s (120-trace differential 216.59 s).
+- 117-module sweep: **117/117**, 0 failures/warnings.
+- VM corpus: **8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
+- GL/Vulkan parity: **0.0671** mean channel diff, PASS.
+- Python tools: **143 tests**, 7 skips.
+- Install sentinel: **15,380 files**, 0 session changes.
 
 ## Remaining boundaries
 
@@ -86,5 +115,12 @@ claim that a full quest-completion playthrough has already been played.
   save-id experiment.
 - The campaign gate is a multi-act continuity smoke test, not a quest-completion
   proof. A real end-to-end run still needs player input or a quest bot.
-- The character-generation UI is an ImGui flow, not the shipped `classsel` /
-  `name` screens.
+- External `.rsv` shadow files now parse ERF/MOD/SAV and RIM containers; a
+  future container form still needs a fixture.
+- Non-default `CamVidEffect` remains evidence-bounded: the shipped K1 corpus
+  contains only -1/0, so the engine rejects non-default values instead of
+  inventing semantics.
+- EAX reverb remains a damped-stereo approximation; Miles/EAX bit parity would
+  require the original proprietary algorithm.
+- The shipped chargen screens are functional, but `3D_MODEL*`/`MODEL_LBL` and
+  portrait textures are still placeholders.

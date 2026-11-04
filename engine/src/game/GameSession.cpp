@@ -1960,6 +1960,7 @@ void GameSession::startSwoop()
     swoop_.reset();
     swoopActive_ = true;
     turretActive_ = false;
+    logEvent("minigame swoop start");
 }
 
 void GameSession::startTurret()
@@ -1967,6 +1968,7 @@ void GameSession::startTurret()
     turret_.reset();
     turretActive_ = true;
     swoopActive_ = false;
+    logEvent("minigame turret start");
 }
 
 void GameSession::updateSwoop(float dt, float throttle, bool boost, bool brake)
@@ -1975,6 +1977,9 @@ void GameSession::updateSwoop(float dt, float throttle, bool boost, bool brake)
         return;
     }
     swoop_.update(dt, throttle, boost, brake);
+    if (swoop_.state().finished) {
+        spaceLastEvent_ = "finish";
+    }
 }
 
 void GameSession::updateTurret(float dt)
@@ -1983,6 +1988,9 @@ void GameSession::updateTurret(float dt)
         return;
     }
     turret_.update(dt);
+    if (turret_.state().hitPoints <= 0) {
+        spaceLastEvent_ = "death";
+    }
 }
 
 void GameSession::update(float dt, const InputState& input)
@@ -3723,6 +3731,127 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
     return true;
 }
 
+std::optional<std::vector<script::Value>> GameSession::spaceMinigameAction(
+    std::uint16_t actionId, const std::vector<std::vector<script::Value>>& args)
+{
+    const auto cell = [&](std::size_t index) -> script::Value {
+        return index < args.size() && !args[index].empty() ? args[index].front() : script::Value{};
+    };
+    const auto intArg = [&](std::size_t index) { return cell(index).asInt(); };
+    const auto objectArg = [&](std::size_t index) {
+        const script::Value value = cell(index);
+        return value.type == script::ValueType::Object
+            ? static_cast<std::uint32_t>(value.integer) : script::kObjectInvalid;
+    };
+    const auto isEnemy = [&](std::uint32_t object) {
+        return std::find(spaceEnemies_.begin(), spaceEnemies_.end(), object)
+            != spaceEnemies_.end();
+    };
+    switch (actionId) {
+    case 583: // SWMG_GetLastEvent
+        return std::vector<script::Value>{script::Value::makeString(spaceLastEvent_)};
+    case 584: // SWMG_GetLastEventModelName
+        return std::vector<script::Value>{script::Value::makeString("")};
+    case 585: { // SWMG_GetObjectByName
+        const std::string name = cell(0).asString();
+        if (lower(name) == "player") {
+            return objectCells(scriptWorld_.pc);
+        }
+        return objectCells(scriptWorld_.byTag(name, 0));
+    }
+    case 586: // SWMG_PlayAnimation
+    case 591: // SWMG_OnBulletHit
+    case 592: // SWMG_OnObstacleHit
+    case 598: // SWMG_OnDeath
+    case 605: // SWMG_OnDamage
+    case 607: // SWMG_RemoveAnimation
+    case 610: // SWMG_SetCameraClip
+        return std::vector<script::Value>{};
+    case 599: // SWMG_IsFollower
+    case 602: // SWMG_IsTrigger
+    case 603: // SWMG_IsObstacle
+        return intCells(0);
+    case 600: // SWMG_IsPlayer
+        return intCells(objectArg(0) == scriptWorld_.pc);
+    case 601: // SWMG_IsEnemy
+        return intCells(isEnemy(objectArg(0)) ? 1 : 0);
+    case 611: // SWMG_GetPlayer
+        return objectCells(scriptWorld_.pc);
+    case 612: { // SWMG_GetEnemyCount
+        if (spaceMode_ != SpaceMode::Turret) {
+            startTurret();
+            spaceMode_ = SpaceMode::Turret;
+            spaceLastEvent_.clear();
+        }
+        ensureSpaceEnemies();
+        return intCells(static_cast<std::int64_t>(spaceEnemies_.size()));
+    }
+    case 613: { // SWMG_GetEnemy
+        if (spaceMode_ != SpaceMode::Turret) {
+            startTurret();
+            spaceMode_ = SpaceMode::Turret;
+        }
+        ensureSpaceEnemies();
+        const std::size_t index = static_cast<std::size_t>(std::max<std::int64_t>(0, intArg(0)));
+        return objectCells(index < spaceEnemies_.size() ? spaceEnemies_[index]
+                                                        : script::kObjectInvalid);
+    }
+    case 614: // SWMG_GetObstacleCount
+        return intCells(0);
+    case 615: // SWMG_GetObstacle
+        return objectCells(script::kObjectInvalid);
+    case 616: { // SWMG_GetHitPoints
+        const std::uint32_t object = objectArg(0);
+        if (object == scriptWorld_.pc) {
+            return intCells(playerHp_);
+        }
+        if (isEnemy(object)) {
+            return intCells(100);
+        }
+        return intCells(0);
+    }
+    case 617: // SWMG_GetMaxHitPoints
+        return intCells(100);
+    case 618: // SWMG_SetMaxHitPoints
+        return std::vector<script::Value>{};
+    case 619: // SWMG_GetSphereRadius
+        return floatCells(1.0);
+    case 643: // SWMG_GetPlayerSpeed
+        if (spaceMode_ != SpaceMode::Swoop) {
+            startSwoop();
+            spaceMode_ = SpaceMode::Swoop;
+            spaceLastEvent_.clear();
+        }
+        return floatCells(swoop_.state().speed);
+    case 644: // SWMG_GetPlayerMinSpeed
+        return floatCells(0.0);
+    case 645: // SWMG_GetPlayerAccelerationPerSecond
+        return floatCells(70.0);
+    case 667: // SWMG_GetPlayerMaxSpeed
+        return floatCells(140.0);
+    default:
+        return std::nullopt;
+    }
+}
+
+void GameSession::ensureSpaceEnemies()
+{
+    if (!spaceEnemies_.empty()) {
+        return;
+    }
+    for (int i = 0; i < 5; ++i) {
+        const std::string tag = "space_enemy_" + std::to_string(i);
+        script::GameObject& object = scriptWorld_.addObject(tag, 100, 0, true);
+        spaceEnemies_.push_back(object.id);
+    }
+}
+
+std::uint32_t GameSession::spaceEnemy(std::size_t index)
+{
+    ensureSpaceEnemies();
+    return index < spaceEnemies_.size() ? spaceEnemies_[index] : script::kObjectInvalid;
+}
+
 std::optional<std::vector<script::Value>> GameSession::action(
     std::uint16_t actionId, const std::vector<std::vector<script::Value>>& args,
     script::World& world, script::Vm& vm)
@@ -3766,6 +3895,11 @@ std::optional<std::vector<script::Value>> GameSession::action(
                 static_cast<float>(args[index][1].asFloat()),
                 static_cast<float>(args[index][2].asFloat())};
     };
+    if (actionId >= 520 && actionId <= 730) {
+        if (auto handled = spaceMinigameAction(actionId, args); handled.has_value()) {
+            return handled;
+        }
+    }
 
     switch (actionId) {
     case 418: // GetGold

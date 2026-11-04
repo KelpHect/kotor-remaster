@@ -45,7 +45,7 @@ Evidence in `docs/evidence/s14/` and `docs/SPRINT14_REPORT.md`.
    the runtime warns and rejects them, with a deterministic fixture.
 6. **P6 baseline maintenance** - met: `--write-baseline` requires
    `--accept-baseline-change` and the schema is validated.
-7. **Regression** - met: 51/51 CTest, 117-module sweep, VM parity, GL/Vulkan
+7. **Regression** - met: 55/55 CTest, 117-module sweep, VM parity, GL/Vulkan
    parity, Python suite and install sentinel.
 
 ## Lanes

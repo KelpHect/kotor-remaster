@@ -10,13 +10,14 @@ retail differential and all-seven bug-parity evidence.
 ## 1. Build and test result
 
 ```text
-100% tests passed, 0 tests failed out of 51
-Total Test Time (real) = 1572.66 sec
+100% tests passed, 0 tests failed out of 55
+Total Test Time (real) = 1286.79 sec
 ```
 
 New CTest targets: `kotor_save_matrix`, `kotor_differential`,
-`kotor_dialogue_corpus`, `kotor_bug_parity`, `kotor_retail_trace` and
-`kotor_retail_differential`. The existing 45 targets still pass.
+`kotor_dialogue_corpus`, `kotor_bug_parity`, `kotor_retail_trace`,
+`kotor_retail_differential`, `kotor_chargen`, `kotor_chargen_gui`,
+`kotor_campaign` and `kotor_avatar`. The existing 45 targets still pass.
 
 ## 2. Differential playthrough gate
 
@@ -177,11 +178,11 @@ comparison. The 117-module baseline is unchanged and still green.
 
 ## 10. Regression
 
-- **CTest: 51/51 passed** (1572.66 s; the 120-trace retail differential
-  took 331.84 s).
+- **CTest: 55/55 passed** (1286.79 s; the 120-trace retail differential
+  took 216.59 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
-- **GL/Vulkan parity: 0.0815 mean abs channel diff this run**, PASS (tolerance
+- **GL/Vulkan parity: 0.0671 mean abs channel diff this run**, PASS (tolerance
   gate).
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
@@ -278,3 +279,5 @@ comparison. The 117-module baseline is unchanged and still green.
 - `docs/evidence/s14/parity.log`, `parity-gl.png`, `parity-vk.png`
 - `docs/evidence/s14/tools-tests.log`
 - `docs/evidence/s14/install-sentinel.log`
+- `docs/K1_PLAYABILITY.md`
+- `docs/evidence/s14/p6-content.json`

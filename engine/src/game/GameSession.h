@@ -415,6 +415,10 @@ private:
     void spawnPlayerAvatar();
     void updatePlayerAvatar(float dt, bool moving);
     void updateFacialMeshes();
+    std::optional<std::vector<script::Value>> spaceMinigameAction(
+        std::uint16_t actionId, const std::vector<std::vector<script::Value>>& args);
+    void ensureSpaceEnemies();
+    std::uint32_t spaceEnemy(std::size_t index);
     void syncEntityToScriptWorld(std::size_t index);
     std::string scriptSource(const std::string& resref);
 
@@ -467,6 +471,10 @@ private:
     TurretGame turret_;
     bool swoopActive_ = false;
     bool turretActive_ = false;
+    enum class SpaceMode { None, Swoop, Turret };
+    SpaceMode spaceMode_ = SpaceMode::None;
+    std::vector<std::uint32_t> spaceEnemies_;
+    std::string spaceLastEvent_;
     std::string pazaakEndScript_;
     std::uint32_t pazaakOpponent_ = 0;
     std::int32_t pazaakWager_ = 0;

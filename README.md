@@ -27,7 +27,7 @@ entity meshes) against a committed baseline; deterministic
 pazaak, swoop and
 turret state machines pass their
 seeded gates; SDL3 pulls the mixer for live playback while headless tests use
-the same mixer deterministically. **51/51 CTest targets** pass.
+the same mixer deterministically. **55/55 CTest targets** pass.
 Sprint 14 adds the retail save matrix (7/7 slots plus external `.rsv` and
 corrupt `EventQueue` fixtures), the all-DLG corpus (1,043 DLGs / 22,572
 entries / 67,395 links), TSLPatcher TLK merges with `replace.tlk`/`append.tlk`
