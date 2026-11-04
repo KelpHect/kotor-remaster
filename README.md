@@ -45,11 +45,13 @@ complete (7 stores/41 `keblastore` entries, 4 encounter volumes/8 spawns, 80%
 companion XP, systems UI); Sprint 6 remains complete (native script VM
 8,666/8,666 default and functional, 303,616 ACTION calls, dialogue entry 54,
 d20 rounds); Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255
-parity). Sprint 14+ remains: non-default `CamVidEffect` semantics (none in the
-K1 corpus) and P6 release verification (differential playthroughs, performance,
-controller/accessibility and legal review); the all-area content checklist is
-green.
-Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT14.md` and their
+parity). The remaining schedule is: Sprint 14 P6 correctness (differential
+playthroughs, save matrix, TLK merges, faction parents, `CamVidEffect`,
+baseline maintenance); Sprint 15 KotOR 2 gameplay; Sprint 16 release candidate
+(performance, controller/accessibility, legal, installer); Sprint 17 remaster
+stage 1; Sprint 18 remaster stages 2-4, modding and platforms. The all-area
+content checklist is green.
+Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT18.md` and their
 `*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
@@ -284,7 +286,11 @@ Start with:
 - [`docs/SPRINT11.md`](docs/SPRINT11.md) - Sprint 11 plan: gate S11, lanes, non-goals
 - [`docs/SPRINT13_REPORT.md`](docs/SPRINT13_REPORT.md) - Sprint 13 (audio/media/GUI/localization/mods/KotOR 2/factions/P6/minigames) exit report
 - [`docs/SPRINT13.md`](docs/SPRINT13.md) - Sprint 13 plan: gate S13, lanes, non-goals
-- [`docs/SPRINT14.md`](docs/SPRINT14.md) - Sprint 14 plan: P6 release verification
+- [`docs/SPRINT14.md`](docs/SPRINT14.md) - Sprint 14 plan: P6 correctness and residual gaps
+- [`docs/SPRINT15.md`](docs/SPRINT15.md) - Sprint 15 plan: KotOR 2 gameplay parity
+- [`docs/SPRINT16.md`](docs/SPRINT16.md) - Sprint 16 plan: release candidate checks
+- [`docs/SPRINT17.md`](docs/SPRINT17.md) - Sprint 17 plan: remaster stage 1
+- [`docs/SPRINT18.md`](docs/SPRINT18.md) - Sprint 18 plan: remaster stages 2-4, modding and platforms
 - [`docs/recon/60_P6_CONTENT.md`](docs/recon/60_P6_CONTENT.md) - 117-module content checklist and baseline
 - [`docs/recon/59_FACTIONS.md`](docs/recon/59_FACTIONS.md) - repute matrix, faction actions and FAC round-trip
 - [`docs/recon/58_KOTOR2.md`](docs/recon/58_KOTOR2.md) - K2 profile gate, MDL layout and three loaded areas
