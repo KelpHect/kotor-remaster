@@ -4,6 +4,7 @@
 #include "core/Log.h"
 #include "game/GameSession.h"
 #include "kotor/Formats.h"
+#include "kotor/Gui.h"
 #include "kotor/SaveGame.h"
 #include "render/Backend.h"
 #include "script/Corpus.h"
@@ -19,8 +20,10 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -35,6 +38,7 @@ struct RuntimeState {
     std::unique_ptr<IRenderBackend> backend;
     bool imguiReady = false;
     BackendKind activeBackend = BackendKind::Null;
+    std::optional<kotor::GuiScreen> guiScreen;
 };
 
 SDL_WindowFlags windowFlagsFor(BackendKind kind, const Options& options)
@@ -357,6 +361,51 @@ void drawSystemsUi(GameSession& game)
     case UiPanel::None:
         break;
     }
+    ImGui::End();
+}
+
+void drawGuiScreenOverlay(const kotor::GuiScreen& screen)
+{
+    ImGui::SetNextWindowPos(ImVec2(40.0f, 40.0f), ImGuiCond_Once);
+    ImGui::SetNextWindowSize(ImVec2(700.0f, 560.0f), ImGuiCond_Once);
+    if (!ImGui::Begin("GUI screen", nullptr, ImGuiWindowFlags_NoCollapse)) {
+        ImGui::End();
+        return;
+    }
+    ImGui::Text("%s  type=%d  tag=%s  controls=%zu", screen.name.c_str(), screen.type,
+                screen.tag.c_str(), screen.controlCount);
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const float scale = 1.0f;
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    std::function<void(const kotor::GuiControl&)> drawControl =
+        [&](const kotor::GuiControl& control) {
+            const ImVec2 low(origin.x + static_cast<float>(control.extent.left) * scale,
+                             origin.y + static_cast<float>(control.extent.top) * scale);
+            const ImVec2 high(low.x + static_cast<float>(control.extent.width) * scale,
+                              low.y + static_cast<float>(control.extent.height) * scale);
+            ImU32 fill = IM_COL32(40, 46, 58, 180);
+            if (control.type == 6) {
+                fill = IM_COL32(70, 90, 120, 220);
+            } else if (control.type == 5 || control.type == 4) {
+                fill = IM_COL32(30, 34, 40, 80);
+            } else if (control.type == 11) {
+                fill = IM_COL32(50, 60, 80, 160);
+            }
+            draw->AddRectFilled(low, high, fill);
+            draw->AddRect(low, high, IM_COL32(160, 170, 190, 255));
+            const std::string label = !control.text.empty() ? control.text : control.tag;
+            if (!label.empty() && control.extent.width > 8 && control.extent.height > 8) {
+                draw->AddText(ImVec2(low.x + 3.0f, low.y + 2.0f),
+                              IM_COL32(235, 235, 240, 255), label.c_str());
+            }
+            for (const kotor::GuiControl& child : control.children) {
+                drawControl(child);
+            }
+        };
+    for (const kotor::GuiControl& control : screen.controls) {
+        drawControl(control);
+    }
+    ImGui::Dummy(ImVec2(640.0f, 480.0f));
     ImGui::End();
 }
 
@@ -1392,6 +1441,66 @@ std::string resolveInstallPath(const Options& options)
     }
 #endif
     return "E:/SteamLibrary/steamapps/common/swkotor";
+}
+
+int runGuiTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("gui test: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    kotor::Install install(game.installPath());
+    install.bindModule(game.module());
+    install.addPacks();
+    const std::vector<std::string> names = install.resourceNames(2047);
+    std::size_t screens = 0;
+    std::size_t controls = 0;
+    std::size_t unknownTypes = 0;
+    std::size_t deepTrees = 0;
+    bool mainMenu = false;
+    std::set<int> types;
+    for (const std::string& name : names) {
+        const auto data = install.find(name, 2047);
+        if (!data.has_value()) {
+            continue;
+        }
+        try {
+            const kotor::GuiScreen screen = kotor::parseGui(*data, name + ".gui");
+            ++screens;
+            controls += screen.controlCount;
+            deepTrees = std::max(deepTrees, static_cast<std::size_t>(screen.controlCount));
+            std::function<void(const kotor::GuiControl&)> walk =
+                [&](const kotor::GuiControl& control) {
+                    types.insert(control.type);
+                    if (control.type != 0 && control.type != 2 && control.type != 4
+                        && control.type != 5 && control.type != 6 && control.type != 7
+                        && control.type != 8 && control.type != 9 && control.type != 10
+                        && control.type != 11) {
+                        ++unknownTypes;
+                    }
+                    for (const kotor::GuiControl& child : control.children) {
+                        walk(child);
+                    }
+                };
+            for (const kotor::GuiControl& control : screen.controls) {
+                walk(control);
+            }
+            if (name == "mainmenu") {
+                mainMenu = screen.tag == "TGuiPanel" && screen.controlCount == 14;
+            }
+        } catch (const kotor::FormatError&) {
+            ok = false;
+        }
+    }
+    logInfo(concat("gui test: screens=", screens, " controls=", controls,
+                   " types=", types.size(), " unknown=", unknownTypes,
+                   " maxControls=", deepTrees));
+    check(screens == 86, "screens");
+    check(controls > 500, "controls");
+    check(unknownTypes == 0, "control_types");
+    check(mainMenu, "mainmenu");
+    return ok ? 0 : 62;
 }
 
 int runMediaTest(GameSession& game)
@@ -3223,6 +3332,9 @@ int runApplication(const Options& options)
             if (options.mediaTest) {
                 return runMediaTest(*game);
             }
+            if (options.guiTest) {
+                return runGuiTest(*game);
+            }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);
             }
@@ -3352,6 +3464,23 @@ int runApplication(const Options& options)
         } else {
             logWarn("Audio device unavailable; continuing silent");
             audioOutput.reset();
+        }
+    }
+    if (game && !options.guiScreen.empty()) {
+        try {
+            kotor::Install guiInstall(game->installPath());
+            guiInstall.bindModule(game->module());
+            guiInstall.addPacks();
+            if (const auto data = guiInstall.find(options.guiScreen, 2047);
+                data.has_value()) {
+                state.guiScreen = kotor::parseGui(*data, options.guiScreen + ".gui");
+                logInfo(concat("GUI screen loaded: ", state.guiScreen->name,
+                               " controls=", state.guiScreen->controlCount));
+            } else {
+                logWarn(concat("GUI screen not found: ", options.guiScreen));
+            }
+        } catch (const kotor::FormatError& error) {
+            logWarn(concat("GUI screen parse failed: ", error.what()));
         }
     }
 
@@ -3571,6 +3700,9 @@ int runApplication(const Options& options)
             ImGui_ImplSDL3_NewFrame();
             ImGui::NewFrame();
             drawDebugUi(state, frames, smoothedFrameMs, elapsedSeconds, exitReason);
+            if (state.guiScreen) {
+                drawGuiScreenOverlay(*state.guiScreen);
+            }
             if (game) {
                 drawGameUi(*game, smoothedFrameMs > 0.0 ? static_cast<float>(1000.0 / smoothedFrameMs) : 0.0f,
                            game->interactionPrompt());

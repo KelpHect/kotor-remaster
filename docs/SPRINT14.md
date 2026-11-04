@@ -27,8 +27,8 @@ layer and the systems that were previously listed as future work.
 2. **Facial rig / lip sync application** - map `visemes.2da` rows to rig
    controls, drive them from `LipSync::visemeAt`, and support the head/body
    model setup without corrupting the existing animation state.
-3. **Full `.gui` screens** - parse and render the shipped 84 GUI resources,
-   including controls, fonts and screen transitions.
+3. **GUI interaction/state** - wire control actions, screen transitions and
+   panel state on top of the Sprint 13 parser/renderer.
 4. **Minigames** - pazaak, swoop and turret state machines with the shipped
    rules/content.
 5. **Localization** - TLK language selection and localized path handling.
