@@ -189,6 +189,18 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.animationTest = true;
             continue;
         }
+        if (arg == "--audio-test") {
+            result.options.audioTest = true;
+            continue;
+        }
+        if (arg == "--audio-script") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--audio-script requires an .ncs path");
+            }
+            result.options.audioScript = value;
+            continue;
+        }
         if (arg == "--animation-script") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -461,6 +473,8 @@ void printUsage()
         << "  --loot-test           Assert container loot transfer\n"
         << "  --combat-force-test   Assert feats, Force powers, saves and alignment\n"
         << "  --animation-test      Assert MDL clips, skinning and playback\n"
+        << "  --audio-test          Assert WAV/MP3 decode, buses and area audio\n"
+        << "  --audio-script <ncs>  Sound/music/ambient script bridge assertions\n"
         << "  --animation-script <ncs>  PlayAnimation script bridge assertions\n"
         << "  --combat-force-script <ncs>  Script bridge assertions for the combat-force gate\n"
         << "  --delayed-test <ncs>  Assert DelayCommand/AssignCommand closure execution\n"

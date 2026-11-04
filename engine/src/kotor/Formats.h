@@ -83,6 +83,7 @@ enum class ResType : std::uint32_t {
     Pth = 3003,
     Mdx = 3008,
     TwoDa = 2017,
+    Uts = 2035,
 };
 
 inline std::uint32_t resType(ResType type) { return static_cast<std::uint32_t>(type); }
@@ -843,6 +844,44 @@ private:
     std::vector<std::string> archiveNames_;
 };
 
+// Area audio routing resolved from GIT AreaProperties through
+// ambientmusic.2da, ambientsound.2da and soundeax.2da.
+struct AreaAudio {
+    std::int32_t musicDayId = -1;
+    std::int32_t musicNightId = -1;
+    std::int32_t musicBattleId = -1;
+    std::int32_t ambientDayId = -1;
+    std::int32_t ambientNightId = -1;
+    std::string musicDay;
+    std::string musicNight;
+    std::string musicBattle;
+    std::string ambientDay;
+    std::string ambientNight;
+    std::string eaxPreset = "GENERIC";
+    int ambientDayVolume = 0;
+    int ambientNightVolume = 0;
+    int musicDelay = 0;
+};
+
+// One GIT SoundList instance and its UTS template.
+struct SoundEmitter {
+    std::uint32_t entity = 0;
+    std::string templateResref;
+    std::vector<std::string> sounds;
+    Vec3 position;
+    float elevation = 0.0f;
+    float minDistance = 1.0f;
+    float maxDistance = 10.0f;
+    float volume = 1.0f;
+    bool active = true;
+    bool continuous = true;
+    bool looping = false;
+    bool positional = false;
+    bool random = false;
+    int interval = 0;
+    int intervalVariation = 0;
+};
+
 struct Scene {
     std::string module;
     std::string area;
@@ -862,6 +901,8 @@ struct Scene {
     std::vector<EncounterVolume> encounters;
     std::vector<CameraDef> cameras;
     std::vector<LytRoom> rooms;
+    AreaAudio areaAudio;
+    std::vector<SoundEmitter> soundEmitters;
     std::vector<std::string> warnings;
     std::map<std::string, std::string> scripts;
     Vec3 ambient{0.35f, 0.35f, 0.38f};

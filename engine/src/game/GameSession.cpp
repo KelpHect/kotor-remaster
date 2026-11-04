@@ -513,6 +513,7 @@ GameSession::GameSession(std::string installPath, std::string module)
     playerMaxHp_ = character_.maxHp;
     playerHp_ = character_.hp;
     gold_ = character_.gold;
+    audio_ = std::make_unique<AudioSystem>(install_);
     if (!loadModule(module, nullptr, {})) {
         throw kotor::FormatError("cannot load module " + module);
     }
@@ -563,6 +564,14 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
     if (playerHp_ <= 0) {
         playerHp_ = playerMaxHp_;
         playerDead_ = false;
+    }
+    if (audio_) {
+        std::string audioError;
+        audio_->loadScene(scene_, audioError);
+        if (!audioError.empty()) {
+            scene_.warnings.push_back(audioError);
+        }
+        audio_->setListener(position_, yaw_);
     }
     if (runtime_) {
         initScriptWorld();
@@ -1501,6 +1510,9 @@ void GameSession::update(float dt, const InputState& input)
     updateScripts(dt);
     updateEncounters(dt);
     syncPlayerToScriptWorld();
+    if (audio_) {
+        audio_->setListener(position_, yaw_);
+    }
     if (!pendingModule_.empty()) {
         const std::string next = pendingModule_;
         pendingModule_.clear();
@@ -2005,6 +2017,9 @@ void GameSession::showDialogueEntry(std::uint32_t entryIndex)
     dialogueView_.camHeightOffset = entry.camHeightOffset;
     dialogueView_.tarHeightOffset = entry.tarHeightOffset;
     setDialogueCameraClip(entry.cameraAnimation);
+    if (audio_ && !entry.sound.empty()) {
+        audio_->playVoice(entry.sound);
+    }
     dialogueView_.options.clear();
     if (!entry.script.empty() && activeDialogue_->firedEntries.insert(entryIndex).second) {
         runScript(entry.script, activeDialogue_->npcObject, scriptWorld_.pc,
@@ -2066,6 +2081,9 @@ void GameSession::chooseDialogueOption(std::size_t optionIndex)
     dialogueView_.tarHeightOffset = reply.tarHeightOffset;
     if (reply.cameraAnimation >= 0) {
         setDialogueCameraClip(reply.cameraAnimation);
+    }
+    if (audio_ && !reply.sound.empty()) {
+        audio_->playVoice(reply.sound);
     }
     if (!reply.entries.empty() && reply.entries.front() < activeDialogue_->dlg.entries.size()) {
         showDialogueEntry(reply.entries.front());
@@ -2948,6 +2966,22 @@ std::optional<std::vector<script::Value>> GameSession::action(
     const auto isPlayer = [&](std::uint32_t object) {
         return object == world.pc || object == script::kObjectInvalid;
     };
+    const auto entityForObject = [&](std::uint32_t object) -> std::size_t {
+        for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+            if (objectForEntity(i) == object) {
+                return i;
+            }
+        }
+        return static_cast<std::size_t>(-1);
+    };
+    const auto vectorArg = [&](std::size_t index) -> kotor::Vec3 {
+        if (index >= args.size() || args[index].size() < 3) {
+            return {};
+        }
+        return {static_cast<float>(args[index][0].asFloat()),
+                static_cast<float>(args[index][1].asFloat()),
+                static_cast<float>(args[index][2].asFloat())};
+    };
 
     switch (actionId) {
     case 418: // GetGold
@@ -3202,6 +3236,104 @@ std::optional<std::vector<script::Value>> GameSession::action(
     case 378: // OpenStore
         scriptLog_.push_back("store " + stringArg(0));
         return std::vector<script::Value>{};
+    case 46: // PlaySound
+        if (audio_) {
+            audio_->playEffect(stringArg(0));
+            logEvent("sound " + stringArg(0));
+        }
+        return std::vector<script::Value>{};
+    case 413: // SoundObjectPlay
+    case 414: // SoundObjectStop
+    case 415: // SoundObjectSetVolume
+    case 416: { // SoundObjectSetPosition
+        if (!audio_) {
+            return std::vector<script::Value>{};
+        }
+        const std::size_t entity = entityForObject(objectArg(0));
+        if (entity == static_cast<std::size_t>(-1)) {
+            return std::vector<script::Value>{};
+        }
+        if (actionId == 413) {
+            audio_->playSoundObject(static_cast<std::uint32_t>(entity));
+        } else if (actionId == 414) {
+            audio_->stopSoundObject(static_cast<std::uint32_t>(entity));
+        } else if (actionId == 415) {
+            audio_->setSoundObjectVolume(static_cast<std::uint32_t>(entity),
+                                         static_cast<float>(intArg(1)) / 100.0f);
+        } else {
+            audio_->setSoundObjectPosition(static_cast<std::uint32_t>(entity),
+                                           vectorArg(1));
+        }
+        return std::vector<script::Value>{};
+    }
+    case 417: // SpeakOneLinerConversation
+        if (audio_ && !stringArg(0).empty()) {
+            audio_->playVoice(stringArg(0));
+        }
+        return std::vector<script::Value>{};
+    case 425: // MusicBackgroundPlay
+    case 426: // MusicBackgroundStop
+    case 427: // MusicBackgroundSetDelay
+    case 428: // MusicBackgroundChangeDay
+    case 429: { // MusicBackgroundChangeNight
+        if (!audio_) {
+            return std::vector<script::Value>{};
+        }
+        if (actionId == 425) {
+            audio_->playMusic(scene_.areaAudio.musicDayId);
+        } else if (actionId == 426) {
+            audio_->stopMusic();
+        } else if (actionId == 427) {
+            scene_.areaAudio.musicDelay = static_cast<int>(intArg(1));
+        } else if (actionId == 428) {
+            scene_.areaAudio.musicDayId = static_cast<std::int32_t>(intArg(1));
+            audio_->playMusic(scene_.areaAudio.musicDayId);
+        } else {
+            scene_.areaAudio.musicNightId = static_cast<std::int32_t>(intArg(1));
+            audio_->playMusic(scene_.areaAudio.musicNightId);
+        }
+        return std::vector<script::Value>{};
+    }
+    case 433: // AmbientSoundPlay
+    case 434: // AmbientSoundStop
+    case 435: // AmbientSoundChangeDay
+    case 436: { // AmbientSoundChangeNight
+        if (!audio_) {
+            return std::vector<script::Value>{};
+        }
+        if (actionId == 433) {
+            audio_->playAmbient(scene_.areaAudio.ambientDayId);
+        } else if (actionId == 434) {
+            audio_->stopAmbient();
+        } else if (actionId == 435) {
+            scene_.areaAudio.ambientDayId = static_cast<std::int32_t>(intArg(1));
+            audio_->playAmbient(scene_.areaAudio.ambientDayId);
+        } else {
+            scene_.areaAudio.ambientNightId = static_cast<std::int32_t>(intArg(1));
+            audio_->playAmbient(scene_.areaAudio.ambientNightId);
+        }
+        return std::vector<script::Value>{};
+    }
+    case 558: // MusicBackgroundGetDayTrack
+        return intCells(scene_.areaAudio.musicDayId);
+    case 559: // MusicBackgroundGetNightTrack
+        return intCells(scene_.areaAudio.musicNightId);
+    case 569: // MusicBackgroundGetBattleTrack
+        return intCells(scene_.areaAudio.musicBattleId);
+    case 567: // AmbientSoundSetDayVolume
+    case 568: { // AmbientSoundSetNightVolume
+        const float volume = std::clamp(static_cast<float>(intArg(1)) / 100.0f,
+                                        0.0f, 1.0f);
+        if (actionId == 567) {
+            scene_.areaAudio.ambientDayVolume = static_cast<int>(intArg(1));
+        } else {
+            scene_.areaAudio.ambientNightVolume = static_cast<int>(intArg(1));
+        }
+        if (audio_) {
+            audio_->mixer().setBusVolume(audio::Bus::Ambient, volume);
+        }
+        return std::vector<script::Value>{};
+    }
     case 40: // ActionPlayAnimation
     case 300: { // PlayAnimation
         const std::int32_t animationId = static_cast<std::int32_t>(intArg(0));

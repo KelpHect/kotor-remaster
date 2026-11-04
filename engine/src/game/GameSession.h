@@ -1,5 +1,6 @@
 #pragma once
 
+#include "game/AudioSystem.h"
 #include "game/Rules.h"
 #include "kotor/Formats.h"
 #include "kotor/SaveGame.h"
@@ -70,6 +71,8 @@ public:
     const std::string& installPath() const { return installPath_; }
     const std::string& buildSha256() const { return install_.buildSha256(); }
     const Rules& rules() const { return rules_; }
+    AudioSystem& audio() { return *audio_; }
+    const AudioSystem& audio() const { return *audio_; }
 
     void update(float dt, const InputState& input);
     SceneCamera camera() const;
@@ -285,6 +288,7 @@ private:
     std::string installPath_;
     std::string module_;
     kotor::Install install_;
+    std::unique_ptr<AudioSystem> audio_;
     kotor::Scene scene_;
     kotor::Vec3 position_;
     float yaw_ = 0.0f;

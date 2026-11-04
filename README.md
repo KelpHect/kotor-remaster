@@ -1,24 +1,20 @@
 # KotOR 1 Interoperability Runtime (unofficial)
 
-Status: **Sprint 12 (creature animation, skinning, weapons and cutscene cameras)
-complete - gate S12 met (2026-11-03).** Shipped MDL animation clips parse and
-evaluate (position, packed/float orientation, scale, Bezier position); skin
-meshes carry bones, weights, `qbone`/`tbone` bind-inverse data and CPU
-deformation; `GameSession` plays/loops per-entity clips with `pause1`/`pause`
-defaults; equipped weapons attach to `Rhand_g`/`Lhand_g` and follow the hand
-pose; GIT cameras and DLG `CameraID`/`CameraAnimation`/`CameraAngle` playback
-override the first-person camera during dialogue, with camera-MDL `CUT###W`
-clips evaluated through `camerahook` and height-offset presets; dangly
-constraints settle deterministically; saber header geometry renders; every
-light/emitter controller family is sampled into a deterministic parameter
-model that drives billboard colour, alpha, size, birth/life and motion, with
-per-batch opaque/alpha/additive blending in GL and Vulkan; clip
-changes cross-fade over the MDL transition, root motion is extracted and
-shipped clips are root-in-place; `animations.2da` and
-`PlayAnimation`/`ActionPlayAnimation`
-are wired; GL and Vulkan refresh entity vertex buffers from the posed mesh.
-**36/36 CTest targets** pass.
-Sprint 11 remains complete (44 Force powers, 125 feat rows, combat/Force/
+Status: **Sprint 13 (audio, music, voice and EAX approximation) complete - gate
+S13 met (2026-11-04).** Shipped `streamwaves`, `streamsounds` and `streammusic`
+audio decodes (PCM 8/16, IMA ADPCM, MP3, KotOR `0x1d6` prefix); a 48 kHz
+stereo mixer provides music/ambient/effects/voice buses, per-voice
+volume/pitch/pan/loop, listener-relative 3D attenuation and `soundeax.2da`
+reverb presets; GIT `AreaProperties` drive area music/ambience; 45 Endar Spire
+UTS sound emitters load and play; DLG `Sound` fields play voice-over; the
+script sound/music/ambient actions are wired; SDL3 pulls the mixer for live
+playback while headless tests use the same mixer deterministically. **37/37
+CTest targets** pass.
+Sprint 12 remains complete (creature animation, skinning, weapons and cutscene
+cameras: MDL clips/controllers/skinning, `pause1`/`pause` playback, weapon hand
+hooks, GIT/DLG cameras with `CUT###W` clips and height presets, dangly/saber
+geometry, full light/emitter controller parameter model, opaque/alpha/additive
+FX blending, transition cross-fade). Sprint 11 remains complete (44 Force powers, 125 feat rows, combat/Force/
 alignment core, effect stack with Breach/Suppress/Immunity, Jedi Defense,
 Force Camouflage, passive formulas and save persistence). Sprint 10 remains
 complete (delayed/assigned closures, nested delays, `ActionWait`, `OBJECT_SELF`,
@@ -32,11 +28,11 @@ complete (7 stores/41 `keblastore` entries, 4 encounter volumes/8 spawns, 80%
 companion XP, systems UI); Sprint 6 remains complete (native script VM
 8,666/8,666 default and functional, 303,616 ACTION calls, dialogue entry 54,
 d20 rounds); Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255
-parity). Sprint 13+ remains: non-default `CamVidEffect` semantics (none in the
-K1 corpus), audio/EAX, Bink/lip sync, full `.gui`, minigames, localization,
-mods/Override, KotOR 2 world loading, faction reputation simulation and the
-P6 content checklist.
-Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT12.md` and their
+parity). Sprint 14+ remains: Bink movies and LIP lip sync, SSF sound sets/
+footsteps/barks, non-default `CamVidEffect` semantics (none in the K1 corpus),
+full `.gui`, minigames, localization, mods/Override, KotOR 2 world loading,
+faction reputation simulation and the P6 content checklist.
+Plans/reports: `docs/SPRINT1.md` through `docs/SPRINT13.md` and their
 `*_REPORT.md`; P0 gate in `docs/P0_REPORT.md`.
 
 The runtime is intended to load a user-supplied KotOR 1.0.3.0 installation and run it in place. It
@@ -191,6 +187,13 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   CTest **36/36**; 117-module sweep 0/0; VM parity 0; scene parity 0.0449;
   Python 143 tests / 7 skips; install unchanged. See
   `docs/recon/50_ANIMATION_SKINNING.md` and `docs/SPRINT12_REPORT.md`.
+- Sprint 13 (audio/EAX): PCM/IMA ADPCM/MP3 decode with KotOR prefix handling,
+  48 kHz four-bus mixer, 3D attenuation/pan, `soundeax.2da` reverb presets,
+  GIT `AreaProperties` music/ambience, 45 UTS sound emitters, DLG voice-over,
+  script sound/music/ambient actions, SDL3 output stream.
+  CTest **37/37**; 117-module sweep 0/0; VM parity 0; scene parity 0.0449;
+  Python 143 tests / 7 skips; install unchanged. See
+  `docs/recon/51_AUDIO.md` and `docs/SPRINT13_REPORT.md`.
 - Install validation/cache: read-only dataset fingerprinting, external content-addressed cache
   profile, and a manifest-reconciled install (0 file/size deltas); 14 tests (`docs/recon/13`).
 - Function classification: **11,199 items all high-confidence** — 10,302 engine, 441 CRT,
@@ -249,6 +252,9 @@ Start with:
 - [`docs/SPRINT10.md`](docs/SPRINT10.md) - Sprint 10 plan: gate S10, lanes, non-goals
 - [`docs/SPRINT11_REPORT.md`](docs/SPRINT11_REPORT.md) - Sprint 11 (combat/Force/alignment) exit report
 - [`docs/SPRINT11.md`](docs/SPRINT11.md) - Sprint 11 plan: gate S11, lanes, non-goals
+- [`docs/SPRINT13_REPORT.md`](docs/SPRINT13_REPORT.md) - Sprint 13 (audio/EAX) exit report
+- [`docs/SPRINT13.md`](docs/SPRINT13.md) - Sprint 13 plan: gate S13, lanes, non-goals
+- [`docs/recon/51_AUDIO.md`](docs/recon/51_AUDIO.md) - audio streams, mixer, area sound and EAX
 - [`docs/SPRINT12_REPORT.md`](docs/SPRINT12_REPORT.md) - Sprint 12 (animation/skinning) exit report
 - [`docs/SPRINT12.md`](docs/SPRINT12.md) - Sprint 12 plan: gate S12, lanes, non-goals
 - [`docs/recon/50_ANIMATION_SKINNING.md`](docs/recon/50_ANIMATION_SKINNING.md) - MDL clips, controllers, skinning and playback
