@@ -184,6 +184,19 @@ public:
     bool pazaakActive() const { return pazaak_ != nullptr; }
     int lastPazaakResult() const { return lastPazaakResult_; }
     void resolvePazaakIfOver();
+    void stopPazaak() { pazaak_.reset(); pazaakEndScript_.clear(); pazaakWager_ = 0; }
+    void startSwoop();
+    void startTurret();
+    void updateSwoop(float dt, float throttle, bool boost, bool brake);
+    void updateTurret(float dt);
+    bool swoopActive() const { return swoopActive_; }
+    bool turretActive() const { return turretActive_; }
+    SwoopRace& swoop() { return swoop_; }
+    const SwoopRace& swoop() const { return swoop_; }
+    TurretGame& turret() { return turret_; }
+    const TurretGame& turret() const { return turret_; }
+    void stopSwoop() { swoopActive_ = false; }
+    void stopTurret() { turretActive_ = false; }
     void chooseDialogueOption(std::size_t optionIndex);
     void endDialogue();
     const DialogueView& dialogue() const { return dialogueView_; }
@@ -445,6 +458,10 @@ private:
     std::shared_ptr<audio::SoundData> movieAudioData_;
     int movieAudioVoice_ = 0;
     std::unique_ptr<PazaakGame> pazaak_;
+    SwoopRace swoop_;
+    TurretGame turret_;
+    bool swoopActive_ = false;
+    bool turretActive_ = false;
     std::string pazaakEndScript_;
     std::uint32_t pazaakOpponent_ = 0;
     std::int32_t pazaakWager_ = 0;

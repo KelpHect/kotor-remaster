@@ -695,6 +695,125 @@ void drawChargenUi(Chargen& chargen, GameSession& game, bool& active)
     ImGui::End();
 }
 
+void drawMinigameUi(GameSession& game)
+{
+    if (game.pazaakActive()) {
+        PazaakGame* pazaak = game.pazaak();
+        ImGui::SetNextWindowPos(ImVec2(120.0f, 120.0f), ImGuiCond_FirstUseEver);
+        ImGui::Begin("Pazaak", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        ImGui::Text("Player %d  Opponent %d   Sets %d - %d",
+                    pazaak->playerTotal(), pazaak->opponentTotal(),
+                    pazaak->playerSets(), pazaak->opponentSets());
+        ImGui::Text("Phase: %s", pazaak->phase() == PazaakGame::Phase::PlayerTurn
+                      ? "your turn" : "opponent");
+        const auto advance = [&]() -> bool {
+            if (pazaak->phase() == PazaakGame::Phase::OpponentTurn) {
+                pazaak->opponentTurn();
+            }
+            game.resolvePazaakIfOver();
+            return game.pazaakActive();
+        };
+        if (pazaak->phase() == PazaakGame::Phase::PlayerTurn) {
+            if (ImGui::Button("Draw")) {
+                pazaak->playerDraw();
+                if (!advance()) { ImGui::End(); return; }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Stand")) {
+                pazaak->playerStand();
+                if (!advance()) { ImGui::End(); return; }
+            }
+            const std::vector<int>& side = pazaak->playerSide();
+            for (std::size_t i = 0; i < side.size(); ++i) {
+                const std::string label = (side[i] >= 0 ? "+" : "")
+                    + std::to_string(side[i]);
+                if (ImGui::Button((label + "##side" + std::to_string(i)).c_str())) {
+                    pazaak->playerPlaySide(i);
+                    if (!advance()) { ImGui::End(); return; }
+                }
+                if (i + 1 < side.size()) {
+                    ImGui::SameLine();
+                }
+            }
+        } else if (pazaak->phase() == PazaakGame::Phase::OpponentTurn) {
+            if (ImGui::Button("Continue")) {
+                if (!advance()) { ImGui::End(); return; }
+            }
+        } else if (pazaak->phase() == PazaakGame::Phase::MatchOver) {
+            ImGui::Text("Match over: %s", pazaak->playerSets() > pazaak->opponentSets()
+                        ? "you win" : "you lose");
+            if (ImGui::Button("Collect")) {
+                game.resolvePazaakIfOver();
+                ImGui::End();
+                return;
+            }
+        }
+        if (ImGui::Button("Leave")) {
+            game.stopPazaak();
+            ImGui::End();
+            return;
+        }
+        ImGui::End();
+    }
+    if (game.swoopActive()) {
+        SwoopRace& race = game.swoop();
+        ImGui::SetNextWindowPos(ImVec2(120.0f, 120.0f), ImGuiCond_FirstUseEver);
+        ImGui::Begin("Swoop Race", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        const SwoopState& state = race.state();
+        ImGui::Text("Lap %d/%d  Speed %.1f  Distance %.0f / %.0f",
+                    state.lap, SwoopRace::kLaps, state.speed, state.distance,
+                    SwoopRace::kTrackLength * SwoopRace::kLaps);
+        if (state.finished) {
+            ImGui::Text("Finished in %.2f s", state.time);
+            if (ImGui::Button("Close")) {
+                game.stopSwoop();
+            }
+        } else {
+            const ImGuiIO& io = ImGui::GetIO();
+            const float throttle = ImGui::IsKeyDown(ImGuiKey_W) ? 1.0f : 0.0f;
+            const bool boost = ImGui::IsKeyDown(ImGuiKey_LeftShift)
+                || ImGui::IsKeyDown(ImGuiKey_RightShift);
+            const bool brake = ImGui::IsKeyDown(ImGuiKey_S);
+            game.updateSwoop(std::min(io.DeltaTime, 0.05f), throttle, boost, brake);
+            ImGui::TextUnformatted("W throttle, Shift boost, S brake");
+            if (ImGui::Button("Abort")) {
+                game.stopSwoop();
+            }
+        }
+        ImGui::End();
+    }
+    if (game.turretActive()) {
+        TurretGame& turret = game.turret();
+        ImGui::SetNextWindowPos(ImVec2(120.0f, 120.0f), ImGuiCond_FirstUseEver);
+        ImGui::Begin("Turret", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+        const TurretState& state = turret.state();
+        ImGui::Text("Hull %d  Score %d  Shots %d  Hits %d",
+                    state.hitPoints, state.score, state.shots, state.hits);
+        if (state.hitPoints <= 0) {
+            ImGui::TextUnformatted("Hull destroyed");
+            if (ImGui::Button("Close")) {
+                game.stopTurret();
+            }
+        } else {
+            const auto& targets = turret.targets();
+            for (std::size_t i = 0; i < targets.size(); ++i) {
+                if (!targets[i].alive) {
+                    continue;
+                }
+                const std::string label = "Fire " + std::to_string(i + 1)
+                    + " (" + std::to_string(static_cast<int>(targets[i].distance)) + " m)";
+                if (ImGui::Button((label + "##turret").c_str())) {
+                    turret.fireAt(i);
+                }
+            }
+            if (ImGui::Button("Abort")) {
+                game.stopTurret();
+            }
+        }
+        ImGui::End();
+    }
+}
+
 void drawGameUi(GameSession& game, float fps, const std::string& prompt)
 {
     ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
@@ -715,7 +834,8 @@ void drawGameUi(GameSession& game, float fps, const std::string& prompt)
     }
     ImGui::Separator();
     ImGui::TextUnformatted("WASD move, mouse look, Shift run, Space jump");
-    ImGui::TextUnformatted("E interact, F attack, F5 save, F9 load, F1 mouse, Esc quit");
+    ImGui::TextUnformatted("E interact, F attack, P pazaak, O swoop, T turret");
+    ImGui::TextUnformatted("F5 save, F9 load, F1 mouse, Esc quit");
     ImGui::Text("Triangles: %zu  Collision facets: %zu  Entities: %zu",
                 game.scene().indices.size() / 3, game.scene().collision.size(), game.scene().entities.size());
     if (!game.combatLog().empty()) {
@@ -5407,6 +5527,13 @@ int runApplication(const Options& options)
             if (options.noMovies) {
                 game->stopMovie();
             }
+            if (options.startMinigame == "pazaak") {
+                game->startPazaak(0, "", 0, false, 0);
+            } else if (options.startMinigame == "swoop") {
+                game->startSwoop();
+            } else if (options.startMinigame == "turret") {
+                game->startTurret();
+            }
             const ke::kotor::Scene& loaded = game->scene();
             const auto countKind = [&](ke::kotor::EntityKind kind) {
                 return std::count_if(loaded.entities.begin(), loaded.entities.end(),
@@ -6040,6 +6167,12 @@ int runApplication(const Options& options)
                     }
                 } else if (game && event.key.key == SDLK_F) {
                     game->attackNearestHostile();
+                } else if (game && event.key.key == SDLK_P) {
+                    game->startPazaak(0, "", 0, false, 0);
+                } else if (game && event.key.key == SDLK_O) {
+                    game->startSwoop();
+                } else if (game && event.key.key == SDLK_T) {
+                    game->startTurret();
                 } else if (game && game->dialogue().active
                            && event.key.key >= SDLK_1 && event.key.key <= SDLK_9) {
                     game->chooseDialogueOption(static_cast<std::size_t>(event.key.key - SDLK_1));
@@ -6098,6 +6231,9 @@ int runApplication(const Options& options)
                     game->stopMovie();
                 }
                 game->update(static_cast<float>(deltaMs / 1000.0), input);
+                if (game->turretActive()) {
+                    game->updateTurret(static_cast<float>(deltaMs / 1000.0));
+                }
             }
             mouseDx = 0.0f;
             mouseDy = 0.0f;
@@ -6124,14 +6260,16 @@ int runApplication(const Options& options)
             ImGui::NewFrame();
             const bool movieMode = game && game->moviePlaying();
             const bool guiMode = state.guiSystem && state.guiSystem->active();
+            const bool minigameMode = game
+                && (game->pazaakActive() || game->swoopActive() || game->turretActive());
             if (chargenActive && chargen && game) {
                 drawChargenUi(*chargen, *game, chargenActive);
             } else {
-                if (!movieMode && !guiMode) {
+                if (!movieMode && !guiMode && !minigameMode) {
                     drawDebugUi(state, frames, smoothedFrameMs, elapsedSeconds, exitReason);
                 }
                 if (game) {
-                    if (!movieMode && !guiMode) {
+                    if (!movieMode && !guiMode && !minigameMode) {
                         drawGameUi(*game, smoothedFrameMs > 0.0 ? static_cast<float>(1000.0 / smoothedFrameMs) : 0.0f,
                                    game->interactionPrompt());
                         if (options.facialDemo >= 0 || game->lipSyncActive()) {
@@ -6140,9 +6278,11 @@ int runApplication(const Options& options)
                     }
                 }
             }
+            if (!chargenActive && minigameMode) {
+                drawMinigameUi(*game);
+            }
             if (game) {
-                if (game->movieFrame() != nullptr) {
-                    if (game->movieFrameIndex() != uploadedMovieFrame) {
+                if (game->movieFrame() != nullptr) {                    if (game->movieFrameIndex() != uploadedMovieFrame) {
                         std::string movieError;
                         const kotor::BinkVideoFrame* frame = game->movieFrame();
                         if (state.backend->uploadMovieFrame(

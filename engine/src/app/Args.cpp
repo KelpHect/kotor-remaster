@@ -340,6 +340,14 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.cameraNoClip = true;
             continue;
         }
+        if (arg == "--start-minigame") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--start-minigame requires pazaak, swoop or turret");
+            }
+            result.options.startMinigame = value;
+            continue;
+        }
         if (arg == "--player-appearance") {
             const char* value = requireValue();
             int appearance = 0;
@@ -723,6 +731,7 @@ void printUsage()
         << "  --third-person        Render the player avatar with an orbit camera\n"
         << "  --no-movies           Suppress module/movie overlays for inspection\n"
         << "  --camera-noclip       Disable third-person camera collision (debug)\n"
+        << "  --start-minigame <pazaak|swoop|turret>  Open a minigame panel\n"
         << "  --player-appearance <row>  appearance.2da row for the player (default 92)\n"
         << "  --player-name <text>  Player display name (default Player)\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"
