@@ -390,6 +390,49 @@ void drawMovieOverlay(const kotor::BinkVideoFrame& frame, std::uint64_t texture)
     ImGui::PopStyleVar(2);
 }
 
+void drawFacialRigOverlay(const FacialRig& rig)
+{
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 360.0f, 60.0f),
+                            ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(340.0f, 310.0f), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Lip sync rig")) {
+        ImGui::End();
+        return;
+    }
+    const VisemePose& pose = rig.currentPose();
+    ImGui::Text("viseme %d: %s", rig.viseme(), rig.visemeName(rig.viseme()).c_str());
+    ImGui::Text("jaw %.1f deg  wide %.2f  round %.2f  brow %.2f",
+                rig.jawAngle(rig.viseme()) * 57.29578f, pose.mouthWide,
+                pose.lipRound, pose.browRaise);
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const ImVec2 center(origin.x + 165.0f, origin.y + 120.0f);
+    draw->AddCircleFilled(center, 78.0f, IM_COL32(210, 188, 158, 255));
+    draw->AddCircle(center, 78.0f, IM_COL32(86, 70, 54, 255), 0, 2.0f);
+    const float brow = pose.browRaise * 8.0f;
+    draw->AddLine(ImVec2(center.x - 42.0f, center.y - 38.0f - brow),
+                  ImVec2(center.x - 14.0f, center.y - 44.0f - brow),
+                  IM_COL32(60, 45, 35, 255), 3.0f);
+    draw->AddLine(ImVec2(center.x + 14.0f, center.y - 44.0f - brow),
+                  ImVec2(center.x + 42.0f, center.y - 38.0f - brow),
+                  IM_COL32(60, 45, 35, 255), 3.0f);
+    draw->AddCircleFilled(ImVec2(center.x - 28.0f, center.y - 16.0f), 7.0f,
+                          IM_COL32(40, 30, 24, 255));
+    draw->AddCircleFilled(ImVec2(center.x + 28.0f, center.y - 16.0f), 7.0f,
+                          IM_COL32(40, 30, 24, 255));
+    const float mouthWidth = std::max(10.0f, 30.0f + pose.mouthWide * 26.0f);
+    const float mouthHeight = std::max(2.0f, 3.0f + pose.jawOpen * 34.0f);
+    draw->AddEllipseFilled(ImVec2(center.x, center.y + 38.0f),
+                           ImVec2(mouthWidth, mouthHeight),
+                           IM_COL32(74, 26, 26, 255));
+    draw->AddEllipseFilled(ImVec2(center.x, center.y + 38.0f),
+                           ImVec2(std::max(6.0f, mouthWidth - 4.0f),
+                                  std::max(1.0f, mouthHeight * 0.4f)),
+                           IM_COL32(242, 222, 216, 255));
+    ImGui::Dummy(ImVec2(320.0f, 220.0f));
+    ImGui::End();
+}
+
 void drawGuiScreenOverlay(const kotor::GuiScreen& screen)
 {
     ImGui::SetNextWindowPos(ImVec2(40.0f, 40.0f), ImGuiCond_Once);
@@ -1889,7 +1932,11 @@ int runMediaTest(GameSession& game)
             const kotor::TwoDa table = kotor::TwoDa::parse(*data, "visemes");
             visemeRows = table.rowCount();
             for (std::size_t row = 0; row < table.rowCount(); ++row) {
-                const std::string name = table.cell(std::to_string(row), "animname");
+                std::string name = table.cell(table.rowLabel(row), "animname");
+                if (name.empty()) {
+                    // visemes.2da shifts animname into the first column.
+                    name = table.cell(row, 0);
+                }
                 if (!name.empty()) {
                     visemeAnimations.push_back(name);
                 }
@@ -1937,12 +1984,75 @@ int runMediaTest(GameSession& game)
     logInfo(concat("media test: visemes=", visemeRows, " heads=", headRows,
                    " models=", headModels, " visemeClips=", headsWithVisemeClips));
 
+    // Procedural facial rig: visemes.2da channels drive the shipped head bones.
+    const FacialRig& rig = game.facialRig();
+    check(rig.loaded(), "facial_rig");
+    check(rig.visemeCount() == 16, "facial_visemes");
+    check(rig.visemeName(0) == "Silence" && rig.visemeName(13) == "Roar",
+          "facial_names");
+    check(rig.pose(0).jawOpen == 0.0f && rig.pose(11).jawOpen == 0.0f,
+          "facial_closed");
+    check(rig.pose(13).jawOpen > 0.8f, "facial_roar");
+    check(std::fabs(rig.jawAngle(13)) > std::fabs(rig.jawAngle(10)),
+          "facial_jaw_order");
+    const auto roarRotations = rig.rotations(13);
+    check(roarRotations.count("f_jaw_g") == 1
+              && roarRotations.count("f_lmc_g") == 1
+              && roarRotations.count("f_rmc_g") == 1
+              && roarRotations.count("f_lbrw_g") == 1,
+          "facial_bones");
+    const auto headMdl = headInstall.find("p_CarthH", kotor::resType(kotor::ResType::Mdl));
+    const auto headMdx = headInstall.find("p_CarthH", kotor::resType(kotor::ResType::Mdx));
+    check(headMdl.has_value() && headMdx.has_value(), "facial_head_model");
+    if (headMdl.has_value() && headMdx.has_value()) {
+        try {
+            const kotor::Mdl head = kotor::Mdl::parse(*headMdl, *headMdx, "p_CarthH.mdl");
+            check(head.hasNode("f_jaw_g") && head.hasNode("f_lmc_g"),
+                  "facial_head_bones");
+            const std::vector<kotor::MdlMeshTriangle> bind =
+                head.posedTriangles({}, 0.0f);
+            const std::vector<kotor::MdlMeshTriangle> roar =
+                head.posedTrianglesRigged({}, 0.0f, -1.0f, roarRotations);
+            const std::vector<kotor::MdlMeshTriangle> silence =
+                head.posedTrianglesRigged({}, 0.0f, -1.0f, rig.rotations(0));
+            double roarDelta = 0.0;
+            double silenceDelta = 0.0;
+            if (bind.size() == roar.size() && bind.size() == silence.size()) {
+                for (std::size_t i = 0; i < bind.size(); ++i) {
+                    for (int v = 0; v < 3; ++v) {
+                        const kotor::Vec3 a = bind[i].v[v].position;
+                        const kotor::Vec3 b = roar[i].v[v].position;
+                        const kotor::Vec3 c = silence[i].v[v].position;
+                        roarDelta = std::max(roarDelta, static_cast<double>(
+                            std::fabs(a.x - b.x) + std::fabs(a.y - b.y)
+                            + std::fabs(a.z - b.z)));
+                        silenceDelta = std::max(silenceDelta, static_cast<double>(
+                            std::fabs(a.x - c.x) + std::fabs(a.y - c.y)
+                            + std::fabs(a.z - c.z)));
+                    }
+                }
+            }
+            check(roarDelta > 1.0e-3, "facial_geometry");
+            check(silenceDelta == 0.0, "facial_silence_bind");
+            logInfo(concat("media test: facial jawDelta=", roarDelta,
+                           " silenceDelta=", silenceDelta));
+        } catch (const kotor::FormatError&) {
+            check(false, "facial_head_bones");
+        }
+    }
+
     if (!sampleLip.frames.empty()) {
         game.setLipSyncForTest(sampleLip);
         check(game.lipSyncActive(), "lip_playback_active");
         check(game.lipViseme() == sampleLip.visemeAt(0.0f), "lip_playback_start");
         game.update(0.05f, InputState{});
         check(game.lipTime() > 0.0f, "lip_playback_clock");
+        check(game.facialRig().viseme()
+                  == static_cast<int>(game.lipViseme()),
+              "facial_lip_drive");
+        check(game.facialRig().currentPose().jawOpen
+                  == game.facialRig().pose(game.facialRig().viseme()).jawOpen,
+              "facial_pose_drive");
         game.clearLipSyncForTest();
     }
 
@@ -3780,6 +3890,17 @@ int runApplication(const Options& options)
             logWarn(concat("Movie failed to start: ", options.moviePlay));
         }
     }
+    if (game && options.facialDemo >= 0) {
+        game->stopMovie();
+        kotor::LipSync lip;
+        lip.name = "facial_demo";
+        lip.duration = 2.0f;
+        lip.frames.push_back({0.0f, static_cast<std::uint8_t>(options.facialDemo)});
+        lip.frames.push_back({2.0f, static_cast<std::uint8_t>(options.facialDemo)});
+        game->setLipSyncForTest(std::move(lip));
+        logInfo(concat("Facial demo viseme: ", options.facialDemo,
+                       " name=", game->facialRig().visemeName(options.facialDemo)));
+    }
 
     std::vector<BackendKind> candidates;
     if (options.backend == BackendKind::Auto) {
@@ -4021,6 +4142,9 @@ int runApplication(const Options& options)
                 if (!movieMode) {
                     drawGameUi(*game, smoothedFrameMs > 0.0 ? static_cast<float>(1000.0 / smoothedFrameMs) : 0.0f,
                                game->interactionPrompt());
+                    if (options.facialDemo >= 0 || game->lipSyncActive()) {
+                        drawFacialRigOverlay(game->facialRig());
+                    }
                 }
                 if (game->movieFrame() != nullptr) {
                     if (game->movieFrameIndex() != uploadedMovieFrame) {

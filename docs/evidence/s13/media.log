@@ -36,9 +36,23 @@
 [INFO] media test: head_models=1
 [INFO] media test: viseme_head_clips=1
 [INFO] media test: visemes=16 heads=107 models=106 visemeClips=0
+[INFO] media test: facial_rig=1
+[INFO] media test: facial_visemes=1
+[INFO] media test: facial_names=1
+[INFO] media test: facial_closed=1
+[INFO] media test: facial_roar=1
+[INFO] media test: facial_jaw_order=1
+[INFO] media test: facial_bones=1
+[INFO] media test: facial_head_model=1
+[INFO] media test: facial_head_bones=1
+[INFO] media test: facial_geometry=1
+[INFO] media test: facial_silence_bind=1
+[INFO] media test: facial jawDelta=0.470906 silenceDelta=0
 [INFO] media test: lip_playback_active=1
 [INFO] media test: lip_playback_start=1
 [INFO] media test: lip_playback_clock=1
+[INFO] media test: facial_lip_drive=1
+[INFO] media test: facial_pose_drive=1
 [INFO] media test: movie_play=1
 [INFO] media test: movie_state=1
 [INFO] media test: movie_duration=1

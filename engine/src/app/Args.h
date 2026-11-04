@@ -42,6 +42,7 @@ struct Options {
     std::string moviePlay;
     std::string movieShot;
     float movieTime = -1.0f;
+    int facialDemo = -1;
     std::string audioScript;
     std::string animationScript;
     std::string combatForceScript;

@@ -890,9 +890,22 @@ std::optional<Mdl::Pose> Mdl::nodePose(const std::string& node, const std::strin
     return std::nullopt;
 }
 
-std::vector<Mdl::Pose> Mdl::poseWorld(const Animation* animation, float time) const
+std::vector<Mdl::Pose> Mdl::poseWorld(const Animation* animation, float time,
+                                     const std::map<std::string, Mat3>& extraRotations) const
 {
     std::vector<Pose> world(nodes_.size());
+    std::vector<Mat3> extra(nodes_.size());
+    for (Mat3& matrix : extra) {
+        matrix = identity();
+    }
+    if (!extraRotations.empty()) {
+        for (std::size_t i = 0; i < nodes_.size(); ++i) {
+            const auto it = extraRotations.find(nodes_[i].name);
+            if (it != extraRotations.end()) {
+                extra[i] = it->second;
+            }
+        }
+    }
     std::map<std::uint16_t, const Node*> animated;
     if (animation != nullptr) {
         for (const Node& node : animation->nodes) {
@@ -988,9 +1001,11 @@ std::vector<Mdl::Pose> Mdl::poseWorld(const Animation* animation, float time) co
             parent = resolve(parentIt->second);
         }
         const Local& localPose = local[index];
-        world[index].rotation = multiply(parent.rotation,
-                                         quatMatrix(localPose.rotation[0], localPose.rotation[1],
-                                                    localPose.rotation[2], localPose.rotation[3]));
+        const Mat3 localRotation = multiply(
+            quatMatrix(localPose.rotation[0], localPose.rotation[1],
+                       localPose.rotation[2], localPose.rotation[3]),
+            extra[index]);
+        world[index].rotation = multiply(parent.rotation, localRotation);
         const Vec3 scaled{localPose.position.x * localPose.scale.x,
                           localPose.position.y * localPose.scale.y,
                           localPose.position.z * localPose.scale.z};
@@ -1018,6 +1033,29 @@ std::vector<MdlMeshTriangle> Mdl::posedTriangles(const std::string& animation, f
     const int clip = animation.empty() ? -1 : animationIndex(animation);
     const Animation* anim = clip >= 0 ? &animationData_[static_cast<std::size_t>(clip)] : nullptr;
     return trianglesFromPose(anim != nullptr ? poseWorld(anim, time) : bindWorld_, danglyTime);
+}
+
+std::vector<MdlMeshTriangle> Mdl::posedTrianglesRigged(
+    const std::string& animation, float time, float danglyTime,
+    const std::map<std::string, Mat3>& extraRotations) const
+{
+    if (extraRotations.empty()) {
+        return posedTriangles(animation, time, danglyTime);
+    }
+    const int clip = animation.empty() ? -1 : animationIndex(animation);
+    const Animation* anim = clip >= 0 ? &animationData_[static_cast<std::size_t>(clip)] : nullptr;
+    return trianglesFromPose(poseWorld(anim, time, extraRotations), danglyTime);
+}
+
+bool Mdl::hasNode(const std::string& name) const
+{
+    const std::string wanted = lowerAscii(name);
+    for (const Node& node : nodes_) {
+        if (lowerAscii(node.name) == wanted) {
+            return true;
+        }
+    }
+    return false;
 }
 
 std::vector<MdlMeshTriangle> Mdl::blendedTriangles(const std::string& animationA, float timeA,

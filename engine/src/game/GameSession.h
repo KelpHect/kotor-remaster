@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/AudioSystem.h"
+#include "game/FacialRig.h"
 #include "game/Minigames.h"
 #include "game/Rules.h"
 #include "kotor/BinkDecoder.h"
@@ -76,6 +77,8 @@ public:
     const Rules& rules() const { return rules_; }
     AudioSystem& audio() { return *audio_; }
     const AudioSystem& audio() const { return *audio_; }
+    FacialRig& facialRig() { return facialRig_; }
+    const FacialRig& facialRig() const { return facialRig_; }
 
     void update(float dt, const InputState& input);
     SceneCamera camera() const;
@@ -123,6 +126,7 @@ public:
         dialogueView_.active = false;
     }
     bool playMovie(const std::string& name);
+    void stopMovie();
     bool queueMovie(const std::string& name, bool playNow);
     bool playMovieQueue();
     bool moviePlaying() const { return moviePlaying_; }
@@ -341,6 +345,7 @@ private:
     float dialogueCameraDuration_ = 0.0f;
     std::optional<kotor::LipSync> activeLip_;
     float lipTime_ = 0.0f;
+    FacialRig facialRig_;
     bool moviePlaying_ = false;
     std::string movieName_;
     float movieTime_ = 0.0f;
