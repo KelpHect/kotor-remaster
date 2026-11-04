@@ -855,6 +855,7 @@ struct EntityMesh {
     // body node `headNode` (normally `headhook`) through body animations.
     std::shared_ptr<Mdl> headModel;
     std::string headNode;
+    std::map<std::string, Mat3> extraRotations;
     bool visible = true;
     std::uint32_t revision = 0;
 };

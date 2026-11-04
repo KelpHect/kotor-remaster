@@ -338,6 +338,14 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                  COMMAND kotor_engine --module end_m01aa --chargen-test --null --headless)
         set_tests_properties(kotor_chargen
                              PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 120)
+        set(KOTOR_CAMPAIGN_SAVES "${CMAKE_SOURCE_DIR}/../artifacts/lanes/06-dynamic/profile/saves")
+        if(EXISTS "${KOTOR_CAMPAIGN_SAVES}")
+            add_test(NAME kotor_campaign
+                     COMMAND kotor_engine --module end_m01aa --campaign-test
+                             --save-fixtures "${KOTOR_CAMPAIGN_SAVES}" --null --headless)
+            set_tests_properties(kotor_campaign
+                                 PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+        endif()
         add_test(NAME kotor_profile_k1
                  COMMAND kotor_engine --profile-info "${KOTOR_TEST_INSTALL}" --null --headless)
         set(KOTOR2_TEST_INSTALL "$ENV{KOTOR2_INSTALL}")

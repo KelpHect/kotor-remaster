@@ -453,7 +453,10 @@ void refreshEntityMeshImpl(EntityMesh& mesh)
     }
     std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
     std::vector<MdlMeshTriangle> posedTriangles;
-    if (mesh.blendRemaining > 0.0f && !mesh.previousAnimation.empty()
+    if (!mesh.extraRotations.empty()) {
+        posedTriangles = mesh.model->posedTrianglesRigged(
+            mesh.animation, mesh.animationTime, mesh.danglyTime, mesh.extraRotations);
+    } else if (mesh.blendRemaining > 0.0f && !mesh.previousAnimation.empty()
         && mesh.blendDuration > 0.0f) {
         const float blend = 1.0f - mesh.blendRemaining / mesh.blendDuration;
         posedTriangles = mesh.model->blendedTriangles(

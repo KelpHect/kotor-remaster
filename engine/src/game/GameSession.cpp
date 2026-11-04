@@ -474,7 +474,7 @@ void GameSession::updateAnimations(float dt)
             continue;
         }
         const bool dangly = mesh.model->danglyNodeCount() > 0;
-        if (mesh.animation.empty() && !dangly) {
+        if (mesh.animation.empty() && !dangly && mesh.extraRotations.empty()) {
             continue;
         }
         const float duration = mesh.model->animationDuration(mesh.animation);
@@ -1041,6 +1041,40 @@ void GameSession::updatePlayerAvatar(float dt, bool moving)
     // Player skinning needs the supermodel skeleton; keep the avatar in bind
     // pose until that is merged.
     (void)moving;
+}
+
+bool GameSession::entityHasFacialPose(std::size_t entityIndex) const
+{
+    for (const kotor::EntityMesh& mesh : scene_.entityMeshes) {
+        if (mesh.entity == entityIndex && !mesh.extraRotations.empty()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void GameSession::updateFacialMeshes()
+{    std::size_t speaker = static_cast<std::size_t>(-1);
+    if (dialogueView_.active && activeDialogue_.has_value()) {
+        for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+            if (objectForEntity(i) == activeDialogue_->npcObject) {
+                speaker = i;
+                break;
+            }
+        }
+    }
+    const auto rotations = speaker != static_cast<std::size_t>(-1)
+        ? facialRig_.rotations(facialRig_.viseme())
+        : std::map<std::string, kotor::Mat3>{};
+    for (kotor::EntityMesh& mesh : scene_.entityMeshes) {
+        if (mesh.entity == speaker) {
+            mesh.extraRotations = rotations;
+            ++animationRevision_;
+        } else if (!mesh.extraRotations.empty()) {
+            mesh.extraRotations.clear();
+            ++animationRevision_;
+        }
+    }
 }
 
 void GameSession::refreshHostility()
@@ -1903,6 +1937,7 @@ void GameSession::update(float dt, const InputState& input)
     } else {
         facialRig_.setViseme(0);
     }
+    updateFacialMeshes();
     if (moviePlaying_ && moviePlayer_) {
         movieTime_ += dt;
         const double fps = moviePlayer_->framesPerSecond();
@@ -3267,6 +3302,48 @@ bool GameSession::learnPower(std::int32_t powerId)
     return true;
 }
 
+bool GameSession::spendSkillPoint(const std::string& skill)
+{
+    if (character_.skillPoints <= 0 || skill.empty()) {
+        return false;
+    }
+    const auto it = character_.skills.find(skill);
+    if (it == character_.skills.end()) {
+        return false;
+    }
+    ++it->second;
+    --character_.skillPoints;
+    syncPlayerToScriptWorld();
+    return true;
+}
+
+bool GameSession::spendAttributePoint(std::int32_t index)
+{
+    if (character_.attributePoints <= 0 || index < 0 || index > 5) {
+        return false;
+    }
+    std::int32_t* value = nullptr;
+    switch (index) {
+    case 0: value = &character_.str; break;
+    case 1: value = &character_.dex; break;
+    case 2: value = &character_.con; break;
+    case 3: value = &character_.intel; break;
+    case 4: value = &character_.wis; break;
+    case 5: value = &character_.cha; break;
+    default: return false;
+    }
+    ++*value;
+    --character_.attributePoints;
+    if (index == 2 && rules_.loaded()) {
+        character_.maxHp = rules_.maxHitPoints(character_.classId, character_.level,
+                                               character_.con);
+        playerMaxHp_ = character_.maxHp;
+        playerHp_ = std::min(playerMaxHp_, playerHp_ + 1);
+    }
+    syncPlayerToScriptWorld();
+    return true;
+}
+
 void GameSession::giveXp(std::int32_t amount){
     if (amount <= 0) {
         return;
@@ -3275,6 +3352,16 @@ void GameSession::giveXp(std::int32_t amount){
     const std::int32_t level = rules_.loaded() ? rules_.levelForXp(character_.xp)
                                                : character_.level;
     if (level > character_.level) {
+        for (std::int32_t next = character_.level + 1; next <= level; ++next) {
+            if (rules_.loaded()) {
+                character_.skillPoints += rules_.skillPointsForLevel(character_.classId,
+                                                                     character_.intel);
+                character_.featPoints += rules_.featsForLevel(character_.classId, next);
+            }
+            if (next % 4 == 0) {
+                ++character_.attributePoints;
+            }
+        }
         character_.level = level;
         if (rules_.loaded()) {
             character_.maxHp = rules_.maxHitPoints(character_.classId, level,
@@ -4109,6 +4196,7 @@ bool GameSession::save(const std::filesystem::path& path) const
          << "\nwis=" << character_.wis << "\ncha=" << character_.cha << "\n";
     file << "feat_points=" << character_.featPoints << "\n";
     file << "skill_points=" << character_.skillPoints << "\n";
+    file << "attribute_points=" << character_.attributePoints << "\n";
     for (const auto& [skill, rank] : character_.skills) {
         file << "skill=" << skill << "|" << rank << "\n";
     }
@@ -4282,6 +4370,8 @@ bool GameSession::load(const std::filesystem::path& path)
                 sheet.featPoints = std::stoi(value);
             } else if (key == "skill_points") {
                 sheet.skillPoints = std::stoi(value);
+            } else if (key == "attribute_points") {
+                sheet.attributePoints = std::max(0, std::stoi(value));
             } else if (key == "skill") {
                 const auto parts = split(value, '|');
                 if (parts.size() >= 2) {

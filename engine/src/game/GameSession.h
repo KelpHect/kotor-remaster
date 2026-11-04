@@ -274,6 +274,8 @@ public:
     bool removePartyMember(const std::string& tag);
     bool learnFeat(std::int32_t featId);
     bool learnPower(std::int32_t powerId);
+    bool spendSkillPoint(const std::string& skill);
+    bool spendAttributePoint(std::int32_t index);
     void giveXp(std::int32_t amount);
 
     // Combat/Force/alignment core.
@@ -342,6 +344,7 @@ public:
     std::string animationName(std::size_t entityIndex) const;
     float animationTime(std::size_t entityIndex) const;
     std::uint32_t animationRevision() const { return animationRevision_; }
+    bool entityHasFacialPose(std::size_t entityIndex) const;
     void initAnimations();
     void updateAnimations(float dt);
     void setAnimationEnabled(bool enabled) { animationEnabled_ = enabled; }
@@ -410,6 +413,7 @@ private:
     void syncPlayerToScriptWorld();
     void spawnPlayerAvatar();
     void updatePlayerAvatar(float dt, bool moving);
+    void updateFacialMeshes();
     void syncEntityToScriptWorld(std::size_t index);
     std::string scriptSource(const std::string& resref);
 

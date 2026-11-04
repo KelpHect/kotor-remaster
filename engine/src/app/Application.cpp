@@ -258,13 +258,28 @@ void drawSystemsUi(GameSession& game)
         ImGui::Separator();
         ImGui::Text("STR %d  DEX %d  CON %d", sheet.str, sheet.dex, sheet.con);
         ImGui::Text("INT %d  WIS %d  CHA %d", sheet.intel, sheet.wis, sheet.cha);
-        ImGui::Text("AC %d  Attack +%d  Skill points %d  Feat points %d",
+        ImGui::Text("AC %d  Attack +%d  Skill points %d  Feat points %d  Attribute points %d",
                     game.rules().armorClass(sheet), game.rules().attackBonus(sheet),
-                    sheet.skillPoints, sheet.featPoints);
+                    sheet.skillPoints, sheet.featPoints, sheet.attributePoints);
+        if (sheet.attributePoints > 0) {
+            static const char* attributes[] = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
+            for (int i = 0; i < 6; ++i) {
+                ImGui::SameLine();
+                if (ImGui::SmallButton((std::string("+") + attributes[i]).c_str())) {
+                    game.spendAttributePoint(i);
+                }
+            }
+        }
         ImGui::Separator();
         ImGui::TextUnformatted("Skills");
         for (const auto& [name, rank] : sheet.skills) {
             ImGui::Text("%s: %d", name.c_str(), rank);
+            if (sheet.skillPoints > 0) {
+                ImGui::SameLine();
+                if (ImGui::SmallButton((std::string("+##") + name).c_str())) {
+                    game.spendSkillPoint(name);
+                }
+            }
         }
         if (!sheet.feats.empty()) {
             ImGui::TextUnformatted("Feats");
@@ -2635,8 +2650,96 @@ int runChargenTest(GameSession& game)
     check(restored.character().skills.contains("Awareness")
               && restored.character().skills.at("Awareness") == 4, "loaded_skill");
 
+    const std::int32_t oldLevel = game.character().level;
+    game.giveXp(game.rules().xpForLevel(2) + 1);
+    check(game.character().level == oldLevel + 1, "level_up");
+    check(game.character().skillPoints > 0, "level_skill_points");
+    check(game.character().featPoints > 0, "level_feat_points");
+    const auto skillBefore = game.character().skills.find("Awareness");
+    const std::int32_t rankBefore = skillBefore != game.character().skills.end()
+        ? skillBefore->second : 0;
+    check(game.spendSkillPoint("Awareness"), "spend_skill");
+    check(game.character().skills.at("Awareness") == rankBefore + 1, "skill_spent");
+    game.giveXp(game.rules().xpForLevel(4) + 1);
+    check(game.character().level >= 4, "level_four");
+    check(game.character().attributePoints > 0, "attribute_points");
+    const std::int32_t strBefore = game.character().str;
+    check(game.spendAttributePoint(0), "spend_attribute");
+    check(game.character().str == strBefore + 1, "attribute_spent");
+
     logInfo(ok ? "chargen: PASS" : "chargen: FAIL");
     return ok ? 0 : 73;
+}
+
+int runCampaignTest(GameSession& base, const std::string& fixtureDirectory)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const std::string& label) {
+        logInfo(concat("campaign: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    check(runPlaythrough(base) == 0, "endar_spire");
+
+    const std::filesystem::path root(fixtureDirectory);
+    std::vector<std::filesystem::path> folders;
+    std::error_code error;
+    if (std::filesystem::is_directory(root, error)) {
+        for (const std::filesystem::directory_entry& entry :
+             std::filesystem::directory_iterator(root, error)) {
+            if (entry.is_directory()
+                && std::filesystem::is_regular_file(entry.path() / "SAVEGAME.sav")) {
+                folders.push_back(entry.path());
+            }
+        }
+    }
+    std::sort(folders.begin(), folders.end());
+    check(folders.size() >= 4, "save_acts");
+    std::size_t acts = 0;
+    for (const std::filesystem::path& folder : folders) {
+        const std::string name = folder.filename().string();
+        try {
+            const kotor::OriginalSave source = kotor::readOriginalSave(folder);
+            GameSession game(base.installPath(), source.module);
+            if (!game.loadOriginalSave(folder)) {
+                check(false, "load_" + name);
+                continue;
+            }
+            for (int frame = 0; frame < 600; ++frame) {
+                game.update(1.0f / 60.0f, InputState{});
+            }
+            check(game.module() == source.module, "module_" + name);
+            check(game.elapsedSeconds() > 9.0f, "clock_" + name);
+            check(game.playerHp() > 0, "alive_" + name);
+            check(!game.scene().entities.empty(), "entities_" + name);
+            check(game.scene().warnings.empty(), "warnings_" + name);
+            if (game.journalSize() > 0 || source.journal.empty()) {
+                check(true, "journal_" + name);
+            } else {
+                check(false, "journal_" + name);
+            }
+            ++acts;
+        } catch (const std::exception& exception) {
+            check(false, "exception_" + name);
+            logWarn(concat("campaign: ", name, ": ", exception.what()));
+        }
+    }
+    check(acts >= 4, "acts_ran");
+
+    for (const char* module : {"danm14aa", "kas_m22aa", "manm26aa", "korr_m33aa"}) {
+        try {
+            GameSession game(base.installPath(), module);
+            for (int frame = 0; frame < 120; ++frame) {
+                game.update(1.0f / 60.0f, InputState{});
+            }
+            check(!game.scene().entities.empty(), std::string("anchor_") + module);
+        } catch (const std::exception& exception) {
+            check(false, std::string("anchor_") + module);
+            logWarn(concat("campaign: ", module, ": ", exception.what()));
+        }
+    }
+
+    logInfo(ok ? "campaign: PASS" : "campaign: FAIL");
+    return ok ? 0 : 74;
 }
 
 int runBugParityTest(GameSession& game)
@@ -4043,6 +4146,21 @@ int runMediaTest(GameSession& game)
     game.stopMovie();
     check(game.audio().mixer().activeVoices(audio::Bus::Movie) == 0,
           "movie_audio_stop");
+
+    const std::size_t facialNpc = game.findEntity("end_trask");
+    if (facialNpc != static_cast<std::size_t>(-1)) {
+        check(game.startDialogue(facialNpc), "facial_scene_dialogue");
+        kotor::LipSync sceneLip;
+        sceneLip.name = "scene_facial";
+        sceneLip.duration = 2.0f;
+        sceneLip.frames.push_back({0.0f, 13});
+        sceneLip.frames.push_back({2.0f, 13});
+        game.setLipSyncForTest(std::move(sceneLip));
+        game.update(0.05f, InputState{});
+        check(game.entityHasFacialPose(facialNpc), "facial_scene_pose");
+        game.clearLipSyncForTest();
+        game.endDialogue();
+    }
 
     logInfo(ok ? "media test: PASS" : "media test: FAIL");
     return ok ? 0 : 61;
@@ -5837,6 +5955,9 @@ int runApplication(const Options& options)
             }
             if (options.chargenTest) {
                 return runChargenTest(*game);
+            }
+            if (options.campaignTest) {
+                return runCampaignTest(*game, options.saveFixtures);
             }
             if (!options.delayedTest.empty()) {
                 return runDelayedTest(*game, options.delayedTest);

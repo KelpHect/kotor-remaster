@@ -48,6 +48,7 @@ struct CharacterSheet {
     std::set<std::int32_t> powers;
     std::int32_t skillPoints = 0;
     std::int32_t featPoints = 0;
+    std::int32_t attributePoints = 0;
     std::vector<InventoryItem> inventory;
     std::vector<kotor::ActiveEffect> effects;
     float forceSuppressedTimer = 0.0f;

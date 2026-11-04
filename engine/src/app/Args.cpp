@@ -328,6 +328,10 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.chargenTest = true;
             continue;
         }
+        if (arg == "--campaign-test") {
+            result.options.campaignTest = true;
+            continue;
+        }
         if (arg == "--third-person") {
             result.options.thirdPerson = true;
             continue;
@@ -728,6 +732,7 @@ void printUsage()
         << "  --bug-parity-test     Classic bug-parity vs fixed-mode assertions\n"
         << "  --chargen             Start in interactive character generation\n"
         << "  --chargen-test        Assert the headless character-generation gate\n"
+        << "  --campaign-test       Run the multi-act campaign continuity gate\n"
         << "  --third-person        Render the player avatar with an orbit camera\n"
         << "  --no-movies           Suppress module/movie overlays for inspection\n"
         << "  --camera-noclip       Disable third-person camera collision (debug)\n"
