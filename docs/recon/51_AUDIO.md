@@ -121,8 +121,10 @@ FFmpeg 9.0.2 `avcodec`/`avformat`/`swscale`, decodes Bink 1 frames to RGBA and
 presents them through a GL/Vulkan ImGui texture at the header clock. `01a.bik`
 frame 0 is 640x272 RGBA (696,320 bytes), SHA-256
 `301f27f0e6022367e847de4861de2be72c25c1ffd0ccfdadbd920673f9bf1430`,
-matching the recorded FFmpeg oracle. Bink audio synchronization remains in
-Sprint 14.
+matching the recorded FFmpeg oracle. Bink Audio (DCT) is decoded at 44.1 kHz
+stereo to interleaved float with the same FFmpeg decoder; its first-second
+PCM SHA-256 matches the oracle and the movie bus cursor is locked to the
+video clock (`docs/recon/55_BINK_AUDIO.md`).
 
 LIP V1.0 (type 3004, 18,206 resources in 123 `lips/*.mod`):
 
@@ -155,12 +157,13 @@ attaches the LIP matching a dialogue voice `Sound` resref and exposes
 
 `--media-test` asserts all 61 Bink containers/frame tables, native pixel
 decode of `01a.bik` frame 0 against the recorded SHA-256, frame 1, rewind and
-replay determinism, the playback frame/clock, movie play/queue, all 18,206 LIP
-resources and a viseme sample.
+replay determinism, Bink Audio decode against the PCM oracle plus movie-bus
+cursor sync/seek/stop, the playback frame/clock, movie play/queue, all 18,206
+LIP resources and a viseme sample.
 
 ## 9. Next sprint
 
-The facial rig, Bink audio synchronization and the remaining UI/content
+The GUI interaction layer and the remaining UI/content
 systems are planned in `docs/SPRINT14.md`. The shipped-data boundary is
 recorded here: 107 heads carry 0 viseme clips, so facial deformation needs an
 engine rig rather than a data-only mapping.

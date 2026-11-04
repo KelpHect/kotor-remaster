@@ -13,7 +13,7 @@ machines.
 
 ```text
 100% tests passed, 0 tests failed out of 40
-Total Test time (real) = 359.08 sec
+Total Test time (real) = 171.42 sec
 ```
 
 The new targets are `kotor_audio`, `kotor_media`, `kotor_gui` and
@@ -112,6 +112,13 @@ Gate assertions: `creature_soundset`, `ssf_slots`, `ssf_filled`,
   ImGui with the HUD hidden; `--movie-shot` writes a top-down BMP and
   `--movie-time` seeks before presentation. Evidence:
   `docs/evidence/s13/movie-gl.png`, `movie-vk.png`, `movie-frame.png`.
+- **Bink Audio**: the `binkaudio_dct` track is 44.1 kHz / 2 ch / 120.32 s
+  (5,306,127 frames). `BinkPlayer::decodeAudio` converts FLTP/S16/S32 frames
+  to interleaved float with PTS gap filling and trims to the video duration;
+  the first second hashes to `8a6f3225...c96622`, the FFmpeg PCM oracle.
+  `GameSession` resamples it to 48 kHz stereo, plays it on the dedicated
+  `Bus::Movie` and sets the voice cursor to `movieTime` every update, so seeks
+  and frame drops stay locked; end/queue/stop retires the voice.
 - **Movie state**: `PlayMovie`/`QueueMovie`/`PlayMovieQueue` start/queue the
   Bink playback clock; `IsMoviePlaying` returns the state; duration comes from
   the parsed frame count and fps.
@@ -137,6 +144,10 @@ Gate assertions: `bik_movies`, `bik_headers`, `bik_frames`, `bink_decoder`,
 `lip_viseme_sample`, `movie_play`, `movie_state`, `movie_duration`,
 `movie_frame0_decode`, `movie_frame0_sha256`, `movie_clock`,
 `movie_frame_clock`, `movie_queue`, `movie_queue_play`, `movie_queue_frame`,
+`bink_audio`, `bink_audio_format`, `bink_audio_frames`, `bink_audio_duration`,
+`bink_audio_sha256`, `movie_audio_voice`, `movie_audio_active`,
+`movie_audio_start`, `movie_audio_clock`, `movie_audio_seek`,
+`movie_audio_seek_cursor`, `movie_audio_queue`, `movie_audio_stop`,
 `facial_rig`, `facial_visemes`, `facial_names`, `facial_closed`,
 `facial_roar`, `facial_jaw_order`, `facial_bones`, `facial_head_model`,
 `facial_head_bones`, `facial_geometry`, `facial_silence_bind`,
@@ -198,7 +209,7 @@ before `SDL_Quit` (the parity crash fix).
 
 ## 11. Regression
 
-- **CTest: 40/40 passed** (359.08 s).
+- **CTest: 40/40 passed** (171.42 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0000**, PASS.
@@ -207,8 +218,9 @@ before `SDL_Quit` (the parity crash fix).
 
 ## 12. Next sprint
 
-Sprint 13 closes audio, Bink/LIP media, native movie presentation and the
-facial rig. Bink audio sync and the remaining UI/content systems are planned in
+Sprint 13 closes audio, Bink/LIP media, native movie presentation, Bink audio
+and the facial rig. GUI interaction and the remaining UI/content systems are
+planned in
 [`docs/SPRINT14.md`](SPRINT14.md); the shipped-data evidence is `media.log`
 (61 BIK, native RGBA SHA-256, 18,206 LIP, 107 head rows / 106 models / 0 viseme
 clips) and `bik-oracle.txt`.
@@ -222,6 +234,7 @@ clips) and `bik-oracle.txt`.
 - `docs/evidence/s13/movie-gl.png`, `movie-vk.png`, `movie-frame.png`
 - `docs/evidence/s13/facial-roar.png`
 - `docs/evidence/s13/bik-oracle.txt`, `bik-oracle.png`
+- `docs/evidence/s13/bik-audio.txt`
 - `docs/evidence/s13/ctest.log`
 - `docs/evidence/s13/all-modules.log`, `all-modules.json`
 - `docs/evidence/s13/vm-corpus.log`, `vm-parity.json`

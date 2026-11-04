@@ -2,12 +2,15 @@
 
 #include "kotor/Formats.h"
 
+#include <algorithm>
+#include <cmath>
 #include <fstream>
 
 #if defined(KOTOR_HAVE_FFMPEG)
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavutil/mathematics.h>
 #include <libavutil/pixfmt.h>
 #include <libswscale/swscale.h>
 }
@@ -72,6 +75,7 @@ struct BinkPlayer::Impl {
     int videoStream = -1;
 #endif
     BikMovie movie;
+    BinkAudioTrack audio;
     std::string path;
     int decoded = 0;
 
@@ -94,6 +98,7 @@ struct BinkPlayer::Impl {
         }
 #endif
         decoded = 0;
+        audio = {};
         path.clear();
     }
 
@@ -142,12 +147,163 @@ struct BinkPlayer::Impl {
             return false;
         }
         path = file;
+        decodeAudio(file);
         decoded = 0;
         return true;
 #endif
     }
 
 #if defined(KOTOR_HAVE_FFMPEG)
+    static float sampleValue(const AVFrame* frame, int sample, int channel, int channels)
+    {
+        switch (frame->format) {
+        case AV_SAMPLE_FMT_FLTP:
+            return reinterpret_cast<const float*>(frame->extended_data[channel])[sample];
+        case AV_SAMPLE_FMT_FLT:
+            return reinterpret_cast<const float*>(frame->data[0])[
+                sample * channels + channel];
+        case AV_SAMPLE_FMT_S16P:
+            return reinterpret_cast<const std::int16_t*>(
+                frame->extended_data[channel])[sample] / 32768.0f;
+        case AV_SAMPLE_FMT_S16:
+            return reinterpret_cast<const std::int16_t*>(frame->data[0])[
+                sample * channels + channel] / 32768.0f;
+        case AV_SAMPLE_FMT_S32P:
+            return static_cast<float>(reinterpret_cast<const std::int32_t*>(
+                frame->extended_data[channel])[sample]) / 2147483648.0f;
+        case AV_SAMPLE_FMT_S32:
+            return static_cast<float>(reinterpret_cast<const std::int32_t*>(
+                frame->data[0])[sample * channels + channel]) / 2147483648.0f;
+        default:
+            return 0.0f;
+        }
+    }
+
+    void decodeAudio(const std::string& file)
+    {
+        audio = {};
+        AVFormatContext* audioFormat = nullptr;
+        if (avformat_open_input(&audioFormat, file.c_str(), nullptr, nullptr) < 0) {
+            return;
+        }
+        if (avformat_find_stream_info(audioFormat, nullptr) < 0) {
+            avformat_close_input(&audioFormat);
+            return;
+        }
+        const AVCodec* decoder = nullptr;
+        const int stream = av_find_best_stream(audioFormat, AVMEDIA_TYPE_AUDIO, -1,
+                                               -1, &decoder, 0);
+        if (stream < 0 || decoder == nullptr) {
+            avformat_close_input(&audioFormat);
+            return;
+        }
+        AVCodecContext* audioCodec = avcodec_alloc_context3(decoder);
+        if (audioCodec == nullptr
+            || avcodec_parameters_to_context(
+                   audioCodec, audioFormat->streams[stream]->codecpar) < 0
+            || avcodec_open2(audioCodec, decoder, nullptr) < 0) {
+            if (audioCodec != nullptr) {
+                avcodec_free_context(&audioCodec);
+            }
+            avformat_close_input(&audioFormat);
+            return;
+        }
+        AVPacket* audioPacket = av_packet_alloc();
+        AVFrame* audioFrame = av_frame_alloc();
+        if (audioPacket == nullptr || audioFrame == nullptr) {
+            if (audioPacket != nullptr) av_packet_free(&audioPacket);
+            if (audioFrame != nullptr) av_frame_free(&audioFrame);
+            avcodec_free_context(&audioCodec);
+            avformat_close_input(&audioFormat);
+            return;
+        }
+        std::vector<float> samples;
+        int sampleRate = 0;
+        int channels = 0;
+        const auto append = [&](const AVFrame* frame) {
+            const int frameChannels = frame->ch_layout.nb_channels;
+            const int frameRate = frame->sample_rate;
+            if (frameChannels <= 0 || frameRate <= 0) {
+                return;
+            }
+            if (sampleRate == 0) {
+                sampleRate = frameRate;
+                channels = frameChannels;
+            }
+            if (frameRate != sampleRate || frameChannels != channels) {
+                return;
+            }
+            const std::int64_t start = frame->pts != AV_NOPTS_VALUE
+                ? av_rescale_q(frame->pts, audioFormat->streams[stream]->time_base,
+                               AVRational{1, frameRate})
+                : static_cast<std::int64_t>(
+                      samples.size() / static_cast<std::size_t>(channels));
+            std::size_t offset = start > 0
+                ? static_cast<std::size_t>(start) * static_cast<std::size_t>(channels)
+                : samples.size();
+            if (offset < samples.size()) {
+                offset = samples.size();
+            }
+            if (offset > samples.size()) {
+                samples.resize(offset, 0.0f);
+            }
+            samples.resize(offset
+                           + static_cast<std::size_t>(frame->nb_samples)
+                               * static_cast<std::size_t>(channels));
+            for (int i = 0; i < frame->nb_samples; ++i) {
+                for (int c = 0; c < channels; ++c) {
+                    samples[offset + static_cast<std::size_t>(i)
+                                * static_cast<std::size_t>(channels)
+                            + static_cast<std::size_t>(c)] =
+                        sampleValue(frame, i, c, channels);
+                }
+            }
+        };
+        const auto drain = [&]() {
+            while (true) {
+                const int received = avcodec_receive_frame(audioCodec, audioFrame);
+                if (received == AVERROR(EAGAIN) || received == AVERROR_EOF) {
+                    break;
+                }
+                if (received < 0) {
+                    break;
+                }
+                append(audioFrame);
+                av_frame_unref(audioFrame);
+            }
+        };
+        while (av_read_frame(audioFormat, audioPacket) >= 0) {
+            if (audioPacket->stream_index == stream) {
+                if (avcodec_send_packet(audioCodec, audioPacket) == 0) {
+                    drain();
+                }
+            }
+            av_packet_unref(audioPacket);
+        }
+        avcodec_send_packet(audioCodec, nullptr);
+        drain();
+        av_frame_free(&audioFrame);
+        av_packet_free(&audioPacket);
+        avcodec_free_context(&audioCodec);
+        avformat_close_input(&audioFormat);
+        if (samples.empty() || sampleRate <= 0 || channels <= 0) {
+            return;
+        }
+        const double videoSeconds = movie.framesPerSecond > 0.0f
+            ? static_cast<double>(movie.frames) / movie.framesPerSecond : 0.0;
+        if (videoSeconds > 0.0) {
+            const std::size_t maxFrames = static_cast<std::size_t>(
+                std::ceil(videoSeconds * static_cast<double>(sampleRate)));
+            if (samples.size()
+                > maxFrames * static_cast<std::size_t>(channels)) {
+                samples.resize(maxFrames * static_cast<std::size_t>(channels));
+            }
+        }
+        audio.sampleRate = sampleRate;
+        audio.channels = channels;
+        audio.samples = std::move(samples);
+    }
+
     bool convert(const AVFrame* source, BinkVideoFrame& out, std::string& error)
     {
         SwsContext* sws = sws_getContext(
@@ -314,6 +470,21 @@ double BinkPlayer::framesPerSecond() const
 {
     return impl_->movie.framesPerSecond > 0.0f
         ? static_cast<double>(impl_->movie.framesPerSecond) : 30.0;
+}
+
+bool BinkPlayer::hasAudio() const
+{
+    return !impl_->audio.samples.empty();
+}
+
+const BinkAudioTrack& BinkPlayer::audio() const
+{
+    return impl_->audio;
+}
+
+double BinkPlayer::audioDurationSeconds() const
+{
+    return impl_->audio.durationSeconds();
 }
 
 bool BinkPlayer::decodeFrame(int index, BinkVideoFrame& out, std::string& error)

@@ -41,7 +41,9 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
    640x272 RGBA frame (SHA-256 `301f27f0...f1430`) and presents GL/Vulkan movie
    frames; LIP V1.0 parses all 18,206 lip resources; `visemes.2da` drives a
    procedural jaw/mouth/brow rig on the shipped head bones from
-   `visemeAt(time)`, with real head-geometry deformation and a debug rig view.
+   `visemeAt(time)`, with real head-geometry deformation and a debug rig view;
+   Bink Audio (DCT) decodes all 5.3M frames and matches the FFmpeg PCM
+   SHA-256, with the movie-bus cursor locked to the video clock, seek and stop.
 10. **GUI screens** - all 86 unique `.gui` screens (91 resources including
     patch.erf), 2,302 controls, 7 known control types and 640x480 extents
     parse; `--gui-screen` renders the control tree in the debug UI.
@@ -69,15 +71,15 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
 | s13-05-bridge | dialogue voice and script actions | `engine/src/game/GameSession.cpp` |
 | s13-06-device | SDL3 output stream | `engine/src/audio/Output.*`, `Application.cpp` |
 | s13-07-soundsets | SSF, soundset mapping, footsteps and barks | `engine/src/audio`, `game/*` |
-| s13-08-media | Bink container/pixels, LIP visemes and facial rig | `engine/src/kotor/Media.*`, `engine/src/game/FacialRig.*`, `GameSession.*` |
+| s13-08-media | Bink container/pixels/audio, LIP visemes and facial rig | `engine/src/kotor/Media.*`, `BinkDecoder.*`, `engine/src/game/FacialRig.*`, `GameSession.*` |
 | s13-09-gui | `.gui` parser, corpus assertions and debug renderer | `engine/src/kotor/Gui.*`, `Application.cpp` |
 | s13-10-minigames | pazaak/swoop/turret state machines and gate | `engine/src/game/Minigames.*`, `Application.cpp` |
 | s13-11-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
 
 ## Next sprint
 
-Gate S13 covers audio, Bink/LIP media and the facial rig. Bink audio sync and
-the remaining UI/content systems are tracked in
+Gate S13 covers audio, Bink/LIP media, Bink audio and the facial rig. GUI
+interaction and the remaining UI/content systems are tracked in
 [`docs/SPRINT14.md`](SPRINT14.md) with the shipped-data evidence for each
 boundary.
 

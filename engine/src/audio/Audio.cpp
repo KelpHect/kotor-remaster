@@ -430,13 +430,13 @@ struct Mixer::Impl {
 
     int sampleRate = kMixRate;
     float master = 0.85f;
-    float busVolume[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    float busVolume[5] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
     kotor::Vec3 listener;
     float yaw = 0.0f;
     ReverbPreset preset = reverbPreset("GENERIC");
     std::vector<Voice> voices;
     int nextId = 1;
-    std::vector<float> buses[4];
+    std::vector<float> buses[5];
     std::vector<float> delayLeft;
     std::vector<float> delayRight;
     std::size_t delayIndex = 0;
@@ -624,6 +624,27 @@ void Mixer::setVoicePosition(int voice, kotor::Vec3 position)
     }
 }
 
+void Mixer::setVoiceCursor(int voice, double seconds)
+{
+    for (Impl::Voice& entry : impl_->voices) {
+        if (entry.id == voice && entry.data) {
+            const double frames = static_cast<double>(entry.data->frameCount());
+            entry.cursor = std::clamp(seconds, 0.0, frames / impl_->sampleRate)
+                * static_cast<double>(impl_->sampleRate);
+        }
+    }
+}
+
+double Mixer::voiceCursor(int voice) const
+{
+    for (const Impl::Voice& entry : impl_->voices) {
+        if (entry.id == voice) {
+            return entry.cursor / static_cast<double>(impl_->sampleRate);
+        }
+    }
+    return -1.0;
+}
+
 void Mixer::mix(float* interleavedStereo, int frames)
 {
     if (interleavedStereo == nullptr || frames <= 0) {
@@ -710,7 +731,7 @@ void Mixer::mix(float* interleavedStereo, int frames)
     for (int frame = 0; frame < frames; ++frame) {
         float left = 0.0f;
         float right = 0.0f;
-        for (int bus = 0; bus < 4; ++bus) {
+        for (int bus = 0; bus < 5; ++bus) {
             const float volume = impl_->busVolume[static_cast<std::size_t>(bus)];
             const std::vector<float>& buffer = impl_->buses[static_cast<std::size_t>(bus)];
             left += buffer[static_cast<std::size_t>(frame) * 2u] * volume;

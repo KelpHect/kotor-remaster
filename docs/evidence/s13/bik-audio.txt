@@ -1,0 +1,12 @@
+Bink Audio oracle evidence
+build: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+tool: ffmpeg n9.0.2-45-g1e65c6cd5d (BtbN gpl-shared)
+input: movies/01a.bik, stream a:0 (binkaudio_dct, fltp, 44100 Hz, 2 ch)
+command: ffmpeg -v error -i 01a.bik -map 0:a:0 -t 1 -f f32le -acodec pcm_f32le -
+first second: 352800 bytes
+sha256: 8a6f3225ace005d76c131a31479ecfc48bb548a3ed6fcfb0f297cc50d9c96622
+
+BinkPlayer::decodeAudio decodes all 5,306,127 frames (120.32 s) and matches
+this hash for the first second. --media-test asserts the hash, the video/audio
+duration match, the movie-bus voice and the cursor following the movie clock,
+seek and stop.

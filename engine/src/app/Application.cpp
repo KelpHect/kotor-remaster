@@ -1870,6 +1870,31 @@ int runMediaTest(GameSession& game)
     check(kotor::sha256Bytes(replayedFrame.rgba.data(), replayedFrame.rgba.size())
               == kOracleSha,
           "bink_frame0_reproducible");
+    check(bink.hasAudio(), "bink_audio");
+    const kotor::BinkAudioTrack& binkAudio = bink.audio();
+    check(binkAudio.sampleRate == 44100 && binkAudio.channels == 2,
+          "bink_audio_format");
+    check(binkAudio.frameCount() > 0, "bink_audio_frames");
+    check(std::fabs(binkAudio.durationSeconds()
+                    - static_cast<double>(bink.frameCount()) / bink.framesPerSecond())
+              < 0.5,
+          "bink_audio_duration");
+    constexpr const char* kAudioOracleSha =
+        "8a6f3225ace005d76c131a31479ecfc48bb548a3ed6fcfb0f297cc50d9c96622";
+    const std::size_t audioHashBytes = 44100u * 2u * 4u;
+    if (binkAudio.samples.size() * sizeof(float) >= audioHashBytes) {
+        const std::string audioHash = kotor::sha256Bytes(
+            reinterpret_cast<const std::uint8_t*>(binkAudio.samples.data()),
+            audioHashBytes);
+        logInfo(concat("media test: 01a audio rate=", binkAudio.sampleRate,
+                       " ch=", binkAudio.channels,
+                       " frames=", binkAudio.frameCount(),
+                       " duration=", binkAudio.durationSeconds(),
+                       " sha256=", audioHash));
+        check(audioHash == kAudioOracleSha, "bink_audio_sha256");
+    } else {
+        check(false, "bink_audio_sha256");
+    }
     bink.close();
 
     std::size_t lipMods = 0;
@@ -2059,6 +2084,12 @@ int runMediaTest(GameSession& game)
     check(game.playMovie("01a"), "movie_play");
     check(game.moviePlaying() && game.movieName() == "01a", "movie_state");
     check(game.movieDuration() > 0.0f, "movie_duration");
+    check(game.movieAudioVoice() != 0, "movie_audio_voice");
+    check(game.audio().mixer().activeVoices(audio::Bus::Movie) == 1,
+          "movie_audio_active");
+    check(std::fabs(game.audio().mixer().voiceCursor(game.movieAudioVoice()))
+              <= 0.001,
+          "movie_audio_start");
     const kotor::BinkVideoFrame* playbackFrame = game.movieFrame();
     check(playbackFrame != nullptr && playbackFrame->width == 640
               && playbackFrame->height == 272,
@@ -2075,10 +2106,21 @@ int runMediaTest(GameSession& game)
                    " time=", game.movieTime()));
     check(game.movieFrameIndex() >= 29 && game.movieFrameIndex() <= 31,
           "movie_frame_clock");
+    check(std::fabs(game.audio().mixer().voiceCursor(game.movieAudioVoice())
+                    - game.movieTime()) <= 0.002,
+          "movie_audio_clock");
+    check(game.seekMovie(5.0f), "movie_audio_seek");
+    check(std::fabs(game.audio().mixer().voiceCursor(game.movieAudioVoice())
+                    - 5.0f) <= 0.002,
+          "movie_audio_seek_cursor");
     check(game.queueMovie("01c", false) && game.playMovieQueue(), "movie_queue");
     check(game.movieName() == "01c", "movie_queue_play");
     check(game.movieFrame() != nullptr && game.movieFrameIndex() == 0,
           "movie_queue_frame");
+    check(game.movieAudioVoice() != 0, "movie_audio_queue");
+    game.stopMovie();
+    check(game.audio().mixer().activeVoices(audio::Bus::Movie) == 0,
+          "movie_audio_stop");
 
     logInfo(ok ? "media test: PASS" : "media test: FAIL");
     return ok ? 0 : 61;

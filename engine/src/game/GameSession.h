@@ -133,6 +133,7 @@ public:
     const std::string& movieName() const { return movieName_; }
     float movieTime() const { return movieTime_; }
     float movieDuration() const { return movieDuration_; }
+    int movieAudioVoice() const { return movieAudioVoice_; }
     const kotor::BinkVideoFrame* movieFrame() const {
         return movieFrame_.rgba.empty() ? nullptr : &movieFrame_;
     }
@@ -354,6 +355,8 @@ private:
     std::unique_ptr<kotor::BinkPlayer> moviePlayer_;
     kotor::BinkVideoFrame movieFrame_;
     int movieFrameIndex_ = -1;
+    std::shared_ptr<audio::SoundData> movieAudioData_;
+    int movieAudioVoice_ = 0;
     std::unique_ptr<PazaakGame> pazaak_;
     std::string pazaakEndScript_;
     std::uint32_t pazaakOpponent_ = 0;
