@@ -10,9 +10,10 @@ UTS sound emitters load and play; DLG `Sound` fields play voice-over; the
 script sound/music/ambient actions are wired; SSF sound sets, footsteps and
 barks play; all 61 Bink containers and 18,206
 LIP timelines validate, native FFmpeg pixel decode reproduces the recorded
-640x272 RGBA SHA-256 and presents the movie on GL and Vulkan, and dialogue
-viseme sampling is wired; all 86 unique `.gui` screens (2,302 controls) parse
-and render in the
+640x272 RGBA SHA-256 and presents the movie on GL and Vulkan, dialogue viseme
+sampling is wired, and a procedural 16-viseme facial rig drives the shipped
+jaw/mouth/brow bones from the LIP clock; all 86 unique `.gui` screens (2,302
+controls) parse and render in the
 debug overlay; deterministic pazaak, swoop and turret state machines pass their
 seeded gates; SDL3 pulls the mixer for live playback while headless tests use
 the same mixer deterministically. **40/40 CTest targets** pass.
@@ -34,7 +35,7 @@ complete (7 stores/41 `keblastore` entries, 4 encounter volumes/8 spawns, 80%
 companion XP, systems UI); Sprint 6 remains complete (native script VM
 8,666/8,666 default and functional, 303,616 ACTION calls, dialogue entry 54,
 d20 rounds); Sprint 5 remains complete (playable `end_m01aa` slice, 0.03/255
-parity). Sprint 14+ remains: facial morphs and Bink audio sync,
+parity). Sprint 14+ remains: Bink audio sync,
 non-default `CamVidEffect` semantics (none in the K1 corpus), GUI
 interaction/state, localization, mods/Override, KotOR 2 world loading, faction
 reputation simulation and the P6 content checklist.
@@ -198,7 +199,8 @@ Target architecture: original C++23 runtime, SDL3 platform, Vulkan 1.4 primary R
   GIT `AreaProperties` music/ambience, 45 UTS sound emitters, DLG voice-over,
   SSF sound sets/barks, appearance-driven footsteps, Bink container/movie
   state, native FFmpeg Bink pixel decode with the recorded RGBA SHA-256 and
-  GL/Vulkan movie presentation, LIP viseme timelines, 86 `.gui` screens/2,302
+  GL/Vulkan movie presentation, LIP viseme timelines, a procedural facial rig
+  on the shipped jaw/mouth/brow bones, 86 `.gui` screens/2,302
   controls with a debug renderer, deterministic pazaak/swoop/turret state
   machines, script sound/music/ambient actions, SDL3 output stream.
   CTest **40/40**; 117-module sweep 0/0; VM parity 0; scene parity 0.0000;
@@ -264,7 +266,8 @@ Start with:
 - [`docs/SPRINT11.md`](docs/SPRINT11.md) - Sprint 11 plan: gate S11, lanes, non-goals
 - [`docs/SPRINT13_REPORT.md`](docs/SPRINT13_REPORT.md) - Sprint 13 (audio/media/GUI/minigames) exit report
 - [`docs/SPRINT13.md`](docs/SPRINT13.md) - Sprint 13 plan: gate S13, lanes, non-goals
-- [`docs/SPRINT14.md`](docs/SPRINT14.md) - Sprint 14 plan: Bink renderer, facial rig and remaining parity
+- [`docs/SPRINT14.md`](docs/SPRINT14.md) - Sprint 14 plan: Bink audio and remaining parity
+- [`docs/recon/54_FACIAL_RIG.md`](docs/recon/54_FACIAL_RIG.md) - viseme channels and the shipped head bone rig
 - [`docs/recon/53_MINIGAMES.md`](docs/recon/53_MINIGAMES.md) - pazaak, swoop and turret deterministic rules
 - [`docs/recon/52_GUI_SCREENS.md`](docs/recon/52_GUI_SCREENS.md) - GUI V3.2 control trees and renderer
 - [`docs/recon/51_AUDIO.md`](docs/recon/51_AUDIO.md) - audio streams, mixer, area sound and EAX

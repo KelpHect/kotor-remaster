@@ -356,12 +356,16 @@ public:
     std::vector<MdlMeshTriangle> meshTriangles() const;
     std::vector<MdlMeshTriangle> posedTriangles(const std::string& animation, float time,
                                                 float danglyTime = -1.0f) const;
+    std::vector<MdlMeshTriangle> posedTrianglesRigged(
+        const std::string& animation, float time, float danglyTime,
+        const std::map<std::string, Mat3>& extraRotations) const;
     std::vector<MdlMeshTriangle> blendedTriangles(const std::string& animationA, float timeA,
                                                   const std::string& animationB, float timeB,
                                                   float blend, float danglyTime = -1.0f) const;
     std::vector<MdlMeshTriangle> fxTriangles(const std::string& animation, float time) const;
     bool hasFxNodes() const;
     Vec3 rootMotion(const std::string& animation, float time) const;
+    bool hasNode(const std::string& name) const;
 
     const std::string& name() const { return name_; }
     const std::string& supermodel() const { return supermodel_; }
@@ -454,7 +458,8 @@ private:
     static std::vector<float> sampleController(const Controller& controller, float time);
     Animation parseAnimation(std::uint32_t offset) const;
     std::map<std::uint16_t, const Node*> animationNodes(const Animation& animation) const;
-    std::vector<Pose> poseWorld(const Animation* animation, float time) const;
+    std::vector<Pose> poseWorld(const Animation* animation, float time,
+                                const std::map<std::string, Mat3>& extraRotations = {}) const;
     std::vector<MdlMeshTriangle> trianglesFromPose(const std::vector<Pose>& world,
                                                    float danglyTime) const;
 

@@ -545,6 +545,10 @@ GameSession::GameSession(std::string installPath, std::string module)
     gold_ = character_.gold;
     audio_ = std::make_unique<AudioSystem>(install_);
     audio_->setTlk(tlk_ ? &*tlk_ : nullptr);
+    std::string facialError;
+    if (!facialRig_.load(install_, facialError)) {
+        logEvent("facial rig: " + facialError);
+    }
     if (!loadModule(module, nullptr, {})) {
         throw kotor::FormatError("cannot load module " + module);
     }
@@ -1515,6 +1519,17 @@ bool GameSession::seekMovie(float seconds)
     return true;
 }
 
+void GameSession::stopMovie()
+{
+    moviePlaying_ = false;
+    moviePlayer_.reset();
+    movieFrame_ = {};
+    movieFrameIndex_ = -1;
+    movieTime_ = 0.0f;
+    movieDuration_ = 0.0f;
+    movieName_.clear();
+}
+
 bool GameSession::queueMovie(const std::string& name, bool playNow)
 {
     if (name.empty()) {
@@ -1621,6 +1636,9 @@ void GameSession::update(float dt, const InputState& input)
     elapsed_ += dt;
     if (activeLip_.has_value() && dialogueView_.active) {
         lipTime_ = std::min(lipTime_ + dt, activeLip_->duration);
+        facialRig_.setViseme(lipViseme());
+    } else {
+        facialRig_.setViseme(0);
     }
     if (moviePlaying_ && moviePlayer_) {
         movieTime_ += dt;

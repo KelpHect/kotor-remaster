@@ -13,7 +13,7 @@ machines.
 
 ```text
 100% tests passed, 0 tests failed out of 40
-Total Test time (real) = 170.65 sec
+Total Test time (real) = 359.08 sec
 ```
 
 The new targets are `kotor_audio`, `kotor_media`, `kotor_gui` and
@@ -121,6 +121,14 @@ Gate assertions: `creature_soundset`, `ssf_slots`, `ssf_filled`,
 - `GameSession` attaches the LIP whose resref matches the DLG/voice `Sound`
   and exposes `lipTime`/`lipViseme`/`lipSyncActive`, so dialogue playback has a
   deterministic viseme timeline.
+- **Facial rig**: `FacialRig` parses the 16 `visemes.2da` rows (including the
+  shipped animname-column shift), maps them to jaw/mouth/lip/brow channels and
+  drives `f_jaw_g`, `f_lmc_g`, `f_rmc_g`, `f_um_g`, `f_lbrw_g`, `f_rbrw_g` and
+  `tongue`. `Mdl::poseWorld` accepts extra local rotations and
+  `posedTrianglesRigged` applies them through the skin; Roar moves `p_CarthH`
+  head vertices by 0.470906 units while Silence is an exact bind match. The rig
+  is driven by `visemeAt(lipTime)` and shown by `--facial-demo`
+  (`docs/evidence/s13/facial-roar.png`).
 
 Gate assertions: `bik_movies`, `bik_headers`, `bik_frames`, `bink_decoder`,
 `bink_open`, `bink_frame0_decode`, `bink_frame0_size`, `bink_frame0_sha256`,
@@ -128,7 +136,11 @@ Gate assertions: `bik_movies`, `bik_headers`, `bik_frames`, `bink_decoder`,
 `bink_frame0_reproducible`, `lip_mods`, `lip_resources`, `lip_timelines`,
 `lip_viseme_sample`, `movie_play`, `movie_state`, `movie_duration`,
 `movie_frame0_decode`, `movie_frame0_sha256`, `movie_clock`,
-`movie_frame_clock`, `movie_queue`, `movie_queue_play`, `movie_queue_frame`.
+`movie_frame_clock`, `movie_queue`, `movie_queue_play`, `movie_queue_frame`,
+`facial_rig`, `facial_visemes`, `facial_names`, `facial_closed`,
+`facial_roar`, `facial_jaw_order`, `facial_bones`, `facial_head_model`,
+`facial_head_bones`, `facial_geometry`, `facial_silence_bind`,
+`facial_lip_drive`, `facial_pose_drive`.
 
 ## 8. GUI screens
 
@@ -186,7 +198,7 @@ before `SDL_Quit` (the parity crash fix).
 
 ## 11. Regression
 
-- **CTest: 40/40 passed** (170.65 s).
+- **CTest: 40/40 passed** (359.08 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0000**, PASS.
@@ -195,8 +207,8 @@ before `SDL_Quit` (the parity crash fix).
 
 ## 12. Next sprint
 
-Sprint 13 closes audio, Bink/LIP media and native movie presentation. The
-facial rig, Bink audio sync and remaining UI/content systems are planned in
+Sprint 13 closes audio, Bink/LIP media, native movie presentation and the
+facial rig. Bink audio sync and the remaining UI/content systems are planned in
 [`docs/SPRINT14.md`](SPRINT14.md); the shipped-data evidence is `media.log`
 (61 BIK, native RGBA SHA-256, 18,206 LIP, 107 head rows / 106 models / 0 viseme
 clips) and `bik-oracle.txt`.
@@ -208,6 +220,7 @@ clips) and `bik-oracle.txt`.
 - `docs/evidence/s13/gui.log`
 - `docs/evidence/s13/minigame.log`
 - `docs/evidence/s13/movie-gl.png`, `movie-vk.png`, `movie-frame.png`
+- `docs/evidence/s13/facial-roar.png`
 - `docs/evidence/s13/bik-oracle.txt`, `bik-oracle.png`
 - `docs/evidence/s13/ctest.log`
 - `docs/evidence/s13/all-modules.log`, `all-modules.json`

@@ -221,6 +221,18 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.movieTime = std::strtof(value, nullptr);
             continue;
         }
+        if (arg == "--facial-demo") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--facial-demo requires a viseme 0..15");
+            }
+            const long viseme = std::strtol(value, nullptr, 10);
+            if (viseme < 0 || viseme > 15) {
+                return fail(std::move(result), "--facial-demo viseme must be 0..15");
+            }
+            result.options.facialDemo = static_cast<int>(viseme);
+            continue;
+        }
         if (arg == "--gui-test") {
             result.options.guiTest = true;
             continue;
@@ -530,6 +542,7 @@ void printUsage()
         << "  --movie-play <resref> Play a Bink movie (native pixel decode)\n"
         << "  --movie-time <sec>    Seek the movie before presenting\n"
         << "  --movie-shot <bmp>    Save the first presented movie frame\n"
+        << "  --facial-demo <0-15>  Drive the lip-sync rig with a demo viseme\n"
         << "  --gui-test            Assert all shipped GUI screens and control trees\n"
         << "  --minigame-test       Assert pazaak/swoop/turret state machines\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"

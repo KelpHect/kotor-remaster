@@ -137,6 +137,7 @@ add_executable(kotor_engine
     src/app/Args.cpp
     src/core/Log.cpp
     src/game/AudioSystem.cpp
+    src/game/FacialRig.cpp
     src/game/GameSession.cpp
     src/game/Minigames.cpp
     src/game/Rules.cpp
