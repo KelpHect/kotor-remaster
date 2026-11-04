@@ -15,6 +15,7 @@ struct Options {
     bool allowFallback = true;
     bool selfTest = false;
     bool sceneStats = false;
+    bool contentStats = false;
     bool walkTest = false;
     bool doorTest = false;
     bool dialogueTest = false;

@@ -70,12 +70,17 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
 15. **Faction reputation** - 21x21 `repute.2da` matrix, `GetReputation` /
     `AdjustReputation` and `GetFactionAverageReputation`, faction-derived GIT
     hostility, and FAC `REPUTE` parse/rebuild round-trip (405 non-100 pairs).
-16. **Device** - SDL3 audio stream pulls the mixer in live frames; headless
+16. **P6 all-area content** - `kotor_p6_content` sweeps all 117 modules via
+    per-module JSON (`--content-stats`) and asserts 106 unique areas, 11,887
+    entities, 7,677 entity meshes, 991 triggers, 51 encounters, 1,137 cameras,
+    1,103 sounds, 20,497 script hooks and 0 warnings against a committed
+    baseline.
+17. **Device** - SDL3 audio stream pulls the mixer in live frames; headless
     tests exercise the same mixer without a device.
-17. **Regression** - 44/44 CTest, 117/117 modules with 0 warnings, VM
+18. **Regression** - 45/45 CTest, 117/117 modules with 0 warnings, VM
     8,666/8,666, scene parity PASS, Python 143 tests / 7 skips, install
     sentinel 0 session changes.
-18. **Evidence and docs** - audio/media/localization/VFS/K2/faction/GUI/minigame tests, phase log,
+19. **Evidence and docs** - audio/media/localization/VFS/K2/faction/P6/GUI/minigame tests, phase log,
     module/VM/parity/tools/install logs, report and technical note.
 
 ## Lanes
@@ -96,15 +101,17 @@ parity 0.0449, Python 143 tests / 7 skips, install unchanged.
 | s13-12-mods | five-pass VFS, Override root and 2DA merge | `engine/src/kotor/Install.*`, `TwoDa.*`, `Application.cpp` |
 | s13-13-k2 | K2 profile gate, geometry layout and `_dlg.erf` | `engine/src/kotor/Profile.h`, `Geometry.cpp`, `Install.cpp`, `Application.cpp` |
 | s13-14-factions | repute matrix, actions, hostility and FAC round-trip | `engine/src/game/Factions.*`, `GameSession.*`, `SaveGame.*` |
-| s13-15-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
+| s13-15-p6 | all-area content audit, baseline and CTest gate | `engine/scripts/check_p6_content.py`, `engine/tests/fixtures/p6_content_baseline.json` |
+| s13-16-evidence | gate, report, recon note, logs | `engine/CMakeLists.txt`, `docs/` |
 
 ## Next sprint
 
 Gate S13 covers audio, Bink/LIP media, Bink audio, the facial rig, GUI
-interaction, localization, mods/Override, KotOR 2 world loading and faction
-reputation. The P6 all-area content checklist is tracked in
-[`docs/SPRINT14.md`](SPRINT14.md) with the shipped-data evidence for each
-boundary.
+interaction, localization, mods/Override, KotOR 2 world loading, faction
+reputation and the P6 all-area content checklist. The remaining release
+verification (differential playthroughs, performance budgets,
+controller/accessibility and legal review) is tracked in
+[`docs/SPRINT14.md`](SPRINT14.md).
 
 ## Running the gate
 

@@ -1,4 +1,4 @@
-# Sprint 13 report - audio, media, GUI, localization, mods, KotOR 2, factions and minigame parity
+# Sprint 13 report - audio, media, GUI, localization, mods, KotOR 2, factions, P6 and minigame parity
 
 Status: **complete - gate S13 met (2026-11-04)**. Sprint 12 closed
 animation/skinning, weapons, cutscene cameras and visual FX. Sprint 13 adds
@@ -7,14 +7,14 @@ and UTS sound emitters load, dialogue voice-over plays, a deterministic mixer
 provides 3D attenuation/pan and EAX-style reverb, and the script sound/music
 actions are bridged. It also closes SSF sound sets, Bink container/pixel
 decode and presentation, LIP visemes, GUI screens/interaction, localization,
-mods/Override precedence, KotOR 2 world loading, faction reputation and the
-three minigame state machines.
+mods/Override precedence, KotOR 2 world loading, faction reputation, the P6
+all-area content checklist and the three minigame state machines.
 
 ## 1. Build and test result
 
 ```text
-100% tests passed, 0 tests failed out of 44
-Total Test time (real) = 183.33 sec
+100% tests passed, 0 tests failed out of 45
+Total Test time (real) = 202.75 sec
 ```
 
 The new targets are `kotor_audio`, `kotor_media`, `kotor_gui` and
@@ -302,7 +302,32 @@ Gate assertions: `loaded`, `count`, `names`, `parents`, `relations`,
 `fac_names`, `fac_value`, `fac_script_reset`, `reload`, `fac_reload`,
 `fac_reload_hostility`.
 
-## 13. Minigames
+## 13. P6 all-area content checklist
+
+`engine/scripts/check_p6_content.py` runs `--content-stats` on every KotOR 1
+module and compares the per-module JSON with
+`engine/tests/fixtures/p6_content_baseline.json` (pinned to the KotOR 1
+executable SHA-256).
+
+- **117 modules**, **106 unique areas** (several modules share an area),
+  every module has a non-empty area, rooms, vertices, textures and entities,
+  and **0** loader warnings.
+- Aggregate: **1,472 rooms**, **13,963,434 vertices/indices**, **3,509
+  batches**, **5,679 textures**, **116,231 collision vertices / 190,865
+  facets**, **11,887 entities** (724 doors, 3,214 placeables, 1,699 creatures,
+  4,064 waypoints, 36 stores, 1,103 sound entities), **7,677 entity meshes**,
+  **991 triggers**, **51 encounter volumes**, **1,137 cameras**, **1,103
+  sounds**, **20,497 script hooks / 3,487 scripted entities**, **355 scene
+  scripts** and **1,749 load-time script runs**.
+- Three modules (`ebo_m40aa`, `tar_m03mg`, `tat_m17mg`) have no entity meshes;
+  their area geometry and scripts are still covered. All other counts match
+  the baseline exactly.
+
+Gate assertions: module count, install hash, per-module field equality,
+aggregate equality, non-empty area/rooms/vertices/textures/entities, zero
+warnings, non-zero coverage categories and 106 unique areas.
+
+## 14. Minigames
 
 Deterministic rule/state machines in `engine/src/game/Minigames.*`:
 
@@ -335,31 +360,33 @@ Gate assertions: `pazaak_deterministic`, `pazaak_seed_varies`,
 `pazaak_script_result`, `pazaak_session_start`, `pazaak_session_match_over`,
 `pazaak_session_result`, `pazaak_wager`.
 
-## 14. Device
+## 15. Device
 
 `audio::Output` opens an SDL3 playback stream (48 kHz float stereo) and pulls
 the mixer in the audio callback. Live runs log `Audio device: <name>`; headless
 tests use the same mixer without a device. The output stream is destroyed
 before `SDL_Quit` (the parity crash fix).
 
-## 15. Regression
+## 16. Regression
 
-- **CTest: 44/44 passed** (183.33 s).
+- **CTest: 45/45 passed** (202.75 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0000**, PASS.
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
-## 16. Next sprint
+## 17. Next sprint
 
 Sprint 13 closes audio, Bink/LIP media, native movie presentation, Bink audio,
 GUI interaction, localization, mods/Override, KotOR 2 world loading, faction
-reputation and the facial rig. The P6 all-area content checklist is planned in
+reputation, the P6 all-area content checklist and the facial rig. The remaining
+release verification (differential playthroughs, performance budgets,
+controller/accessibility and legal review) is planned in
 [`docs/SPRINT14.md`](SPRINT14.md); the shipped-data evidence is `media.log`
 (61 BIK, native RGBA SHA-256, 18,206 LIP, 107 head rows / 106 models / 0 viseme
-clips), `localization.log`, `vfs.log`, `k2.log`, `faction.log` and
-`bik-oracle.txt`.
+clips), `localization.log`, `vfs.log`, `k2.log`, `faction.log`,
+`p6-content.json` and `bik-oracle.txt`.
 
 ## Evidence index
 
@@ -368,6 +395,7 @@ clips), `localization.log`, `vfs.log`, `k2.log`, `faction.log` and
 - `docs/evidence/s13/vfs.log`
 - `docs/evidence/s13/k2.log`
 - `docs/evidence/s13/faction.log`
+- `docs/evidence/s13/p6-content.json`
 - `docs/evidence/s13/media.log`
 - `docs/evidence/s13/gui.log`
 - `docs/evidence/s13/gui-state.png`, `gui-mainmenu.png`
@@ -387,4 +415,5 @@ clips), `localization.log`, `vfs.log`, `k2.log`, `faction.log` and
 - Technical notes: [docs/recon/51_AUDIO.md](recon/51_AUDIO.md),
   [docs/recon/57_MODS_VFS.md](recon/57_MODS_VFS.md),
   [docs/recon/58_KOTOR2.md](recon/58_KOTOR2.md),
-  [docs/recon/59_FACTIONS.md](recon/59_FACTIONS.md)
+  [docs/recon/59_FACTIONS.md](recon/59_FACTIONS.md),
+  [docs/recon/60_P6_CONTENT.md](recon/60_P6_CONTENT.md)
