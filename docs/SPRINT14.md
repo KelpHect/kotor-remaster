@@ -33,7 +33,7 @@ the recorded retail differential covers 5 of 117 modules. Evidence in
    (1,043 DLGs, 67,395 links), the deterministic Endar Spire playthrough, the
    recorded retail-vs-engine semantic differential across eight paths (four
    live new-game traces plus Taris, Taris Lower City and two Unknown World save
-   loads, 127 retail action IDs, 0 missing) and retail trace action coverage
+   loads, 152 retail action IDs, 0 missing) and retail trace action coverage
    (91,967 events, 127 actions, 0 missing). Retail traces exist for 5 of 117
    modules; the remaining 112 have no recorded retail path.
 2. **Save/load matrix** - met: seven retail fixtures plus external `.rsv`

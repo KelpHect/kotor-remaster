@@ -64,6 +64,13 @@ def trace_details(rows: list[dict]) -> dict:
             "phases": dict(sorted(phases.items()))}
 
 
+def trace_header(rows: list[dict]) -> dict:
+    for row in rows:
+        if row.get("kind") == "header":
+            return row.get("payload", {})
+    return {}
+
+
 def module_actions(path: Path, module: str) -> dict[int, str]:
     actions: dict[int, str] = {}
     with path.open(encoding="utf-8", newline="") as handle:
@@ -131,6 +138,15 @@ def main(argv=None) -> int:
         return [{"action": action, "name": names.get(action, "")} for action in ids]
 
     details = trace_details(engine_rows)
+    engine_header = trace_header(engine_rows)
+    retail_header = trace_header(retail_rows)
+    engine_module = str(engine_header.get("module", ""))
+    retail_modules = [str(value).lower()
+                      for value in retail_header.get("modules", [])]
+    engine_module_ok = (not engine_module
+                        or engine_module.lower() == args.module.lower())
+    retail_module_ok = (not retail_modules
+                        or args.module.lower() in retail_modules)
     report = {
         "schema": "kotor.retail-differential/1",
         "module": args.module,
@@ -152,6 +168,10 @@ def main(argv=None) -> int:
         "retail_only_not_in_module": retail_only,
         "engine_only": labelled(engine_only),
         "engine_details": details,
+        "engine_module": engine_module,
+        "retail_modules": retail_modules,
+        "engine_module_ok": engine_module_ok,
+        "retail_module_ok": retail_module_ok,
         "expected_choices": args.expect_choices,
         "expected_transitions": args.expect_transitions,
         "choices_ok": args.expect_choices == 0
@@ -160,6 +180,7 @@ def main(argv=None) -> int:
             or details["transitions"] == args.expect_transitions,
         "pass": not missing_execution and not missing_implementation
             and not missing_all_execution and not missing_all_implementation
+            and engine_module_ok and retail_module_ok
             and (args.expect_choices == 0
                  or details["choices"] == args.expect_choices)
             and (args.expect_transitions == 0

@@ -14,14 +14,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
+
+
+MODULE_RE = re.compile(r"modules[\\/]([A-Za-z0-9_]+?)(?:_s)?\.(?:rim|rsv)", re.I)
 
 
 def convert(events: Path, out: Path) -> dict:
     counts: dict[str, int] = {}
+    modules: set[str] = set()
     written = 0
     with events.open(encoding="utf-8") as source, out.open(
             "w", encoding="utf-8", newline="\n") as target:
+        rows = []
         for line in source:
             line = line.strip()
             if not line:
@@ -29,6 +35,10 @@ def convert(events: Path, out: Path) -> dict:
             event = json.loads(line)
             kind = event.get("f")
             counts[kind] = counts.get(kind, 0) + 1
+            path = event.get("path", "")
+            match = MODULE_RE.search(path) if path else None
+            if match:
+                modules.add(match.group(1).lower())
             payload = None
             row_kind = None
             if kind == "vm_action":
@@ -46,17 +56,28 @@ def convert(events: Path, out: Path) -> dict:
                            "hook": "execute-code", "site": "execute-code"}
             if row_kind is None:
                 continue
-            target.write(json.dumps({
+            rows.append({
                 "kind": row_kind,
                 "seq": event.get("seq"),
                 "t_mono_ns": event.get("t", 0) * 1_000_000,
                 "thread_id": event.get("tid"),
                 "payload": payload,
                 "callstack": None,
-            }, sort_keys=True) + "\n")
-            written += 1
+            })
+        target.write(json.dumps({
+            "kind": "header",
+            "seq": 0,
+            "payload": {
+                "schema": "kotor.retail-semantic/1",
+                "modules": sorted(modules),
+            },
+            "callstack": None,
+        }, sort_keys=True) + "\n")
+        for row in rows:
+            target.write(json.dumps(row, sort_keys=True) + "\n")
+        written = len(rows)
     return {"events": str(events), "out": str(out), "written": written,
-            "counts": counts}
+            "modules": sorted(modules), "counts": counts}
 
 
 def main(argv=None) -> int:

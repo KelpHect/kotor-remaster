@@ -11,7 +11,7 @@ retail differential and all-seven bug-parity evidence.
 
 ```text
 100% tests passed, 0 tests failed out of 51
-Total Test Time (real) = 1157.97 sec
+Total Test Time (real) = 847.96 sec
 ```
 
 New CTest targets: `kotor_save_matrix`, `kotor_differential`,
@@ -139,26 +139,29 @@ new-game path and the Taris, Taris Lower City, Unknown World autosave and
 Unknown World Game1 retail saves, and diffs them against every recorded retail
 path (`live-02` through `live-05`, plus the four save loads):
 
-- engine traces: **7,761** (`end_m01aa`), **1,043** (`tar_m02af`), **2,497**
-  (`tar_m03aa`), **1,680** (`unk_m41ad`) and **1,238** (`unk_m41ab`) actions;
+- engine traces: **7,763** (`end_m01aa`), **1,045** (`tar_m02af`), **2,499**
+  (`tar_m03aa`), **1,682** (`unk_m41ad`) and **1,240** (`unk_m41ab`) actions;
   **9 / 0 / 0 / 0 / 0** dialogue choices and one transition each;
-- retail traces: **110 / 124 / 124 / 102** live action IDs plus **86 / 86 / 86
-  / 85** for the four saves, **127 unique** across the set;
+- retail traces: **110 / 124 / 124 / 102** live action IDs plus **54 / 54 / 57
+  / 43** for the four saves, **152 unique** across the set;
 - retail module script actions: **93 / 108 / 108 / 89** (`end_m01aa`),
-  **16** (`tar_m02af`), **77** (`tar_m03aa`), **73** (`unk_m41ad`) and **70**
+  **27** (`tar_m02af`), **48** (`tar_m03aa`), **43** (`unk_m41ad`) and **30**
   (`unk_m41ab`);
 - executed across the playthroughs + drained VM corpus (357 action IDs) +
-  thirteen branch-gated probes: **372** (`end_m01aa`) and **370** (later
+  fifteen branch-gated probes: **374** (`end_m01aa`) and **372** (later
   modules) action IDs;
-- **0 missing execution** and **0 missing implementation** for every path.
+- **0 missing execution** and **0 missing implementation** for every path, and
+  every engine/save trace passes the module-identity check.
 
 The provenance of each trace (recorded run, raw event file, save fixture and
 SHA-256) is in `docs/evidence/s14/retail-trace-sources.json`.
 
 Both the module-restricted and full retail sets are checked; menu/chargen IDs
-are reported but no longer excluded. Thirteen branch-gated actions are recorded
-with phase `probe` (talent/AI, perception/movement and combat-result queries)
-because their branches are state-gated.
+are reported but no longer excluded. Fifteen branch-gated actions are recorded
+with phase `probe` (talent/AI, perception/movement, combat-result and
+persistent-object queries) because their branches are state-gated. Each save
+trace carries a module header, and the checker rejects a trace whose recorded
+module does not match the engine module.
 
 Evidence: `docs/evidence/s14/retail-trace.log`,
 `docs/evidence/s14/retail-trace-coverage.json`,
@@ -174,7 +177,7 @@ comparison. The 117-module baseline is unchanged and still green.
 
 ## 10. Regression
 
-- **CTest: 51/51 passed** (1157.97 s).
+- **CTest: 51/51 passed** (847.96 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0000 mean abs channel diff this run**, PASS (tolerance

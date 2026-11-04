@@ -28,51 +28,51 @@
     },
     {
       "converter": "tools/harness/semantic_from_events.py",
-      "events": "artifacts/lanes/s4-trace/runs/s14-quest-taris-08/events.jsonl",
-      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-game> --consent",
+      "events": "artifacts/lanes/s4-trace/runs/s14-quest-taris-10/events.jsonl",
+      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-quicksave> --consent",
       "id": "taris-save",
       "kind": "recorded-retail-save-load",
-      "raw_sha256": "50cc4ae8d98e733f8e1cf45326a6c852860e14433a5a8c11e7ba99ea682760ad",
+      "raw_sha256": "eaf675f5f796adc672aa35254c4191b3b0fb4e07243388bbcadeba6bd60f024e",
       "retail": "docs/evidence/s14/live-taris-semantic.jsonl",
-      "run": "s14-quest-taris-08",
+      "run": "s14-quest-taris-10",
       "save": "artifacts/lanes/06-dynamic/profile/saves/000005 - TARIS",
-      "sha256": "90c2c0777f81f2e69c9ab8008ef82d729e10f703c55ef9553a536177e73bb786"
+      "sha256": "fa2629bbf380efe7b053a3ae087797b4401df7bd0b366811a02deb7cd58e413c"
     },
     {
       "converter": "tools/harness/semantic_from_events.py",
-      "events": "artifacts/lanes/s4-trace/runs/s14-quest-tariscl-02/events.jsonl",
-      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-game> --consent",
+      "events": "artifacts/lanes/s4-trace/runs/s14-quest-tarislc-03/events.jsonl",
+      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-quicksave> --consent",
       "id": "tarislc-save",
       "kind": "recorded-retail-save-load",
-      "raw_sha256": "6beaa98b17919eb9a2d16d9959c45187631f63875c92b4032103086f442bb72f",
+      "raw_sha256": "54f95c676b01def23744cd19a2271dd8b6d9995f512f105d420bcb49704a4ca6",
       "retail": "docs/evidence/s14/live-tarislc-semantic.jsonl",
-      "run": "s14-quest-tariscl-02",
+      "run": "s14-quest-tarislc-03",
       "save": "artifacts/lanes/06-dynamic/profile/saves/000006 - TARISLC",
-      "sha256": "4d566fae18f1728422a4d5b5cd0705ea629680e9b8b0595b9c723916af8af5da"
+      "sha256": "0be3e0a1aba7bc8fb9761fed5ff6bb7b6f27f234c639c6863873bd62bf9ecae4"
     },
     {
       "converter": "tools/harness/semantic_from_events.py",
-      "events": "artifacts/lanes/s4-trace/runs/s14-quest-unkautosave-01/events.jsonl",
-      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-game> --consent",
+      "events": "artifacts/lanes/s4-trace/runs/s14-quest-unkautosave-02/events.jsonl",
+      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-quicksave> --consent",
       "id": "unkautosave-save",
       "kind": "recorded-retail-save-load",
-      "raw_sha256": "c7afd0a4c493f8d713be40cfeeadfd6a0f17e9276bd9353991eafeae4ad41596",
+      "raw_sha256": "53e95a3546da586afea170eb12361c40d2d1a11612df871212eec47332922ef7",
       "retail": "docs/evidence/s14/live-unkautosave-semantic.jsonl",
-      "run": "s14-quest-unkautosave-01",
+      "run": "s14-quest-unkautosave-02",
       "save": "artifacts/lanes/06-dynamic/profile/saves/000001 - AUTOSAVE",
-      "sha256": "7e0a7d96bc84b5484405c019e03559fe9eb666d4e03a19acf72307a1ca7a77fd"
+      "sha256": "9e4861de285835db95655c2a4a26a6532e62333a2794e098bae122eba8867017"
     },
     {
       "converter": "tools/harness/semantic_from_events.py",
-      "events": "artifacts/lanes/s4-trace/runs/s14-quest-unkgame1-01/events.jsonl",
-      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-game> --consent",
+      "events": "artifacts/lanes/s4-trace/runs/s14-quest-unkgame1-02/events.jsonl",
+      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-quicksave> --consent",
       "id": "unkgame1-save",
       "kind": "recorded-retail-save-load",
-      "raw_sha256": "8df706292d104ed8695aec7e22599a379adcfff11fcfa604cbbfa5bdea2a5564",
+      "raw_sha256": "c07dfcc4cfd3aae1e5872d901dfae79d14f63ad0f8d48b50748b608b8f36e622",
       "retail": "docs/evidence/s14/live-unkgame1-semantic.jsonl",
-      "run": "s14-quest-unkgame1-01",
+      "run": "s14-quest-unkgame1-02",
       "save": "artifacts/lanes/06-dynamic/profile/saves/000002 - Game1",
-      "sha256": "13f05091951c9b64471cfbb191aa07f3451a9f08b9e33a9aaa0afbf31e8e36c6"
+      "sha256": "3c3c19beaaa3e4ba01aa4033098b53bcc337c82aff4a65fdd38eb264a61c5b75"
     }
   ]
 }

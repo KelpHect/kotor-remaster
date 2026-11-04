@@ -2424,12 +2424,14 @@ int runRetailDifferentialTest(GameSession& game, const std::string& tracePath,
                               const std::string& saveFixture)
 {
     int playCode = 0;
+    std::string traceModule = game.module();
     if (saveFixture.empty()) {
         playCode = runPlaythrough(game);
     } else if (!game.loadOriginalSave(saveFixture)) {
         logError(concat("retail differential: cannot load save ", saveFixture));
         return 75;
     } else {
+        traceModule = game.module();
         const std::string loadedModule = game.module();
         for (int frame = 0; frame < 3600; ++frame) {
             game.update(1.0f / 60.0f, InputState{});
@@ -2444,9 +2446,9 @@ int runRetailDifferentialTest(GameSession& game, const std::string& tracePath,
     // These AI actions sit behind branch-gated combat state that the
     // deterministic path does not reach. Probe the runtime directly so the
     // trace still records their execution (phase "probe").
-    const std::array<std::uint16_t, 13> probeActions = {
-        236u, 256u, 259u, 261u, 286u, 307u, 489u, 522u,
-        723u, 724u, 725u, 726u, 735u};
+    const std::array<std::uint16_t, 15> probeActions = {
+        236u, 256u, 259u, 261u, 263u, 286u, 307u, 489u, 522u,
+        723u, 724u, 725u, 726u, 734u, 735u};
     for (const std::uint16_t actionId : probeActions) {
         if (game.probeAction(actionId)) {
             logInfo(concat("retail differential: probe action=", actionId));
@@ -2472,6 +2474,7 @@ int runRetailDifferentialTest(GameSession& game, const std::string& tracePath,
             << ",\"payload\":" << payload << "}\n";
     };
     emit("header", concat("{\"schema\":\"kotor.engine-semantic/1\",\"module\":\"",
+                          jsonEscape(traceModule), "\",\"final_module\":\"",
                           jsonEscape(game.module()), "\",\"build\":\"",
                           jsonEscape(game.buildSha256()), "\"}"));
     for (const script::WorldEvent& event : game.actionTrace()) {
