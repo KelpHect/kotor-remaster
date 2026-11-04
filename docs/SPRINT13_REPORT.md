@@ -11,7 +11,7 @@ actions are bridged.
 
 ```text
 100% tests passed, 0 tests failed out of 37
-Total Test time (real) = 257.26 sec
+Total Test time (real) = 176.62 sec
 ```
 
 The new target is `kotor_audio`; all Sprint 12 targets still pass.
@@ -89,25 +89,47 @@ Gate assertions: `creature_soundset`, `ssf_slots`, `ssf_filled`,
 `soundset_2da_mapping`, `appearance_footstep_mapping`, `creature_barks`,
 `footstep_stone`, `footstep_metal`, `footstep_wood`, `footstep_voices`.
 
-## 7. Device
+## 7. Movies and lip sync
+
+- **Bink 1 containers**: `BIK` magic, version `i`, `filesize-8`, duplicate
+  frame counts, dimensions, per-frame offset table and EOF sentinel. All **61**
+  shipped movies validate; dimensions are 640x272 (53), 640x360 (5) and
+  640x480 (3); the header frame clock is 29.97/30 fps.
+- **Movie state**: `PlayMovie`/`QueueMovie`/`PlayMovieQueue` start/queue the
+  Bink playback clock; `IsMoviePlaying` returns the state; duration comes from
+  the parsed frame count and fps. Pixel decoding/presentation is the Sprint 14
+  renderer step (FFmpeg is the documented pixel oracle).
+- **LIP V1.0**: `LIP V1.0` + duration + frame count + packed `(time, viseme)`;
+  all **18,206** LIP resources in the 123 `lips/*.mod` archives validate
+  (monotonic times, viseme 0-15, first 0, last == duration).
+- `GameSession` attaches the LIP whose resref matches the DLG/voice `Sound`
+  and exposes `lipTime`/`lipViseme`/`lipSyncActive`, so dialogue playback has a
+  deterministic viseme timeline for the Sprint 14 facial rig.
+
+Gate assertions: `bik_movies`, `bik_headers`, `bik_frames`, `lip_mods`,
+`lip_resources`, `lip_timelines`, `lip_viseme_sample`, `movie_play`,
+`movie_state`, `movie_duration`, `movie_clock`, `movie_queue`,
+`movie_queue_play`.
+
+## 8. Device
 
 `audio::Output` opens an SDL3 playback stream (48 kHz float stereo) and pulls
 the mixer in the audio callback. Live runs log `Audio device: <name>`; headless
 tests use the same mixer without a device. The output stream is destroyed
 before `SDL_Quit` (the parity crash fix).
 
-## 8. Regression
+## 9. Regression
 
-- **CTest: 37/37 passed** (257.26 s).
+- **CTest: 38/38 passed** (176.62 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0449**, PASS.
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
-## 9. Outside Sprint 13
+## 10. Outside Sprint 13
 
-- Bink movie playback and LIP lip sync.
+- Bink pixel decoding/presentation and facial morph application (Sprint 14).
 - Full `.gui` screens, minigames, localization, mods/Override precedence and
   KotOR 2 world loading.
 - Faction reputation simulation and the P6 content checklist.
@@ -115,6 +137,7 @@ before `SDL_Quit` (the parity crash fix).
 ## Evidence index
 
 - `docs/evidence/s13/audio.log`
+- `docs/evidence/s13/media.log`
 - `docs/evidence/s13/ctest.log`
 - `docs/evidence/s13/all-modules.log`, `all-modules.json`
 - `docs/evidence/s13/vm-corpus.log`, `vm-parity.json`

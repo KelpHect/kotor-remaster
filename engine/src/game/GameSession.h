@@ -2,6 +2,7 @@
 
 #include "game/AudioSystem.h"
 #include "game/Rules.h"
+#include "kotor/Media.h"
 #include "kotor/Formats.h"
 #include "kotor/SaveGame.h"
 #include "render/SceneView.h"
@@ -106,6 +107,26 @@ public:
 
     bool startDialogue(std::size_t entityIndex);
     bool startDialogue(const std::string& tag);
+    bool lipSyncActive() const { return activeLip_.has_value(); }
+    float lipTime() const { return lipTime_; }
+    std::uint8_t lipViseme() const;
+    void setLipSyncForTest(kotor::LipSync lip) {
+        activeLip_ = std::move(lip);
+        lipTime_ = 0.0f;
+        dialogueView_.active = true;
+    }
+    void clearLipSyncForTest() {
+        activeLip_.reset();
+        lipTime_ = 0.0f;
+        dialogueView_.active = false;
+    }
+    bool playMovie(const std::string& name);
+    bool queueMovie(const std::string& name, bool playNow);
+    bool playMovieQueue();
+    bool moviePlaying() const { return moviePlaying_; }
+    const std::string& movieName() const { return movieName_; }
+    float movieTime() const { return movieTime_; }
+    float movieDuration() const { return movieDuration_; }
     void chooseDialogueOption(std::size_t optionIndex);
     void endDialogue();
     const DialogueView& dialogue() const { return dialogueView_; }
@@ -304,6 +325,13 @@ private:
     std::string dialogueCameraClip_;
     float dialogueCameraTime_ = 0.0f;
     float dialogueCameraDuration_ = 0.0f;
+    std::optional<kotor::LipSync> activeLip_;
+    float lipTime_ = 0.0f;
+    bool moviePlaying_ = false;
+    std::string movieName_;
+    float movieTime_ = 0.0f;
+    float movieDuration_ = 0.0f;
+    std::vector<std::string> movieQueue_;
 
     std::int32_t playerHp_ = 100;
     std::int32_t playerMaxHp_ = 100;
