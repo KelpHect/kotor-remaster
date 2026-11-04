@@ -9,7 +9,7 @@ actions the shipped module scripts actually use; menu/chargen-only action ids
 are reported separately.
 
     python engine/scripts/check_retail_differential.py \
-        --engine-trace docs/evidence/s14/engine-semantic.jsonl \
+        --engine-trace docs/evidence/s14/engine-semantic-end_m01aa.jsonl \
         --retail-trace artifacts/lanes/s4-trace/live-05-semantic.jsonl \
         --vm-coverage docs/evidence/s14/vm-actions.jsonl \
         --module-usage artifacts/lanes/s1-04-scripts/module_action_usage.csv \

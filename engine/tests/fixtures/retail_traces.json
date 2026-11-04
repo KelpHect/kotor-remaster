@@ -1,0 +1,60 @@
+{
+  "schema": "kotor.retail-traces/1",
+  "engines": {
+    "end_m01aa": {
+      "start_module": "end_m01aa",
+      "expect_choices": 9,
+      "expect_transitions": 1
+    },
+    "tar_m02af": {
+      "start_module": "end_m01aa",
+      "save": "artifacts/lanes/06-dynamic/profile/saves/000005 - TARIS",
+      "expect_choices": 0,
+      "expect_transitions": 1
+    },
+    "tar_m03aa": {
+      "start_module": "end_m01aa",
+      "save": "artifacts/lanes/06-dynamic/profile/saves/000006 - TARISLC",
+      "expect_choices": 0,
+      "expect_transitions": 1
+    }
+  },
+  "traces": [
+    {
+      "id": "s4-live-02",
+      "engine": "end_m01aa",
+      "module": "end_m01aa",
+      "retail": "artifacts/lanes/s4-trace/live-02-semantic.jsonl"
+    },
+    {
+      "id": "s4-live-03",
+      "engine": "end_m01aa",
+      "module": "end_m01aa",
+      "retail": "artifacts/lanes/s4-trace/live-03-semantic.jsonl"
+    },
+    {
+      "id": "s4-live-04",
+      "engine": "end_m01aa",
+      "module": "end_m01aa",
+      "retail": "artifacts/lanes/s4-trace/live-04-semantic.jsonl"
+    },
+    {
+      "id": "s4-live-05",
+      "engine": "end_m01aa",
+      "module": "end_m01aa",
+      "retail": "artifacts/lanes/s4-trace/live-05-semantic.jsonl"
+    },
+    {
+      "id": "taris-save",
+      "engine": "tar_m02af",
+      "module": "tar_m02af",
+      "retail": "docs/evidence/s14/live-taris-semantic.jsonl"
+    },
+    {
+      "id": "tarislc-save",
+      "engine": "tar_m03aa",
+      "module": "tar_m03aa",
+      "retail": "docs/evidence/s14/live-tarislc-semantic.jsonl"
+    }
+  ]
+}

@@ -46,5 +46,5 @@
 [INFO] retail differential: probe action=725
 [INFO] retail differential: probe action=726
 [INFO] retail differential: probe action=735
-[INFO] retail differential: trace=E:\Projects\kotor-remaster\kotor-remaster\docs\evidence\s14\engine-semantic.jsonl actions=7761 dialogueChoices=9 transitions=1
+[INFO] retail differential: trace=docs/evidence/s14/engine-semantic-end_m01aa.jsonl actions=7761 dialogueChoices=9 transitions=1
 [INFO] retail differential: TRACE PASS

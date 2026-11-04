@@ -85,7 +85,7 @@
       "name": "NoClicksFor"
     }
   ],
-  "engine_trace": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\engine-semantic.jsonl",
+  "engine_trace": "docs\\evidence\\s14\\engine-semantic-end_m01aa.jsonl",
   "engine_unique": 82,
   "executed_union": 372,
   "expected_choices": 9,
@@ -122,7 +122,7 @@
   "schema": "kotor.retail-differential/1",
   "transitions_ok": true,
   "vm_coverage": [
-    "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\vm-actions.jsonl"
+    "docs\\evidence\\s14\\vm-actions.jsonl"
   ],
   "vm_unique": 357
 }

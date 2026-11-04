@@ -300,6 +300,14 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.engineTrace = value;
             continue;
         }
+        if (arg == "--save-fixture") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--save-fixture requires a save folder");
+            }
+            result.options.saveFixture = value;
+            continue;
+        }
         if (arg == "--module-playthrough-test") {
             result.options.modulePlaythroughTest = true;
             continue;
@@ -664,6 +672,7 @@ void printUsage()
         << "  --differential-test   Save-matrix + dialogue corpus + playthrough gate\n"
         << "  --retail-differential-test  Playthrough + engine semantic trace\n"
         << "  --engine-trace <path> Engine trace JSONL for the retail differential\n"
+        << "  --save-fixture <dir> Load this save for the engine trace\n"
         << "  --module-playthrough-test  All-module conversation matrix only\n"
         << "  --bug-parity-test     Classic bug-parity vs fixed-mode assertions\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"

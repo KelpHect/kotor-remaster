@@ -49,6 +49,7 @@ struct Options {
     bool modulePlaythroughTest = false;
     bool bugParityTest = false;
     std::string engineTrace;
+    std::string saveFixture;
     std::string vfsFixtures;
     std::string factionScript;
     std::string saveFixtures;

@@ -10,7 +10,7 @@ evidence.
 
 ```text
 100% tests passed, 0 tests failed out of 51
-Total Test Time (real) = 1067.95 sec
+Total Test Time (real) = 949.07 sec
 ```
 
 New CTest targets: `kotor_save_matrix`, `kotor_differential`,
@@ -133,18 +133,25 @@ asserts every action ID the retail engine executed is implemented:
 - **772 implemented action-table entries**;
 - **0 missing**.
 
-`kotor_retail_differential` then records the engine's own semantic trace for the
-same new-game/Endar Spire path and diffs it against every recorded live trace
-(`live-02` through `live-05`):
+`kotor_retail_differential` then records engine semantic traces for the new-game
+path and for the Taris/Taris Lower City retail saves, and diffs them against
+every recorded retail path (`live-02` through `live-05`, plus the two save
+loads):
 
-- engine trace: **7,761 actions**, **9 dialogue choices**, **1 transition**
-  (choice and transition counts asserted);
-- retail traces: **110 / 124 / 124 / 102** unique action IDs, **127 unique**
-  across the set;
-- retail `end_m01aa` script actions: **93 / 108 / 108 / 89**;
-- executed across the playthrough + drained VM corpus (357 action IDs) +
-  thirteen branch-gated probes: **372 action IDs**;
-- **0 missing execution** and **0 missing implementation** for every trace.
+- engine traces: **7,761** actions (`end_m01aa`), **1,043** (`tar_m02af`) and
+  **2,497** (`tar_m03aa`); **9 / 0 / 0** dialogue choices and **1 / 1 / 1**
+  transitions (asserted);
+- retail traces: **110 / 124 / 124 / 102** live action IDs plus **86 / 86** for
+  the two Taris saves, **127 unique** across the set;
+- retail module script actions: **93 / 108 / 108 / 89** (`end_m01aa`),
+  **16** (`tar_m02af`) and **77** (`tar_m03aa`);
+- executed across the playthroughs + drained VM corpus (357 action IDs) +
+  thirteen branch-gated probes: **372** (`end_m01aa`) and **370** (Taris)
+  action IDs;
+- **0 missing execution** and **0 missing implementation** for every path.
+
+The provenance of each trace (recorded run, raw event file, save fixture and
+SHA-256) is in `docs/evidence/s14/retail-trace-sources.json`.
 
 Both the module-restricted and full retail sets are checked; menu/chargen IDs
 are reported but no longer excluded. Thirteen branch-gated actions are recorded
@@ -153,9 +160,9 @@ because their branches are state-gated.
 
 Evidence: `docs/evidence/s14/retail-trace.log`,
 `docs/evidence/s14/retail-trace-coverage.json`,
-`docs/evidence/s14/engine-semantic.jsonl`,
+`docs/evidence/s14/engine-semantic-end_m01aa.jsonl`,
 `docs/evidence/s14/retail-differential.json`,
-`docs/evidence/s14/retail-differential-engine.log`.
+`docs/evidence/s14/retail-differential-engine-end_m01aa.log`.
 
 ## 9. P6 baseline maintenance
 
@@ -165,10 +172,10 @@ comparison. The 117-module baseline is unchanged and still green.
 
 ## 10. Regression
 
-- **CTest: 51/51 passed** (1067.95 s).
+- **CTest: 51/51 passed** (949.07 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
-- **GL/Vulkan parity: 0.0815 mean abs channel diff this run**, PASS (tolerance
+- **GL/Vulkan parity: 0.0000 mean abs channel diff this run**, PASS (tolerance
   gate).
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
@@ -180,10 +187,10 @@ comparison. The 117-module baseline is unchanged and still green.
   one known data anomaly and fails on any other missing conversation.
 - External `.rsv` support covers the module-ERF form used by the gate. A retail
   `.rsv` with a different container layout would need its own fixture.
-- The recorded s4 retail traces cover the new-game/Endar Spire path, not a
-  separate trace per quest. The differential harness accepts any future
-  per-quest trace; the all-117-module conversation matrix and the all-DLG corpus
-  cover the paths that have no retail recording.
+- Retail traces now cover the new-game/Endar Spire path and the Taris and Taris
+  Lower City saved-game paths. Quests without a recorded retail session still
+  rely on the all-117-module conversation matrix and the all-DLG corpus; the
+  manifest accepts additional recorded traces without code changes.
 - Bug-parity models the seven documented glitches at their observable state
   transitions (menu, load-zone proximity, party spawn coordinates, hotshot
   snapshot restore, XP-free level-up, airlock duplication and the Routine
@@ -195,6 +202,8 @@ comparison. The 117-module baseline is unchanged and still green.
 
 - `docs/recon/62_BUG_PARITY.md`
 - `docs/recon/61_SPRINT14_CORRECTNESS.md`
+- `engine/tests/fixtures/retail_traces.json`
+- `tools/harness/semantic_from_events.py`
 - `docs/evidence/s14/ctest.log`
 - `docs/evidence/s14/differential.log`
 - `docs/evidence/s14/save-matrix.log`
@@ -204,13 +213,24 @@ comparison. The 117-module baseline is unchanged and still green.
 - `docs/evidence/s14/bug-parity.log`
 - `docs/evidence/s14/retail-trace.log`
 - `docs/evidence/s14/retail-trace-coverage.json`
-- `docs/evidence/s14/engine-semantic.jsonl`
+- `docs/evidence/s14/engine-semantic-end_m01aa.jsonl`
+- `docs/evidence/s14/engine-semantic-tar_m02af.jsonl`
+- `docs/evidence/s14/engine-semantic-tar_m03aa.jsonl`
+- `docs/evidence/s14/live-taris-semantic.jsonl`
+- `docs/evidence/s14/live-tarislc-semantic.jsonl`
+- `docs/evidence/s14/live-taris-semantic.jsonl`
+- `docs/evidence/s14/live-tarislc-semantic.jsonl`
 - `docs/evidence/s14/retail-differential.json`
-- `docs/evidence/s14/retail-differential-live-02-semantic.json`
-- `docs/evidence/s14/retail-differential-live-03-semantic.json`
-- `docs/evidence/s14/retail-differential-live-04-semantic.json`
-- `docs/evidence/s14/retail-differential-live-05-semantic.json`
-- `docs/evidence/s14/retail-differential-engine.log`
+- `docs/evidence/s14/retail-trace-sources.json`
+- `docs/evidence/s14/retail-differential-s4-live-02.json`
+- `docs/evidence/s14/retail-differential-s4-live-03.json`
+- `docs/evidence/s14/retail-differential-s4-live-04.json`
+- `docs/evidence/s14/retail-differential-s4-live-05.json`
+- `docs/evidence/s14/retail-differential-taris-save.json`
+- `docs/evidence/s14/retail-differential-tarislc-save.json`
+- `docs/evidence/s14/retail-differential-engine-end_m01aa.log`
+- `docs/evidence/s14/retail-differential-engine-tar_m02af.log`
+- `docs/evidence/s14/retail-differential-engine-tar_m03aa.log`
 - `docs/evidence/s14/vm-actions.log`
 - `docs/evidence/s14/vm-actions.jsonl`
 - `docs/evidence/s14/all-modules.log`
