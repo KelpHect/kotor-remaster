@@ -112,28 +112,29 @@ traces: **91,967 events**, **127 observed action IDs**, **772 implemented
 action-table entries**, **0 missing**.
 
 `kotor_retail_differential` records engine semantic traces for the new-game
-path and the Taris/Taris Lower City saves (`--retail-differential-test
---engine-trace`, optionally `--save-fixture`) and diffs them against every
-recorded retail path (`live-02` through `live-05` plus the two save loads):
+path and the Taris, Taris Lower City and two Unknown World saves
+(`--retail-differential-test --engine-trace`, optionally `--save-fixture`) and
+diffs them against every recorded retail path (`live-02` through `live-05` plus
+the four save loads):
 
-- engine traces: **7,761 / 1,043 / 2,497** actions for `end_m01aa`,
-  `tar_m02af` and `tar_m03aa`; **9 / 0 / 0** dialogue choices and **1 / 1 / 1**
-  transitions;
-- retail traces: **110 / 124 / 124 / 102** live and **86 / 86** save-load
-  action IDs, **127 unique** overall;
-- **93 / 108 / 108 / 89**, **16**, **77** retail actions used by the
-  corresponding module scripts;
-- **372** (`end_m01aa`) and **370** (Taris) executed action IDs across the
-  playthroughs, drained functional VM corpus (357) and thirteen probes;
+- engine traces: **7,761 / 1,043 / 2,497 / 1,680 / 1,238** actions for
+  `end_m01aa`, `tar_m02af`, `tar_m03aa`, `unk_m41ad` and `unk_m41ab`;
+  **9 / 0 / 0 / 0 / 0** dialogue choices and one transition each;
+- retail traces: **110 / 124 / 124 / 102** live and **86 / 86 / 86 / 85**
+  save-load action IDs, **127 unique** overall;
+- **93 / 108 / 108 / 89**, **16**, **77**, **73**, **70** retail actions used
+  by the corresponding module scripts;
+- **372** (`end_m01aa`) and **370** (later modules) executed action IDs across
+  the playthroughs, drained functional VM corpus (357) and thirteen probes;
 - **0 missing execution**, **0 missing implementation** for every path (both
   the module-restricted and full retail sets).
 
 The VM corpus drain executes delayed/queued closures (`--vm-drain`) so AI
 actions behind `DelayCommand` are covered. Thirteen branch-gated actions are
 recorded with phase `probe` (talent/AI, perception/movement and combat-result
-queries) because their branches are state-gated. The two Taris traces were
-recorded from the retail executable by loading the saved game and converted
-with `tools/harness/semantic_from_events.py`.
+queries) because their branches are state-gated. The four later-module traces
+were recorded from the retail executable by loading the saved game and
+converted with `tools/harness/semantic_from_events.py`.
 
 ## Evidence
 
@@ -148,19 +149,28 @@ with `tools/harness/semantic_from_events.py`.
 - `docs/evidence/s14/engine-semantic-end_m01aa.jsonl`
 - `docs/evidence/s14/engine-semantic-tar_m02af.jsonl`
 - `docs/evidence/s14/engine-semantic-tar_m03aa.jsonl`
+- `docs/evidence/s14/engine-semantic-unk_m41ad.jsonl`
+- `docs/evidence/s14/engine-semantic-unk_m41ab.jsonl`
 - `docs/evidence/s14/live-taris-semantic.jsonl`
 - `docs/evidence/s14/live-tarislc-semantic.jsonl`
+- `docs/evidence/s14/live-unkautosave-semantic.jsonl`
+- `docs/evidence/s14/live-unkgame1-semantic.jsonl`
 - `docs/evidence/s14/retail-differential.json`
 - `docs/evidence/s14/retail-trace-sources.json`
+- `docs/evidence/s14/retail-path-coverage.json`
 - `docs/evidence/s14/retail-differential-s4-live-02.json`
 - `docs/evidence/s14/retail-differential-s4-live-03.json`
 - `docs/evidence/s14/retail-differential-s4-live-04.json`
 - `docs/evidence/s14/retail-differential-s4-live-05.json`
 - `docs/evidence/s14/retail-differential-taris-save.json`
 - `docs/evidence/s14/retail-differential-tarislc-save.json`
+- `docs/evidence/s14/retail-differential-unkautosave-save.json`
+- `docs/evidence/s14/retail-differential-unkgame1-save.json`
 - `docs/evidence/s14/retail-differential-engine-end_m01aa.log`
 - `docs/evidence/s14/retail-differential-engine-tar_m02af.log`
 - `docs/evidence/s14/retail-differential-engine-tar_m03aa.log`
+- `docs/evidence/s14/retail-differential-engine-unk_m41ad.log`
+- `docs/evidence/s14/retail-differential-engine-unk_m41ab.log`
 - `docs/evidence/s14/vm-actions.log`
 - `docs/evidence/s14/vm-actions.jsonl`
 - `engine/tests/fixtures/retail_traces.json`

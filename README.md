@@ -36,9 +36,10 @@ VFS precedence and StrRef resolution, faction parent inheritance, explicit
 playthrough matrix (780 conversations / 10,133 lines), classic-vs-fixed
 bug-parity checks for all seven documented glitches, retail trace action
 coverage (91,967 events / 127 actions / 0 missing), and a recorded
-retail-vs-engine semantic differential across six paths: four live new-game
-traces plus Taris and Taris Lower City save loads (127 retail action IDs, 0
-missing); see
+retail-vs-engine semantic differential across eight paths: four live new-game
+traces plus Taris, Taris Lower City and two Unknown World save loads (127 retail
+action IDs, 0 missing; 5 of 117 modules). The remaining 112 modules rely on the
+all-117-module matrix and all-DLG corpus pending further retail recordings; see
 [`docs/SPRINT14_REPORT.md`](docs/SPRINT14_REPORT.md).
 Sprint 12 remains complete (creature animation, skinning, weapons and cutscene
 cameras: MDL clips/controllers/skinning, `pause1`/`pause` playback, weapon hand

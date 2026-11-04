@@ -17,6 +17,18 @@
       "save": "artifacts/lanes/06-dynamic/profile/saves/000006 - TARISLC",
       "expect_choices": 0,
       "expect_transitions": 1
+    },
+    "unk_m41ad": {
+      "start_module": "end_m01aa",
+      "save": "artifacts/lanes/06-dynamic/profile/saves/000001 - AUTOSAVE",
+      "expect_choices": 0,
+      "expect_transitions": 1
+    },
+    "unk_m41ab": {
+      "start_module": "end_m01aa",
+      "save": "artifacts/lanes/06-dynamic/profile/saves/000002 - Game1",
+      "expect_choices": 0,
+      "expect_transitions": 1
     }
   },
   "traces": [
@@ -55,6 +67,18 @@
       "engine": "tar_m03aa",
       "module": "tar_m03aa",
       "retail": "docs/evidence/s14/live-tarislc-semantic.jsonl"
+    },
+    {
+      "id": "unkautosave-save",
+      "engine": "unk_m41ad",
+      "module": "unk_m41ad",
+      "retail": "docs/evidence/s14/live-unkautosave-semantic.jsonl"
+    },
+    {
+      "id": "unkgame1-save",
+      "engine": "unk_m41ab",
+      "module": "unk_m41ab",
+      "retail": "docs/evidence/s14/live-unkgame1-semantic.jsonl"
     }
   ]
 }

@@ -1,6 +1,8 @@
 # Sprint 14 - P6 correctness and residual gaps
 
-Status: **complete - gate S14 met (2026-11-04)**. Sprint 13 closed audio, SSF
+Status: **implementation complete; gate S14 met for the recorded retail corpus
+(8 paths, 5 of 117 modules)**. Full per-quest retail coverage is an outstanding
+data-capture item. Sprint 13 closed audio, SSF
 sound sets, Bink containers, native Bink pixel decode/presentation, Bink Audio
 sync, LIP viseme timelines, the procedural facial rig, GUI
 screens/interaction, localization, mods/Override precedence, KotOR 2 world
@@ -22,17 +24,18 @@ gameplay. KotOR 2 gameplay is not covered here.
 
 ## Gate S14
 
-Status: all items met on the shipped corpus; evidence in
+Status: all items met on the shipped corpus except full retail-trace coverage;
+the recorded retail differential covers 5 of 117 modules. Evidence in
 `docs/evidence/s14/` and `docs/SPRINT14_REPORT.md`.
 
-1. **Differential playthroughs** - met as a composite gate: the all-117-module
+1. **Differential playthroughs** - partially met: the all-117-module
    playthrough matrix (780 conversations, 10,133 lines), the all-DLG corpus
    (1,043 DLGs, 67,395 links), the deterministic Endar Spire playthrough, the
-   recorded retail-vs-engine semantic differential across six paths (four live
-   new-game traces plus Taris and Taris Lower City save loads, 127 retail
-   action IDs, 0 missing) and retail trace action coverage (91,967 events, 127
-   actions, 0 missing). See the report's residual boundary for the remaining
-   per-quest trace limit.
+   recorded retail-vs-engine semantic differential across eight paths (four
+   live new-game traces plus Taris, Taris Lower City and two Unknown World save
+   loads, 127 retail action IDs, 0 missing) and retail trace action coverage
+   (91,967 events, 127 actions, 0 missing). Retail traces exist for 5 of 117
+   modules; the remaining 112 have no recorded retail path.
 2. **Save/load matrix** - met: seven retail fixtures plus external `.rsv`
    shadowing, flattened `UseTemplates`, corrupt `EventQueue` and
    reload-after-save cases.

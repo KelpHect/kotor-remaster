@@ -2,7 +2,9 @@
   "engines": {
     "end_m01aa": "docs\\evidence\\s14\\engine-semantic-end_m01aa.jsonl",
     "tar_m02af": "docs\\evidence\\s14\\engine-semantic-tar_m02af.jsonl",
-    "tar_m03aa": "docs\\evidence\\s14\\engine-semantic-tar_m03aa.jsonl"
+    "tar_m03aa": "docs\\evidence\\s14\\engine-semantic-tar_m03aa.jsonl",
+    "unk_m41ab": "docs\\evidence\\s14\\engine-semantic-unk_m41ab.jsonl",
+    "unk_m41ad": "docs\\evidence\\s14\\engine-semantic-unk_m41ad.jsonl"
   },
   "manifest": "engine/tests/fixtures/retail_traces.json",
   "pass": true,
@@ -49,6 +51,20 @@
       "pass": true,
       "report": "docs\\evidence\\s14\\retail-differential-tarislc-save.json",
       "retail": "docs/evidence/s14/live-tarislc-semantic.jsonl"
+    },
+    {
+      "engine": "unk_m41ad",
+      "id": "unkautosave-save",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-unkautosave-save.json",
+      "retail": "docs/evidence/s14/live-unkautosave-semantic.jsonl"
+    },
+    {
+      "engine": "unk_m41ab",
+      "id": "unkgame1-save",
+      "pass": true,
+      "report": "docs\\evidence\\s14\\retail-differential-unkgame1-save.json",
+      "retail": "docs/evidence/s14/live-unkgame1-semantic.jsonl"
     }
   ],
   "vm_coverage": "docs\\evidence\\s14\\vm-actions.jsonl"

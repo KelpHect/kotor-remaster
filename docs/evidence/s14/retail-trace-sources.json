@@ -49,6 +49,30 @@
       "run": "s14-quest-tariscl-02",
       "save": "artifacts/lanes/06-dynamic/profile/saves/000006 - TARISLC",
       "sha256": "4d566fae18f1728422a4d5b5cd0705ea629680e9b8b0595b9c723916af8af5da"
+    },
+    {
+      "converter": "tools/harness/semantic_from_events.py",
+      "events": "artifacts/lanes/s4-trace/runs/s14-quest-unkautosave-01/events.jsonl",
+      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-game> --consent",
+      "id": "unkautosave-save",
+      "kind": "recorded-retail-save-load",
+      "raw_sha256": "c7afd0a4c493f8d713be40cfeeadfd6a0f17e9276bd9353991eafeae4ad41596",
+      "retail": "docs/evidence/s14/live-unkautosave-semantic.jsonl",
+      "run": "s14-quest-unkautosave-01",
+      "save": "artifacts/lanes/06-dynamic/profile/saves/000001 - AUTOSAVE",
+      "sha256": "7e0a7d96bc84b5484405c019e03559fe9eb666d4e03a19acf72307a1ca7a77fd"
+    },
+    {
+      "converter": "tools/harness/semantic_from_events.py",
+      "events": "artifacts/lanes/s4-trace/runs/s14-quest-unkgame1-01/events.jsonl",
+      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-game> --consent",
+      "id": "unkgame1-save",
+      "kind": "recorded-retail-save-load",
+      "raw_sha256": "8df706292d104ed8695aec7e22599a379adcfff11fcfa604cbbfa5bdea2a5564",
+      "retail": "docs/evidence/s14/live-unkgame1-semantic.jsonl",
+      "run": "s14-quest-unkgame1-01",
+      "save": "artifacts/lanes/06-dynamic/profile/saves/000002 - Game1",
+      "sha256": "13f05091951c9b64471cfbb191aa07f3451a9f08b9e33a9aaa0afbf31e8e36c6"
     }
   ]
 }
