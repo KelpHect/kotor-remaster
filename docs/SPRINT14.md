@@ -17,6 +17,10 @@ parity. Sprint 14 measures retail-vs-engine behaviour and closes the known
 correctness gaps: TSLPatcher TLK merges, faction parent inheritance, the
 `CamVidEffect` audit and baseline maintenance.
 
+Exit criterion: the **KotOR 1 campaign is feature-complete and end-to-end
+playable**. Sprint 15 then certifies the release candidate; it adds no
+gameplay. KotOR 2 gameplay is not covered here.
+
 ## Gate S14
 
 1. **Differential playthroughs** - retail-vs-engine behaviour on every quest

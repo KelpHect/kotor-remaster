@@ -2,8 +2,9 @@
 
 Status: **planned**. Sprint 14 closes P6 correctness and the residual gaps.
 Sprint 15 is the release-candidate gate: performance, input/accessibility,
-legal review, installer/launcher and packaging. KotOR 2 gameplay parity is
-deferred to the final sprint (Sprint 18).
+legal review, installer/launcher and packaging. It adds no gameplay; it
+certifies the feature-complete KotOR 1 build from Sprint 14. KotOR 2 gameplay
+parity is deferred to the final sprint (Sprint 18).
 
 ## Why this is a separate sprint
 
