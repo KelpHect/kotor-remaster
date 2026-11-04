@@ -2113,6 +2113,24 @@ int runMediaTest(GameSession& game)
     check(std::fabs(game.audio().mixer().voiceCursor(game.movieAudioVoice())
                     - 5.0f) <= 0.002,
           "movie_audio_seek_cursor");
+    std::vector<float> movieMix(4800 * 2);
+    {
+        audio::Mixer& mixer = game.audio().mixer();
+        const float music = mixer.busVolume(audio::Bus::Music);
+        const float ambient = mixer.busVolume(audio::Bus::Ambient);
+        const float effects = mixer.busVolume(audio::Bus::Effects);
+        const float voice = mixer.busVolume(audio::Bus::Voice);
+        mixer.setBusVolume(audio::Bus::Music, 0.0f);
+        mixer.setBusVolume(audio::Bus::Ambient, 0.0f);
+        mixer.setBusVolume(audio::Bus::Effects, 0.0f);
+        mixer.setBusVolume(audio::Bus::Voice, 0.0f);
+        mixer.mix(movieMix.data(), 4800);
+        check(mixer.lastRms() > 0.0001f, "movie_audio_rms");
+        mixer.setBusVolume(audio::Bus::Music, music);
+        mixer.setBusVolume(audio::Bus::Ambient, ambient);
+        mixer.setBusVolume(audio::Bus::Effects, effects);
+        mixer.setBusVolume(audio::Bus::Voice, voice);
+    }
     check(game.queueMovie("01c", false) && game.playMovieQueue(), "movie_queue");
     check(game.movieName() == "01c", "movie_queue_play");
     check(game.movieFrame() != nullptr && game.movieFrameIndex() == 0,
