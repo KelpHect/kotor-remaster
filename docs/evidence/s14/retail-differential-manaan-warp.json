@@ -1,0 +1,126 @@
+{
+  "choices_ok": true,
+  "engine_actions": 351,
+  "engine_details": {
+    "choices": 0,
+    "phases": {
+      "generic": 123,
+      "host": 23,
+      "probe": 19,
+      "specific": 186
+    },
+    "transitions": 0
+  },
+  "engine_module": "manm26aa",
+  "engine_module_ok": true,
+  "engine_only": [
+    {
+      "action": 63,
+      "name": "GetStringLeft"
+    },
+    {
+      "action": 96,
+      "name": "d3"
+    },
+    {
+      "action": 236,
+      "name": "GetIsFriend"
+    },
+    {
+      "action": 263,
+      "name": "GetNextInPersistentObject"
+    },
+    {
+      "action": 286,
+      "name": "GetHasSkill"
+    },
+    {
+      "action": 307,
+      "name": "GetCreatureTalentRandom"
+    },
+    {
+      "action": 490,
+      "name": "GetBlockingCreature"
+    },
+    {
+      "action": 495,
+      "name": "GetFoundEnemyCreature"
+    },
+    {
+      "action": 723,
+      "name": "GetLastForcePowerUsed"
+    },
+    {
+      "action": 724,
+      "name": "GetLastCombatFeatUsed"
+    },
+    {
+      "action": 725,
+      "name": "GetLastAttackResult"
+    },
+    {
+      "action": 726,
+      "name": "GetWasForcePowerSuccessful"
+    },
+    {
+      "action": 734,
+      "name": "SaveNPCState"
+    },
+    {
+      "action": 735,
+      "name": "GetCategoryFromTalent"
+    }
+  ],
+  "engine_trace": "docs\\evidence\\s14\\engine-semantic-manm26aa.jsonl",
+  "engine_unique": 48,
+  "executed_union": 376,
+  "expected_choices": 0,
+  "expected_transitions": 0,
+  "missing_all_execution": [],
+  "missing_all_implementation": [],
+  "missing_execution": [],
+  "missing_implementation": [],
+  "module": "manm26aa",
+  "module_used_actions": 92,
+  "pass": true,
+  "retail_actions": 5113,
+  "retail_module_ok": true,
+  "retail_modules": [
+    "manm26aa",
+    "tar_m02af"
+  ],
+  "retail_only_not_in_module": [
+    38,
+    83,
+    95,
+    98,
+    99,
+    163,
+    235,
+    256,
+    259,
+    261,
+    316,
+    323,
+    335,
+    358,
+    361,
+    375,
+    462,
+    489,
+    515,
+    522,
+    565,
+    696,
+    730
+  ],
+  "retail_script_actions": 41,
+  "retail_trace": "docs\\evidence\\s14\\live-manm26aa-semantic.jsonl",
+  "retail_unique": 64,
+  "schema": "kotor.retail-differential/1",
+  "transitions_ok": true,
+  "vm_coverage": [
+    "docs\\evidence\\s14\\vm-actions.jsonl"
+  ],
+  "vm_unique": 357
+}

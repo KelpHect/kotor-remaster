@@ -292,6 +292,10 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.retailDifferentialTest = true;
             continue;
         }
+        if (arg == "--module-trace") {
+            result.options.moduleTrace = true;
+            continue;
+        }
         if (arg == "--engine-trace") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -671,6 +675,7 @@ void printUsage()
         << "  --dialogue-corpus-test Assert every shipped DLG parses and CamVidEffect\n"
         << "  --differential-test   Save-matrix + dialogue corpus + playthrough gate\n"
         << "  --retail-differential-test  Playthrough + engine semantic trace\n"
+        << "  --module-trace        Trace the already-loaded module without playthrough\n"
         << "  --engine-trace <path> Engine trace JSONL for the retail differential\n"
         << "  --save-fixture <dir> Load this save for the engine trace\n"
         << "  --module-playthrough-test  All-module conversation matrix only\n"

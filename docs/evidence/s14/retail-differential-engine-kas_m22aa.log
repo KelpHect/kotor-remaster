@@ -1,0 +1,35 @@
+[INFO] Language: English (0) tlk entries=49265
+[INFO] KotOR module kas_m22aa area m22aa from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 6 vertices: 72864 indices: 72864 batches: 37
+[INFO]   textures: 57 collision vertices: 480 facets: 730
+[INFO]   entities: 157 (door 1, placeable 26, creature 16, waypoint 87, store 2, encounter 1)
+[INFO]   encounter volumes: 1
+[INFO]   entry: 57.1951, 50.9738, 64.5017
+[INFO]   entity meshes: 58 triggers: 16 warnings: 0
+[INFO]   script hooks: 202 on 32 entities; scene hooks: 1; script runs: 16
+[INFO]   entity mesh 0 KashyyykDoor3 verts=228 local=-3.79055,-0.114811,0 .. 3.79055,0.118704,3
+[INFO]   entity mesh 1 InfoTerm verts=537 local=-0.352257,-0.328491,0 .. 0.449054,0.155258,1.54819
+[INFO]   entity mesh 2 InfoTerm verts=198 local=-1.8012,-1.89563,1.25541 .. 0.134618,-0.259895,4.39862
+[INFO]   creature mesh kas22_czerkag_01 verts=6828 local=-0.606384,-0.209661,-0.0096674 .. 0.610334,0.167699,1.57847
+[INFO]   bounds: -651.493, -674.391, -188.643 .. 588.79, 524.711, 1005.73
+[INFO] retail differential: probe action=96
+[INFO] retail differential: probe action=236
+[INFO] retail differential: probe action=256
+[INFO] retail differential: probe action=259
+[INFO] retail differential: probe action=261
+[INFO] retail differential: probe action=263
+[INFO] retail differential: probe action=286
+[INFO] retail differential: probe action=307
+[INFO] retail differential: probe action=489
+[INFO] retail differential: probe action=490
+[INFO] retail differential: probe action=495
+[INFO] retail differential: probe action=522
+[INFO] retail differential: probe action=723
+[INFO] retail differential: probe action=724
+[INFO] retail differential: probe action=725
+[INFO] retail differential: probe action=726
+[INFO] retail differential: probe action=734
+[INFO] retail differential: probe action=735
+[INFO] retail differential: trace=docs/evidence/s14/engine-semantic-kas_m22aa.jsonl actions=989 dialogueChoices=0 transitions=0
+[INFO] retail differential: TRACE PASS

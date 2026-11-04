@@ -1,12 +1,12 @@
 {
   "choices_ok": true,
-  "engine_actions": 7763,
+  "engine_actions": 7767,
   "engine_details": {
     "choices": 9,
     "phases": {
       "generic": 4206,
       "host": 719,
-      "probe": 15,
+      "probe": 19,
       "specific": 2823
     },
     "transitions": 1
@@ -39,6 +39,10 @@
       "name": "GetSubString"
     },
     {
+      "action": 96,
+      "name": "d3"
+    },
+    {
       "action": 202,
       "name": "ActionWait"
     },
@@ -65,6 +69,14 @@
     {
       "action": 383,
       "name": "ActionForceMoveToObject"
+    },
+    {
+      "action": 490,
+      "name": "GetBlockingCreature"
+    },
+    {
+      "action": 495,
+      "name": "GetFoundEnemyCreature"
     },
     {
       "action": 515,
@@ -96,8 +108,8 @@
     }
   ],
   "engine_trace": "docs\\evidence\\s14\\engine-semantic-end_m01aa.jsonl",
-  "engine_unique": 84,
-  "executed_union": 374,
+  "engine_unique": 87,
+  "executed_union": 377,
   "expected_choices": 9,
   "expected_transitions": 1,
   "missing_all_execution": [],

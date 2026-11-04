@@ -112,33 +112,33 @@ traces: **91,967 events**, **127 observed action IDs**, **772 implemented
 action-table entries**, **0 missing**.
 
 `kotor_retail_differential` records engine semantic traces for the new-game
-path and the Taris, Taris Lower City and two Unknown World saves
-(`--retail-differential-test --engine-trace`, optionally `--save-fixture`) and
-diffs them against every recorded retail path (`live-02` through `live-05` plus
-the four save loads):
+path, the Taris/Taris Lower City/Unknown World saves, four module-warp
+destinations, and every other module entry path. The 108 additional module
+traces came from one retail native-loader RPC session (`s14-allmodules-01`):
+116 targets were queued after the initial Taris save, and the trace was split
+at each `currentgame\<module>.rim` transition. The four warp traces predate the
+sweep and are retained.
 
-- engine traces: **7,763 / 1,045 / 2,499 / 1,682 / 1,240** actions for
-  `end_m01aa`, `tar_m02af`, `tar_m03aa`, `unk_m41ad` and `unk_m41ab`;
-  **9 / 0 / 0 / 0 / 0** dialogue choices and one transition each;
-- retail traces: **110 / 124 / 124 / 102** live and **54 / 54 / 57 / 43**
-  save-load action IDs, **152 unique** overall;
-- **93 / 108 / 108 / 89**, **27**, **48**, **43**, **30** retail actions used
-  by the corresponding module scripts;
-- **374** (`end_m01aa`) and **372** (later modules) executed action IDs across
-  the playthroughs, drained functional VM corpus (357) and fifteen probes;
-- **0 missing execution**, **0 missing implementation** for every path (both
-  the module-restricted and full retail sets), with a module-identity check
-  that rejects a trace whose recorded module differs from the engine module.
+- **120 differential paths**, all with module identity checks;
+- **117 of 117 modules** covered (`retail-path-coverage.json` complete);
+- **178 unique retail action IDs** across the corpus;
+- engine traces for every module, including the 7,767-action Endar Spire
+  playthrough and per-module `--module-trace` runs;
+- **376-378** executed action IDs depending on the path (**377** on the Endar
+  Spire playthroughs and most module traces) across the playthroughs, drained
+  functional VM corpus (357) and nineteen
+  probes;
+- **0 missing execution**, **0 missing implementation** for every path, with a
+  module-identity check that rejects a trace whose recorded module differs from
+  the engine module.
 
 The VM corpus drain executes delayed/queued closures (`--vm-drain`) so AI
-actions behind `DelayCommand` are covered. Fifteen branch-gated actions are
+actions behind `DelayCommand` are covered. Nineteen branch-gated actions are
 recorded with phase `probe` (talent/AI, perception/movement, combat-result and
 persistent-object queries) because their branches are state-gated. The four
-save traces were recorded by replacing the profile QUICKSAVE slot with each
-retail fixture and loading the first slot; the converter writes a module header
-from the observed `modules\<name>_s.rim` load. The four later-module traces
-were recorded from the retail executable by loading the saved game and
-converted with `tools/harness/semantic_from_events.py`.
+save traces were recorded by replacing the profile QUICKSAVE slot; the module
+sweep uses the native `StartNewModule` thunk through a Frida RPC and is split
+with `tools/harness/split_live_modules.py`.
 
 ## Evidence
 

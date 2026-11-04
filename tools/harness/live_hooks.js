@@ -730,7 +730,73 @@ try {
   emit({ f: 'hook', target: 'run_command_0x5d45d0' });
 } catch (e) { emit({ f: 'hookerr', name: 'run_command', e: String(e) }); }
 
+let pendingModuleLoad = null;
+let lastModuleLoad = null;
+let thiscallStub = null;
+try {
+  const code = [0x55, 0x8B, 0xEC, 0x8B, 0x4D, 0x0C, 0xFF, 0x75, 0x14,
+                0xFF, 0x75, 0x10, 0x8B, 0x45, 0x08, 0xFF, 0xD0, 0x5D, 0xC3];
+  thiscallStub = Memory.alloc(code.length);
+  thiscallStub.writeByteArray(code);
+  Memory.protect(thiscallStub, code.length, 'rwx');
+  Interceptor.attach(A(0x6227e0), {
+    onEnter() {
+      if (pendingModuleLoad === null) return;
+      const name = pendingModuleLoad;
+      pendingModuleLoad = null;
+      try {
+        const mgr = A(0x7a39fc).readPointer();
+        if (mgr.isNull()) {
+          lastModuleLoad = { ok: false, name, why: 'no manager' };
+          return;
+        }
+        const gameobj = mgr.add(8).readPointer();
+        const request = mgr.add(0x14).readPointer();
+        if (gameobj.isNull() || request.isNull()) {
+          lastModuleLoad = { ok: false, name, why: 'no game/request' };
+          return;
+        }
+        if (request.readS32() !== 0 || request.add(0x38).readS32() !== 0) {
+          pendingModuleLoad = name;
+          return;
+        }
+        const nameCxo = Memory.alloc(8);
+        const nameBuf = Memory.allocUtf8String(name);
+        nameCxo.writePointer(nameBuf);
+        nameCxo.add(4).writeS32(name.length + 1);
+        const waypointCxo = Memory.alloc(8);
+        const empty = Memory.allocUtf8String("");
+        waypointCxo.writePointer(empty);
+        waypointCxo.add(4).writeS32(1);
+        const callStub = new NativeFunction(
+          thiscallStub, 'int',
+          ['pointer', 'pointer', 'pointer', 'pointer']);
+        const rc = callStub(A(0x4ae8b0), gameobj, nameCxo, waypointCxo);
+        lastModuleLoad = { ok: rc !== 0, name, rc };
+        emit({ f: 'load_module', name, rc });
+      } catch (e) {
+        lastModuleLoad = { ok: false, name, error: String(e) };
+        emit({ f: 'load_module_error', name, e: String(e) });
+      }
+    }
+  });
+  emit({ f: 'hook', target: 'module_load_rpc_0x6227e0' });
+} catch (e) {
+  emit({ f: 'hookerr', name: 'module_load_rpc', e: String(e) });
+}
+
 rpc.exports = {
+  loadModule(name) {
+    if (pendingModuleLoad !== null) {
+      return { ok: false, why: 'busy' };
+    }
+    pendingModuleLoad = String(name || '');
+    lastModuleLoad = null;
+    return { ok: true, queued: true, name: pendingModuleLoad };
+  },
+  loadModuleResult() {
+    return lastModuleLoad || { ok: false, why: 'pending' };
+  },
   stats() { return { seq: seq }; },
   ping() { return 'pong'; },
   hwnd() { return targetWindow(); },

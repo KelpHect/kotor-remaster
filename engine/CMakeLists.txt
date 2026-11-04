@@ -421,7 +421,7 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                                  --module-usage "${CMAKE_SOURCE_DIR}/../artifacts/lanes/s1-04-scripts/module_action_usage.csv"
                                  --action-table "${CMAKE_SOURCE_DIR}/src/script/ActionTable.inc"
                                  --out-dir "${CMAKE_BINARY_DIR}/retail-differential")
-                set_tests_properties(kotor_retail_differential PROPERTIES TIMEOUT 600)
+                set_tests_properties(kotor_retail_differential PROPERTIES TIMEOUT 2400)
             endif()
             add_test(NAME kotor_p6_content
                      COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/check_p6_content.py

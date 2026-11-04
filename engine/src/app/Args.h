@@ -46,6 +46,7 @@ struct Options {
     bool dialogueCorpusTest = false;
     bool differentialTest = false;
     bool retailDifferentialTest = false;
+    bool moduleTrace = false;
     bool modulePlaythroughTest = false;
     bool bugParityTest = false;
     std::string engineTrace;

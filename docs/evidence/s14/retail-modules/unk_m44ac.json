@@ -1,0 +1,237 @@
+{
+  "choices_ok": true,
+  "engine_actions": 399,
+  "engine_details": {
+    "choices": 0,
+    "phases": {
+      "generic": 31,
+      "host": 20,
+      "probe": 19,
+      "specific": 329
+    },
+    "transitions": 0
+  },
+  "engine_module": "unk_m44ac",
+  "engine_module_ok": true,
+  "engine_only": [
+    {
+      "action": 0,
+      "name": "Random"
+    },
+    {
+      "action": 1,
+      "name": "PrintString"
+    },
+    {
+      "action": 8,
+      "name": "ExecuteScript"
+    },
+    {
+      "action": 25,
+      "name": "GetEnteringObject"
+    },
+    {
+      "action": 31,
+      "name": "CreateItemOnObject"
+    },
+    {
+      "action": 42,
+      "name": "GetIsObjectValid"
+    },
+    {
+      "action": 59,
+      "name": "GetStringLength"
+    },
+    {
+      "action": 63,
+      "name": "GetStringLeft"
+    },
+    {
+      "action": 65,
+      "name": "GetSubString"
+    },
+    {
+      "action": 66,
+      "name": "FindSubString"
+    },
+    {
+      "action": 92,
+      "name": "IntToString"
+    },
+    {
+      "action": 96,
+      "name": "d3"
+    },
+    {
+      "action": 107,
+      "name": "GetRacialType"
+    },
+    {
+      "action": 168,
+      "name": "GetTag"
+    },
+    {
+      "action": 175,
+      "name": "SetListening"
+    },
+    {
+      "action": 176,
+      "name": "SetListenPattern"
+    },
+    {
+      "action": 197,
+      "name": "GetWaypointByTag"
+    },
+    {
+      "action": 200,
+      "name": "GetObjectByTag"
+    },
+    {
+      "action": 217,
+      "name": "GetIsPC"
+    },
+    {
+      "action": 232,
+      "name": "StringToInt"
+    },
+    {
+      "action": 236,
+      "name": "GetIsFriend"
+    },
+    {
+      "action": 256,
+      "name": "GetLastPerceived"
+    },
+    {
+      "action": 259,
+      "name": "GetLastPerceptionSeen"
+    },
+    {
+      "action": 261,
+      "name": "GetLastPerceptionVanished"
+    },
+    {
+      "action": 263,
+      "name": "GetNextInPersistentObject"
+    },
+    {
+      "action": 286,
+      "name": "GetHasSkill"
+    },
+    {
+      "action": 307,
+      "name": "GetCreatureTalentRandom"
+    },
+    {
+      "action": 335,
+      "name": "GetDistanceToObject2D"
+    },
+    {
+      "action": 377,
+      "name": "GetHasSpell"
+    },
+    {
+      "action": 409,
+      "name": "GetIsEncounterCreature"
+    },
+    {
+      "action": 489,
+      "name": "GetAttemptedMovementTarget"
+    },
+    {
+      "action": 490,
+      "name": "GetBlockingCreature"
+    },
+    {
+      "action": 495,
+      "name": "GetFoundEnemyCreature"
+    },
+    {
+      "action": 497,
+      "name": "GetSubRace"
+    },
+    {
+      "action": 522,
+      "name": "GetCurrentAction"
+    },
+    {
+      "action": 577,
+      "name": "GetPartyMemberByIndex"
+    },
+    {
+      "action": 579,
+      "name": "SetGlobalBoolean"
+    },
+    {
+      "action": 580,
+      "name": "GetGlobalNumber"
+    },
+    {
+      "action": 679,
+      "name": "GetLocalBoolean"
+    },
+    {
+      "action": 680,
+      "name": "SetLocalBoolean"
+    },
+    {
+      "action": 681,
+      "name": "GetLocalNumber"
+    },
+    {
+      "action": 713,
+      "name": "GetStandardFaction"
+    },
+    {
+      "action": 723,
+      "name": "GetLastForcePowerUsed"
+    },
+    {
+      "action": 724,
+      "name": "GetLastCombatFeatUsed"
+    },
+    {
+      "action": 725,
+      "name": "GetLastAttackResult"
+    },
+    {
+      "action": 726,
+      "name": "GetWasForcePowerSuccessful"
+    },
+    {
+      "action": 734,
+      "name": "SaveNPCState"
+    },
+    {
+      "action": 735,
+      "name": "GetCategoryFromTalent"
+    }
+  ],
+  "engine_trace": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\engine-modules\\unk_m44ac.jsonl",
+  "engine_unique": 48,
+  "executed_union": 376,
+  "expected_choices": 0,
+  "expected_transitions": 0,
+  "missing_all_execution": [],
+  "missing_all_implementation": [],
+  "missing_execution": [],
+  "missing_implementation": [],
+  "module": "unk_m44ac",
+  "module_used_actions": 165,
+  "pass": true,
+  "retail_actions": 0,
+  "retail_module_ok": true,
+  "retail_modules": [
+    "unk_m44ac"
+  ],
+  "retail_only_not_in_module": [],
+  "retail_script_actions": 0,
+  "retail_trace": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\live-modules\\unk_m44ac-semantic.jsonl",
+  "retail_unique": 0,
+  "schema": "kotor.retail-differential/1",
+  "transitions_ok": true,
+  "vm_coverage": [
+    "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\vm-actions.jsonl"
+  ],
+  "vm_unique": 357
+}

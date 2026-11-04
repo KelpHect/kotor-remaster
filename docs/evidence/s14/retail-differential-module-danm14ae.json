@@ -1,0 +1,171 @@
+{
+  "choices_ok": true,
+  "engine_actions": 561,
+  "engine_details": {
+    "choices": 0,
+    "phases": {
+      "generic": 228,
+      "host": 60,
+      "probe": 19,
+      "specific": 254
+    },
+    "transitions": 0
+  },
+  "engine_module": "danm14ae",
+  "engine_module_ok": true,
+  "engine_only": [
+    {
+      "action": 31,
+      "name": "CreateItemOnObject"
+    },
+    {
+      "action": 38,
+      "name": "GetNearestCreature"
+    },
+    {
+      "action": 63,
+      "name": "GetStringLeft"
+    },
+    {
+      "action": 96,
+      "name": "d3"
+    },
+    {
+      "action": 166,
+      "name": "GetHitDice"
+    },
+    {
+      "action": 236,
+      "name": "GetIsFriend"
+    },
+    {
+      "action": 256,
+      "name": "GetLastPerceived"
+    },
+    {
+      "action": 259,
+      "name": "GetLastPerceptionSeen"
+    },
+    {
+      "action": 261,
+      "name": "GetLastPerceptionVanished"
+    },
+    {
+      "action": 286,
+      "name": "GetHasSkill"
+    },
+    {
+      "action": 307,
+      "name": "GetCreatureTalentRandom"
+    },
+    {
+      "action": 335,
+      "name": "GetDistanceToObject2D"
+    },
+    {
+      "action": 489,
+      "name": "GetAttemptedMovementTarget"
+    },
+    {
+      "action": 490,
+      "name": "GetBlockingCreature"
+    },
+    {
+      "action": 495,
+      "name": "GetFoundEnemyCreature"
+    },
+    {
+      "action": 522,
+      "name": "GetCurrentAction"
+    },
+    {
+      "action": 577,
+      "name": "GetPartyMemberByIndex"
+    },
+    {
+      "action": 723,
+      "name": "GetLastForcePowerUsed"
+    },
+    {
+      "action": 724,
+      "name": "GetLastCombatFeatUsed"
+    },
+    {
+      "action": 725,
+      "name": "GetLastAttackResult"
+    },
+    {
+      "action": 726,
+      "name": "GetWasForcePowerSuccessful"
+    },
+    {
+      "action": 734,
+      "name": "SaveNPCState"
+    },
+    {
+      "action": 735,
+      "name": "GetCategoryFromTalent"
+    }
+  ],
+  "engine_trace": "docs\\evidence\\s14\\engine-semantic-danm14ae.jsonl",
+  "engine_unique": 48,
+  "executed_union": 376,
+  "expected_choices": 0,
+  "expected_transitions": 0,
+  "missing_all_execution": [],
+  "missing_all_implementation": [],
+  "missing_execution": [],
+  "missing_implementation": [],
+  "module": "danm14ae",
+  "module_used_actions": 14,
+  "pass": true,
+  "retail_actions": 312,
+  "retail_module_ok": true,
+  "retail_modules": [
+    "danm14ae"
+  ],
+  "retail_only_not_in_module": [
+    0,
+    8,
+    22,
+    27,
+    40,
+    62,
+    107,
+    131,
+    132,
+    133,
+    143,
+    168,
+    175,
+    176,
+    197,
+    217,
+    220,
+    221,
+    227,
+    229,
+    232,
+    247,
+    262,
+    263,
+    294,
+    323,
+    377,
+    409,
+    497,
+    565,
+    681,
+    682,
+    713
+  ],
+  "retail_script_actions": 3,
+  "retail_trace": "docs\\evidence\\s14\\live-modules\\danm14ae-semantic.jsonl",
+  "retail_unique": 36,
+  "schema": "kotor.retail-differential/1",
+  "transitions_ok": true,
+  "vm_coverage": [
+    "docs\\evidence\\s14\\vm-actions.jsonl"
+  ],
+  "vm_unique": 357
+}

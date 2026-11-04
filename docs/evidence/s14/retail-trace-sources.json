@@ -3,6 +3,56 @@
   "schema": "kotor.retail-trace-sources/1",
   "sources": [
     {
+      "converter": "tools/harness/semantic_from_events.py",
+      "events": "artifacts/lanes/s4-trace/runs/s14-allmodules-01/events.jsonl",
+      "id": "allmodules-rpc",
+      "kind": "recorded-retail-module-sweep",
+      "modules": 117,
+      "raw_sha256": "a6a2b791f03edda394793b75e224a1638581470da743c2fc97aee9934ed9d424",
+      "retail_dir": "docs/evidence/s14/live-modules",
+      "run": "s14-allmodules-01",
+      "splitter": "tools/harness/split_live_modules.py"
+    },
+    {
+      "converter": "tools/harness/semantic_from_events.py",
+      "events": "artifacts/lanes/s4-trace/runs/s14-mod-warp-03/events.jsonl",
+      "harness": "tools/harness/sprint1_dynamic_run.py --consent",
+      "id": "dantooine-warp",
+      "kind": "recorded-retail-module-warp",
+      "raw_sha256": "7835426d4edf44c795706f15d4cae84e9d82430284f894e91e84e63bd8e840b4",
+      "retail": "docs/evidence/s14/live-dantooine-semantic.jsonl",
+      "run": "s14-mod-warp-03",
+      "save": "artifacts/lanes/06-dynamic/profile/saves/000005 - TARIS",
+      "sha256": "bc3d3d028091d270b84742d5082986d6e61a00f3d9c50028db232b5e607bfeb9",
+      "start_save_module": "tar_m02af"
+    },
+    {
+      "converter": "tools/harness/semantic_from_events.py",
+      "events": "artifacts/lanes/s4-trace/runs/s14-record2-kas_m22aa/events.jsonl",
+      "harness": "tools/harness/sprint1_dynamic_run.py --consent",
+      "id": "kashyyyk-warp",
+      "kind": "recorded-retail-module-warp",
+      "raw_sha256": "c9034c488b13f90bd06824831da90467a7bfeb156373325a2770998e515872ff",
+      "retail": "docs/evidence/s14/live-kas_m22aa-semantic.jsonl",
+      "run": "s14-record2-kas_m22aa",
+      "save": "artifacts/lanes/06-dynamic/profile/saves/000005 - TARIS",
+      "sha256": "d0235fb5c38dd2c51150383a0331304ccd191fbf2d23d025716821cadaaa025f",
+      "start_save_module": "tar_m02af"
+    },
+    {
+      "converter": "tools/harness/semantic_from_events.py",
+      "events": "artifacts/lanes/s4-trace/runs/s14-record2-korr_m33aa/events.jsonl",
+      "harness": "tools/harness/sprint1_dynamic_run.py --consent",
+      "id": "korriban-warp",
+      "kind": "recorded-retail-module-warp",
+      "raw_sha256": "32c52bef3279062589ce627adff385d3a28d9c308be06e76077a28776126597e",
+      "retail": "docs/evidence/s14/live-korr_m33aa-semantic.jsonl",
+      "run": "s14-record2-korr_m33aa",
+      "save": "artifacts/lanes/06-dynamic/profile/saves/000005 - TARIS",
+      "sha256": "2a71c7234f7440438feecadbf65811b234c96e28e39a1c756e18074cfdbb95d4",
+      "start_save_module": "tar_m02af"
+    },
+    {
       "id": "live-02",
       "kind": "recorded-live",
       "retail": "artifacts\\lanes\\s4-trace\\live-02-semantic.jsonl",
@@ -28,8 +78,21 @@
     },
     {
       "converter": "tools/harness/semantic_from_events.py",
+      "events": "artifacts/lanes/s4-trace/runs/s14-record2-manm26aa/events.jsonl",
+      "harness": "tools/harness/sprint1_dynamic_run.py --consent",
+      "id": "manaan-warp",
+      "kind": "recorded-retail-module-warp",
+      "raw_sha256": "596c68ca673de3ee1c08a95059c75f57bbff4f9c001ae6e4f5dffcae4eaabd97",
+      "retail": "docs/evidence/s14/live-manm26aa-semantic.jsonl",
+      "run": "s14-record2-manm26aa",
+      "save": "artifacts/lanes/06-dynamic/profile/saves/000005 - TARIS",
+      "sha256": "1dd185b17c7e6902d04b31b9f9df4cbc5abebf90c4ab0118a415d6d0ff609c7d",
+      "start_save_module": "tar_m02af"
+    },
+    {
+      "converter": "tools/harness/semantic_from_events.py",
       "events": "artifacts/lanes/s4-trace/runs/s14-quest-taris-10/events.jsonl",
-      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-quicksave> --consent",
+      "harness": "tools/harness/sprint1_dynamic_run.py --consent",
       "id": "taris-save",
       "kind": "recorded-retail-save-load",
       "raw_sha256": "eaf675f5f796adc672aa35254c4191b3b0fb4e07243388bbcadeba6bd60f024e",
@@ -41,7 +104,7 @@
     {
       "converter": "tools/harness/semantic_from_events.py",
       "events": "artifacts/lanes/s4-trace/runs/s14-quest-tarislc-03/events.jsonl",
-      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-quicksave> --consent",
+      "harness": "tools/harness/sprint1_dynamic_run.py --consent",
       "id": "tarislc-save",
       "kind": "recorded-retail-save-load",
       "raw_sha256": "54f95c676b01def23744cd19a2271dd8b6d9995f512f105d420bcb49704a4ca6",
@@ -53,7 +116,7 @@
     {
       "converter": "tools/harness/semantic_from_events.py",
       "events": "artifacts/lanes/s4-trace/runs/s14-quest-unkautosave-02/events.jsonl",
-      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-quicksave> --consent",
+      "harness": "tools/harness/sprint1_dynamic_run.py --consent",
       "id": "unkautosave-save",
       "kind": "recorded-retail-save-load",
       "raw_sha256": "53e95a3546da586afea170eb12361c40d2d1a11612df871212eec47332922ef7",
@@ -65,7 +128,7 @@
     {
       "converter": "tools/harness/semantic_from_events.py",
       "events": "artifacts/lanes/s4-trace/runs/s14-quest-unkgame1-02/events.jsonl",
-      "harness": "tools/harness/sprint1_dynamic_run.py --scenario <load-quicksave> --consent",
+      "harness": "tools/harness/sprint1_dynamic_run.py --consent",
       "id": "unkgame1-save",
       "kind": "recorded-retail-save-load",
       "raw_sha256": "c07dfcc4cfd3aae1e5872d901dfae79d14f63ad0f8d48b50748b608b8f36e622",

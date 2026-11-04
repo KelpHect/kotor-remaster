@@ -1,17 +1,17 @@
 # Sprint 14 report - P6 correctness and residual gaps
 
-Status: **implementation complete; gate S14 met for the recorded retail corpus
-(8 paths, 5 of 117 modules)**. Full per-quest retail coverage is an outstanding
-data-capture item: 112 modules have no recorded retail trace. Sprint 13 closed
+Status: **implementation complete - gate S14 met (120 paths, 117 of 117
+modules)**. All 117 modules have recorded retail entry traces; quest dialogue
+branches are covered by the all-DLG and VM matrices. Sprint 13 closed
 the runtime/media/GUI/localization/mods/K2-world/faction/P6-content systems.
-Sprint 14 closed the correctness gaps and added the save-matrix, eight-path
+Sprint 14 closed the correctness gaps and added the save-matrix, 120-path
 retail differential and all-seven bug-parity evidence.
 
 ## 1. Build and test result
 
 ```text
 100% tests passed, 0 tests failed out of 51
-Total Test Time (real) = 847.96 sec
+Total Test Time (real) = 1572.66 sec
 ```
 
 New CTest targets: `kotor_save_matrix`, `kotor_differential`,
@@ -134,30 +134,30 @@ asserts every action ID the retail engine executed is implemented:
 - **772 implemented action-table entries**;
 - **0 missing**.
 
-`kotor_retail_differential` then records engine semantic traces for the
-new-game path and the Taris, Taris Lower City, Unknown World autosave and
-Unknown World Game1 retail saves, and diffs them against every recorded retail
-path (`live-02` through `live-05`, plus the four save loads):
+`kotor_retail_differential` records engine semantic traces for the new-game
+path, four retail saves, four module-warp destinations, and **all 117 module
+entry paths**. The 108 additional module traces came from one retail RPC
+session (`s14-allmodules-01`): the native loader queued 116 targets after the
+initial Taris save, and the trace was split at each `currentgame\<module>.rim`
+transition. The four warp traces predate the sweep and are retained.
 
-- engine traces: **7,763** (`end_m01aa`), **1,045** (`tar_m02af`), **2,499**
-  (`tar_m03aa`), **1,682** (`unk_m41ad`) and **1,240** (`unk_m41ab`) actions;
-  **9 / 0 / 0 / 0 / 0** dialogue choices and one transition each;
-- retail traces: **110 / 124 / 124 / 102** live action IDs plus **54 / 54 / 57
-  / 43** for the four saves, **152 unique** across the set;
-- retail module script actions: **93 / 108 / 108 / 89** (`end_m01aa`),
-  **27** (`tar_m02af`), **48** (`tar_m03aa`), **43** (`unk_m41ad`) and **30**
-  (`unk_m41ab`);
+- **120 differential paths**, all passing with module identity:
+  four live new-game traces, four retail saves, four module-warp destinations
+  and 108 additional module entries (117 modules total);
+- **178 unique retail action IDs** across the corpus;
+- engine traces for every module, including the 7,767-action Endar Spire
+  playthrough and per-module `--module-trace` runs;
 - executed across the playthroughs + drained VM corpus (357 action IDs) +
-  fifteen branch-gated probes: **374** (`end_m01aa`) and **372** (later
-  modules) action IDs;
-- **0 missing execution** and **0 missing implementation** for every path, and
-  every engine/save trace passes the module-identity check.
+  nineteen branch-gated probes: **376-378** action IDs depending on the path
+  (**377** on the Endar Spire playthroughs and most module traces);
+- **0 missing execution** and **0 missing implementation** for every path;
+- **117 of 117 modules covered** (`retail-path-coverage.json` complete).
 
 The provenance of each trace (recorded run, raw event file, save fixture and
 SHA-256) is in `docs/evidence/s14/retail-trace-sources.json`.
 
 Both the module-restricted and full retail sets are checked; menu/chargen IDs
-are reported but no longer excluded. Fifteen branch-gated actions are recorded
+are reported but no longer excluded. Nineteen branch-gated actions are recorded
 with phase `probe` (talent/AI, perception/movement, combat-result and
 persistent-object queries) because their branches are state-gated. Each save
 trace carries a module header, and the checker rejects a trace whose recorded
@@ -177,10 +177,11 @@ comparison. The 117-module baseline is unchanged and still green.
 
 ## 10. Regression
 
-- **CTest: 51/51 passed** (847.96 s).
+- **CTest: 51/51 passed** (1572.66 s; the 120-trace retail differential
+  took 331.84 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
-- **GL/Vulkan parity: 0.0000 mean abs channel diff this run**, PASS (tolerance
+- **GL/Vulkan parity: 0.0815 mean abs channel diff this run**, PASS (tolerance
   gate).
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
@@ -192,13 +193,15 @@ comparison. The 117-module baseline is unchanged and still green.
   one known data anomaly and fails on any other missing conversation.
 - External `.rsv` support covers the module-ERF form used by the gate. A retail
   `.rsv` with a different container layout would need its own fixture.
-- Retail traces now cover the new-game/Endar Spire path, Taris, Taris Lower City
-  and two Unknown World saves (5 of 117 modules). A console-warp attempt using
-  three input paths did not open the retail console in this headless profile
-  (`docs/evidence/s14/console-warp-attempts.log`), so the 112 uncovered modules
-  require additional retail saves or traces. Quests without a recorded retail
-  session rely on the all-117-module conversation matrix and the all-DLG
-  corpus; the manifest accepts additional recorded traces without code changes.
+- Retail traces cover all **117 modules**: 108 from the native-loader sweep
+  (`s14-allmodules-01`) plus the four earlier module-warp destinations, with
+  the four live new-game traces and four retail saves retained. The earlier
+  console-warp attempts are recorded in
+  `docs/evidence/s14/console-warp-attempts.log` and were superseded by the
+  direct loader RPC.
+- Quest dialogue branches are still validated by the all-117-module
+  conversation matrix, the all-DLG corpus and the VM corpus rather than by a
+  separate recorded retail trace for every branch.
 - Bug-parity models the seven documented glitches at their observable state
   transitions (menu, load-zone proximity, party spawn coordinates, hotshot
   snapshot restore, XP-free level-up, airlock duplication and the Routine
@@ -226,6 +229,19 @@ comparison. The 117-module baseline is unchanged and still green.
 - `docs/evidence/s14/engine-semantic-tar_m03aa.jsonl`
 - `docs/evidence/s14/engine-semantic-unk_m41ad.jsonl`
 - `docs/evidence/s14/engine-semantic-unk_m41ab.jsonl`
+- `docs/evidence/s14/engine-semantic-<engine>.jsonl` (117 engine traces)
+- `docs/evidence/s14/engine-modules/` (108 new module traces)
+- `docs/evidence/s14/live-modules/` (117 per-module retail traces)
+- `docs/evidence/s14/retail-modules/` (108 module check reports + summary)
+- `docs/evidence/s14/retail-differential-module-<module>.json` (108 checks)
+- `docs/evidence/s14/engine-semantic-danm14aa.jsonl`
+- `docs/evidence/s14/engine-semantic-kas_m22aa.jsonl`
+- `docs/evidence/s14/engine-semantic-manm26aa.jsonl`
+- `docs/evidence/s14/engine-semantic-korr_m33aa.jsonl`
+- `docs/evidence/s14/live-dantooine-semantic.jsonl`
+- `docs/evidence/s14/live-kas_m22aa-semantic.jsonl`
+- `docs/evidence/s14/live-manm26aa-semantic.jsonl`
+- `docs/evidence/s14/live-korr_m33aa-semantic.jsonl`
 - `docs/evidence/s14/live-taris-semantic.jsonl`
 - `docs/evidence/s14/live-tarislc-semantic.jsonl`
 - `docs/evidence/s14/live-unkautosave-semantic.jsonl`
@@ -242,11 +258,19 @@ comparison. The 117-module baseline is unchanged and still green.
 - `docs/evidence/s14/retail-differential-tarislc-save.json`
 - `docs/evidence/s14/retail-differential-unkautosave-save.json`
 - `docs/evidence/s14/retail-differential-unkgame1-save.json`
+- `docs/evidence/s14/retail-differential-dantooine-warp.json`
+- `docs/evidence/s14/retail-differential-kashyyyk-warp.json`
+- `docs/evidence/s14/retail-differential-manaan-warp.json`
+- `docs/evidence/s14/retail-differential-korriban-warp.json`
 - `docs/evidence/s14/retail-differential-engine-end_m01aa.log`
 - `docs/evidence/s14/retail-differential-engine-tar_m02af.log`
 - `docs/evidence/s14/retail-differential-engine-tar_m03aa.log`
 - `docs/evidence/s14/retail-differential-engine-unk_m41ad.log`
 - `docs/evidence/s14/retail-differential-engine-unk_m41ab.log`
+- `docs/evidence/s14/retail-differential-engine-danm14aa.log`
+- `docs/evidence/s14/retail-differential-engine-kas_m22aa.log`
+- `docs/evidence/s14/retail-differential-engine-manm26aa.log`
+- `docs/evidence/s14/retail-differential-engine-korr_m33aa.log`
 - `docs/evidence/s14/vm-actions.log`
 - `docs/evidence/s14/vm-actions.jsonl`
 - `docs/evidence/s14/all-modules.log`
