@@ -118,7 +118,8 @@ struct OriginalSave {
 
 // Parse a save folder. Throws FormatError with a precise reason when the
 // container/GFF layout is invalid. Never writes to the source folder.
-OriginalSave readOriginalSave(const std::filesystem::path& folder);
+OriginalSave readOriginalSave(const std::filesystem::path& folder,
+                              const std::filesystem::path& rsvRoot = {});
 
 // Write a complete save folder from live state and the module currently bound
 // to `install`. Refuses to overwrite a non-empty folder unless `overwrite`.

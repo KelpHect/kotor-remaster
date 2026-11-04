@@ -189,6 +189,13 @@
 [INFO] save matrix: reload_inventory_000006 - TARISLC=1
 [INFO] save matrix: reload_journal_000006 - TARISLC=1
 [INFO] save matrix: reload_party_000006 - TARISLC=1
+[INFO] save matrix: rsv_module_entry=1
+[INFO] save matrix: rsv_write=1
+[INFO] save matrix: rsv_load=1
+[INFO] save matrix: rsv_shadow=1
+[INFO] save matrix: eventqueue_write=1
+[INFO] save matrix: eventqueue_load=1
+[INFO] save matrix: eventqueue_shadow=1
 [INFO] save matrix: fixtures=7 loaded=7 roundTrips=7
 [INFO] save matrix: PASS
 [INFO] dialogue corpus: parse=1
@@ -222,5 +229,43 @@
 [INFO] playthrough: save/load module=end_m01ab same=1
 [INFO] playthrough: simulated 1800.02 s, events=32
 [INFO] playthrough: PASS
-[INFO] differential test: saveMatrix=0 dialogueCorpus=0 playthrough=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: end_m01aa area=m01aa entities=218 dialogueLines=2 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: end_m01ab area=m01ab entities=68 dialogueLines=64 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m02af area=m02af entities=20 dialogueLines=3 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m03aa area=m03aa entities=126 dialogueLines=3 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: tar_m03ab area=m03ab entities=90 dialogueLines=6 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: danm14aa area=m14aa entities=129 dialogueLines=1 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: manm28aa area=m28aa entities=258 dialogueLines=64 warnings=0
+[INFO] module playthrough: area=1
+[INFO] module playthrough: rooms=1
+[INFO] module playthrough: position=1
+[INFO] module playthrough: m12ab area=m12ab entities=11 dialogueLines=0 warnings=0
+[INFO] module playthrough: modules=1
+[INFO] module playthrough: dialogues=1
+[INFO] module playthrough: lines=1
+[INFO] module playthrough: warnings=1
+[INFO] module playthrough: modules=8 dialogues=7 lines=143 warnings=0
+[INFO] module playthrough: PASS
+[INFO] differential test: saveMatrix=0 dialogueCorpus=0 playthrough=0 moduleMatrix=0
 [INFO] differential test: PASS

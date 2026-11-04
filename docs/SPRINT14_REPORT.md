@@ -9,7 +9,7 @@ playable and added the differential/save-matrix evidence.
 
 ```text
 100% tests passed, 0 tests failed out of 48
-Total Test Time (real) = 273.15 sec
+Total Test Time (real) = 336.08 sec
 ```
 
 New CTest targets: `kotor_save_matrix`, `kotor_differential`,
@@ -30,6 +30,9 @@ New CTest targets: `kotor_save_matrix`, `kotor_differential`,
 - **Deterministic Endar Spire playthrough** - Trask dialogue (9 lines), trigger
   `end_trig02`, locker use, SithSoldier combat (faction-correct), module
   transition `end_m01aa -> end_m01ab`, and save/load of `end_m01ab`.
+- **Multi-module playthrough matrix** - eight modules (`end_m01aa`, `end_m01ab`,
+  `tar_m02af`, `tar_m03aa`, `tar_m03ab`, `danm14aa`, `manm28aa`, `m12ab`),
+  **7 dialogue starts**, **143 dialogue lines**, 0 warnings.
 
 Evidence: `docs/evidence/s14/differential.log`.
 
@@ -42,7 +45,11 @@ Evidence: `docs/evidence/s14/differential.log`.
 - applies saved object states (position, dead, HP, door open/locked, placeable
   loot) with duplicate-tag handling;
 - writes a new save, verifies the nested GIT has **no `UseTemplates` field**
-  (flattened state), then reloads and re-checks gold/inventory/journal/party.
+  (flattened state), then reloads and re-checks gold/inventory/journal/party;
+- **external `<module>.rsv` shadowing** - a synthetic module ERF `.rsv` with a
+  `Mod_Entry_X` sentinel shadows the nested save module;
+- **corrupt `EventQueue`** - the same cached module IFO carries a malformed
+  `EventQueue` list and still loads with the sentinel position.
 
 Evidence: `docs/evidence/s14/save-matrix.log`.
 
@@ -83,7 +90,7 @@ comparison. The 117-module baseline is unchanged and still green.
 
 ## 8. Regression
 
-- **CTest: 48/48 passed** (273.15 s).
+- **CTest: 48/48 passed** (336.08 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0000**, PASS.
@@ -92,12 +99,8 @@ comparison. The 117-module baseline is unchanged and still green.
 
 ## 9. Residual boundaries
 
-- The shipped install contains no external `<module>.rsv`; the save matrix
-  covers the seven shipped fixtures. Mod-only `.rsv` shadowing remains an
-  install-hazard case for a future fixture.
-- A corrupt cached `EventQueue` is not read by the engine; the gate cannot
-  produce a corrupted cached module without a fixture. The loader's structural
-  save validation remains the safety boundary.
+- External `.rsv` support covers the module-ERF form used by the gate. A retail
+  `.rsv` with a different container layout would need its own fixture.
 - Non-default `CamVidEffect` semantics are not implemented because the shipped
   KotOR 1 corpus contains none; the runtime now rejects them explicitly.
 
