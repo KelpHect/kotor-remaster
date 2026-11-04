@@ -26,7 +26,8 @@ parent change and save/reload.
 ## CamVidEffect
 
 The all-DLG corpus has **1,043 unique DLGs**, **22,572 entries** and **25,300
-replies**, with **0** non-default `CamVidEffect` values. Runtime dialogue now
+replies** and **67,395 links** (0 invalid), with **0** non-default
+`CamVidEffect` values. Runtime dialogue now
 increments `unsupportedCamVidEffects_` and logs a warning instead of silently
 ignoring a non-default value from a mod.
 

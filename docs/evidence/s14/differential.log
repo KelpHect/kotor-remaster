@@ -199,7 +199,8 @@
 [INFO] dialogue corpus: sounds=1
 [INFO] dialogue corpus: camera_models=1
 [INFO] dialogue corpus: camvid_defaults=1
-[INFO] dialogue corpus: dlgs=1043 entries=22572 replies=25300 scripts=5900 sounds=6715 cameraModels=22 camVidEffects=0
+[INFO] dialogue corpus: links=1
+[INFO] dialogue corpus: dlgs=1043 entries=22572 replies=25300 scripts=5900 sounds=6715 cameraModels=22 camVidEffects=0 links=67395 invalidLinks=0
 [INFO] dialogue corpus: PASS
 [WARN] playthrough: walk blocked, using scripted spawn
 [INFO]   dialogue: Trask: We've been ambushed by a Sith battle fleet! The Endar Spire is under attack! Hurry up - we don't have much time!
