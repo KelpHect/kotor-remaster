@@ -49,6 +49,11 @@ struct Options {
     bool moduleTrace = false;
     bool modulePlaythroughTest = false;
     bool bugParityTest = false;
+    bool thirdPerson = false;
+    bool noMovies = false;
+    bool cameraNoClip = false;
+    int playerAppearance = 92;
+    std::string playerName = "Player";
     std::string engineTrace;
     std::string saveFixture;
     std::string vfsFixtures;

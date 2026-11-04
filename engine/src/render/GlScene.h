@@ -93,6 +93,7 @@ private:
         GlUint vbo = 0;
         GlUint ibo = 0;
         std::uint32_t entity = UINT32_MAX;
+        bool visible = true;
         std::vector<kotor::TextureBatch> batches;
     };
 

@@ -5181,6 +5181,16 @@ int runApplication(const Options& options)
                            " (", game->languageId(), ") tlk entries=",
                            game->localization().entryCount()));
             game->setAnimationEnabled(!options.headless && options.backend != BackendKind::Null);
+            if (options.thirdPerson) {
+                game->setPlayerAppearance(
+                    static_cast<std::uint32_t>(std::max(0, options.playerAppearance)),
+                    options.playerName);
+                game->setThirdPerson(true);
+                game->setCameraNoClip(options.cameraNoClip);
+            }
+            if (options.noMovies) {
+                game->stopMovie();
+            }
             const ke::kotor::Scene& loaded = game->scene();
             const auto countKind = [&](ke::kotor::EntityKind kind) {
                 return std::count_if(loaded.entities.begin(), loaded.entities.end(),
@@ -5202,6 +5212,46 @@ int runApplication(const Options& options)
             logInfo(concat("  entry: ", loaded.entry.x, ", ", loaded.entry.y, ", ", loaded.entry.z));
             logInfo(concat("  entity meshes: ", loaded.entityMeshes.size(), " triggers: ",
                            loaded.triggers.size(), " warnings: ", loaded.warnings.size()));
+            if (options.thirdPerson) {
+                for (const ke::kotor::EntityMesh& mesh : loaded.entityMeshes) {
+                    if (mesh.entity != game->playerEntity() || mesh.vertices.empty()) {
+                        continue;
+                    }
+                    ke::kotor::Vec3 low = mesh.vertices.front().position;
+                    ke::kotor::Vec3 high = low;
+                    for (const ke::kotor::SceneVertex& vertex : mesh.vertices) {
+                        low.x = std::min(low.x, vertex.position.x);
+                        low.y = std::min(low.y, vertex.position.y);
+                        low.z = std::min(low.z, vertex.position.z);
+                        high.x = std::max(high.x, vertex.position.x);
+                        high.y = std::max(high.y, vertex.position.y);
+                        high.z = std::max(high.z, vertex.position.z);
+                    }
+                    logInfo(concat("  player mesh verts=", mesh.vertices.size(),
+                                   " local=", low.x, ",", low.y, ",", low.z,
+                                   " .. ", high.x, ",", high.y, ",", high.z));
+                }
+                if (game->playerEntity() < loaded.entities.size()) {
+                    const ke::kotor::Entity& player = loaded.entities[game->playerEntity()];
+                    const SceneCamera camera = game->camera();
+                    logInfo(concat("  player entity pos=", player.position.x, ",",
+                                   player.position.y, ",", player.position.z,
+                                   " camera=", camera.eye.x, ",", camera.eye.y, ",",
+                                   camera.eye.z, " forward=", camera.forward.x, ",",
+                                   camera.forward.y, ",", camera.forward.z));
+                    for (const ke::kotor::Entity& entity : loaded.entities) {
+                        const float dx = entity.position.x - camera.eye.x;
+                        const float dy = entity.position.y - camera.eye.y;
+                        const float dz = entity.position.z - camera.eye.z;
+                        if (dx * dx + dy * dy + dz * dz < 6.25f) {
+                            logInfo(concat("  near camera: ", entity.tag, " kind=",
+                                           static_cast<int>(entity.kind), " at ",
+                                           entity.position.x, ",", entity.position.y, ",",
+                                           entity.position.z));
+                        }
+                    }
+                }
+            }
             std::size_t hookCount = 0;
             std::size_t entitiesWithHooks = 0;
             for (const ke::kotor::Entity& entity : loaded.entities) {
@@ -5826,6 +5876,9 @@ int runApplication(const Options& options)
             input.mouseDy = mouseDy;
             mouseDx = 0.0f;
             mouseDy = 0.0f;
+            if (options.noMovies && game->moviePlaying()) {
+                game->stopMovie();
+            }
             game->update(static_cast<float>(deltaMs / 1000.0), input);
             if (!options.movieShot.empty() && !movieShotSaved
                 && game->movieFrame() != nullptr) {

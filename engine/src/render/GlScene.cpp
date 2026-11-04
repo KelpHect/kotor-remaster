@@ -361,6 +361,7 @@ bool GlScene::upload(const kotor::Scene& scene, std::string& error)
     for (const kotor::EntityMesh& entityMesh : scene.entityMeshes) {
         meshes_.push_back(uploadMesh(entityMesh.vertices, entityMesh.indices, entityMesh.batches,
                                      entityMesh.entity));
+        meshes_.back().visible = entityMesh.visible;
     }
     gl_.BindVertexArray(0);
     const GlEnum uploadError = gl_.GetError();
@@ -381,6 +382,7 @@ void GlScene::refreshEntityMeshes(const kotor::Scene& scene)
         if (mesh.entity != entityMesh.entity) {
             continue;
         }
+        mesh.visible = entityMesh.visible;
         gl_.BindBuffer(kGlArrayBuffer, mesh.vbo);
         gl_.BufferData(kGlArrayBuffer,
                        static_cast<GlSizeiptr>(entityMesh.vertices.size() * sizeof(kotor::SceneVertex)),
@@ -418,6 +420,9 @@ void GlScene::render(const SceneCamera& camera, int width, int height)
     const GlInt modelLocation = gl_.GetUniformLocation(program_, "uModel");
     std::size_t drawnMeshes = 0;
     for (const GlMesh& mesh : meshes_) {
+        if (!mesh.visible) {
+            continue;
+        }
         Mat4 model = identity();
         if (mesh.entity != UINT32_MAX && scene_ != nullptr && mesh.entity < scene_->entities.size()) {
             const kotor::Entity& entity = scene_->entities[mesh.entity];
