@@ -7,7 +7,8 @@ mods/Override precedence, KotOR 2 world loading, faction reputation, the P6
 all-area content checklist and the pazaak/swoop/turret state machines. Sprint
 14 is the first P6 correctness sprint: it combines the differential
 playthrough/save matrix with the small residual gaps that must close before
-Sprint 16 release checks and the Sprint 17 remaster path.
+Sprint 15 release checks and the Sprint 16 remaster path. KotOR 2 gameplay
+parity is deliberately the final sprint (Sprint 18), after the remaster work.
 
 ## Why this is a separate sprint
 

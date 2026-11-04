@@ -383,9 +383,10 @@ GUI interaction, localization, mods/Override, KotOR 2 world loading, faction
 reputation, the P6 all-area content checklist and the facial rig. Sprint 14
 ([`docs/SPRINT14.md`](SPRINT14.md)) covers P6 correctness and the scheduled
 residuals (differential playthroughs, save matrix, TLK merges, faction
-parents, `CamVidEffect`, baseline maintenance); Sprint 15 covers K2 gameplay,
-Sprint 16 the release candidate, and Sprints 17-18 the remaster path. The
-shipped-data evidence is `media.log`
+parents, `CamVidEffect`, baseline maintenance); Sprint 15 is the release
+candidate, Sprint 16 the first remaster stage, Sprint 17 the remaining
+remaster/modding/platform work, and Sprint 18 KotOR 2 gameplay parity (final).
+The shipped-data evidence is `media.log`
 (61 BIK, native RGBA SHA-256, 18,206 LIP, 107 head rows / 106 models / 0 viseme
 clips), `localization.log`, `vfs.log`, `k2.log`, `faction.log`,
 `p6-content.json` and `bik-oracle.txt`.
