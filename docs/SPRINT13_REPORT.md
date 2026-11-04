@@ -13,7 +13,7 @@ machines.
 
 ```text
 100% tests passed, 0 tests failed out of 40
-Total Test time (real) = 171.42 sec
+Total Test time (real) = 171.28 sec
 ```
 
 The new targets are `kotor_audio`, `kotor_media`, `kotor_gui` and
@@ -147,7 +147,7 @@ Gate assertions: `bik_movies`, `bik_headers`, `bik_frames`, `bink_decoder`,
 `bink_audio`, `bink_audio_format`, `bink_audio_frames`, `bink_audio_duration`,
 `bink_audio_sha256`, `movie_audio_voice`, `movie_audio_active`,
 `movie_audio_start`, `movie_audio_clock`, `movie_audio_seek`,
-`movie_audio_seek_cursor`, `movie_audio_queue`, `movie_audio_stop`,
+`movie_audio_seek_cursor`, `movie_audio_rms`, `movie_audio_queue`, `movie_audio_stop`,
 `facial_rig`, `facial_visemes`, `facial_names`, `facial_closed`,
 `facial_roar`, `facial_jaw_order`, `facial_bones`, `facial_head_model`,
 `facial_head_bones`, `facial_geometry`, `facial_silence_bind`,
@@ -209,7 +209,7 @@ before `SDL_Quit` (the parity crash fix).
 
 ## 11. Regression
 
-- **CTest: 40/40 passed** (171.42 s).
+- **CTest: 40/40 passed** (171.28 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
 - **GL/Vulkan parity: 0.0000**, PASS.

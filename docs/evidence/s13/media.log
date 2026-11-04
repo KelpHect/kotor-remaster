@@ -73,6 +73,7 @@
 [INFO] media test: movie_audio_clock=1
 [INFO] media test: movie_audio_seek=1
 [INFO] media test: movie_audio_seek_cursor=1
+[INFO] media test: movie_audio_rms=1
 [INFO] media test: movie_queue=1
 [INFO] media test: movie_queue_play=1
 [INFO] media test: movie_queue_frame=1

@@ -52,8 +52,9 @@ assertions.
 - `bink_audio` presence, 44.1 kHz / 2 channels, frame count, duration within
   0.5 s of the video clock;
 - first-second PCM SHA-256 equals the FFmpeg oracle;
-- movie audio voice starts at 0, follows `movieTime`, seeks to 5.0 s, survives
-  a queue change and stops with the movie.
+- movie audio voice starts at 0, follows `movieTime`, seeks to 5.0 s, is
+  audible on the isolated movie bus (RMS), survives a queue change and stops
+  with the movie.
 
 Evidence: `docs/evidence/s13/media.log`; oracle note
 `docs/evidence/s13/bik-audio.txt`.
