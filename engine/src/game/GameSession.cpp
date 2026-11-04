@@ -1519,6 +1519,84 @@ bool GameSession::playMovieQueue()
     return playMovie(name);
 }
 
+bool GameSession::startPazaak(std::int32_t opponentDeck, std::string endScript,
+                              std::int32_t maxWager, bool tutorial,
+                              std::uint32_t opponent)
+{
+    std::vector<int> playerSide{1, 1, 2, 2, 3, 3, 4, 4, 5, 5};
+    std::vector<int> opponentSide{1, 1, 2, 2, 3, 3, 4, 4, 5, 5};
+    if (auto data = install_.find("pazaakdecks", kotor::resType(kotor::ResType::TwoDa));
+        data.has_value()) {
+        try {
+            const kotor::TwoDa decks = kotor::TwoDa::parse(std::move(*data), "pazaakdecks");
+            const auto rowCards = [&](const std::string& row) {
+                std::vector<int> cards;
+                const int rowIndex = decks.rowIndex(row);
+                if (rowIndex < 0) {
+                    return cards;
+                }
+                for (std::size_t column = 0; column < decks.columnCount(); ++column) {
+                    const std::string& name = decks.column(column);
+                    if (name.rfind("card", 0) != 0) {
+                        continue;
+                    }
+                    const std::string value = decks.cell(
+                        static_cast<std::size_t>(rowIndex), column);
+                    // '*' double cards are excluded until their exact
+                    // last-card semantics are verified; the shipped rows that
+                    // carry them are marked ERASEME.
+                    if (value.empty() || value.front() == '*') {
+                        continue;
+                    }
+                    const int card = std::atoi(value.c_str());
+                    if (card >= -6 && card <= 6 && card != 0) {
+                        cards.push_back(card);
+                    }
+                }
+                return cards;
+            };
+            if (std::vector<int> cards = rowCards("0"); !cards.empty()) {
+                playerSide = std::move(cards);
+            }
+            if (std::vector<int> cards = rowCards(std::to_string(std::max(0, opponentDeck)));
+                !cards.empty()) {
+                opponentSide = std::move(cards);
+            }
+        } catch (const kotor::FormatError&) {
+        }
+    }
+    const std::uint32_t seed = 0x9E3779B9u
+        ^ (static_cast<std::uint32_t>(opponentDeck) * 2654435761u) ^ opponent;
+    pazaak_ = std::make_unique<PazaakGame>();
+    pazaak_->reset(seed, playerSide, opponentSide);
+    pazaakEndScript_ = std::move(endScript);
+    pazaakOpponent_ = opponent;
+    pazaakWager_ = tutorial ? 0 : std::max(0, maxWager);
+    lastPazaakResult_ = -1;
+    return true;
+}
+
+void GameSession::resolvePazaakIfOver()
+{
+    if (!pazaak_ || pazaak_->phase() != PazaakGame::Phase::MatchOver) {
+        return;
+    }
+    const bool won = pazaak_->playerSets() > pazaak_->opponentSets();
+    lastPazaakResult_ = won ? 1 : 0;
+    if (pazaakWager_ > 0) {
+        gold_ = std::max(0, gold_ + (won ? pazaakWager_ : -pazaakWager_));
+        character_.gold = gold_;
+    }
+    const std::string endScript = pazaakEndScript_;
+    const std::uint32_t opponent = pazaakOpponent_;
+    pazaak_.reset();
+    pazaakEndScript_.clear();
+    pazaakWager_ = 0;
+    if (!endScript.empty()) {
+        runScript(endScript, opponent, scriptWorld_.pc, scriptWorld_.pc, scriptWorld_.pc);
+    }
+}
+
 void GameSession::update(float dt, const InputState& input)
 {
     if (dt <= 0.0f) {
@@ -3429,6 +3507,13 @@ std::optional<std::vector<script::Value>> GameSession::action(
     case 733: // PlayMovie
         playMovie(stringArg(0));
         return std::vector<script::Value>{};
+    case 364: // PlayPazaak
+        startPazaak(static_cast<std::int32_t>(intArg(0)), stringArg(1),
+                    static_cast<std::int32_t>(intArg(2)), intArg(3) != 0,
+                    objectArg(4));
+        return std::vector<script::Value>{};
+    case 365: // GetLastPazaakResult
+        return intCells(lastPazaakResult_ < 0 ? 0 : lastPazaakResult_);
     case 768: // IsMoviePlaying
         return intCells(moviePlaying_ ? 1 : 0);
     case 769: // QueueMovie

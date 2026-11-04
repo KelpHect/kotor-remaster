@@ -1,6 +1,7 @@
 #pragma once
 
 #include "game/AudioSystem.h"
+#include "game/Minigames.h"
 #include "game/Rules.h"
 #include "kotor/Media.h"
 #include "kotor/Formats.h"
@@ -127,6 +128,13 @@ public:
     const std::string& movieName() const { return movieName_; }
     float movieTime() const { return movieTime_; }
     float movieDuration() const { return movieDuration_; }
+    bool startPazaak(std::int32_t opponentDeck, std::string endScript,
+                     std::int32_t maxWager, bool tutorial, std::uint32_t opponent);
+    PazaakGame* pazaak() { return pazaak_.get(); }
+    const PazaakGame* pazaak() const { return pazaak_.get(); }
+    bool pazaakActive() const { return pazaak_ != nullptr; }
+    int lastPazaakResult() const { return lastPazaakResult_; }
+    void resolvePazaakIfOver();
     void chooseDialogueOption(std::size_t optionIndex);
     void endDialogue();
     const DialogueView& dialogue() const { return dialogueView_; }
@@ -332,6 +340,11 @@ private:
     float movieTime_ = 0.0f;
     float movieDuration_ = 0.0f;
     std::vector<std::string> movieQueue_;
+    std::unique_ptr<PazaakGame> pazaak_;
+    std::string pazaakEndScript_;
+    std::uint32_t pazaakOpponent_ = 0;
+    std::int32_t pazaakWager_ = 0;
+    int lastPazaakResult_ = -1;
 
     std::int32_t playerHp_ = 100;
     std::int32_t playerMaxHp_ = 100;

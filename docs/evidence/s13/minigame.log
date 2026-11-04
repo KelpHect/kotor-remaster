@@ -1,0 +1,58 @@
+[INFO] KotOR module end_m01aa area m01aa from E:/SteamLibrary/steamapps/common/swkotor
+[INFO]   build sha256: 0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6
+[INFO]   rooms: 15 vertices: 237594 indices: 237594 batches: 49
+[INFO]   textures: 84 collision vertices: 850 facets: 1365
+[INFO]   entities: 218 (door 15, placeable 60, creature 26, waypoint 58, store 0, encounter 0)
+[INFO]   encounter volumes: 0
+[INFO]   entry: 15.4248, 20.1215, -1.275
+[INFO]   entity meshes: 142 triggers: 13 warnings: 0
+[INFO]   script hooks: 284 on 54 entities; scene hooks: 3; script runs: 25
+[INFO]   entity mesh 0 end_door05 verts=564 local=-3.07263,-0.121998,-0.047403 .. 3.08736,0.123205,3.00955
+[INFO]   entity mesh 1 end_door06 verts=606 local=-3.08736,-0.141861,-1.04532 .. 3.07263,0.121999,3.07527
+[INFO]   entity mesh 2 end_door06 verts=216 local=-3.27325,-2.27388,2.55884 .. 0.366864,-1.71284,3.09327
+[INFO]   creature mesh Carth verts=8208 local=-0.612183,-0.286822,-0.00207151 .. 0.612183,0.167699,1.5574
+[INFO]   bounds: -170.51, -32.6442, -204.652 .. 238.793, 471.187, 291.201
+[INFO] minigame test: pazaak_deterministic=1
+[INFO] minigame test: pazaak_seed_varies=1
+[INFO] minigame test: pazaak_match_over=1
+[INFO] minigame test: pazaak_two_sets=1
+[INFO] minigame test: pazaak_turns=1
+[INFO] minigame test: pazaak_deck=1
+[INFO] minigame test: pazaak_side_cards=1
+[INFO] minigame test: pazaak_stand_requires_total=1
+[INFO] minigame test: pazaak_side_bounds=1
+[INFO] minigame test: pazaak_side_play=1
+[INFO] minigame test: pazaak_side_total=1
+[INFO] minigame test: pazaak_draw=1
+[INFO] minigame test: pazaak_draw_range=1
+[INFO] minigame test: pazaak_turn_order=1
+[INFO] minigame test: pazaak_draw_wrong_phase=1
+[INFO] minigame test: pazaak_opponent=1
+[INFO] minigame test: pazaak_set_scored=1
+[INFO] minigame test: swoop_finished=1
+[INFO] minigame test: swoop_laps=1
+[INFO] minigame test: swoop_distance=1
+[INFO] minigame test: swoop_speed_time=1
+[INFO] minigame test: swoop_deterministic=1
+[INFO] minigame test: swoop_brake_slower=1
+[INFO] minigame test: turret_targets=1
+[INFO] minigame test: turret_fire_hit=1
+[INFO] minigame test: turret_score=1
+[INFO] minigame test: turret_dead_target=1
+[INFO] minigame test: turret_shot_count=1
+[INFO] minigame test: turret_approach=1
+[INFO] minigame test: turret_arrival=1
+[INFO] minigame test: turret_damage=1
+[INFO] minigame test: turret_deterministic=1
+[INFO] minigame test: pazaak_script_loaded=1
+[INFO] minigame test: pazaak_script_ran=1
+[INFO] minigame test: pazaak_script_start=1
+[INFO] minigame test: pazaak_script_match_over=1
+[INFO] minigame test: pazaak_script_resolved=1
+[INFO] minigame test: pazaak_script_result=1
+[INFO] minigame test: pazaak_session_start=1
+[INFO] minigame test: pazaak_session_match_over=1
+[INFO] minigame test: pazaak_session_result=1
+[INFO] minigame test: pazaak_wager=1
+[INFO] minigame test: pazaak sets=2-1 turns=79 swoop distance=9001.53 time=66.1997 turret score=100 hp=20
+[INFO] minigame test: PASS

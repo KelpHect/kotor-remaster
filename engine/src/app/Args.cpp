@@ -201,6 +201,18 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.guiTest = true;
             continue;
         }
+        if (arg == "--minigame-test") {
+            result.options.minigameTest = true;
+            continue;
+        }
+        if (arg == "--minigame-script") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--minigame-script requires an .ncs path");
+            }
+            result.options.minigameScript = value;
+            continue;
+        }
         if (arg == "--gui-screen") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -492,6 +504,8 @@ void printUsage()
         << "  --audio-test          Assert WAV/MP3 decode, buses and area audio\n"
         << "  --media-test          Assert Bink containers and LIP viseme timelines\n"
         << "  --gui-test            Assert all shipped GUI screens and control trees\n"
+        << "  --minigame-test       Assert pazaak/swoop/turret state machines\n"
+        << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"
         << "  --gui-screen <resref> Render one .gui screen in the debug UI\n"
         << "  --audio-script <ncs>  Sound/music/ambient script bridge assertions\n"
         << "  --animation-script <ncs>  PlayAnimation script bridge assertions\n"
