@@ -1042,7 +1042,8 @@ void patchGit(GffNode& git, const OriginalSave& save, Install& install)
 
 } // namespace
 
-OriginalSave readOriginalSave(const std::filesystem::path& folder)
+OriginalSave readOriginalSave(const std::filesystem::path& folder,
+                              const std::filesystem::path& rsvRoot)
 {
     OriginalSave save;
     save.folder = folder;
@@ -1101,8 +1102,37 @@ OriginalSave readOriginalSave(const std::filesystem::path& folder)
             save.preservedModules.push_back({entry.resref, entry.type, entry.data});
         }
     }
-    const std::vector<ErfEntry> nested =
+    std::vector<ErfEntry> nested =
         parseErf(moduleEntry->data, moduleEntry->resref + ".sav");
+    // Retail hazards: an external <module>.rsv can shadow the nested saved
+    // module with no provenance check. Treat it as the cached module ERF.
+    if (!rsvRoot.empty()) {
+        std::error_code rsvError;
+        if (std::filesystem::is_directory(rsvRoot, rsvError)) {
+            for (const std::filesystem::directory_entry& item :
+                 std::filesystem::directory_iterator(rsvRoot, rsvError)) {
+                if (rsvError || !item.is_regular_file()
+                    || item.path().extension() != ".rsv") {
+                    continue;
+                }
+                if (lower(item.path().stem().string()) != lower(moduleEntry->resref)) {
+                    continue;
+                }
+                try {
+                    const Archive archive = Archive::open(item.path());
+                    std::vector<ErfEntry> cached;
+                    for (const ArchiveEntry& entry : archive.entries()) {
+                        cached.push_back({entry.resref, entry.type, archive.read(entry)});
+                    }
+                    if (findEntryType(cached, kIfo) != nullptr) {
+                        nested = std::move(cached);
+                    }
+                } catch (const FormatError&) {
+                }
+                break;
+            }
+        }
+    }
     const ErfEntry* ifoEntry = findEntryType(nested, kIfo);
     const ErfEntry* areEntry = findEntryType(nested, kAre);
     const ErfEntry* gitEntry = findEntryType(nested, kGit);

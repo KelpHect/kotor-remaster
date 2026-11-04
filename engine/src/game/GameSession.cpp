@@ -551,6 +551,7 @@ void GameSession::initAnimations()
 
 GameSession::GameSession(std::string installPath, std::string module, int language)
     : installPath_(std::move(installPath))
+    , rsvRoot_(std::filesystem::path(installPath_) / "modules")
     , install_(installPath_)
     , rules_(install_)
 {
@@ -4285,7 +4286,7 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder)
 {
     kotor::OriginalSave saved;
     try {
-        saved = kotor::readOriginalSave(folder);
+        saved = kotor::readOriginalSave(folder, rsvRoot_);
     } catch (const std::exception& exception) {
         logEvent(std::string("original save read failed: ") + exception.what());
         return false;

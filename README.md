@@ -28,9 +28,11 @@ pazaak, swoop and
 turret state machines pass their
 seeded gates; SDL3 pulls the mixer for live playback while headless tests use
 the same mixer deterministically. **48/48 CTest targets** pass.
-Sprint 14 adds the retail save matrix (7/7 slots), the all-DLG corpus (1,043
-DLGs / 22,572 entries), TSLPatcher TLK merges, faction parent inheritance,
-explicit `CamVidEffect` rejection and the differential playthrough gate; see
+Sprint 14 adds the retail save matrix (7/7 slots plus external `.rsv` and
+corrupt `EventQueue` fixtures), the all-DLG corpus (1,043 DLGs / 22,572
+entries / 67,395 links), TSLPatcher TLK merges, faction parent inheritance,
+explicit `CamVidEffect` rejection, an 8-module playthrough matrix and the
+differential gate; see
 [`docs/SPRINT14_REPORT.md`](docs/SPRINT14_REPORT.md).
 Sprint 12 remains complete (creature animation, skinning, weapons and cutscene
 cameras: MDL clips/controllers/skinning, `pause1`/`pause` playback, weapon hand

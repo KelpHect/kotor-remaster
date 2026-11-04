@@ -189,5 +189,12 @@
 [INFO] save matrix: reload_inventory_000006 - TARISLC=1
 [INFO] save matrix: reload_journal_000006 - TARISLC=1
 [INFO] save matrix: reload_party_000006 - TARISLC=1
+[INFO] save matrix: rsv_module_entry=1
+[INFO] save matrix: rsv_write=1
+[INFO] save matrix: rsv_load=1
+[INFO] save matrix: rsv_shadow=1
+[INFO] save matrix: eventqueue_write=1
+[INFO] save matrix: eventqueue_load=1
+[INFO] save matrix: eventqueue_shadow=1
 [INFO] save matrix: fixtures=7 loaded=7 roundTrips=7
 [INFO] save matrix: PASS

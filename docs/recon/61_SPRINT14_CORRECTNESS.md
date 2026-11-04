@@ -52,17 +52,21 @@ no `UseTemplates`, then reloads and re-checks. Duplicate tags are resolved by
 nearest base position, and `GameSession::loadOriginalSave` uses the same
 matching so all saved states are applied.
 
-The shipped install has no external `<module>.rsv` and no corrupt cached
-`EventQueue`; those mod/install hazards need a dedicated fixture and are not
-claimed as covered.
+The shipped install has no external `<module>.rsv`; the gate generates a
+temporary module-ERF `.rsv` from the vanilla save and asserts that its
+`Mod_Entry_X` shadows the nested save module. The same cached module IFO then
+carries a malformed `EventQueue` list and still loads with the `.rsv` sentinel
+position, proving the cached-queue hazard is non-fatal.
 
 ## Differential gate
 
-`--differential-test` runs the save matrix, the entire DLG corpus and the
+`--differential-test` runs the save matrix, the entire DLG corpus, the
 deterministic Endar Spire playthrough (Trask dialogue, trigger, locker,
-SithSoldier combat, `end_m01aa -> end_m01ab`, save/load). This is the P6
-behaviour gate; the VM corpus remains the action-level oracle
-(8,666 scripts / 303,616 actions).
+SithSoldier combat, `end_m01aa -> end_m01ab`, save/load) and an eight-module
+playthrough matrix (`end_m01aa`, `end_m01ab`, `tar_m02af`, `tar_m03aa`,
+`tar_m03ab`, `danm14aa`, `manm28aa`, `m12ab`) with 7 dialogue starts and 143
+dialogue lines. This is the P6 behaviour gate; the VM corpus remains the
+action-level oracle (8,666 scripts / 303,616 actions).
 
 ## Evidence
 

@@ -1921,6 +1921,96 @@ int runSaveMatrixTest(GameSession& base, const std::string& fixtureDirectory)
             check(false, "exception_" + name);
         }
     }
+    // External <module>.rsv shadowing and a corrupt EventQueue in the cached
+    // module IFO. Both use a temp copy so the retail fixtures stay untouched.
+    const auto vanilla = std::find_if(folders.begin(), folders.end(), [](const auto& folder) {
+        return folder.filename().string().find("VANILLA") != std::string::npos;
+    });
+    if (vanilla != folders.end()) {
+        try {
+            const kotor::OriginalSave source = kotor::readOriginalSave(*vanilla);
+            const std::filesystem::path rsvRoot = scratch / "rsv";
+            std::filesystem::create_directories(rsvRoot, error);
+            const kotor::Archive outer =
+                kotor::Archive::open(*vanilla / "SAVEGAME.sav");
+            const kotor::ArchiveEntry* moduleEntry = nullptr;
+            for (const kotor::ArchiveEntry& entry : outer.entries()) {
+                if (entry.type == 2057) {
+                    moduleEntry = &entry;
+                    break;
+                }
+            }
+            check(moduleEntry != nullptr, "rsv_module_entry");
+            if (moduleEntry != nullptr) {
+                const std::vector<std::uint8_t> nestedBytes = outer.read(*moduleEntry);
+                const std::filesystem::path nestedPath = scratch / "nested.sav";
+                {
+                    std::ofstream nested(nestedPath, std::ios::binary | std::ios::trunc);
+                    nested.write(reinterpret_cast<const char*>(nestedBytes.data()),
+                                 static_cast<std::streamsize>(nestedBytes.size()));
+                }
+                const kotor::Archive nested = kotor::Archive::open(nestedPath);
+                const auto writeRsv = [&](float x, bool corrupt, const std::filesystem::path& out) {
+                    const kotor::ArchiveEntry* ifoEntry = nullptr;
+                    for (const kotor::ArchiveEntry& entry : nested.entries()) {
+                        if (entry.type == 2014) {
+                            ifoEntry = &entry;
+                            break;
+                        }
+                    }
+                    if (ifoEntry == nullptr) {
+                        return false;
+                    }
+                    const kotor::Gff ifo = kotor::Gff::parse(nested.read(*ifoEntry), "Module.ifo");
+                    const kotor::GffNodePtr node = kotor::GffNode::fromGff(ifo);
+                    node->remove("Mod_Entry_X");
+                    node->addFloat("Mod_Entry_X", x);
+                    if (corrupt) {
+                        node->remove("EventQueue");
+                        node->addList("EventQueue", {std::make_shared<kotor::GffNode>(0)});
+                    }
+                    const std::vector<std::uint8_t> ifoBytes =
+                        kotor::writeGff("IFO ", *node);
+                    std::vector<kotor::ErfWriteEntry> entries;
+                    for (const kotor::ArchiveEntry& entry : nested.entries()) {
+                        entries.push_back({entry.resref, entry.type,
+                                           entry.type == 2014 ? ifoBytes : nested.read(entry)});
+                    }
+                    const std::vector<std::uint8_t> rsvBytes =
+                        kotor::writeErf(entries, "MOD ", "V1.0");
+                    std::ofstream file(out, std::ios::binary | std::ios::trunc);
+                    file.write(reinterpret_cast<const char*>(rsvBytes.data()),
+                               static_cast<std::streamsize>(rsvBytes.size()));
+                    return static_cast<bool>(file);
+                };
+                const std::filesystem::path rsvPath =
+                    rsvRoot / (source.module + ".rsv");
+                check(writeRsv(321.0f, false, rsvPath), "rsv_write");
+                GameSession rsvGame(base.installPath(), source.module);
+                rsvGame.setRsvRootForTest(rsvRoot);
+                const bool rsvLoaded = rsvGame.loadOriginalSave(*vanilla);
+                check(rsvLoaded, "rsv_load");
+                if (rsvLoaded) {
+                    check(std::fabs(rsvGame.position().x - 321.0f) < 0.5f,
+                          "rsv_shadow");
+                }
+                check(writeRsv(456.0f, true, rsvPath), "eventqueue_write");
+                GameSession queued(base.installPath(), source.module);
+                queued.setRsvRootForTest(rsvRoot);
+                const bool queueLoaded = queued.loadOriginalSave(*vanilla);
+                check(queueLoaded, "eventqueue_load");
+                if (queueLoaded) {
+                    check(std::fabs(queued.position().x - 456.0f) < 0.5f,
+                          "eventqueue_shadow");
+                }
+            }
+        } catch (const std::exception& exception) {
+            logWarn(concat("save matrix: rsv/eventqueue: ", exception.what()));
+            check(false, "rsv_exception");
+        }
+    } else {
+        check(false, "rsv_fixture");
+    }
     std::filesystem::remove_all(scratch, error);
     logInfo(concat("save matrix: fixtures=", folders.size(), " loaded=", loaded,
                    " roundTrips=", roundTrips));
@@ -2043,15 +2133,86 @@ int runDialogueCorpusTest(GameSession& game)
     return ok ? 0 : 69;
 }
 
+int runModulePlaythroughMatrix(const std::string& installPath)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("module playthrough: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    const char* modules[] = {
+        "end_m01aa", "end_m01ab", "tar_m02af", "tar_m03aa",
+        "tar_m03ab", "danm14aa", "manm28aa", "m12ab",
+    };
+    std::size_t loaded = 0;
+    std::size_t dialogues = 0;
+    std::size_t lines = 0;
+    std::size_t warnings = 0;
+    for (const char* module : modules) {
+        try {
+            GameSession game(installPath, module);
+            ++loaded;
+            warnings += game.scene().warnings.size();
+            check(!game.scene().area.empty(), "area");
+            check(!game.scene().rooms.empty(), "rooms");
+            for (int frame = 0; frame < 120; ++frame) {
+                game.update(1.0f / 60.0f, InputState{});
+            }
+            const kotor::Vec3 position = game.position();
+            check(std::isfinite(position.x) && std::isfinite(position.y)
+                      && std::isfinite(position.z),
+                  "position");
+            std::size_t dialogueLines = 0;
+            for (std::size_t i = 0; i < game.scene().entities.size(); ++i) {
+                const kotor::Entity& entity = game.scene().entities[i];
+                if (entity.conversation.empty() || entity.dead) {
+                    continue;
+                }
+                if (!game.startDialogue(i)) {
+                    continue;
+                }
+                ++dialogues;
+                for (int step = 0; step < 64 && game.dialogue().active; ++step) {
+                    ++dialogueLines;
+                    game.chooseDialogueOption(0);
+                }
+                if (game.dialogue().active) {
+                    game.endDialogue();
+                }
+                break;
+            }
+            lines += dialogueLines;
+            logInfo(concat("module playthrough: ", module, " area=", game.scene().area,
+                           " entities=", game.scene().entities.size(),
+                           " dialogueLines=", dialogueLines,
+                           " warnings=", game.scene().warnings.size()));
+        } catch (const std::exception& exception) {
+            logWarn(concat("module playthrough: ", module, ": ", exception.what()));
+            check(false, "exception");
+        }
+    }
+    check(loaded == sizeof(modules) / sizeof(modules[0]), "modules");
+    check(dialogues > 0, "dialogues");
+    check(lines > 0, "lines");
+    check(warnings == 0, "warnings");
+    logInfo(concat("module playthrough: modules=", loaded, " dialogues=", dialogues,
+                   " lines=", lines, " warnings=", warnings));
+    logInfo(ok ? "module playthrough: PASS" : "module playthrough: FAIL");
+    return ok ? 0 : 71;
+}
+
 int runDifferentialTest(GameSession& game, const std::string& saveFixtures)
 {
     const int saveCode = runSaveMatrixTest(game, saveFixtures);
     const int dialogueCode = runDialogueCorpusTest(game);
     const int playthroughCode = runPlaythrough(game);
-    const bool ok = saveCode == 0 && dialogueCode == 0 && playthroughCode == 0;
+    const int moduleCode = runModulePlaythroughMatrix(game.installPath());
+    const bool ok = saveCode == 0 && dialogueCode == 0 && playthroughCode == 0
+        && moduleCode == 0;
     logInfo(concat("differential test: saveMatrix=", saveCode,
                    " dialogueCorpus=", dialogueCode,
-                   " playthrough=", playthroughCode));
+                   " playthrough=", playthroughCode,
+                   " moduleMatrix=", moduleCode));
     logInfo(ok ? "differential test: PASS" : "differential test: FAIL");
     return ok ? 0 : 70;
 }

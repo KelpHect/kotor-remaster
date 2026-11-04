@@ -101,6 +101,7 @@ public:
         return changed;
     }
     int factionOfObject(std::uint32_t object) const;
+    void setRsvRootForTest(std::filesystem::path root) { rsvRoot_ = std::move(root); }
 
     void update(float dt, const InputState& input);
     SceneCamera camera() const;
@@ -351,6 +352,7 @@ private:
     std::string scriptSource(const std::string& resref);
 
     std::string installPath_;
+    std::filesystem::path rsvRoot_;
     std::string module_;
     kotor::Install install_;
     std::unique_ptr<kotor::Localization> localization_;
