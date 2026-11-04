@@ -1,5 +1,6 @@
 #include "kotor/Formats.h"
 
+#include <algorithm>
 #include <cstring>
 
 namespace ke::kotor {
@@ -20,6 +21,11 @@ std::string Tlk::text(std::uint32_t strref) const
     return out;
 }
 
+std::string Tlk::sound(std::uint32_t strref) const
+{
+    return strref < entries_.size() ? entries_[strref].sound : std::string{};
+}
+
 Tlk Tlk::parse(std::vector<std::uint8_t> bytes, std::string name)
 {
     Tlk tlk;
@@ -37,6 +43,8 @@ Tlk Tlk::parse(std::vector<std::uint8_t> bytes, std::string name)
     tlk.entries_.resize(count);
     for (std::uint32_t i = 0; i < count; ++i) {
         const std::size_t o = 20u + static_cast<std::size_t>(i) * 40u;
+        tlk.entries_[i].sound = readCString(bytes.data(), bytes.size(), o + 4u, 16,
+                                            "TLK sound resref");
         tlk.entries_[i].offset = readU32(bytes.data(), bytes.size(), o + 28u, "TLK string offset");
         tlk.entries_[i].length = readU32(bytes.data(), bytes.size(), o + 32u, "TLK string length");
     }
@@ -46,6 +54,43 @@ Tlk Tlk::parse(std::vector<std::uint8_t> bytes, std::string name)
     requireRange(bytes.size(), textOffset, bytes.size() - textOffset, "TLK text blob");
     tlk.text_.assign(bytes.begin() + textOffset, bytes.end());
     return tlk;
+}
+
+Ssf Ssf::parse(std::vector<std::uint8_t> bytes, std::string name)
+{
+    Ssf ssf;
+    ssf.name_ = std::move(name);
+    if (bytes.size() < 12 || std::memcmp(bytes.data(), "SSF V1.1", 8) != 0) {
+        throw FormatError(ssf.name_ + ": not an SSF V1.1 resource");
+    }
+    if (readU32(bytes.data(), bytes.size(), 8, "SSF lead") != 12u
+        || (bytes.size() - 12u) % 4u != 0u) {
+        throw FormatError(ssf.name_ + ": invalid SSF table");
+    }
+    const std::size_t slots = (bytes.size() - 12u) / 4u;
+    if (slots < 28u || slots > 128u) {
+        throw FormatError(ssf.name_ + ": implausible SSF slot count "
+                          + std::to_string(slots));
+    }
+    ssf.strrefs_.reserve(slots);
+    for (std::size_t i = 0; i < slots; ++i) {
+        const std::int32_t value = static_cast<std::int32_t>(
+            readU32(bytes.data(), bytes.size(), 12u + i * 4u, "SSF strref"));
+        ssf.strrefs_.push_back(value);
+    }
+    return ssf;
+}
+
+std::int32_t Ssf::strref(std::size_t slot) const
+{
+    return slot < strrefs_.size() ? strrefs_[slot] : -1;
+}
+
+std::size_t Ssf::filledSlots() const
+{
+    return static_cast<std::size_t>(std::count_if(
+        strrefs_.begin(), strrefs_.end(),
+        [](std::int32_t value) { return value >= 0; }));
 }
 
 Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)

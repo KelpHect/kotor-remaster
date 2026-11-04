@@ -68,6 +68,7 @@ AudioSystem::AudioSystem(kotor::Install& install)
     musicTable_ = loadTable(install_, "ambientmusic");
     ambientTable_ = loadTable(install_, "ambientsound");
     eaxTable_ = loadTable(install_, "soundeax");
+    footstepTable_ = loadTable(install_, "footstepsounds");
     mixer_.setSampleRate(48000);
     mixer_.setListener({0.0f, 0.0f, 0.0f}, 0.0f);
     indexLooseAudio();
@@ -110,6 +111,15 @@ bool AudioSystem::loadScene(const kotor::Scene& scene, std::string& error)
     error.clear();
     areaAudio_ = scene.areaAudio;
     soundEmitters_ = scene.soundEmitters;
+    entitySoundSets_.clear();
+    entityPositions_.clear();
+    for (std::size_t index = 0; index < scene.entities.size(); ++index) {
+        const kotor::Entity& entity = scene.entities[index];
+        entityPositions_[static_cast<std::uint32_t>(index)] = entity.position;
+        if (!entity.soundSet.empty()) {
+            entitySoundSets_[static_cast<std::uint32_t>(index)] = entity.soundSet;
+        }
+    }
     mixer_.setReverb(areaAudio_.eaxPreset);
     mixer_.setBusVolume(audio::Bus::Music, musicVolume_);
     ambientVolume_ = areaAudio_.ambientDayVolume > 0
@@ -247,6 +257,77 @@ bool AudioSystem::playSoundObject(std::uint32_t entity)
         return true;
     }
     return false;
+}
+
+bool AudioSystem::playCreatureSound(std::uint32_t entity, int slot)
+{
+    if (tlk_ == nullptr) {
+        return false;
+    }
+    const auto setIt = entitySoundSets_.find(entity);
+    if (setIt == entitySoundSets_.end() || setIt->second.empty() || slot < 0) {
+        return false;
+    }
+    const std::string key = lower(setIt->second);
+    auto cached = soundSetCache_.find(key);
+    if (cached == soundSetCache_.end()) {
+        auto data = install_.find(setIt->second, 2060); // SSF
+        if (!data.has_value()) {
+            return false;
+        }
+        try {
+            cached = soundSetCache_.emplace(
+                key, kotor::Ssf::parse(std::move(*data), key + ".ssf")).first;
+        } catch (const kotor::FormatError&) {
+            return false;
+        }
+    }
+    const std::int32_t strref = cached->second.strref(static_cast<std::size_t>(slot));
+    if (strref < 0) {
+        return false;
+    }
+    const std::string sound = tlk_->sound(static_cast<std::uint32_t>(strref));
+    if (sound.empty()) {
+        return false;
+    }
+    kotor::Vec3 position{};
+    if (const auto pos = entityPositions_.find(entity); pos != entityPositions_.end()) {
+        position = pos->second;
+    }
+    return playEffect(sound, &position, 0.9f, false);
+}
+
+bool AudioSystem::playFootstep(int footstepType, int surface, kotor::Vec3 position,
+                               float volume)
+{
+    if (!footstepTable_.has_value()) {
+        return false;
+    }
+    const std::string row = std::to_string(std::clamp(footstepType, 0, 3));
+    if (footstepTable_->rowIndex(row) < 0) {
+        return false;
+    }
+    const char* category = "stone";
+    switch (surface) {
+    case 1: category = "dirt"; break;
+    case 3: category = "grass"; break;
+    case 5: category = "wood"; break;
+    case 6:
+    case 11: category = "water"; break;
+    case 9: category = "carpet"; break;
+    case 10: category = "metal"; break;
+    default: category = "stone"; break;
+    }
+    const std::string column = std::string(category)
+        + std::to_string(footstepCounter_++ % 3u);
+    std::string sound = footstepTable_->cell(row, column);
+    if (sound.empty()) {
+        sound = footstepTable_->cell(row, "stone0");
+    }
+    if (sound.empty()) {
+        return false;
+    }
+    return playEffect(sound, &position, volume, false);
 }
 
 bool AudioSystem::stopSoundObject(std::uint32_t entity)

@@ -79,7 +79,29 @@ Dialogue entries/replies call `playVoice` for non-empty `Sound` fields.
 Script actions map to the audio API; `SoundObject*` actions resolve the script
 object id back to the GIT SoundList entity.
 
-## 6. Validation
+## 6. Sound sets and footsteps
+
+`soundset.2da` maps row id -> label/resref. Creature UTC `SoundSetFile` is that
+row id (`65535` = none). The resref names an **SSF V1.1** resource (type 2060):
+
+```text
+0x00 char[8] "SSF V1.1"
+0x08 u32     lead = 12
+0x0C u32[]   StrRefs to EOF (0xFFFFFFFF = empty)
+```
+
+Shipped files are 172 bytes = 40 slots. A slot StrRef indexes `dialog.tlk`; the
+TLK 40-byte entry carries a 16-byte sound resref at +4 (e.g.
+`n_sithsoldr_atk1`). Slot ids: battle cries 0-5, select 6-8, attack grunts
+9-11, pain 12-13, low health 14, dead 15, critical 16, target immune 17,
+mines 18-19, stealth/search/unlock 20-24, party 25-26, poisoned 27.
+
+`appearance.footsteptype` (0 Soft, 1 Hard, 2 Droid, 3 Droid_Heavy) selects a
+`footstepsounds.2da` row. Surface id selects the column family:
+dirt(1), grass(3), stone(4), wood(5), water(6/11), carpet(9), metal(10).
+The 0/1/2 variant is a deterministic footstep counter.
+
+## 7. Validation
 
 `--audio-test` asserts:
 
@@ -90,10 +112,12 @@ object id back to the GIT SoundList entity.
 - mixer RMS, distance attenuation, stereo pan, EAX wet path, stop-all and loop
   wrap;
 - `audio_script_test.ncs` `PlaySound`, `MusicBackgroundChangeDay`,
-  `AmbientSoundChangeDay` and `AmbientSoundSetDayVolume`.
+  `AmbientSoundChangeDay` and `AmbientSoundSetDayVolume`;
+- SSF slot/fill counts, `SoundSetFile` -> `soundset.2da` mapping, appearance
+  footstep mapping, five creature bark slots and stone/metal/wood footsteps.
 
-## 7. Limits
+## 8. Limits
 
-Bink movies, LIP lip sync, SSF sound sets/footsteps/barks, full `.gui`,
-minigames, localization, mods/Override precedence, KotOR 2 world loading,
-faction reputation and the P6 checklist remain future sprints.
+Bink movies, LIP lip sync, full `.gui`, minigames, localization,
+mods/Override precedence, KotOR 2 world loading, faction reputation and the
+P6 checklist remain future sprints.

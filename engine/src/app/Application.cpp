@@ -1449,6 +1449,65 @@ int runAudioTest(GameSession& game, const std::string& scriptPath)
     }
     check(soundObjectFound, "sound_object_template");
 
+    kotor::Install ssfInstall(game.installPath());
+    ssfInstall.bindModule(game.module());
+    ssfInstall.addPacks();
+    std::size_t creatureEntity = static_cast<std::size_t>(-1);
+    std::string creatureSoundSet;
+    std::size_t ssfSlots = 0;
+    std::size_t ssfFilled = 0;
+    for (std::size_t index = 0; index < game.scene().entities.size(); ++index) {
+        const std::string& soundSet = game.scene().entities[index].soundSet;
+        if (soundSet.empty()) {
+            continue;
+        }
+        const auto ssfData = ssfInstall.find(soundSet, 2060);
+        if (!ssfData.has_value()) {
+            continue;
+        }
+        try {
+            const kotor::Ssf ssf = kotor::Ssf::parse(*ssfData, soundSet + ".ssf");
+            if (ssf.filledSlots() > 0) {
+                creatureEntity = index;
+                creatureSoundSet = soundSet;
+                ssfSlots = ssf.slotCount();
+                ssfFilled = ssf.filledSlots();
+                break;
+            }
+        } catch (const kotor::FormatError&) {
+        }
+    }
+    check(creatureEntity != static_cast<std::size_t>(-1) && !creatureSoundSet.empty(),
+          "creature_soundset");
+    check(ssfSlots >= 28, "ssf_slots");
+    check(ssfFilled > 0, "ssf_filled");
+    bool soundSetMapping = false;
+    bool footstepTypeMapping = false;
+    for (const kotor::Entity& entity : game.scene().entities) {
+        if (entity.tag == "end_bridgerep1") {
+            soundSetMapping = entity.soundSet == "n_repsold";
+        }
+        if (entity.kind == kotor::EntityKind::Creature && entity.footstepType > 0) {
+            footstepTypeMapping = true;
+        }
+    }
+    check(soundSetMapping, "soundset_2da_mapping");
+    check(footstepTypeMapping, "appearance_footstep_mapping");
+    int barkCount = 0;
+    if (creatureEntity != static_cast<std::size_t>(-1)) {
+        for (const int slot : {0, 6, 9, 12, 15}) {
+            if (audio.playCreatureSound(static_cast<std::uint32_t>(creatureEntity), slot)) {
+                ++barkCount;
+            }
+        }
+    }
+    check(barkCount >= 3, "creature_barks");
+
+    check(audio.playFootstep(0, 4, {0.0f, 0.0f, 0.0f}), "footstep_stone");
+    check(audio.playFootstep(1, 10, {0.0f, 0.0f, 0.0f}), "footstep_metal");
+    check(audio.playFootstep(2, 5, {0.0f, 0.0f, 0.0f}), "footstep_wood");
+    check(audio.mixer().activeVoices(audio::Bus::Effects) > 0, "footstep_voices");
+
     check(audio.mixer().activeVoices(audio::Bus::Music) > 0, "music_voice");
     check(audio.mixer().activeVoices(audio::Bus::Ambient) > 0, "ambient_voice");
     std::vector<float> mixed(4800 * 2);

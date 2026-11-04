@@ -504,15 +504,32 @@ public:
 
     std::size_t size() const { return entries_.size(); }
     std::string text(std::uint32_t strref) const;
+    std::string sound(std::uint32_t strref) const;
 
 private:
     struct Entry {
         std::uint32_t offset = 0;
         std::uint32_t length = 0;
+        std::string sound;
     };
     std::string name_;
     std::vector<Entry> entries_;
     std::vector<std::uint8_t> text_;
+};
+
+// KotOR SSF V1.1 (type 2060): a fixed table of StrRefs into dialog.tlk.
+// The TLK entry's sound resref is the playable stream.
+class Ssf {
+public:
+    static Ssf parse(std::vector<std::uint8_t> bytes, std::string name);
+
+    std::size_t slotCount() const { return strrefs_.size(); }
+    std::int32_t strref(std::size_t slot) const;
+    std::size_t filledSlots() const;
+
+private:
+    std::string name_;
+    std::vector<std::int32_t> strrefs_;
 };
 
 // ---- dialogue ------------------------------------------------------------------------------------------------------------
@@ -729,6 +746,9 @@ struct Entity {
     std::string scriptOnEnter;
     std::string scriptOnExit;
     std::uint32_t appearance = 0;
+    std::string soundSet;
+    int footstepType = 0;
+    int soundAppType = 0;
     std::uint32_t faction = 0;
     std::int32_t hitPoints = 1;
     std::int32_t maxHitPoints = 1;

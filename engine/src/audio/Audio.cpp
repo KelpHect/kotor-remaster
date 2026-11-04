@@ -699,6 +699,13 @@ void Mixer::mix(float* interleavedStereo, int frames)
         (void)delayRightSamples;
     }
 
+    if (impl_->voices.size() > 64) {
+        impl_->voices.erase(
+            std::remove_if(impl_->voices.begin(), impl_->voices.end(),
+                           [](const Impl::Voice& voice) { return !voice.active; }),
+            impl_->voices.end());
+    }
+
     double sumSquares = 0.0;
     for (int frame = 0; frame < frames; ++frame) {
         float left = 0.0f;
