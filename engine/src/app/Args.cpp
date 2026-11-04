@@ -288,6 +288,14 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.differentialTest = true;
             continue;
         }
+        if (arg == "--module-playthrough-test") {
+            result.options.modulePlaythroughTest = true;
+            continue;
+        }
+        if (arg == "--bug-parity-test") {
+            result.options.bugParityTest = true;
+            continue;
+        }
         if (arg == "--save-fixtures") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -634,6 +642,8 @@ void printUsage()
         << "  --save-fixtures <dir> Directory of SAVEGAME.sav fixture slots\n"
         << "  --dialogue-corpus-test Assert every shipped DLG parses and CamVidEffect\n"
         << "  --differential-test   Save-matrix + dialogue corpus + playthrough gate\n"
+        << "  --module-playthrough-test  All-module conversation matrix only\n"
+        << "  --bug-parity-test     Classic bug-parity vs fixed-mode assertions\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"
         << "  --gui-screen <resref> Render one .gui screen in the debug UI\n"
         << "  --gui-action <tag>    Activate one control before rendering\n"

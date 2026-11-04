@@ -27,7 +27,7 @@ std::uint32_t typeForExtension(const std::string& extension)
         {"utt", 2032}, {"uts", 2035}, {"ute", 2040}, {"utw", 2058}, {"ssf", 2060},
         {"gui", 2047}, {"bik", 2063}, {"lip", 3004}, {"wav", 4}, {"mp3", 8},
         {"txi", 2022}, {"jrl", 2056}, {"fac", 2038}, {"pth", 3003}, {"lyt", 3000},
-        {"vis", 3001},
+        {"vis", 3001}, {"tlk", 2018},
     };
     const auto it = types.find(lower(extension));
     return it == types.end() ? 0u : it->second;

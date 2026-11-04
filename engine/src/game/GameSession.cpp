@@ -558,7 +558,7 @@ GameSession::GameSession(std::string installPath, std::string module, int langua
     localization_ = std::make_unique<kotor::Localization>(
         std::filesystem::path(installPath_));
     std::string localizationError;
-    if (!localization_->load(language, localizationError)) {
+    if (!localization_->load(install_, language, localizationError)) {
         if (language >= 0) {
             throw kotor::FormatError(localizationError);
         }
@@ -2173,6 +2173,14 @@ bool GameSession::testTransition(std::string& from, std::string& to)
         if (entity.kind != kotor::EntityKind::Door || entity.linkedModule.empty()) {
             continue;
         }
+        if (!classicBugs_) {
+            const float dx = entity.position.x - position_.x;
+            const float dy = entity.position.y - position_.y;
+            const float dz = entity.position.z - position_.z;
+            if (dx * dx + dy * dy + dz * dz > 4.0f) {
+                continue;
+            }
+        }
         const std::string targetModule = entity.linkedModule;
         const std::string targetDoor = entity.linkedTo;
         from = module_;
@@ -2326,6 +2334,20 @@ bool GameSession::startDialogue(const std::string& tag)
         return false;
     }
     return startDialogue(index);
+}
+
+void GameSession::setDialogueForTest(kotor::Dlg dlg, std::string resref,
+                                     std::string speaker)
+{
+    ActiveDialogue active;
+    active.npcTag = "test";
+    active.speaker = std::move(speaker);
+    active.resref = std::move(resref);
+    active.npcObject = 0;
+    active.dlg = std::move(dlg);
+    activeDialogue_ = std::move(active);
+    dialogueView_ = {};
+    showDialogueEntry(0);
 }
 
 void GameSession::showDialogueEntry(std::uint32_t entryIndex)

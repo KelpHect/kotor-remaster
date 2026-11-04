@@ -29,6 +29,9 @@ public:
     // requested < 0 means "use the TLK's own language". On failure the
     // previous language (if any) is left unchanged.
     bool load(int requestedLanguage, std::string& error);
+    // VFS-aware load: base dialog.tlk plus Override/replace.tlk and
+    // Override/append.tlk merged with TSLPatcher semantics.
+    bool load(Install& install, int requestedLanguage, std::string& error);
     bool loaded() const { return tlk_.has_value(); }
 
     const Tlk& tlk() const { return *tlk_; }

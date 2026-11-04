@@ -208,6 +208,9 @@ are flattened snapshots and must never be re-templated from `.utc/.utd` files.
 Known hazards: an external `<module>.rsv` shadows saved state with no provenance check; a cached
 module IFO with a corrupt `EventQueue` can make the save unloadable; mod removal can leave dangling
 templates/scripts; TSLPatcher-style appends preserve indices, whole-file replacements do not.
+Sprint 14 pins the first two with synthetic fixtures: `readOriginalSave(folder, rsvRoot)` prefers a
+`<module>.rsv` candidate and treats a malformed `EventQueue` as non-fatal (see
+`docs/recon/61_SPRINT14_CORRECTNESS.md` and `docs/evidence/s14/save-matrix.log`).
 
 ### VFS precedence
 

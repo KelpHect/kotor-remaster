@@ -27,6 +27,21 @@ The shipped install has one English TLK; the gate asserts:
 `language=0`, `entries=49265`, and TLK entry 38167's sound resref
 `c_drdastro_bat1`.
 
+## TSLPatcher TLK merges
+
+Sprint 14 adds `Tlk::merge(base, patch, name, replaceCount)` and
+`Localization::load(Install&, ...)`:
+
+- `Override/replace.tlk` replaces the first `replaceCount` StrRefs (all patch
+  entries) and keeps the base text/sound for empty patch fields;
+- `Override/append.tlk` appends after the base and preserves every base index;
+- the two patches merge in that order, through the same `Override` VFS root
+  used by the 2DA/GFF path;
+- a DLG `StrRef` resolves through the merged table.
+
+Gate: `tlk_merge_*` (5 assertions) and `tlk_vfs_*` (6 assertions) in
+`docs/evidence/s14/localization.log`.
+
 ## Localized voice paths
 
 The voice convention is:

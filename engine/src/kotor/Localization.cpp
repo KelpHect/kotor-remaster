@@ -135,6 +135,89 @@ bool Localization::load(int requestedLanguage, std::string& error)
     return true;
 }
 
+bool Localization::load(Install& install, int requestedLanguage,
+                        std::string& error)
+{
+    error.clear();
+    const auto readCandidate = [&](const std::string& stem,
+                                   std::string& chosen) -> std::vector<std::uint8_t> {
+        const std::string file = stem + ".tlk";
+        const std::filesystem::path paths[] = {
+            install.overlayRoot() / file,
+            install.root() / file,
+        };
+        for (const std::filesystem::path& path : paths) {
+            std::vector<std::uint8_t> bytes = readFile(path);
+            if (!bytes.empty()) {
+                chosen = path.filename().string();
+                return bytes;
+            }
+        }
+        if (auto data = install.find(stem, 2018); data.has_value()) {
+            chosen = stem + ".tlk";
+            return std::move(*data);
+        }
+        return {};
+    };
+    std::vector<std::string> stems;
+    if (requestedLanguage >= 0) {
+        stems.push_back("dialog_" + std::to_string(requestedLanguage));
+        stems.push_back("dialog_" + lower(ke::kotor::languageName(
+            static_cast<std::uint32_t>(requestedLanguage))));
+    }
+    stems.push_back("dialog");
+    std::optional<Tlk> loaded;
+    std::string chosen;
+    for (const std::string& stem : stems) {
+        std::vector<std::uint8_t> bytes = readCandidate(stem, chosen);
+        if (bytes.empty()) {
+            continue;
+        }
+        try {
+            loaded = Tlk::parse(std::move(bytes), chosen);
+            break;
+        } catch (const FormatError& exception) {
+            error = exception.what();
+            return false;
+        }
+    }
+    if (!loaded.has_value()) {
+        error = "localization: no dialog TLK in " + install.root().string();
+        return false;
+    }
+    if (requestedLanguage >= 0
+        && loaded->language() != static_cast<std::uint32_t>(requestedLanguage)) {
+        error = "localization: requested " + std::string(ke::kotor::languageName(
+                    static_cast<std::uint32_t>(requestedLanguage)))
+            + " (" + std::to_string(requestedLanguage) + ") but "
+            + chosen + " is "
+            + ke::kotor::languageName(loaded->language())
+            + " (" + std::to_string(loaded->language()) + ")";
+        return false;
+    }
+    const auto applyPatch = [&](const char* resref, std::size_t replaceCount) {
+        const auto data = install.find(resref, 2018);
+        if (!data.has_value()) {
+            return true;
+        }
+        try {
+            const Tlk patch = Tlk::parse(*data, std::string(resref) + ".tlk");
+            *loaded = Tlk::merge(*loaded, patch, std::string(resref) + "_merged.tlk",
+                                 replaceCount);
+            return true;
+        } catch (const FormatError& exception) {
+            error = exception.what();
+            return false;
+        }
+    };
+    if (!applyPatch("replace", static_cast<std::size_t>(-1))
+        || !applyPatch("append", 0)) {
+        return false;
+    }
+    tlk_ = std::move(loaded);
+    return true;
+}
+
 std::uint32_t Localization::languageId() const
 {
     return tlk_.has_value() ? tlk_->language() : 0;
