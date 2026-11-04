@@ -10,7 +10,7 @@ evidence.
 
 ```text
 100% tests passed, 0 tests failed out of 51
-Total Test Time (real) = 982.14 sec
+Total Test Time (real) = 1067.95 sec
 ```
 
 New CTest targets: `kotor_save_matrix`, `kotor_differential`,
@@ -134,20 +134,22 @@ asserts every action ID the retail engine executed is implemented:
 - **0 missing**.
 
 `kotor_retail_differential` then records the engine's own semantic trace for the
-same new-game/Endar Spire path and diffs it against `live-05-semantic.jsonl`:
+same new-game/Endar Spire path and diffs it against every recorded live trace
+(`live-02` through `live-05`):
 
-- engine trace: **7,751 actions**, **9 dialogue choices**, **1 transition**
+- engine trace: **7,761 actions**, **9 dialogue choices**, **1 transition**
   (choice and transition counts asserted);
-- retail `end_m01aa` script actions: **89**;
+- retail traces: **110 / 124 / 124 / 102** unique action IDs, **127 unique**
+  across the set;
+- retail `end_m01aa` script actions: **93 / 108 / 108 / 89**;
 - executed across the playthrough + drained VM corpus (357 action IDs) +
-  eight branch-gated probes: **367 action IDs**, **0 missing execution**;
-- **0 missing implementation** across the full 102-ID retail set.
+  thirteen branch-gated probes: **372 action IDs**;
+- **0 missing execution** and **0 missing implementation** for every trace.
 
-Action IDs are restricted to the actions the shipped `end_m01aa` scripts use;
-menu/chargen-only retail IDs are reported separately. Eight branch-gated
-actions are recorded with phase `probe` (three talent/AI and five
-perception/movement queries) because their combat or perception branches are
-state-gated.
+Both the module-restricted and full retail sets are checked; menu/chargen IDs
+are reported but no longer excluded. Thirteen branch-gated actions are recorded
+with phase `probe` (talent/AI, perception/movement and combat-result queries)
+because their branches are state-gated.
 
 Evidence: `docs/evidence/s14/retail-trace.log`,
 `docs/evidence/s14/retail-trace-coverage.json`,
@@ -163,11 +165,11 @@ comparison. The 117-module baseline is unchanged and still green.
 
 ## 10. Regression
 
-- **CTest: 51/51 passed** (982.14 s).
+- **CTest: 51/51 passed** (1067.95 s).
 - **117/117 modules**, 0 failures, 0 warnings, 11,887 entities, 51 encounters.
 - **VM corpus: 8,666/8,666**, 0 mismatches, 303,616 ACTION calls.
-- **GL/Vulkan parity: 0.0000 mean abs channel diff this run**, PASS (tolerance
-  gate; previous runs stay below 0.09).
+- **GL/Vulkan parity: 0.0815 mean abs channel diff this run**, PASS (tolerance
+  gate).
 - **Python tools: 143 tests, 7 skips**, 0 failures.
 - **Install sentinel: 15,380 files, 0 session changes.**
 
@@ -204,6 +206,10 @@ comparison. The 117-module baseline is unchanged and still green.
 - `docs/evidence/s14/retail-trace-coverage.json`
 - `docs/evidence/s14/engine-semantic.jsonl`
 - `docs/evidence/s14/retail-differential.json`
+- `docs/evidence/s14/retail-differential-live-02-semantic.json`
+- `docs/evidence/s14/retail-differential-live-03-semantic.json`
+- `docs/evidence/s14/retail-differential-live-04-semantic.json`
+- `docs/evidence/s14/retail-differential-live-05-semantic.json`
 - `docs/evidence/s14/retail-differential-engine.log`
 - `docs/evidence/s14/vm-actions.log`
 - `docs/evidence/s14/vm-actions.jsonl`

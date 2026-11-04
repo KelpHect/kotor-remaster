@@ -1,0 +1,177 @@
+{
+  "choices_ok": true,
+  "engine_actions": 7761,
+  "engine_details": {
+    "choices": 9,
+    "phases": {
+      "generic": 4206,
+      "host": 719,
+      "probe": 13,
+      "specific": 2823
+    },
+    "transitions": 1
+  },
+  "engine_only": [
+    {
+      "action": 6,
+      "name": "AssignCommand"
+    },
+    {
+      "action": 13,
+      "name": "SetPartyLeader"
+    },
+    {
+      "action": 43,
+      "name": "ActionOpenDoor"
+    },
+    {
+      "action": 44,
+      "name": "ActionCloseDoor"
+    },
+    {
+      "action": 62,
+      "name": "GetStringRight"
+    },
+    {
+      "action": 63,
+      "name": "GetStringLeft"
+    },
+    {
+      "action": 152,
+      "name": "SetReturnStrref"
+    },
+    {
+      "action": 202,
+      "name": "ActionWait"
+    },
+    {
+      "action": 205,
+      "name": "ActionPauseConversation"
+    },
+    {
+      "action": 206,
+      "name": "ActionResumeConversation"
+    },
+    {
+      "action": 262,
+      "name": "GetFirstInPersistentObject"
+    },
+    {
+      "action": 286,
+      "name": "GetHasSkill"
+    },
+    {
+      "action": 319,
+      "name": "GetDistanceBetween2D"
+    },
+    {
+      "action": 324,
+      "name": "SetLocked"
+    },
+    {
+      "action": 341,
+      "name": "GetClassByPosition"
+    },
+    {
+      "action": 383,
+      "name": "ActionForceMoveToObject"
+    },
+    {
+      "action": 515,
+      "name": "RevealMap"
+    },
+    {
+      "action": 517,
+      "name": "ShowTutorialWindow"
+    },
+    {
+      "action": 575,
+      "name": "RemovePartyMember"
+    },
+    {
+      "action": 579,
+      "name": "SetGlobalBoolean"
+    },
+    {
+      "action": 580,
+      "name": "GetGlobalNumber"
+    },
+    {
+      "action": 581,
+      "name": "SetGlobalNumber"
+    },
+    {
+      "action": 695,
+      "name": "RemoveAvailableNPC"
+    },
+    {
+      "action": 716,
+      "name": "SetMinOneHP"
+    },
+    {
+      "action": 719,
+      "name": "SetGlobalFadeIn"
+    },
+    {
+      "action": 720,
+      "name": "SetGlobalFadeOut"
+    },
+    {
+      "action": 723,
+      "name": "GetLastForcePowerUsed"
+    },
+    {
+      "action": 726,
+      "name": "GetWasForcePowerSuccessful"
+    },
+    {
+      "action": 733,
+      "name": "PlayMovie"
+    },
+    {
+      "action": 759,
+      "name": "NoClicksFor"
+    }
+  ],
+  "engine_trace": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\engine-semantic.jsonl",
+  "engine_unique": 82,
+  "executed_union": 372,
+  "expected_choices": 9,
+  "expected_transitions": 1,
+  "missing_all_execution": [],
+  "missing_all_implementation": [],
+  "missing_execution": [],
+  "missing_implementation": [],
+  "module": "end_m01aa",
+  "module_used_actions": 190,
+  "pass": true,
+  "retail_actions": 11059,
+  "retail_only_not_in_module": [
+    65,
+    66,
+    195,
+    221,
+    248,
+    254,
+    255,
+    256,
+    259,
+    261,
+    323,
+    331,
+    375,
+    489,
+    522,
+    565,
+    701
+  ],
+  "retail_script_actions": 93,
+  "retail_trace": "artifacts\\lanes\\s4-trace\\live-02-semantic.jsonl",
+  "retail_unique": 110,
+  "schema": "kotor.retail-differential/1",
+  "transitions_ok": true,
+  "vm_coverage": [
+    "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\vm-actions.jsonl"
+  ],
+  "vm_unique": 357
+}

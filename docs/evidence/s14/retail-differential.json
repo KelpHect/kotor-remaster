@@ -1,149 +1,28 @@
 {
-  "choices_ok": true,
-  "engine_actions": 7756,
-  "engine_details": {
-    "choices": 9,
-    "phases": {
-      "generic": 4206,
-      "host": 719,
-      "probe": 8,
-      "specific": 2823
-    },
-    "transitions": 1
-  },
-  "engine_only": [
+  "engine_trace": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\engine-semantic.jsonl",
+  "pass": true,
+  "schema": "kotor.retail-differential-set/1",
+  "traces": [
     {
-      "action": 1,
-      "name": "PrintString"
+      "pass": true,
+      "report": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\retail-differential-live-02-semantic.json",
+      "trace": "artifacts\\lanes\\s4-trace\\live-02-semantic.jsonl"
     },
     {
-      "action": 13,
-      "name": "SetPartyLeader"
+      "pass": true,
+      "report": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\retail-differential-live-03-semantic.json",
+      "trace": "artifacts\\lanes\\s4-trace\\live-03-semantic.jsonl"
     },
     {
-      "action": 43,
-      "name": "ActionOpenDoor"
+      "pass": true,
+      "report": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\retail-differential-live-04-semantic.json",
+      "trace": "artifacts\\lanes\\s4-trace\\live-04-semantic.jsonl"
     },
     {
-      "action": 44,
-      "name": "ActionCloseDoor"
-    },
-    {
-      "action": 59,
-      "name": "GetStringLength"
-    },
-    {
-      "action": 62,
-      "name": "GetStringRight"
-    },
-    {
-      "action": 63,
-      "name": "GetStringLeft"
-    },
-    {
-      "action": 65,
-      "name": "GetSubString"
-    },
-    {
-      "action": 66,
-      "name": "FindSubString"
-    },
-    {
-      "action": 202,
-      "name": "ActionWait"
-    },
-    {
-      "action": 205,
-      "name": "ActionPauseConversation"
-    },
-    {
-      "action": 206,
-      "name": "ActionResumeConversation"
-    },
-    {
-      "action": 232,
-      "name": "StringToInt"
-    },
-    {
-      "action": 262,
-      "name": "GetFirstInPersistentObject"
-    },
-    {
-      "action": 319,
-      "name": "GetDistanceBetween2D"
-    },
-    {
-      "action": 324,
-      "name": "SetLocked"
-    },
-    {
-      "action": 383,
-      "name": "ActionForceMoveToObject"
-    },
-    {
-      "action": 515,
-      "name": "RevealMap"
-    },
-    {
-      "action": 517,
-      "name": "ShowTutorialWindow"
-    },
-    {
-      "action": 575,
-      "name": "RemovePartyMember"
-    },
-    {
-      "action": 579,
-      "name": "SetGlobalBoolean"
-    },
-    {
-      "action": 580,
-      "name": "GetGlobalNumber"
-    },
-    {
-      "action": 695,
-      "name": "RemoveAvailableNPC"
-    },
-    {
-      "action": 759,
-      "name": "NoClicksFor"
+      "pass": true,
+      "report": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\retail-differential-live-05-semantic.json",
+      "trace": "artifacts\\lanes\\s4-trace\\live-05-semantic.jsonl"
     }
   ],
-  "engine_trace": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\engine-semantic.jsonl",
-  "engine_unique": 77,
-  "executed_union": 367,
-  "expected_choices": 9,
-  "expected_transitions": 1,
-  "missing_all_execution": [],
-  "missing_all_implementation": [],
-  "missing_execution": [],
-  "missing_implementation": [],
-  "module": "end_m01aa",
-  "module_used_actions": 190,
-  "pass": true,
-  "retail_actions": 3008,
-  "retail_only_not_in_module": [
-    195,
-    221,
-    254,
-    255,
-    256,
-    259,
-    261,
-    323,
-    375,
-    489,
-    522,
-    565,
-    701
-  ],
-  "retail_script_actions": 89,
-  "retail_trace": "artifacts/lanes/s4-trace/live-05-semantic.jsonl",
-  "retail_unique": 102,
-  "schema": "kotor.retail-differential/1",
-  "transitions_ok": true,
-  "vm_coverage": [
-    "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\vm-actions.jsonl"
-  ],
-  "vm_unique": 357
+  "vm_coverage": "E:\\Projects\\kotor-remaster\\kotor-remaster\\docs\\evidence\\s14\\vm-actions.jsonl"
 }

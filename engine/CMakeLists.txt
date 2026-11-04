@@ -416,6 +416,9 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                                  --engine $<TARGET_FILE:kotor_engine>
                                  --install "${KOTOR_TEST_INSTALL}"
                                  --corpus "${CMAKE_SOURCE_DIR}/../artifacts/lanes/04-ncs/extracted/unique"
+                                 --retail-trace "${KOTOR_RETAIL_TRACE_DIR}/live-02-semantic.jsonl"
+                                 --retail-trace "${KOTOR_RETAIL_TRACE_DIR}/live-03-semantic.jsonl"
+                                 --retail-trace "${KOTOR_RETAIL_TRACE_DIR}/live-04-semantic.jsonl"
                                  --retail-trace "${KOTOR_RETAIL_TRACE_DIR}/live-05-semantic.jsonl"
                                  --module-usage "${CMAKE_SOURCE_DIR}/../artifacts/lanes/s1-04-scripts/module_action_usage.csv"
                                  --action-table "${CMAKE_SOURCE_DIR}/src/script/ActionTable.inc"
