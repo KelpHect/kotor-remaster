@@ -118,10 +118,18 @@ not a claim that a full quest-completion playthrough has already been played.
   proof. A real end-to-end run still needs player input or a quest bot.
 - External `.rsv` shadow files now parse ERF/MOD/SAV and RIM containers; a
   future container form still needs a fixture.
-- Non-default `CamVidEffect` remains evidence-bounded: the shipped K1 corpus
-  contains only -1/0, so the engine rejects non-default values instead of
-  inventing semantics.
-- EAX reverb remains a damped-stereo approximation; Miles/EAX bit parity would
-  require the original proprietary algorithm.
+- `videoeffects.2da` post-processing (`EnableVideoEffect`/`DisableVideoEffect`,
+  DLG `CamVidEffect`) runs on GL and Vulkan. Per retail, only a static dialogue
+  camera applies a row, -1 leaves the state unchanged, other cameras and the end
+  of the dialogue disable it, and undefined rows are rejected and counted. The
+  scan-noise texture is a deterministic procedural stand-in; the retail pass
+  order and per-frame noise regeneration are unverified.
+- Reverb is a parameter-faithful FDN with early reflections (not bit-exact
+  Miles/EAX): per-room parameters come from the ARE `EnvAudio` of the listener's
+  room, sends are on positional voices only at 0.6, music and movies stay dry.
+  Not implemented: Creative DSP texture, modulation (UNDERWATER), air absorption,
+  LF decay, room rolloff, DecayHFRatio > 1, the AmbientScale volume ramp; ids >= 24
+  map to GENERIC (inferred) and the retail level source beyond the constructor
+  was not fully traced.
 - The shipped chargen screens are functional, but `3D_MODEL*`/`MODEL_LBL` and
   portrait textures are still placeholders.

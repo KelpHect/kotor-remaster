@@ -1,6 +1,7 @@
 #pragma once
 
 #include "kotor/Formats.h"
+#include "render/Backend.h"
 #include "render/SceneView.h"
 
 #include <volk.h>
@@ -33,6 +34,27 @@ public:
 
     VkImageView depthView() const { return depthView_; }
     bool ready() const { return pipeline_ != VK_NULL_HANDLE; }
+
+    // 3D GUI preview support. A preview instance is initialize()d for its pipelines
+    // and descriptors but never resize()d: it draws into the swapchain's depth.
+    // Preview scenes may have no static geometry.
+    void setPreviewMode(bool enabled) { previewMode_ = enabled; }
+    // Frees the uploaded scene (meshes, textures); the caller waits for the device.
+    void clearScene();
+    // Inside an active dynamic-rendering pass (colour + depth attachment): clears the
+    // view rectangle (top-left origin, clamped to the window) in colour and depth,
+    // draws the view's entities, then restores the full-window viewport and scissor.
+    void drawView(VkCommandBuffer commandBuffer, const PreviewView& view, VkExtent2D windowExtent);
+
+    // Independent RGBA8 images for ImGui; the caller registers the view with ImGui.
+    struct UiImage {
+        VkImage image = VK_NULL_HANDLE;
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        VkImageView view = VK_NULL_HANDLE;
+    };
+    bool createUiImage(int width, int height, const std::uint8_t* rgba, UiImage& out,
+                       std::string& error);
+    void destroyUiImage(UiImage& image);
 
 private:
     struct GpuTexture {
@@ -102,6 +124,7 @@ private:
     kotor::Vec3 fogColor_{0.06f, 0.07f, 0.10f};
     float fogNear_ = 40.0f;
     float fogFar_ = 160.0f;
+    bool previewMode_ = false;
 };
 
 } // namespace ke

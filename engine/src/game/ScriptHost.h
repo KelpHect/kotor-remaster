@@ -25,6 +25,7 @@ namespace ke {
 
 class GameSession;
 struct WorldSim;
+class MiniGameWorld;
 struct ScriptApi;
 
 using ScriptArgs = script::ActionRuntime::Args;
@@ -136,6 +137,13 @@ enum class ActorActionKind {
     PlayAnimation,
     Attack,
     CastSpell,
+    RandomWalk,
+    FollowObject,
+    MoveAwayFromObject,
+    BarkString,
+    EquipMostDamaging,
+    CutsceneAttack,
+    UseSkill,
 };
 
 struct ActorAction {
@@ -158,6 +166,8 @@ struct ActorAction {
     std::int32_t spell = -1;   // CastSpell: spells.2da row. Attack: combat feat, or -1.
     bool fake = false;         // ActionCastFakeSpell*: no cost, no impact script.
     std::int64_t location = 0; // CastSpell at a location: the LocationData record.
+    std::int32_t result = 0;   // CutsceneAttack: ATTACK_RESULT_*. EquipMostDamaging: 1 ranged.
+    std::int32_t amount = 0;   // CutsceneAttack: damage. UseSkill: sub-skill.
 };
 
 // One effect on a creature, as ApplyEffectToObject left it. `effect` keeps the
@@ -213,6 +223,18 @@ struct ActorState {
     std::vector<AppliedEffect> effects;
     std::size_t effectCursor = 0;              // GetFirstEffect / GetNextEffect
     std::map<std::uint32_t, std::uint8_t> perceived; // bit 0 seen, bit 1 heard. retail 00517a20
+    // Movement memory scripts read back. retail creature +0x33c, +0x508.
+    std::uint32_t blockingDoor = script::kObjectInvalid;
+    std::uint32_t blockingCreature = script::kObjectInvalid;
+    std::uint32_t attemptedMoveTarget = script::kObjectInvalid;
+    bool blockedRaised = false; // One OnBlocked per episode of being stopped.
+    // SetIsDestroyable
+    bool destroyable = true;
+    bool raiseable = true;
+    bool selectableWhenDead = false;
+    // SetLightsaberPowered
+    bool saberOverride = false;
+    bool saberPowered = true;
 };
 
 enum class ActorStep { Arrived, Moving, Blocked };
@@ -333,6 +355,9 @@ void registerPartyActions(HandlerTable& table);
 void registerCombatActions(HandlerTable& table);
 void registerWorldStateActions(HandlerTable& table);
 void registerEventActions(HandlerTable& table);
+// ACT_508/510 video effects; only fills slots no other family has claimed.
+void registerVideoEffectActions(HandlerTable& table);
+void registerMiniGameActions(HandlerTable& table);
 
 // Everything a handler sees: typed argument access, return helpers and the
 // session. A handler returns std::nullopt to fall through to the legacy switch
@@ -515,6 +540,12 @@ int runWorldStateFamilyTest(GameSession& game);
 int runItemsFamilyTest(GameSession& game);
 // The object-queries family gate, behind --family-test objects.
 int runObjectsFamilyTest(GameSession& game);
+// Shipped minigame modules (MiniGame3D.cpp, ScriptMiniGame.cpp).
+void createMiniGame(ScriptApi api);
+void startMiniGame(ScriptApi api);
+void tickMiniGame(ScriptApi api, float dt);
+// The minigame gate, behind --family-test minigame3d.
+int runMiniGame3DFamilyTest(GameSession& game);
 void tickActors(ScriptApi api, float dt);
 void tickEvents(ScriptApi api);
 void tickHeartbeats(ScriptApi api, float dt);
@@ -539,6 +570,11 @@ bool creatureHasPerceived(ScriptApi api, std::uint32_t observer, std::uint32_t t
                           std::uint8_t bits);
 bool isDebilitated(ScriptApi api, std::uint32_t object);
 bool isDisablingEffect(std::int32_t type);
+bool runCutsceneAttackAction(ScriptApi api, std::uint32_t self, float dt);
+// Sum of class levels (ScriptObjects.cpp).
+std::int32_t creatureTotalLevel(ScriptApi api, std::uint32_t object);
+// ActionEquipMostDamagingMelee / Ranged (ScriptItems.cpp).
+bool equipMostDamaging(GameSession& session, std::uint32_t creature, bool ranged, bool offHand);
 void healCreature(ScriptApi api, std::uint32_t object, std::int32_t amount);
 void killCreature(ScriptApi api, std::uint32_t object, std::uint32_t killer);
 void resurrectCreature(ScriptApi api, std::uint32_t object);
@@ -549,6 +585,64 @@ std::int32_t effectTotal(ScriptApi api, std::uint32_t object, std::int32_t type,
 bool hasEffectOfType(ScriptApi api, std::uint32_t object, std::int32_t type);
 // The combat family gate, behind --family-test combat.
 int runCombatFamilyTest(GameSession& game);
+
+// ---- ending and presentation (ScriptWorldState.cpp) -------------------------
+
+// EndGame and the credits panel. retail client fields: +0x1a8 pending, +0x374
+// timer, +0x1ac show GUI; +0x4b8 credits active (00535570, 00602eb0, 005f4c60).
+struct GameEndingState {
+    bool pending = false;
+    float timer = 0.0f;
+    bool showGui = false;
+    bool gameOverPanel = false;
+    bool ended = false; // The world is torn down; the UI returns to the main menu.
+    bool credits = false;
+    bool creditsTransparent = false;
+    std::vector<std::int32_t> creditPages; // credits.2da strrefs.
+    std::size_t creditPage = 0;
+    bool creditFadeIn = true; // retail panel +0x5e8
+    float creditClock = 0.0f; // retail panel +0x5d8
+    float creditOpacity = 0.0f;
+    float creditScrollLeft = 0.0f;
+};
+
+// UI and cinematic requests scripts make, read by the UI layer and the bot.
+struct PresentationState {
+    std::int32_t dialogPlaceableCamera = -1;
+    bool battleMusic = false;
+    std::map<std::string, std::int32_t> roomAnimations; // lower-case room name
+    bool returnOption = false; // SetReturnStrref
+    std::int32_t returnStrref = 0;
+    std::int32_t returnQueryStrref = 0;
+    bool tutorialWindowsEnabled = true;
+    std::set<std::int32_t> tutorialsShown;
+    std::int32_t tutorialPending = -1;
+    bool holdFadeInForDialog = false;
+    std::int32_t lastBarkStrref = -1;
+    std::uint32_t lastBarkSpeaker = script::kObjectInvalid;
+    bool scriptPaused = false;
+    std::int32_t buttonMashCheck = 0;
+    float musicVolume = 1.0f;
+    std::uint32_t upgradeItem = script::kObjectInvalid;
+    bool upgradeScreen = false;
+    bool levelUpScreen = false;
+    std::int32_t autosaves = 0;
+    struct AreaVisual { std::int32_t effect = 0; kotor::Vec3 position; };
+    std::vector<AreaVisual> areaVisuals;
+    struct SoundFade { std::uint32_t entity = 0; float start = 1.0f; float length = 0.0f; float left = 0.0f; };
+    std::vector<SoundFade> soundFades;
+    std::map<std::uint32_t, float> soundFixedVariance;
+};
+
+// retail 00602eb0 tear-down plus the credits panel timing. Ticked by tickWorldState.
+void tickEnding(ScriptApi api, float dt);
+// The ending gate, behind --family-test endgame.
+int runEndgameFamilyTest(GameSession& game);
+// The gate for the last shipped-script actions, behind --family-test actions.
+int runRemainingActionsFamilyTest(GameSession& game);
+// --action-coverage: per-action handler status. Returns 0 when every action a shipped
+// script uses has a handler or a documented no-op.
+int runActionCoverage(GameSession& game, const std::string& corpusDir, const std::string& outPath);
 
 // ---- session state ---------------------------------------------------------
 
@@ -561,6 +655,10 @@ struct WorldSim {
     std::deque<ScriptEvent> events;
     // Retail's global DAT_00832828: set by ExecuteScript, never restored (00535b70).
     std::int32_t runScriptVar = -1;
+
+    // Set while the current module's area has a MiniGame struct.
+    std::shared_ptr<MiniGameWorld> miniGame;
+    std::uint32_t miniGameSeed = 1;
 
     // Combat family. TalentSpell and friends hand out one record per talent.
     std::map<std::pair<std::int32_t, std::int32_t>, std::int64_t> talents;
@@ -593,6 +691,9 @@ struct WorldSim {
 
     std::map<std::string, std::shared_ptr<const std::vector<script::Instruction>>> decoded;
     std::map<std::string, std::vector<std::uint8_t>> injectedScripts;
+
+    GameEndingState ending;
+    PresentationState presentation;
 
     // World-state family. Cutscene and UI state lives here, not in the renderer.
     FadeState fade;

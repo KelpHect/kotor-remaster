@@ -597,6 +597,13 @@ GameSession::GameSession(std::string installPath, std::string module, int langua
     }
     if (rules_.loaded()) {
         character_ = rules_.createCharacter(0, 1);
+        // The default avatar is a portraits.2da PC row; its Sex is the PC's gender.
+        if (const std::int32_t row = rules_.portraitRowForAppearance(
+                static_cast<std::int32_t>(playerAppearance_));
+            row >= 0) {
+            character_.portraitRow = row;
+            character_.gender = rules_.portraitRow(row).sex;
+        }
     } else {
         character_.str = 14;
         character_.dex = 12;
@@ -691,6 +698,7 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
     if (runtime_ != nullptr && !sim_->restoringSave && !previousModule.empty()) {
         leaveModule();
     }
+    sim_->miniGame.reset();
     kotor::Scene loaded = kotor::loadModule(install_, module);
     module_ = module;
     scene_ = std::move(loaded);
@@ -742,7 +750,8 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
         if (!audioError.empty()) {
             scene_.warnings.push_back(audioError);
         }
-        audio_->setListener(position_, yaw_);
+        audio_->setListener(controlledPosition(), yaw_);
+        audio_->setListenerRoom(roomNameAt(controlledPosition()));
     }
     if (runtime_) {
         initScriptWorld();
@@ -757,10 +766,11 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
     placePartyAtEntry();
     // Arriving on top of a transition trigger must not bounce straight back: it
     // fires again only after the player has walked out of it.
+    const kotor::Vec3 arrival = controlledPosition();
     for (std::size_t i = 0; i < scene_.triggers.size() && i < triggerInside_.size(); ++i) {
         const std::size_t entity = scene_.triggers[i].entity;
         if (entity < scene_.entities.size() && !scene_.entities[entity].linkedModule.empty()
-            && pointInTrigger(scene_.triggers[i], position_.x, position_.y)) {
+            && pointInTrigger(scene_.triggers[i], arrival.x, arrival.y)) {
             triggerInside_[i] = true;
         }
     }
@@ -771,10 +781,11 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
 float GameSession::floorHeightAt(float x, float y) const
 {
     float ground = 0.0f;
-    if (floorHeight(scene_, x, y, position_.z + 2.0f, ground)) {
+    const float reference = controlledPosition().z;
+    if (floorHeight(scene_, x, y, reference + 2.0f, ground)) {
         return ground;
     }
-    return position_.z;
+    return reference;
 }
 
 std::size_t GameSession::findEntity(const std::string& tag) const
@@ -820,7 +831,7 @@ bool GameSession::runHookForTest(const std::string& hook, const std::string& tag
     if (it == scene_.entities[index].scripts.end() || it->second.empty()) {
         return false;
     }
-    runHook(hook, index, entering == 0 ? scriptWorld_.pc : entering);
+    runHook(hook, index, entering == 0 ? controlledObject() : entering);
     return true;
 }
 
@@ -1100,9 +1111,21 @@ void GameSession::applyCharacter(const CharacterSheet& sheet)
     if (!sheet.name.empty()) {
         playerName_ = sheet.name;
     }
+    // A chosen portrait row decides the body (appearance.2da) by class, as retail
+    // portcust does (006f90f0); the row's Sex is the avatar's gender.
+    if (sheet.portraitRow >= 0 && rules_.loaded()) {
+        const std::int32_t appearance =
+            rules_.portraitAppearance(sheet.portraitRow, sheet.classId);
+        if (appearance >= 0 && static_cast<std::uint32_t>(appearance) != playerAppearance_) {
+            setPlayerAppearance(static_cast<std::uint32_t>(appearance));
+        }
+    }
     syncPlayerToScriptWorld();
     if (thirdPerson_) {
         spawnPlayerAvatar();
+    }
+    if (playerEntity_ != static_cast<std::size_t>(-1) && playerEntity_ < scene_.entities.size()) {
+        scene_.entities[playerEntity_].stats.gender = character_.gender;
     }
 }
 
@@ -1143,6 +1166,7 @@ void GameSession::spawnPlayerAvatar()
     playerEntity_ = kotor::spawnPlayerAvatar(scene_, install_, playerAppearance_,
                                              playerName_, position_, playerBearing_);
     if (playerEntity_ != static_cast<std::size_t>(-1)) {
+        scene_.entities[playerEntity_].stats.gender = character_.gender;
         syncScriptWorld();
         initAnimations();
     }
@@ -1158,11 +1182,15 @@ void GameSession::updatePlayerAvatar(float dt, bool moving)
     kotor::Entity& entity = scene_.entities[playerEntity_];
     entity.position = position_;
     entity.bearing = playerBearing_;
-    const kotor::Vec3 target{position_.x, position_.y, position_.z + 1.3f};
+    // The camera orbits the controlled creature, so the hide-when-too-close test
+    // applies to that creature's body (the PC's avatar, or the companion's).
+    const kotor::Vec3 focus = controlledPosition();
+    const std::size_t body = controlledEntity();
+    const kotor::Vec3 target{focus.x, focus.y, focus.z + 1.3f};
     const kotor::Vec3 back{std::cos(yaw_), std::sin(yaw_), 0.0f};
     float distance = 3.2f;
     kotor::Vec3 eye{target.x - back.x * distance, target.y - back.y * distance,
-                    position_.z + 1.55f};
+                    focus.z + 1.55f};
     const bool noClip = cameraNoClip_;
     while (!noClip && distance > 0.65f
            && wallBlocked(scene_, {target.x, target.y, eye.z}, eye, 0.22f)) {
@@ -1174,7 +1202,7 @@ void GameSession::updatePlayerAvatar(float dt, bool moving)
     if (visible != playerVisible_) {
         playerVisible_ = visible;
         for (kotor::EntityMesh& mesh : scene_.entityMeshes) {
-            if (mesh.entity == playerEntity_) {
+            if (mesh.entity == body && body != static_cast<std::size_t>(-1)) {
                 mesh.visible = visible;
             }
         }
@@ -1494,38 +1522,42 @@ void GameSession::updateEncounters(float dt)
 
 void GameSession::updateParty(float dt)
 {
-    if (companions_.empty() || playerDead_) {
+    // Solo mode: nobody follows. Retail stores the flag (PT_SOLOMODE) and clears a
+    // per-creature state bit on every party member when it is switched off
+    // (retail 00547ce0 -> 00565500 -> 00563c60); what the bit does was not
+    // recovered, so "followers stop following while solo is on" is an engine rule.
+    if (party_.solo || companions_.empty() || controlledDead()) {
         return;
     }
-    kotor::Vec3 anchor = position_;
-    float anchorYaw = yaw_;
-    if (leaderTag_ != "PC") {
-        const std::size_t leader = findEntity(leaderTag_);
-        if (leader != static_cast<std::size_t>(-1)) {
-            anchor = scene_.entities[leader].position;
-            anchorYaw = scene_.entities[leader].bearing;
-        }
-    }
+    // Every creature that is not the controlled one follows it through the same
+    // follow code: the members, and the PC when a companion is steered.
+    const std::uint32_t leader = controlledObject();
+    const kotor::Vec3 anchor = controlledPosition();
+    const float anchorYaw = yaw_;
+    ScriptApi api{*this};
     int slot = 0;
+    const auto follow = [&](std::uint32_t self) {
+        // A creature fights through its queue and the shipped AI; following is for
+        // when it has nothing to do.
+        const ActorState& actor = api.actor(self);
+        if (actor.queue.empty() && !actor.combat.inCombat) {
+            followLeader(self, anchor, formationSlot(anchor, anchorYaw, slot, 1.6f), dt);
+        }
+        ++slot;
+    };
+    if (leader != scriptWorld_.pc && !playerDead_) {
+        follow(scriptWorld_.pc);
+    }
     for (CompanionState& companion : companions_) {
         const std::size_t index = findEntity(companion.tag);
         if (index == static_cast<std::size_t>(-1) || scene_.entities[index].dead) {
             continue;
         }
-        if (companion.tag == leaderTag_) {
+        const std::uint32_t self = objectForEntity(index);
+        if (self == leader) {
             continue;
         }
-        // A companion fights through its queue and the shipped AI; following is for
-        // when it has nothing to do.
-        {
-            const ActorState& actor = ScriptApi{*this}.actor(objectForEntity(index));
-            if (!actor.queue.empty() || actor.combat.inCombat) {
-                ++slot;
-                continue;
-            }
-        }
-        followLeader(index, anchor, formationSlot(anchor, anchorYaw, slot, 1.6f), dt);
-        ++slot;
+        follow(self);
     }
 }
 
@@ -1592,16 +1624,21 @@ void GameSession::initScriptWorld()
     sim_->carried.clear();
     syncPartyViews();
     syncScriptWorld();
+    createMiniGame(ScriptApi{*this});
     if (returning) {
         refreshHostility();
         if (!sim_->restoringSave) {
             runReturnScripts();
         }
+        startMiniGame(ScriptApi{*this});
         return;
     }
     initMerchants();
     runSpawnAndEnterScripts();
     spawnEncounters();
+    // Retail's client loads the MiniGame after the server's module-load scripts have run:
+    // k_pebo_mgload zeroes the fighter count that the fighters' OnCreate then counts up.
+    startMiniGame(ScriptApi{*this});
 }
 
 ScriptContext GameSession::hookContext(const std::string& hook, std::uint32_t entering) const
@@ -1912,49 +1949,71 @@ void GameSession::resolvePazaakIfOver()
     }
 }
 
-void GameSession::startSwoop()
+bool GameSession::miniGameActive() const
 {
-    swoop_.reset();
-    swoopActive_ = true;
-    turretActive_ = false;
-    logEvent("minigame swoop start");
+    return sim_->miniGame != nullptr;
 }
 
-void GameSession::startTurret()
+void GameSession::miniGameSetInput(const MiniGameInput& input)
 {
-    turret_.reset();
-    turretActive_ = true;
-    swoopActive_ = false;
-    logEvent("minigame turret start");
+    if (sim_->miniGame) {
+        sim_->miniGame->input = input;
+    }
 }
 
-void GameSession::updateSwoop(float dt, float throttle, bool boost, bool brake)
+MiniGameView GameSession::miniGameView() const
 {
-    if (!swoopActive_) {
+    if (!sim_->miniGame) {
+        return {};
+    }
+    MiniGameView view = sim_->miniGame->view();
+    view.endGamePending = sim_->ending.pending || sim_->ending.ended;
+    view.endGameGui = sim_->ending.showGui;
+    return view;
+}
+
+MiniGameWorld* GameSession::miniGame()
+{
+    return sim_->miniGame.get();
+}
+
+const MiniGameWorld* GameSession::miniGame() const
+{
+    return sim_->miniGame.get();
+}
+
+void GameSession::setMiniGameSeed(std::uint32_t seed)
+{
+    sim_->miniGameSeed = seed;
+    if (sim_->miniGame) {
+        sim_->miniGame->reseed(seed);
+    }
+}
+
+void GameSession::setMiniGameMeshesHidden(bool hidden)
+{
+    if (sim_->miniGame) {
+        sim_->miniGame->setMeshesHidden(hidden);
+        bakeMiniGame();
+    }
+}
+
+void GameSession::bakeMiniGame()
+{
+    if (sim_->miniGame && sim_->miniGame->bake(scene_) != 0) {
+        ++animationRevision_;
+    }
+}
+
+void GameSession::update(float dt, const InputState& rawInput)
+{
+    // retail 00602eb0 has torn the world down; nothing ticks until a new game loads.
+    if (dt <= 0.0f || gameEnded()) {
         return;
     }
-    swoop_.update(dt, throttle, boost, brake);
-    if (swoop_.state().finished) {
-        spaceLastEvent_ = "finish";
-    }
-}
-
-void GameSession::updateTurret(float dt)
-{
-    if (!turretActive_) {
-        return;
-    }
-    turret_.update(dt);
-    if (turret_.state().hitPoints <= 0) {
-        spaceLastEvent_ = "death";
-    }
-}
-
-void GameSession::update(float dt, const InputState& input)
-{
-    if (dt <= 0.0f) {
-        return;
-    }
+    // A minigame's player follows its track: walking input never reaches the avatar.
+    const InputState idleInput{};
+    const InputState& input = miniGameActive() ? idleInput : rawInput;
     dt = std::min(dt, 0.08f);
     elapsed_ += dt;
     if (activeLip_.has_value() && dialogueView_.active) {
@@ -2004,8 +2063,22 @@ void GameSession::update(float dt, const InputState& input)
     yaw_ += input.mouseDx * 0.0026f;
     pitch_ = clamp(pitch_ - input.mouseDy * 0.0022f, -1.35f, 1.35f);
 
+    // The input steers the controlled creature. A companion leads through
+    // stepControlledCompanion (PartyControl.cpp); the PC's own body keeps position_
+    // and is moved by the follow code like any member.
     float forwardAxis = 0.0f;
     float rightAxis = 0.0f;
+    const bool companionLead = companionControlled();
+    float magnitude = 0.0f;
+    bool queueWalked = false;
+    if (companionLead) {
+        stepControlledCompanion(dt, input);
+        queueWalked = nav_ && nav_->playerStepped;
+        if (nav_) {
+            nav_->playerStepped = false;
+        }
+        updatePlayerAvatar(dt, queueWalked);
+    } else {
     // A non-commandable player does not respond to input; a commandable one
     // drops whatever was queued as soon as they steer.
     ActorState& pcActor = sim_->actors[scriptWorld_.pc];
@@ -2023,7 +2096,7 @@ void GameSession::update(float dt, const InputState& input)
     const float sinYaw = std::sin(yaw_);
     kotor::Vec3 desired{cosYaw * forwardAxis + sinYaw * rightAxis,
                         sinYaw * forwardAxis - cosYaw * rightAxis, 0.0f};
-    const float magnitude = std::sqrt(desired.x * desired.x + desired.y * desired.y);
+    magnitude = std::sqrt(desired.x * desired.x + desired.y * desired.y);
     if (magnitude > 1.0e-5f) {
         desired = desired * (1.0f / magnitude);
     }
@@ -2060,14 +2133,15 @@ void GameSession::update(float dt, const InputState& input)
     if (magnitude > 1.0e-5f) {
         playerBearing_ = std::atan2(desired.y, desired.x);
     }
-    const bool queueWalked = nav_ && nav_->playerStepped;
+    queueWalked = nav_ && nav_->playerStepped;
     if (nav_) {
         nav_->playerStepped = false;
     }
     updatePlayerAvatar(dt, magnitude > 1.0e-5f || queueWalked);
+    }
 
     if (audio_) {
-        if (magnitude > 1.0e-5f && grounded_) {
+        if (!companionLead && magnitude > 1.0e-5f && grounded_) {
             footstepTimer_ += dt;
             if (footstepTimer_ >= 0.42f) {
                 footstepTimer_ = 0.0f;
@@ -2093,6 +2167,9 @@ void GameSession::update(float dt, const InputState& input)
     updateCombat(dt);
     updateParty(dt);
     tickParty(dt);
+    if (!moviePlaying_) {
+        tickMiniGame(ScriptApi{*this}, dt);
+    }
     updateTimers(dt);
     tickEvents(ScriptApi{*this});
     tickActors(ScriptApi{*this}, dt);
@@ -2101,7 +2178,8 @@ void GameSession::update(float dt, const InputState& input)
     updateEncounters(dt);
     syncPlayerToScriptWorld();
     if (audio_) {
-        audio_->setListener(position_, yaw_);
+        audio_->setListener(controlledPosition(), yaw_);
+        audio_->setListenerRoom(roomNameAt(controlledPosition()));
     }
     if (!pendingModule_.empty()) {
         const std::string next = pendingModule_;
@@ -2150,6 +2228,9 @@ const ModuleSnapshot* GameSession::moduleSnapshot(const std::string& module) con
 
 SceneCamera GameSession::camera() const
 {
+    if (sim_->miniGame && !dialogueView_.active) {
+        return sim_->miniGame->camera();
+    }
     if (dialogueView_.active && dialogueCameraModel_ && !dialogueCameraClip_.empty()) {
         const float time = std::min(dialogueCameraTime_, dialogueCameraDuration_);
         const std::optional<kotor::Mdl::Pose> pose = dialogueCameraModel_->nodePose(
@@ -2169,7 +2250,15 @@ SceneCamera GameSession::camera() const
     }
     if (dialogueView_.active && dialogueView_.cameraAngle >= 1
         && dialogueView_.cameraAngle <= 3) {
-        kotor::Vec3 speaker = position_;
+        // The listener is the controlled creature unless the line names another.
+        kotor::Vec3 listener = controlledPosition();
+        if (dialogueView_.listenerObject != controlledObject()) {
+            if (const std::size_t named = entityOfObject(dialogueView_.listenerObject);
+                named != static_cast<std::size_t>(-1)) {
+                listener = scene_.entities[named].position;
+            }
+        }
+        kotor::Vec3 speaker = listener;
         if (activeDialogue_.has_value()) {
             for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
                 if (objectForEntity(i) == activeDialogue_->npcObject) {
@@ -2181,7 +2270,7 @@ SceneCamera GameSession::camera() const
         const SceneCamera preset = presetCamera(dialogueView_.cameraAngle,
                                                 dialogueView_.camHeightOffset,
                                                 dialogueView_.tarHeightOffset,
-                                                speaker, position_);
+                                                speaker, listener);
         if (preset.fovYDegrees > 0.0f) {
             return preset;
         }
@@ -2192,16 +2281,18 @@ SceneCamera GameSession::camera() const
             return camera;
         }
     }
+    // The camera follows the controlled creature (the PC, or a companion).
+    const kotor::Vec3 focus = controlledPosition();
     if (thirdPerson_ && playerVisible_) {
         const kotor::Vec3 forward{std::cos(pitch_) * std::cos(yaw_),
                                   std::cos(pitch_) * std::sin(yaw_),
                                   std::sin(pitch_)};
-        const kotor::Vec3 target{position_.x, position_.y, position_.z + 1.3f};
+        const kotor::Vec3 target{focus.x, focus.y, focus.z + 1.3f};
         const kotor::Vec3 back{std::cos(yaw_), std::sin(yaw_), 0.0f};
         float distance = 3.2f;
         kotor::Vec3 eye{target.x - back.x * distance, target.y - back.y * distance,
-                        std::clamp(position_.z + 1.55f - std::sin(pitch_) * 1.4f,
-                                   position_.z + 0.55f, position_.z + 2.3f)};
+                        std::clamp(focus.z + 1.55f - std::sin(pitch_) * 1.4f,
+                                   focus.z + 0.55f, focus.z + 2.3f)};
         const bool noClip = cameraNoClip_;
         while (!noClip && distance > 0.65f
                && wallBlocked(scene_, {target.x, target.y, eye.z}, eye, 0.22f)) {
@@ -2212,7 +2303,7 @@ SceneCamera GameSession::camera() const
         if (distance < 1.5f) {
             eye.x = target.x - back.x * 0.8f;
             eye.y = target.y - back.y * 0.8f;
-            eye.z = position_.z + 2.25f;
+            eye.z = focus.z + 2.25f;
         }
         float floor = eye.z;
         if (floorHeight(scene_, eye.x, eye.y, eye.z + 1.0f, floor)
@@ -2229,7 +2320,7 @@ SceneCamera GameSession::camera() const
         return camera;
     }
     SceneCamera camera;
-    camera.eye = {position_.x, position_.y, position_.z + kEyeHeight};
+    camera.eye = {focus.x, focus.y, focus.z + kEyeHeight};
     camera.forward = {std::cos(pitch_) * std::cos(yaw_), std::cos(pitch_) * std::sin(yaw_),
                       std::sin(pitch_)};
     camera.up = {0.0f, 0.0f, 1.0f};
@@ -2362,7 +2453,7 @@ const kotor::Entity* GameSession::nearestDoor(float maxDistance) const
         if (entity.kind != kotor::EntityKind::Door) {
             continue;
         }
-        const float distance = distance2D(position_, entity.position);
+        const float distance = distance2D(controlledPosition(), entity.position);
         if (distance < bestDistance) {
             bestDistance = distance;
             best = &entity;
@@ -2375,12 +2466,16 @@ const kotor::Entity* GameSession::nearestConversation(float maxDistance) const
 {
     const kotor::Entity* best = nullptr;
     float bestDistance = maxDistance;
+    // The steered creature cannot be the one it talks to.
+    const std::size_t self = companionControlled() ? controlledEntity()
+                                                   : static_cast<std::size_t>(-1);
     for (const kotor::Entity& entity : scene_.entities) {
         if ((entity.kind != kotor::EntityKind::Creature && entity.kind != kotor::EntityKind::Placeable)
-            || entity.conversation.empty() || entity.dead) {
+            || entity.conversation.empty() || entity.dead
+            || static_cast<std::size_t>(&entity - scene_.entities.data()) == self) {
             continue;
         }
-        const float distance = distance2D(position_, entity.position);
+        const float distance = distance2D(controlledPosition(), entity.position);
         if (distance < bestDistance) {
             bestDistance = distance;
             best = &entity;
@@ -2408,7 +2503,7 @@ std::string GameSession::interactionPrompt() const
         if (entity.kind != kotor::EntityKind::Placeable || !entity.useable || entity.dead) {
             continue;
         }
-        if (distance2D(position_, entity.position) < 2.5f) {
+        if (distance2D(controlledPosition(), entity.position) < 2.5f) {
             return "E: use " + (entity.name.empty() ? entity.tag : entity.name);
         }
     }
@@ -2431,9 +2526,9 @@ bool GameSession::interact()
         // goes straight to its conversation.
         const auto hook = talk->scripts.find("ScriptDialogue");
         if (hook != talk->scripts.end() && !hook->second.empty()) {
-            const ScriptContext context{{"lastSpeaker", scriptWorld_.pc},
+            const ScriptContext context{{"lastSpeaker", controlledObject()},
                                         {"listenPattern", static_cast<std::uint32_t>(-1)}};
-            runHook("ScriptDialogue", index, scriptWorld_.pc, &context);
+            runHook("ScriptDialogue", index, controlledObject(), &context);
             return true;
         }
         return startDialogue(index);
@@ -2457,7 +2552,7 @@ bool GameSession::interact()
         if (entity.kind != kotor::EntityKind::Store) {
             continue;
         }
-        if (distance2D(position_, entity.position) < 3.0f && openStore(i)) {
+        if (distance2D(controlledPosition(), entity.position) < 3.0f && openStore(i)) {
             setUiPanel(UiPanel::Merchant);
             return true;
         }
@@ -2467,7 +2562,7 @@ bool GameSession::interact()
         if (entity.kind != kotor::EntityKind::Placeable || !entity.useable || entity.dead) {
             continue;
         }
-        if (distance2D(position_, entity.position) < 2.5f) {
+        if (distance2D(controlledPosition(), entity.position) < 2.5f) {
             return usePlaceable(i);
         }
     }
@@ -2494,13 +2589,19 @@ float GameSession::pathDistanceTo(std::size_t entityIndex) const
         return -1.0f;
     }
     const kotor::Vec3 target = scene_.entities[entityIndex].position;
-    kotor::Vec3 at = position_;
+    kotor::Vec3 at = controlledPosition();
     float travelled = 0.0f;
     for (int step = 0; step < 600; ++step) {
         const float dx = target.x - at.x;
         const float dy = target.y - at.y;
         const float remaining = std::sqrt(dx * dx + dy * dy);
         if (remaining <= 0.5f) {
+            return travelled;
+        }
+        // A body's width from something against a wall is as near as walking gets
+        // (kPlayerRadius stops the steps below), and no wall stands between: arm's length.
+        // The 1 m is this engine's; retail's approach point was not traced.
+        if (remaining <= 1.0f && !wallBlocked(scene_, at, target, 0.0f)) {
             return travelled;
         }
         const float stride = std::min(0.4f, remaining - 0.5f);
@@ -2539,7 +2640,7 @@ bool GameSession::inReach(std::size_t entityIndex, float range) const
     if (entityIndex >= scene_.entities.size()) {
         return false;
     }
-    if (distance2D(position_, scene_.entities[entityIndex].position) > range) {
+    if (distance2D(controlledPosition(), scene_.entities[entityIndex].position) > range) {
         return false;
     }
     const float path = pathDistanceTo(entityIndex);
@@ -2574,7 +2675,8 @@ bool GameSession::testTransition(std::string& from, std::string& to)
 
 void GameSession::faceTowards(kotor::Vec3 target)
 {
-    yaw_ = std::atan2(target.y - position_.y, target.x - position_.x);
+    const kotor::Vec3 from = controlledPosition();
+    yaw_ = std::atan2(target.y - from.y, target.x - from.x);
     pitch_ = 0.0f;
 }
 
@@ -2608,10 +2710,10 @@ bool GameSession::walkTo(kotor::Vec3 target, float maxSeconds)
     int steps = std::max(1, static_cast<int>(maxSeconds * 60.0f));
     // Each closed door on the way costs one stop, as it does a player.
     for (int leg = 0; leg < 8; ++leg) {
-        if (distance2D(position_, target) < 0.6f) {
+        if (distance2D(controlledPosition(), target) < 0.6f) {
             return true;
         }
-        if (!moveTo(target, 0.6f, distance2D(position_, target) > 4.0f)) {
+        if (!moveTo(target, 0.6f, distance2D(controlledPosition(), target) > 4.0f)) {
             return false;
         }
         while (steps-- > 0 && movePending()) {
@@ -2625,10 +2727,10 @@ bool GameSession::walkTo(kotor::Vec3 target, float maxSeconds)
             break;
         }
     }
-    return distance2D(position_, target) < 1.2f;
+    return distance2D(controlledPosition(), target) < 1.2f;
 }
 
-bool GameSession::loadDialogue(const std::string& resref, kotor::Dlg& dlg)
+bool GameSession::loadDialogue(const std::string& resref, kotor::Dlg& dlg, int speakerGender)
 {
     if (resref.empty()) {
         return false;
@@ -2639,7 +2741,9 @@ bool GameSession::loadDialogue(const std::string& resref, kotor::Dlg& dlg)
     }
     try {
         kotor::Gff gff = kotor::Gff::parse(std::move(*data), resref + ".dlg");
-        dlg = kotor::Dlg::parse(gff, tlk_ ? &*tlk_ : nullptr, resref);
+        // NPC lines read the speaker's gender, player lines the player's.
+        dlg = kotor::Dlg::parse(gff, tlk_ ? &*tlk_ : nullptr, resref, speakerGender,
+                                character_.gender);
         return true;
     } catch (const kotor::FormatError&) {
         return false;
@@ -2678,7 +2782,9 @@ bool GameSession::startConversation(std::uint32_t owner, const std::string& resr
         return false;
     }
     kotor::Dlg dlg;
-    if (!loadDialogue(resref, dlg)) {
+    const int speakerGender = entityIndex != static_cast<std::size_t>(-1)
+        ? scene_.entities[entityIndex].stats.gender : 0;
+    if (!loadDialogue(resref, dlg, speakerGender)) {
         logEvent("missing dialogue " + resref);
         return false;
     }
@@ -2770,7 +2876,8 @@ void GameSession::setDialogueForTest(kotor::Dlg dlg, std::string resref,
 
 ScriptContext GameSession::dialogueContext() const
 {
-    const std::uint32_t pc = scriptWorld_.pc;
+    // GetPCSpeaker and the entering object: the creature the player steers.
+    const std::uint32_t pc = controlledObject();
     return {{"entering", pc}, {"exiting", pc}, {"caller", pc}, {"trigger", pc},
             {"lastSpeaker", pc}};
 }
@@ -2916,7 +3023,7 @@ void GameSession::showDialogueEntry(std::uint32_t entryIndex)
     dialogueView_.npcTag = activeDialogue_->npcTag;
     dialogueView_.speaker = activeDialogue_->speaker;
     dialogueView_.speakerObject = activeDialogue_->npcObject;
-    dialogueView_.listenerObject = scriptWorld_.pc;
+    dialogueView_.listenerObject = controlledObject();
     dialogueView_.delay = entry.delay;
     dialogueView_.waitFlags = entry.waitFlags;
     // Speaker and Listener name objects by tag; empty means owner and PC.
@@ -2939,12 +3046,10 @@ void GameSession::showDialogueEntry(std::uint32_t entryIndex)
     dialogueView_.cameraId = entry.cameraId;
     dialogueView_.cameraAngle = entry.cameraAngle;
     dialogueView_.camVidEffect = entry.camVidEffect;
-    if (entry.camVidEffect > 0) {
-        ++unsupportedCamVidEffects_;
-        logWarn(concat("CamVidEffect ", entry.camVidEffect, " on ",
-                       activeDialogue_->resref, " entry ", entryIndex,
-                       " is not supported; effect ignored"));
-    }
+    // Retail 006306e0: an entry's camera set-up applies its video effect on a
+    // static camera and disables any effect on every other camera.
+    videoEffects_.applyDialogueNode(install_, entry.camVidEffect,
+                                    entry.cameraAngle == 6 && entry.cameraId >= 0);
     dialogueView_.camHeightOffset = entry.camHeightOffset;
     dialogueView_.tarHeightOffset = entry.tarHeightOffset;
     setDialogueCameraClip(entry.cameraAnimation);
@@ -3003,11 +3108,11 @@ void GameSession::chooseDialogueOption(std::size_t optionIndex)
         dialogueView_.cameraAngle = reply.cameraAngle;
     }
     dialogueView_.camVidEffect = reply.camVidEffect;
-    if (reply.camVidEffect > 0) {
-        ++unsupportedCamVidEffects_;
-        logWarn(concat("CamVidEffect ", reply.camVidEffect, " on ",
-                       activeDialogue_->resref, " reply ", replyIndex,
-                       " is not supported; effect ignored"));
+    // Replies normally carry no camera and keep the entry's; only a reply with
+    // its own static camera runs the set-up that applies an effect (inferred:
+    // retail's per-node set-up for replies without a camera is not traced).
+    if (reply.cameraAngle == 6 && reply.cameraId >= 0) {
+        videoEffects_.applyDialogueNode(install_, reply.camVidEffect, true);
     }
     dialogueView_.camHeightOffset = reply.camHeightOffset;
     dialogueView_.tarHeightOffset = reply.tarHeightOffset;
@@ -3031,6 +3136,22 @@ void GameSession::chooseDialogueOption(std::size_t optionIndex)
     } else {
         showDialogueEntry(next);
     }
+}
+
+std::string GameSession::roomNameAt(kotor::Vec3 point)
+{
+    nav::NavMesh* mesh = navMesh();
+    if (mesh == nullptr || mesh->empty()) {
+        return {};
+    }
+    const int tri = mesh->locate(point);
+    if (tri < 0) {
+        return {};
+    }
+    const int room = mesh->tris()[static_cast<std::size_t>(tri)].room;
+    return room >= 0 && static_cast<std::size_t>(room) < scene_.rooms.size()
+        ? scene_.rooms[static_cast<std::size_t>(room)].room
+        : std::string{};
 }
 
 void GameSession::clearDialogueState()
@@ -3059,6 +3180,8 @@ void GameSession::finishDialogue(bool aborted)
     const std::string script = aborted ? activeDialogue_->dlg.endConversationAbort
                                        : activeDialogue_->dlg.endConversation;
     const ScriptContext context = dialogueContext();
+    // Retail 006332b0 (dialogue camera teardown) disables the video effect first.
+    videoEffects_.disable();
     clearDialogueState();
     if (!script.empty()) {
         runScriptWith(script, owner, context);
@@ -3074,15 +3197,21 @@ void GameSession::endDialogue()
 void GameSession::attackNearestHostile()
 {
     leaveStealth();
+    // The attack command belongs to the controlled creature.
+    const std::uint32_t attacker = controlledObject();
+    const kotor::Vec3 attackerAt = controlledPosition();
+    if (controlledDead()) {
+        return;
+    }
     std::size_t best = static_cast<std::size_t>(-1);
     float bestDistance = 20.0f;
     for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
         const kotor::Entity& entity = scene_.entities[i];
         if (entity.kind != kotor::EntityKind::Creature || entity.dead
-            || !isEnemy(ScriptApi{*this}, scriptWorld_.pc, objectForEntity(i))) {
+            || !isEnemy(ScriptApi{*this}, attacker, objectForEntity(i))) {
             continue;
         }
-        const float distance = distance2D(position_, entity.position);
+        const float distance = distance2D(attackerAt, entity.position);
         if (distance < bestDistance) {
             bestDistance = distance;
             best = i;
@@ -3097,14 +3226,14 @@ void GameSession::attackNearestHostile()
     // walks to range and runs rounds until the target falls (ScriptCombat.cpp).
     {
         ScriptApi api{*this};
-        std::erase_if(api.actor(scriptWorld_.pc).queue, [](const ActorAction& action) {
+        std::erase_if(api.actor(attacker).queue, [](const ActorAction& action) {
             return action.kind == ActorActionKind::Attack;
         });
         ActorAction attack;
         attack.kind = ActorActionKind::Attack;
         attack.object = objectForEntity(best);
         attack.userIssued = true;
-        api.enqueue(scriptWorld_.pc, std::move(attack));
+        api.enqueue(attacker, std::move(attack));
     }
     logEvent("combat target " + combatTargetName());
     if (audio_) {
@@ -3113,7 +3242,8 @@ void GameSession::attackNearestHostile()
     const kotor::Entity& target = scene_.entities[best];
     const float distance = distance2D(position_, target.position);
     const std::int32_t jump = rules_.forceJumpBonus(character_);
-    if (distance > 10.0f && jump > 0 && rules_.hasLightsaber(character_)) {
+    // The Force jump is the PC's own feat and sheet.
+    if (!companionControlled() && distance > 10.0f && jump > 0 && rules_.hasLightsaber(character_)) {
         const kotor::Vec3 direction = (position_ - target.position) * (1.0f / distance);
         position_ = target.position + direction * 2.0f;
         float ground = position_.z;
@@ -3195,11 +3325,13 @@ void GameSession::updateCombat(float dt)
             return action.kind == ActorActionKind::Attack;
         });
     }
-    // combatTarget_ is the UI's view of the player's attack command.
-    const auto attacking = std::find_if(pc.queue.begin(), pc.queue.end(), [](const ActorAction& action) {
+    // combatTarget_ is the UI's view of the controlled creature's attack command.
+    ActorState& steered = api.actor(controlledObject());
+    const auto attacking = std::find_if(steered.queue.begin(), steered.queue.end(),
+                                        [](const ActorAction& action) {
         return action.kind == ActorActionKind::Attack;
     });
-    if (attacking == pc.queue.end()) {
+    if (attacking == steered.queue.end()) {
         combatTarget_ = UINT32_MAX;
     } else if (const std::size_t index = api.entityFor(attacking->object);
                index != static_cast<std::size_t>(-1)) {
@@ -3240,7 +3372,11 @@ void GameSession::updateTriggers()
         if (scene_.entities[trigger.entity].dead) {
             continue;
         }
-        const bool inside = pointInTrigger(trigger, position_.x, position_.y);
+        // The creature the player steers is the one that enters and leaves (the PC,
+        // or a companion once switched to). Whether retail also fires a trigger for
+        // a party member that is not steered was not recovered.
+        const kotor::Vec3 steeredAt = controlledPosition();
+        const bool inside = pointInTrigger(trigger, steeredAt.x, steeredAt.y);
         if (inside == triggerInside_[i]) {
             continue;
         }
@@ -3248,12 +3384,12 @@ void GameSession::updateTriggers()
         // Hooks can spawn entities, so nothing keeps a reference across them.
         const std::size_t index = trigger.entity;
         if (inside) {
-            runHook("ScriptOnEnter", index, scriptWorld_.pc);
+            runHook("ScriptOnEnter", index, controlledObject());
             const kotor::Entity& entity = scene_.entities[index];
             logEvent("trigger " + entity.tag + ": enter " + entity.scriptOnEnter);
             // A trap trigger springs on the walk-in edge unless disarmed.
             if (entity.trapFlag) {
-                springTrap(index, scriptWorld_.pc);
+                springTrap(index, controlledObject());
             }
             // Honour LinkedToModule on the walk-in edge; the swap happens at the
             // end of the tick, never with this loop mid-flight. A KeyName that is
@@ -3273,7 +3409,7 @@ void GameSession::updateTriggers()
                 }
             }
         } else {
-            runHook("ScriptOnExit", index, scriptWorld_.pc);
+            runHook("ScriptOnExit", index, controlledObject());
             const kotor::Entity& entity = scene_.entities[index];
             logEvent("trigger " + entity.tag + ": exit " + entity.scriptOnExit);
         }
@@ -3631,6 +3767,13 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
     if (!rules_.loaded() || !character_.powers.contains(powerId)) {
         return false;
     }
+    // This path casts from the PC's sheet and Force pool. A steered companion casts
+    // through its action queue (ActionCastSpell*); the UI route is not built.
+    if (companionControlled()) {
+        lastForcePower_ = powerId;
+        lastForcePowerSuccess_ = false;
+        return false;
+    }
     const std::optional<ForcePowerInfo> info = rules_.forcePower(powerId);
     if (!info.has_value() || character_.fp < info->cost) {
         lastForcePower_ = powerId;
@@ -3868,127 +4011,6 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
     return true;
 }
 
-std::optional<std::vector<script::Value>> GameSession::spaceMinigameAction(
-    std::uint16_t actionId, const std::vector<std::vector<script::Value>>& args)
-{
-    const auto cell = [&](std::size_t index) -> script::Value {
-        return index < args.size() && !args[index].empty() ? args[index].front() : script::Value{};
-    };
-    const auto intArg = [&](std::size_t index) { return cell(index).asInt(); };
-    const auto objectArg = [&](std::size_t index) {
-        const script::Value value = cell(index);
-        return value.type == script::ValueType::Object
-            ? static_cast<std::uint32_t>(value.integer) : script::kObjectInvalid;
-    };
-    const auto isEnemy = [&](std::uint32_t object) {
-        return std::find(spaceEnemies_.begin(), spaceEnemies_.end(), object)
-            != spaceEnemies_.end();
-    };
-    switch (actionId) {
-    case 583: // SWMG_GetLastEvent
-        return std::vector<script::Value>{script::Value::makeString(spaceLastEvent_)};
-    case 584: // SWMG_GetLastEventModelName
-        return std::vector<script::Value>{script::Value::makeString("")};
-    case 585: { // SWMG_GetObjectByName
-        const std::string name = cell(0).asString();
-        if (lower(name) == "player") {
-            return objectCells(scriptWorld_.pc);
-        }
-        return objectCells(scriptWorld_.byTag(name, 0));
-    }
-    case 586: // SWMG_PlayAnimation
-    case 591: // SWMG_OnBulletHit
-    case 592: // SWMG_OnObstacleHit
-    case 598: // SWMG_OnDeath
-    case 605: // SWMG_OnDamage
-    case 607: // SWMG_RemoveAnimation
-    case 610: // SWMG_SetCameraClip
-        return std::vector<script::Value>{};
-    case 599: // SWMG_IsFollower
-    case 602: // SWMG_IsTrigger
-    case 603: // SWMG_IsObstacle
-        return intCells(0);
-    case 600: // SWMG_IsPlayer
-        return intCells(objectArg(0) == scriptWorld_.pc);
-    case 601: // SWMG_IsEnemy
-        return intCells(isEnemy(objectArg(0)) ? 1 : 0);
-    case 611: // SWMG_GetPlayer
-        return objectCells(scriptWorld_.pc);
-    case 612: { // SWMG_GetEnemyCount
-        if (spaceMode_ != SpaceMode::Turret) {
-            startTurret();
-            spaceMode_ = SpaceMode::Turret;
-            spaceLastEvent_.clear();
-        }
-        ensureSpaceEnemies();
-        return intCells(static_cast<std::int64_t>(spaceEnemies_.size()));
-    }
-    case 613: { // SWMG_GetEnemy
-        if (spaceMode_ != SpaceMode::Turret) {
-            startTurret();
-            spaceMode_ = SpaceMode::Turret;
-        }
-        ensureSpaceEnemies();
-        const std::size_t index = static_cast<std::size_t>(std::max<std::int64_t>(0, intArg(0)));
-        return objectCells(index < spaceEnemies_.size() ? spaceEnemies_[index]
-                                                        : script::kObjectInvalid);
-    }
-    case 614: // SWMG_GetObstacleCount
-        return intCells(0);
-    case 615: // SWMG_GetObstacle
-        return objectCells(script::kObjectInvalid);
-    case 616: { // SWMG_GetHitPoints
-        const std::uint32_t object = objectArg(0);
-        if (object == scriptWorld_.pc) {
-            return intCells(playerHp_);
-        }
-        if (isEnemy(object)) {
-            return intCells(100);
-        }
-        return intCells(0);
-    }
-    case 617: // SWMG_GetMaxHitPoints
-        return intCells(100);
-    case 618: // SWMG_SetMaxHitPoints
-        return std::vector<script::Value>{};
-    case 619: // SWMG_GetSphereRadius
-        return floatCells(1.0);
-    case 643: // SWMG_GetPlayerSpeed
-        if (spaceMode_ != SpaceMode::Swoop) {
-            startSwoop();
-            spaceMode_ = SpaceMode::Swoop;
-            spaceLastEvent_.clear();
-        }
-        return floatCells(swoop_.state().speed);
-    case 644: // SWMG_GetPlayerMinSpeed
-        return floatCells(0.0);
-    case 645: // SWMG_GetPlayerAccelerationPerSecond
-        return floatCells(70.0);
-    case 667: // SWMG_GetPlayerMaxSpeed
-        return floatCells(140.0);
-    default:
-        return std::nullopt;
-    }
-}
-
-void GameSession::ensureSpaceEnemies()
-{
-    if (!spaceEnemies_.empty()) {
-        return;
-    }
-    for (int i = 0; i < 5; ++i) {
-        const std::string tag = "space_enemy_" + std::to_string(i);
-        script::GameObject& object = scriptWorld_.addObject(tag, 100, 0, true);
-        spaceEnemies_.push_back(object.id);
-    }
-}
-
-std::uint32_t GameSession::spaceEnemy(std::size_t index)
-{
-    ensureSpaceEnemies();
-    return index < spaceEnemies_.size() ? spaceEnemies_[index] : script::kObjectInvalid;
-}
-
 std::optional<std::vector<script::Value>> GameSession::action(
     std::uint16_t actionId, const std::vector<std::vector<script::Value>>& args,
     script::World& world, script::Vm& vm)
@@ -4037,12 +4059,6 @@ std::optional<std::vector<script::Value>> GameSession::action(
                 static_cast<float>(args[index][1].asFloat()),
                 static_cast<float>(args[index][2].asFloat())};
     };
-    if (actionId >= 520 && actionId <= 730) {
-        if (auto handled = spaceMinigameAction(actionId, args); handled.has_value()) {
-            return handled;
-        }
-    }
-
     switch (actionId) {
     case 418: // GetGold
         return intCells(gold_);
@@ -4128,6 +4144,9 @@ std::optional<std::vector<script::Value>> GameSession::action(
         if (object != nullptr) {
             object->valid = false;
             object->attrs["destroyed"] = static_cast<std::int64_t>(1);
+            // GetObjectByTag must stop finding it: k_pend_door01 compares the party
+            // leader with the Trask the party screen spawned in place of this one.
+            std::erase(world.tags[object->tag], object->id);
             for (std::size_t i = 0; i < entityObjects_.size(); ++i) {
                 if (entityObjects_[i] == object->id && i < scene_.entities.size()) {
                     scene_.entities[i].dead = true;
@@ -4149,8 +4168,8 @@ std::optional<std::vector<script::Value>> GameSession::action(
                             : 0);
     case 701: // GetIsConversationActive
         return intCells(dialogueView_.active ? 1 : 0);
-    case 217: // GetIsPC
-        return intCells(objectArg(0) == world.pc ? 1 : 0);
+    case 217: // GetIsPC: the player list holds the steered creature (retail 004b2a50)
+        return intCells(objectArg(0) == controlledObject() ? 1 : 0);
     case 711: // GetLastConversation
         return std::vector<script::Value>{script::Value::makeString(
             activeDialogue_.has_value() ? activeDialogue_->npcTag : std::string{})};
@@ -4164,7 +4183,7 @@ std::optional<std::vector<script::Value>> GameSession::action(
         return objectCells(runtime_ != nullptr ? runtime_->contextObject("spellTarget")
                                                : script::kObjectInvalid);
     case 238: // GetPCSpeaker
-        return objectCells(world.pc);
+        return objectCells(controlledObject());
     case 245: // GetLastSpellCaster
         return objectCells(runtime_ != nullptr ? runtime_->contextObject("lastSpellCaster")
                                                : script::kObjectInvalid);
@@ -4426,10 +4445,14 @@ bool GameSession::save(const std::filesystem::path& path) const
     file << "hp=" << playerHp_ << "\n";
     file << "name=" << character_.name << "\n";
     file << "class=" << character_.classId << "\n";
+    file << "class2=" << character_.secondClassId << "\nclass2level=" << character_.secondClassLevel << "\n";
     file << "level=" << character_.level << "\n";
     file << "xp=" << character_.xp << "\n";
     file << "gold=" << gold_ << "\n";
     file << "alignment=" << character_.alignment << "\n";
+    file << "gender=" << character_.gender << "\n";
+    file << "portrait_row=" << character_.portraitRow << "\n";
+    file << "appearance=" << playerAppearance_ << "\n";
     file << "force_points=" << character_.fp << "\n";
     file << "max_force_points=" << character_.maxFp << "\n";
     file << "str=" << character_.str << "\ndex=" << character_.dex
@@ -4517,6 +4540,7 @@ bool GameSession::load(const std::filesystem::path& path)
     std::int32_t hp = playerHp_;
     CharacterSheet sheet = character_;
     std::int32_t gold = gold_;
+    long savedAppearance = -1;
     std::map<std::string, std::int32_t> journal;
     std::vector<std::string> party;
     std::vector<InventoryItem> inventory;
@@ -4580,6 +4604,10 @@ bool GameSession::load(const std::filesystem::path& path)
                 sheet.name = value;
             } else if (key == "class") {
                 sheet.classId = std::stoi(value);
+            } else if (key == "class2") {
+                sheet.secondClassId = std::stoi(value);
+            } else if (key == "class2level") {
+                sheet.secondClassLevel = std::stoi(value);
             } else if (key == "level") {
                 sheet.level = std::stoi(value);
             } else if (key == "xp") {
@@ -4588,6 +4616,12 @@ bool GameSession::load(const std::filesystem::path& path)
                 gold = std::stoi(value);
             } else if (key == "alignment") {
                 sheet.alignment = std::clamp(std::stoi(value), 0, 100);
+            } else if (key == "gender") {
+                sheet.gender = std::clamp(std::stoi(value), 0, 1);
+            } else if (key == "portrait_row") {
+                sheet.portraitRow = std::stoi(value);
+            } else if (key == "appearance") {
+                savedAppearance = std::stol(value);
             } else if (key == "force_points") {
                 sheet.fp = std::max(0, std::stoi(value));
             } else if (key == "max_force_points") {
@@ -4778,6 +4812,10 @@ bool GameSession::load(const std::filesystem::path& path)
             playerMaxHp_ = character_.maxHp;
         }
         playerHp_ = std::min(playerHp_, playerMaxHp_);
+        if (savedAppearance >= 0
+            && static_cast<std::uint32_t>(savedAppearance) != playerAppearance_) {
+            setPlayerAppearance(static_cast<std::uint32_t>(savedAppearance));
+        }
         gold_ = gold;
         journal_ = std::move(journal);
         selectedCompanion_ = -1;
@@ -4905,6 +4943,14 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder)
     character_.level = std::max(1, saved.level);
     character_.xp = saved.xp;
     character_.alignment = std::clamp(saved.alignment, 0, 100);
+    character_.gender = std::clamp(saved.gender, 0, 1);
+    character_.portraitRow = saved.portraitId;
+    if (saved.appearance >= 0 && saved.portraitId >= 0
+        && static_cast<std::uint32_t>(saved.appearance) != playerAppearance_) {
+        // Only a save that also names a portrait row carries a PC appearance; the
+        // fixed value older engine saves wrote (race row 6) is not a body.
+        setPlayerAppearance(static_cast<std::uint32_t>(saved.appearance));
+    }
     character_.fp = saved.forcePoints;
     character_.maxFp = std::max(saved.maxForcePoints, saved.forcePoints);
     character_.str = saved.str;
@@ -5048,6 +5094,12 @@ bool GameSession::saveOriginalSave(const std::filesystem::path& folder,
     save.saveName = saveName;
     save.pcName = character_.name;
     save.portrait = originalPortrait_.empty() ? "po_pmhc4" : originalPortrait_;
+    if (character_.portraitRow >= 0 && rules_.loaded()) {
+        const PortraitInfo info = rules_.portraitRow(character_.portraitRow);
+        if (!info.resref.empty()) {
+            save.portrait = info.resref;
+        }
+    }
     save.position = position_;
     save.yaw = yaw_;
     save.gold = gold_;
@@ -5057,6 +5109,9 @@ bool GameSession::saveOriginalSave(const std::filesystem::path& folder,
     save.level = character_.level;
     save.classId = character_.classId;
     save.alignment = character_.alignment;
+    save.gender = character_.gender;
+    save.portraitId = character_.portraitRow;
+    save.appearance = static_cast<std::int32_t>(playerAppearance_);
     save.forcePoints = character_.fp;
     save.maxForcePoints = character_.maxFp;
     save.str = character_.str;

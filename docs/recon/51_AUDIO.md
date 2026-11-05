@@ -57,19 +57,43 @@ listener yaw right vector `(sin yaw, -cos yaw)`. Looping wraps the cursor;
 non-looping voices retire at the end. The mixer is deterministic: the same
 buffer, cursor and call count produce identical samples.
 
-## 4. EAX approximation
+## 4. Environment reverb (parameter-faithful, not bit-exact Miles/EAX)
 
-`soundeax` presets map to `{delayMs, feedback, wet}`. The effects bus runs
-through a damped stereo echo:
+Retail drives Creative EAX through the Miles Sound System provider
+(`Msseax.m3d`). Evidence from `swkotor.exe` 1.0.3.0:
 
-```text
-delayed = delayLine[index]
-delayLine[index] = input + delayed * feedback
-output = input * (1 - wet) + delayed * wet
-```
+- `005d66d0` sets the room type (`AIL_set_3D_room_type`,
+  `AIL_set_digital_master_room_type`) and forwards the EAX2/EAX3 preference keys
+  (size, diffusion, room, room HF, decay time, decay HF ratio, reflections,
+  reflections delay, reverb, reverb delay, echo, modulation, air absorption, HF
+  reference) from a 24-row table at VA `0x74c610` (0x70 bytes per row). The table
+  matches the published EAX 3.0 presets; row 23 (`NOREVERB`) holds the GENERIC
+  parameters, so it is not silent by itself. Ids >= 24 only set room type 0.
+- The environment id is the `soundeax.2da` row index (the 2DA has only `label`
+  and a description). It comes from the ARE `Rooms` list (`EnvAudio` per room,
+  loader `00509780`); the GIT `AreaProperties/EnvAudio` is not read. 62 of the
+  106 shipped areas mix several environments. `005ee860` applies the room's
+  `EnvAudio` (and `AmbientScale`) when the room under the party changes.
+- Only 3D samples (`AIL_set_3D_sample_effects_level`, `005d71c0`) and positional
+  streams (`AIL_set_stream_reverb_levels`, `005dc560`) get a reverb send, a single
+  global level that defaults to 0.6 (`005d8813`). Music and movie streams have no
+  reverb call. `AmbientScale` is a separate per-room volume multiplier ramped at
+  1.0 per second (not a reverb level) and is not implemented here.
 
-`NOREVERB` disables the wet path. This is an explicit approximation, not a
-claim of Miles/EAX bit parity.
+The engine renders those parameters with `audio/Reverb.cpp`: a mono send into
+an 8-line feedback delay network (Householder mixing, Jot absorption gains for
+`DecayTime` and `DecayHFRatio`) plus tapped early reflections at
+`ReflectionsDelay`, late onset at `ReflectionsDelay + ReverbDelay`, room/
+reflections/reverb levels in millibel, `RoomHF` low-pass, input diffusion and an
+echo comb. The mixer holds two instances and equal-power crossfades (150 ms) on a
+room change. Everything is preallocated, runs with flush-to-zero set, and is
+deterministic. Not reproduced: the Creative DSP's late-field texture, modulation
+(`UNDERWATER`), air absorption, LF decay and room rolloff, and `DecayHFRatio`
+above 1 (`CAVE`, `PARKINGLOT`).
+
+`--audio-test` (`kotor_audio`) measures this against the preset parameters with
+an impulse: Schroeder-integral RT60, early-reflection onset, HF/LF decay ratio,
+L/R correlation, denormal cost, determinism, crossfade continuity and CPU cost.
 
 ## 5. Integration
 

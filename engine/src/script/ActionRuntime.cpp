@@ -294,6 +294,29 @@ std::vector<Value> ActionRuntime::call(std::uint16_t actionId, const Args& args,
     return generic(name, args, vm, actionId);
 }
 
+std::string ActionRuntime::fallbackKind(std::uint16_t actionId, Vm& vm)
+{
+    const std::string name = actionSpec(actionId).name;
+    const Args none;
+    const std::uint64_t queuedBefore = actionsQueued_;
+    if (specific(name, none, vm, actionId).has_value()) {
+        return actionsQueued_ != queuedBefore ? "queue-only" : "runtime-specific";
+    }
+    if (behaviors(name, none, actionId).has_value()) {
+        return "cell";
+    }
+    if (startsWith(name, "SWMG_")) {
+        return "swmg-cell";
+    }
+    if (startsWith(name, "Action")) {
+        return "queue-only";
+    }
+    if (name.size() > 1 && name[0] == 'd' && allDigits(name.substr(1))) {
+        return "dice";
+    }
+    return "default";
+}
+
 std::optional<std::vector<Value>> ActionRuntime::specific(const std::string& name, const Args& args,
                                                           Vm& vm, std::uint16_t actionId)
 {
@@ -457,7 +480,7 @@ std::vector<Value> ActionRuntime::swmg(const std::string& name, const Args& args
 {
     // The minigame actions are state cells; they are not exercised by the
     // slice, but the corpus uses the set/get/adjust subset.
-    static std::map<std::string, Value> store;
+    std::map<std::string, Value>& store = swmgStore_;
     if (startsWith(name, "SWMG_Set")) {
         if (!args.empty() && !args.back().empty()) {
             const std::vector<Value>& cells = args.back();

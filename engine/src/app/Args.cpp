@@ -336,6 +336,24 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.chargenGuiTest = true;
             continue;
         }
+        if (arg == "--chargen-preview-test") {
+            result.options.chargenPreviewTest = true;
+            result.options.chargenGui = true;
+            continue;
+        }
+        if (arg == "--new-game-flow-test") {
+            result.options.newGameFlowTest = true;
+            result.options.guiScreen = "mainmenu";
+            continue;
+        }
+        if (arg == "--chargen-preview-out") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--chargen-preview-out requires a directory");
+            }
+            result.options.chargenPreviewOut = value;
+            continue;
+        }
         if (arg == "--chargen-test") {
             result.options.chargenTest = true;
             continue;
@@ -370,6 +388,14 @@ ParseResult parseArguments(int argc, char** argv)
         }
         if (arg == "--family-test") {
             result.options.familyTest = requireValue();
+            continue;
+        }
+        if (arg == "--action-coverage") {
+            result.options.actionCoverage = requireValue();
+            continue;
+        }
+        if (arg == "--action-corpus") {
+            result.options.actionCorpus = requireValue();
             continue;
         }
         if (arg == "--player-appearance") {
@@ -436,6 +462,38 @@ ParseResult parseArguments(int argc, char** argv)
                 return fail(std::move(result), "--gui-action requires a control tag");
             }
             result.options.guiAction = value;
+            continue;
+        }
+        if (arg == "--video-effect-fixtures") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--video-effect-fixtures requires a directory");
+            }
+            result.options.videoEffectFixtures = value;
+            continue;
+        }
+        if (arg == "--video-effect-sequence") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--video-effect-sequence requires a comma list");
+            }
+            result.options.videoEffectSequence = value;
+            continue;
+        }
+        if (arg == "--video-effect-warmup") {
+            const char* value = requireValue();
+            if (value == nullptr) {
+                return fail(std::move(result), "--video-effect-warmup requires a frame count");
+            }
+            result.options.videoEffectWarmup = std::max(0, std::atoi(value));
+            continue;
+        }
+        if (arg == "--video-effect-shots") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--video-effect-shots requires a path prefix");
+            }
+            result.options.videoEffectShots = value;
             continue;
         }
         if (arg == "--audio-script") {
@@ -558,6 +616,10 @@ ParseResult parseArguments(int argc, char** argv)
                 return fail(std::move(result), "--install requires the KotOR install directory");
             }
             result.options.install = value;
+            continue;
+        }
+        if (arg == "--minigame-render-check") {
+            result.options.minigameRenderCheck = true;
             continue;
         }
         if (arg == "--screenshot") {
@@ -736,7 +798,8 @@ void printUsage()
         << "  --facial-demo <0-15>  Drive the lip-sync rig with a demo viseme\n"
         << "  --language <id|name>  Select the TLK language (default: auto)\n"
         << "  --gui-test            Assert all shipped GUI screens and control trees\n"
-        << "  --minigame-test       Assert pazaak/swoop/turret state machines\n"
+        << "  --minigame-test       Assert the pazaak state machine\n"
+        << "  --minigame-render-check  Compare a minigame frame with and without its meshes\n"
         << "  --localization-test   Assert TLK language and localized paths\n"
         << "  --vfs-test            Assert five-pass VFS and 2DA merges\n"
         << "  --k2-test             Assert KotOR 2 profile, geometry and 001EBO\n"
@@ -754,19 +817,27 @@ void printUsage()
         << "  --chargen             Start in interactive character generation\n"
         << "  --chargen-gui         Use the shipped classsel/abilities/skills/name screens\n"
         << "  --chargen-gui-test    Assert the shipped chargen screen flow headlessly\n"
+        << "  --chargen-preview-test  Pixel-assert the 3D chargen model controls (GL/Vulkan)\n"
+        << "  --chargen-preview-out <dir>  Save the preview test's captured frames as BMP\n"
         << "  --chargen-test        Assert the headless character-generation gate\n"
         << "  --campaign-test       Run the multi-act campaign continuity gate\n"
         << "  --avatar-test         Assert player/companion meshes and locomotion\n"
         << "  --third-person        Render the player avatar with an orbit camera\n"
         << "  --no-movies           Suppress module/movie overlays for inspection\n"
         << "  --camera-noclip       Disable third-person camera collision (debug)\n"
-        << "  --start-minigame <pazaak|swoop|turret>  Open a minigame panel\n"
+        << "  --start-minigame <pazaak|swoop|turret>  Open pazaak, or load a shipped race or turret module\n"
         << "  --family-test <name>  Run one Wave 2 family gate (e.g. worldstate)\n"
+        << "  --action-coverage <out.tsv>  Dump each action's handler status\n"
+        << "  --action-corpus <dir>  NCS scripts; fail when one uses an unhandled action\n"
         << "  --player-appearance <row>  appearance.2da row for the player (default 92)\n"
         << "  --player-name <text>  Player display name (default Player)\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"
         << "  --gui-screen <resref> Render one .gui screen in the debug UI\n"
         << "  --gui-action <tag>    Activate one control before rendering\n"
+        << "  --video-effect-fixtures <dir>  Folder of video_effect_*.ncs fixtures\n"
+        << "  --video-effect-sequence <a,b,..>  Run one fixture (row0,row1,row2,off) per frame\n"
+        << "  --video-effect-warmup <n>  Frames to render before the sequence starts\n"
+        << "  --video-effect-shots <prefix>  Write <prefix>-<i>.bmp after every sequence frame\n"
         << "  --audio-script <ncs>  Sound/music/ambient script bridge assertions\n"
         << "  --animation-script <ncs>  PlayAnimation script bridge assertions\n"
         << "  --combat-force-script <ncs>  Script bridge assertions for the combat-force gate\n"

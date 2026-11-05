@@ -53,6 +53,9 @@ struct Options {
     bool chargen = false;
     bool chargenGui = false;
     bool chargenGuiTest = false;
+    bool chargenPreviewTest = false; // pixel gate for the 3D chargen controls (needs a GPU backend)
+    std::string chargenPreviewOut;   // optional directory for the captured frames (BMP)
+    bool newGameFlowTest = false;    // main menu, New Game, chargen, first module (pointer events)
     bool chargenTest = false;
     bool campaignTest = false;
     bool avatarTest = false;
@@ -62,6 +65,8 @@ struct Options {
     std::string startMinigame;
     int playerAppearance = 92;
     std::string familyTest; // --family-test <name>: a Wave 2 family gate
+    std::string actionCoverage; // --action-coverage <out.tsv>: handler status per action
+    std::string actionCorpus;   // --action-corpus <dir>: scripts whose use is checked
 
     std::string playerName = "Player";
     std::string engineTrace;
@@ -78,6 +83,10 @@ struct Options {
     int language = -1;
     int facialDemo = -1;
     std::string audioScript;
+    std::string videoEffectFixtures; // directory with video_effect_*.ncs
+    std::string videoEffectSequence; // comma list of fixture stems, one per frame ("keep" = none)
+    int videoEffectWarmup = 0;       // frames to render before the sequence starts
+    std::string videoEffectShots;    // path prefix: BMP after every sequence frame
     std::string animationScript;
     std::string combatForceScript;
     std::string delayedTest;
@@ -93,6 +102,7 @@ struct Options {
     std::string install;
     std::string module;
     std::string screenshot;
+    bool minigameRenderCheck = false;
     std::string savePath;
     bool loadSave = false;
     std::string originalSaveLoad;

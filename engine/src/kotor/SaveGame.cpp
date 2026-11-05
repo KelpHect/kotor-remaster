@@ -325,6 +325,9 @@ void readPlayer(const Gff& gff, std::uint32_t structure, OriginalSave& save)
     save.maxHp = std::max(1, numberInt(gff, structure, "MaxHitPoints", save.hp));
     save.xp = numberInt(gff, structure, "Experience", 0);
     save.alignment = std::clamp(numberInt(gff, structure, "GoodEvil", 50), 0, 100);
+    save.gender = std::clamp(numberInt(gff, structure, "Gender", 0), 0, 1);
+    save.portraitId = numberInt(gff, structure, "PortraitId", -1);
+    save.appearance = numberInt(gff, structure, "Appearance_Type", -1);
     save.forcePoints = numberInt(gff, structure, "CurrentForce", 0);
     save.maxForcePoints = numberInt(gff, structure, "MaxForcePoints", 0);
     const auto classes = list(gff, structure, "ClassList");
@@ -726,7 +729,7 @@ GffNodePtr buildPlayerNode(const OriginalSave& save)
     node->addResRef("Conversation", "");
     node->addUInt8("Interruptable", 1);
     node->addInt32("Age", 0);
-    node->addUInt8("Gender", 0);
+    node->addUInt8("Gender", static_cast<std::uint32_t>(std::clamp(save.gender, 0, 1)));
     node->addUInt8("Race", 6);
     node->addString("Subrace", "");
     node->addUInt8("SubraceIndex", 0);
@@ -764,14 +767,16 @@ GffNodePtr buildPlayerNode(const OriginalSave& save)
     node->addInt16("MaxForcePoints", static_cast<std::int16_t>(save.maxForcePoints));
     node->addUInt32("Experience", static_cast<std::uint32_t>(save.xp));
     node->addUInt8("MovementRate", 0);
-    node->addUInt16("PortraitId", 26);
+    node->addUInt16("PortraitId", static_cast<std::uint32_t>(
+                                         save.portraitId >= 0 ? save.portraitId : 26));
     node->addUInt8("GoodEvil", static_cast<std::uint32_t>(std::clamp(save.alignment, 0, 100)));
     node->addUInt8("Color_Skin", 0);
     node->addUInt8("Color_Hair", 0);
     node->addUInt8("Color_Tattoo1", 0);
     node->addUInt8("Color_Tattoo2", 0);
     node->addUInt32("Phenotype", 0);
-    node->addUInt16("Appearance_Type", 6);
+    node->addUInt16("Appearance_Type", static_cast<std::uint32_t>(
+                                              save.appearance >= 0 ? save.appearance : 6));
     node->addUInt8("Appearance_Head", 1);
     node->addUInt8("DuplicatingHead", 255);
     node->addUInt8("UseBackupHead", 0);

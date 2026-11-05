@@ -48,6 +48,11 @@ constexpr GlEnum kGlFragmentShader = 0x8B30u;
 constexpr GlEnum kGlCompileStatus = 0x8B81u;
 constexpr GlEnum kGlLinkStatus = 0x8B82u;
 constexpr GlEnum kGlUnpackAlignment = 0x0CF5u;
+constexpr GlEnum kGlRepeat = 0x2901u;
+constexpr GlEnum kGlTexture1 = 0x84C1u;
+constexpr GlEnum kGlScissorTest = 0x0C11u;
+constexpr GlEnum kGlBack = 0x0405u;
+constexpr GlEnum kGlPackAlignment = 0x0D05u;
 
 struct Mat4 {
     float m[16]{};
@@ -178,6 +183,10 @@ bool GlScene::initialize(std::string& error)
     KE_LOAD_GL(PixelStorei, "glPixelStorei")
     KE_LOAD_GL(GenerateMipmap, "glGenerateMipmap")
     KE_LOAD_GL(GetError, "glGetError")
+    KE_LOAD_GL(DrawArrays, "glDrawArrays")
+    KE_LOAD_GL(CopyTexSubImage2D, "glCopyTexSubImage2D")
+    KE_LOAD_GL(Uniform3fv, "glUniform3fv")
+    KE_LOAD_GL(Scissor, "glScissor")
 #undef KE_LOAD_GL
 
     const char* vertexSource = R"GLSL(
@@ -247,7 +256,143 @@ void main() {
         program_ = 0;
         return false;
     }
+    std::string postError;
+    if (!createPostProgram(postError)) {
+        logWarn(concat("Video effect pass unavailable on OpenGL: ", postError));
+    }
     return true;
+}
+
+bool GlScene::createPostProgram(std::string& error)
+{
+    const char* vertexSource = R"GLSL(
+#version 450 core
+out vec2 vUv;
+void main() {
+    vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+    vUv = p;
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+)GLSL";
+    // Same maths as shaders/effect.frag (Vulkan) and applyVideoEffectCpu. The
+    // framebuffer copy has v = 0 at the bottom, so the screen-down coordinate
+    // used for the scan lines is 1 - v.
+    const char* fragmentSource = R"GLSL(
+#version 450 core
+in vec2 vUv;
+uniform sampler2D uScene;
+uniform sampler2D uNoise;
+uniform vec3 uRow0;
+uniform vec3 uRow1;
+uniform vec3 uRow2;
+uniform vec3 uNoiseScale;
+uniform vec3 uNoiseTranslate;
+uniform int uSaturation;
+uniform int uScan;
+out vec4 fragColor;
+void main() {
+    vec3 c = texture(uScene, vUv).rgb;
+    vec3 o = c;
+    if (uSaturation != 0) {
+        o = vec3(dot(uRow0, c), dot(uRow1, c), dot(uRow2, c));
+    }
+    if (uScan != 0) {
+        float t = (1.0 - vUv.y) * 7.5;
+        o += texture(uNoise, vec2(0.0, t)).rgb * uNoiseScale + uNoiseTranslate;
+    }
+    fragColor = vec4(clamp(o, 0.0, 1.0), 1.0);
+}
+)GLSL";
+    const GlUint vertex = compileShader(kGlVertexShader, vertexSource, error);
+    if (vertex == 0) {
+        return false;
+    }
+    const GlUint fragment = compileShader(kGlFragmentShader, fragmentSource, error);
+    if (fragment == 0) {
+        gl_.DeleteShader(vertex);
+        return false;
+    }
+    postProgram_ = gl_.CreateProgram();
+    gl_.AttachShader(postProgram_, vertex);
+    gl_.AttachShader(postProgram_, fragment);
+    gl_.LinkProgram(postProgram_);
+    GlInt linked = 0;
+    gl_.GetProgramiv(postProgram_, kGlLinkStatus, &linked);
+    gl_.DeleteShader(vertex);
+    gl_.DeleteShader(fragment);
+    if (linked == 0) {
+        char log[2048]{};
+        gl_.GetProgramInfoLog(postProgram_, static_cast<GlSizei>(sizeof(log)), nullptr, log);
+        error = std::string("video effect shader link failed: ") + log;
+        gl_.DeleteProgram(postProgram_);
+        postProgram_ = 0;
+        return false;
+    }
+    gl_.GenVertexArrays(1, &postVao_);
+    return true;
+}
+
+void GlScene::applyVideoEffect(int width, int height)
+{
+    if (!effect_.active() || postProgram_ == 0 || width <= 0 || height <= 0) {
+        return;
+    }
+    if (sceneCopy_ == 0 || copyWidth_ != width || copyHeight_ != height) {
+        if (sceneCopy_ == 0) {
+            gl_.GenTextures(1, &sceneCopy_);
+        }
+        gl_.BindTexture(kGlTexture2D, sceneCopy_);
+        gl_.TexParameteri(kGlTexture2D, kGlTextureMinFilter, static_cast<GlInt>(kGlLinear));
+        gl_.TexParameteri(kGlTexture2D, kGlTextureMagFilter, static_cast<GlInt>(kGlLinear));
+        gl_.TexParameteri(kGlTexture2D, kGlTextureWrapS, static_cast<GlInt>(kGlClampToEdge));
+        gl_.TexParameteri(kGlTexture2D, kGlTextureWrapT, static_cast<GlInt>(kGlClampToEdge));
+        gl_.TexImage2D(kGlTexture2D, 0, static_cast<GlInt>(kGlRgba8), width, height, 0, kGlRgba,
+                       kGlUnsignedByte, nullptr);
+        copyWidth_ = width;
+        copyHeight_ = height;
+    }
+    if (noiseTexture_ == 0) {
+        const std::vector<std::uint8_t> noise = makeScanNoiseTexture();
+        gl_.GenTextures(1, &noiseTexture_);
+        gl_.BindTexture(kGlTexture2D, noiseTexture_);
+        gl_.TexParameteri(kGlTexture2D, kGlTextureMinFilter, static_cast<GlInt>(kGlLinear));
+        gl_.TexParameteri(kGlTexture2D, kGlTextureMagFilter, static_cast<GlInt>(kGlLinear));
+        gl_.TexParameteri(kGlTexture2D, kGlTextureWrapS, static_cast<GlInt>(kGlRepeat));
+        gl_.TexParameteri(kGlTexture2D, kGlTextureWrapT, static_cast<GlInt>(kGlRepeat));
+        gl_.PixelStorei(kGlUnpackAlignment, 1);
+        gl_.TexImage2D(kGlTexture2D, 0, static_cast<GlInt>(kGlRgba8), kScanNoiseSize, kScanNoiseSize,
+                       0, kGlRgba, kGlUnsignedByte, noise.data());
+    }
+    gl_.ActiveTexture(kGlTexture0);
+    gl_.BindTexture(kGlTexture2D, sceneCopy_);
+    // The copy must come from the frame just drawn. screenshot() reads the front buffer
+    // and used to leave it as the read buffer, so the next effect frame copied the
+    // previously presented (already processed) image and compounded the effect.
+    gl_.ReadBuffer(kGlBack);
+    gl_.CopyTexSubImage2D(kGlTexture2D, 0, 0, 0, 0, 0, width, height);
+    gl_.ActiveTexture(kGlTexture1);
+    gl_.BindTexture(kGlTexture2D, noiseTexture_);
+    gl_.ActiveTexture(kGlTexture0);
+
+    gl_.Disable(kGlDepthTest);
+    gl_.Disable(kGlBlend);
+    gl_.UseProgram(postProgram_);
+    gl_.Uniform1i(gl_.GetUniformLocation(postProgram_, "uScene"), 0);
+    gl_.Uniform1i(gl_.GetUniformLocation(postProgram_, "uNoise"), 1);
+    const auto& m = effect_.matrix;
+    gl_.Uniform3fv(gl_.GetUniformLocation(postProgram_, "uRow0"), 1, &m[0]);
+    gl_.Uniform3fv(gl_.GetUniformLocation(postProgram_, "uRow1"), 1, &m[3]);
+    gl_.Uniform3fv(gl_.GetUniformLocation(postProgram_, "uRow2"), 1, &m[6]);
+    gl_.Uniform3fv(gl_.GetUniformLocation(postProgram_, "uNoiseScale"), 1, effect_.noiseScale.data());
+    gl_.Uniform3fv(gl_.GetUniformLocation(postProgram_, "uNoiseTranslate"), 1,
+                   effect_.noiseTranslate.data());
+    gl_.Uniform1i(gl_.GetUniformLocation(postProgram_, "uSaturation"), effect_.saturation ? 1 : 0);
+    gl_.Uniform1i(gl_.GetUniformLocation(postProgram_, "uScan"), effect_.scanNoise ? 1 : 0);
+    gl_.BindVertexArray(postVao_);
+    gl_.DrawArrays(kGlTriangles, 0, 3);
+    gl_.BindVertexArray(0);
+    gl_.UseProgram(0);
+    gl_.BindTexture(kGlTexture2D, 0);
 }
 
 GlUint GlScene::compileShader(GlEnum type, const char* source, std::string& error)
@@ -295,6 +440,24 @@ void GlScene::shutdown()
         gl_.DeleteProgram(program_);
         program_ = 0;
     }
+    if (postProgram_ != 0) {
+        gl_.DeleteProgram(postProgram_);
+        postProgram_ = 0;
+    }
+    if (postVao_ != 0) {
+        gl_.DeleteVertexArrays(1, &postVao_);
+        postVao_ = 0;
+    }
+    if (sceneCopy_ != 0) {
+        gl_.DeleteTextures(1, &sceneCopy_);
+        sceneCopy_ = 0;
+    }
+    if (noiseTexture_ != 0) {
+        gl_.DeleteTextures(1, &noiseTexture_);
+        noiseTexture_ = 0;
+    }
+    copyWidth_ = 0;
+    copyHeight_ = 0;
 }
 
 GlScene::GlMesh GlScene::uploadMesh(const std::vector<kotor::SceneVertex>& vertices,
@@ -408,7 +571,7 @@ void GlScene::render(const SceneCamera& camera, int width, int height)
     gl_.UseProgram(program_);
     const float aspect = static_cast<float>(width) / static_cast<float>(height);
     const Mat4 view = lookAt(camera.eye, camera.forward, camera.up);
-    const Mat4 projection = perspective(camera.fovYDegrees, aspect, 0.05f, 500.0f);
+    const Mat4 projection = perspective(camera.fovYDegrees, aspect, camera.nearClip, camera.farClip);
     const Mat4 viewProjection = multiply(projection, view);
     gl_.UniformMatrix4fv(gl_.GetUniformLocation(program_, "uViewProjection"), 1, 0, viewProjection.m);
     gl_.Uniform3f(gl_.GetUniformLocation(program_, "uAmbient"), ambient_.x, ambient_.y, ambient_.z);
@@ -456,6 +619,7 @@ void GlScene::render(const SceneCamera& camera, int width, int height)
     }
     gl_.Disable(kGlBlend);
     gl_.BindVertexArray(0);
+    applyVideoEffect(width, height);
     if (!loggedFirstFrame_) {
         loggedFirstFrame_ = true;
         const GlEnum drawError = gl_.GetError();
@@ -486,6 +650,7 @@ bool GlScene::screenshot(const std::filesystem::path& path, int width, int heigh
     gl_.ReadBuffer(kGlFront);
     gl_.PixelStorei(kGlUnpackAlignment, 1);
     gl_.ReadPixels(0, 0, width, height, kGlRgba, kGlUnsignedByte, pixels.data());
+    gl_.ReadBuffer(kGlBack);
     return writeBmp(path, width, height, pixels);
 }
 
@@ -519,6 +684,126 @@ void GlScene::destroyMovieFrame(GlUint& texture)
         gl_.DeleteTextures(1, &texture);
         texture = 0;
     }
+}
+
+void GlScene::renderView(const PreviewView& view, int windowWidth, int windowHeight)
+{
+    if (program_ == 0 || windowWidth <= 0 || windowHeight <= 0 || view.width <= 0
+        || view.height <= 0) {
+        return;
+    }
+    // Scissor rectangle: the view rectangle clamped to the window (top-left origin).
+    const int left = std::max(view.x, 0);
+    const int top = std::max(view.y, 0);
+    const int right = std::min(view.x + view.width, windowWidth);
+    const int bottom = std::min(view.y + view.height, windowHeight);
+    if (right <= left || bottom <= top) {
+        return;
+    }
+    gl_.Enable(kGlScissorTest);
+    // GL window coordinates have a bottom-left origin.
+    gl_.Scissor(left, windowHeight - bottom, right - left, bottom - top);
+    // The viewport keeps the full (unclamped) rectangle so a view that is partly
+    // outside the window is cropped instead of squashed.
+    gl_.Viewport(view.x, windowHeight - (view.y + view.height), view.width, view.height);
+    gl_.ClearColor(view.background.x, view.background.y, view.background.z, 1.0f);
+    gl_.ClearDepth(1.0);
+    gl_.Clear(kGlColorBufferBit | kGlDepthBufferBit);
+
+    if (!meshes_.empty()) {
+        gl_.Enable(kGlDepthTest);
+        gl_.DepthFunc(kGlLess);
+        gl_.UseProgram(program_);
+        const float aspect = static_cast<float>(view.width) / static_cast<float>(view.height);
+        const SceneCamera& camera = view.camera;
+        const Mat4 viewMatrix = lookAt(camera.eye, camera.forward, camera.up);
+        const Mat4 projection = perspective(camera.fovYDegrees, aspect, camera.nearClip, camera.farClip);
+        const Mat4 viewProjection = multiply(projection, viewMatrix);
+        gl_.UniformMatrix4fv(gl_.GetUniformLocation(program_, "uViewProjection"), 1, 0,
+                             viewProjection.m);
+        gl_.Uniform3f(gl_.GetUniformLocation(program_, "uAmbient"), ambient_.x, ambient_.y, ambient_.z);
+        gl_.Uniform3f(gl_.GetUniformLocation(program_, "uDiffuse"), diffuse_.x, diffuse_.y, diffuse_.z);
+        gl_.Uniform3f(gl_.GetUniformLocation(program_, "uFogColor"), fogColor_.x, fogColor_.y,
+                      fogColor_.z);
+        gl_.Uniform1f(gl_.GetUniformLocation(program_, "uFogNear"), fogNear_);
+        gl_.Uniform1f(gl_.GetUniformLocation(program_, "uFogFar"), fogFar_);
+        gl_.Uniform1i(gl_.GetUniformLocation(program_, "uTexture"), 0);
+        const GlInt modelLocation = gl_.GetUniformLocation(program_, "uModel");
+        for (const GlMesh& mesh : meshes_) {
+            if (!mesh.visible) {
+                continue;
+            }
+            Mat4 model = identity();
+            if (mesh.entity == UINT32_MAX) {
+                if (!view.drawStatic) {
+                    continue;
+                }
+            } else {
+                if (std::find(view.entities.begin(), view.entities.end(), mesh.entity)
+                    == view.entities.end()) {
+                    continue;
+                }
+                if (scene_ != nullptr && mesh.entity < scene_->entities.size()) {
+                    const kotor::Entity& entity = scene_->entities[mesh.entity];
+                    if (entity.dead) {
+                        continue;
+                    }
+                    model = multiply(translation(entity.position), rotationZ(entity.bearing));
+                }
+            }
+            gl_.UniformMatrix4fv(modelLocation, 1, 0, model.m);
+            gl_.BindVertexArray(mesh.vao);
+            for (const kotor::TextureBatch& batch : mesh.batches) {
+                if (batch.texture >= textures_.size() || batch.indexCount == 0) {
+                    continue;
+                }
+                gl_.ActiveTexture(kGlTexture0);
+                gl_.BindTexture(kGlTexture2D, textures_[batch.texture]);
+                if (batch.blend == kotor::BlendMode::Opaque) {
+                    gl_.Disable(kGlBlend);
+                } else {
+                    gl_.Enable(kGlBlend);
+                    if (batch.blend == kotor::BlendMode::Additive) {
+                        gl_.BlendFunc(kGlSrcAlpha, kGlOne);
+                    } else {
+                        gl_.BlendFunc(kGlSrcAlpha, kGlOneMinusSrcAlpha);
+                    }
+                }
+                gl_.DrawElements(kGlTriangles, static_cast<GlSizei>(batch.indexCount), kGlUnsignedInt,
+                                 reinterpret_cast<const void*>(static_cast<std::size_t>(batch.firstIndex)
+                                                               * sizeof(std::uint32_t)));
+            }
+        }
+        gl_.Disable(kGlBlend);
+        gl_.BindVertexArray(0);
+        gl_.UseProgram(0);
+    }
+    gl_.Disable(kGlScissorTest);
+    gl_.Viewport(0, 0, windowWidth, windowHeight);
+}
+
+bool GlScene::readFramePixels(bool backBuffer, int width, int height,
+                              std::vector<std::uint8_t>& rgbaTopLeft)
+{
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+    const std::size_t stride = static_cast<std::size_t>(width) * 4u;
+    std::vector<std::uint8_t> bottomUp(stride * static_cast<std::size_t>(height), 0u);
+    gl_.ReadBuffer(backBuffer ? kGlBack : kGlFront);
+    gl_.PixelStorei(kGlPackAlignment, 1);
+    gl_.ReadPixels(0, 0, width, height, kGlRgba, kGlUnsignedByte, bottomUp.data());
+    gl_.ReadBuffer(kGlBack);
+    rgbaTopLeft.assign(bottomUp.size(), 0u);
+    for (int row = 0; row < height; ++row) {
+        const std::uint8_t* source = bottomUp.data() + static_cast<std::size_t>(height - 1 - row) * stride;
+        std::uint8_t* target = rgbaTopLeft.data() + static_cast<std::size_t>(row) * stride;
+        std::memcpy(target, source, stride);
+        for (std::size_t i = 3; i < stride; i += 4) {
+            target[i] = 255u; // presented frames are opaque; the window alpha is undefined
+        }
+    }
+    return true;
 }
 
 } // namespace ke

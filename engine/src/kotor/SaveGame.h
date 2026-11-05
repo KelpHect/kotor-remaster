@@ -112,6 +112,9 @@ struct OriginalSave {
     std::int32_t level = 1;
     std::int32_t classId = 0;
     std::int32_t alignment = 50;
+    std::int32_t gender = 0;      // player node "Gender": 0 male, 1 female
+    std::int32_t portraitId = -1; // player node "PortraitId" (portraits.2da row)
+    std::int32_t appearance = -1; // player node "Appearance_Type" (appearance.2da row)
     std::int32_t forcePoints = 0;
     std::int32_t maxForcePoints = 0;
     std::int32_t str = 10;

@@ -5,12 +5,21 @@
 #include "game/ScriptHost.h"
 
 #include "core/Log.h"
+#include "game/AudioSystem.h"
 #include "game/GameSession.h"
+#include "script/ActionRuntime.h"
+#include "script/ActionTable.h"
+#include "script/Ncs.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <map>
+#include <set>
 
 namespace ke {
 
@@ -102,6 +111,21 @@ bool GameSession::playerHasKey(const std::string& keyTag)
 std::int32_t GameSession::skillRank(const char* skill) const
 {
     const std::string wanted = lowerText(skill);
+    // The controlled creature does the work: end_trask01 tells the player to put Trask in
+    // the lead to slice a door. Its ranks are the UTC SkillList, in SKILL_* order; ability
+    // bonuses are not added for a companion here.
+    if (const std::size_t led = entityOfObject(controlledObject());
+        controlledObject() != scriptWorld_.pc && led < scene_.entities.size()) {
+        static constexpr const char* kSkillOrder[] = {"computeruse", "demolitions", "stealth", "awareness",
+                                                      "persuade", "repair", "security", "treatinjury"};
+        const std::vector<std::int32_t>& ranks = scene_.entities[led].stats.skills;
+        for (std::size_t i = 0; i < ranks.size() && i < std::size(kSkillOrder); ++i) {
+            if (wanted == kSkillOrder[i]) {
+                return ranks[i];
+            }
+        }
+        return 0;
+    }
     std::int32_t rank = 0;
     for (const auto& [name, value] : character_.skills) {
         if (lowerText(name) == wanted) {
@@ -174,8 +198,8 @@ bool GameSession::keyUnlock(std::size_t index)
             }
         }
     }
-    ScriptContext extra{{"lastUnlocked", scriptWorld_.pc}};
-    runHook("OnUnlock", index, scriptWorld_.pc, &extra);
+    ScriptContext extra{{"lastUnlocked", controlledObject()}};
+    runHook("OnUnlock", index, controlledObject(), &extra);
     return true;
 }
 
@@ -203,8 +227,8 @@ bool GameSession::unlockDoor(std::size_t index, std::uint32_t actor)
         return false;
     }
     scene_.entities[index].locked = false;
-    ScriptContext extra{{"lastUnlocked", actor == 0 ? scriptWorld_.pc : actor}};
-    runHook("OnUnlock", index, scriptWorld_.pc, &extra);
+    ScriptContext extra{{"lastUnlocked", actor == 0 ? controlledObject() : actor}};
+    runHook("OnUnlock", index, controlledObject(), &extra);
     return true;
 }
 
@@ -219,8 +243,8 @@ bool GameSession::lockDoor(std::size_t index)
         return false;
     }
     entity.locked = true;
-    ScriptContext extra{{"lastLocked", scriptWorld_.pc}};
-    runHook("OnLock", index, scriptWorld_.pc, &extra);
+    ScriptContext extra{{"lastLocked", controlledObject()}};
+    runHook("OnLock", index, controlledObject(), &extra);
     return true;
 }
 
@@ -232,7 +256,7 @@ bool GameSession::closeDoor(std::size_t index)
     }
     scene_.entities[index].open = false;
     playAnimation(index, "closing1", false);
-    runHook("OnClosed", index, scriptWorld_.pc);
+    runHook("OnClosed", index, controlledObject());
     return true;
 }
 
@@ -241,7 +265,7 @@ UseOutcome GameSession::openDoor(std::size_t index, std::uint32_t actor)
     if (index >= scene_.entities.size() || scene_.entities[index].kind != kotor::EntityKind::Door) {
         return UseOutcome::Invalid;
     }
-    const std::uint32_t who = actor == 0 ? scriptWorld_.pc : actor;
+    const std::uint32_t who = actor == 0 ? controlledObject() : actor;
     if (scene_.entities[index].locked && !keyUnlock(index)) {
         logEvent("door " + scene_.entities[index].tag + ": locked");
         runHook("OnFailToOpen", index, who);
@@ -284,14 +308,14 @@ bool GameSession::bashDoor(std::size_t index)
     entity.hitPoints = std::max(0, entity.hitPoints - damage);
     logEvent("bash " + entity.tag + " for " + std::to_string(damage) + " ("
              + std::to_string(entity.hitPoints) + " left)");
-    ScriptContext hit{{"lastDamager", scriptWorld_.pc}};
-    runHook("OnDamaged", index, scriptWorld_.pc, &hit);
+    ScriptContext hit{{"lastDamager", controlledObject()}};
+    runHook("OnDamaged", index, controlledObject(), &hit);
     if (index < scene_.entities.size() && scene_.entities[index].hitPoints <= 0) {
         scene_.entities[index].locked = false;
         scene_.entities[index].open = true;
         playAnimation(index, "opening1", false);
-        ScriptContext killed{{"lastKiller", scriptWorld_.pc}};
-        runHook("OnDeath", index, scriptWorld_.pc, &killed);
+        ScriptContext killed{{"lastKiller", controlledObject()}};
+        runHook("OnDeath", index, controlledObject(), &killed);
     }
     return true;
 }
@@ -367,12 +391,12 @@ bool GameSession::disarmTrap(std::size_t index)
         return false;
     }
     if (!skillCheck("security", entity.trapDisarmDC, "disarm trap")) {
-        springTrap(index, scriptWorld_.pc);
+        springTrap(index, controlledObject());
         return false;
     }
     entity.trapDisarmed = true;
-    ScriptContext extra{{"lastDisarmed", scriptWorld_.pc}};
-    runHook("OnDisarm", index, scriptWorld_.pc, &extra);
+    ScriptContext extra{{"lastDisarmed", controlledObject()}};
+    runHook("OnDisarm", index, controlledObject(), &extra);
     return true;
 }
 
@@ -393,13 +417,13 @@ UseOutcome GameSession::useObjectImpl(std::size_t index, bool checkReach)
         && kind != kotor::EntityKind::Store) {
         return UseOutcome::Invalid;
     }
-    if (checkReach && (controlLocked() || playerDead_ || dialogueView_.active)) {
+    if (checkReach && (controlLocked() || controlledDead() || dialogueView_.active)) {
         return UseOutcome::Refused;
     }
     if (checkReach && !inReach(index, kind == kotor::EntityKind::Placeable ? 2.5f : 3.0f)) {
         return UseOutcome::OutOfRange;
     }
-    const std::uint32_t pc = scriptWorld_.pc;
+    const std::uint32_t pc = controlledObject();
     if (kind == kotor::EntityKind::Store) {
         if (!openStore(index)) {
             return UseOutcome::Invalid;
@@ -743,7 +767,7 @@ void GameSession::updateEncounterVolumes(float dt)
         if (volume.vertices.size() < 3) {
             continue;
         }
-        bool inside = pointInEncounter(volume, position_);
+        bool inside = pointInEncounter(volume, controlledPosition());
         if (!inside && !volume.templateData.playerOnly) {
             for (const kotor::Entity& entity : scene_.entities) {
                 if (entity.partyAvatar && !entity.dead && pointInEncounter(volume, entity.position)) {
@@ -769,7 +793,7 @@ void GameSession::updateEncounterVolumes(float dt)
             if (spawned > 0) {
                 state.triggered = true;
                 logEvent("encounter " + resref + " spawned " + std::to_string(spawned));
-                runHook("OnEntered", entityIndex, scriptWorld_.pc);
+                runHook("OnEntered", entityIndex, controlledObject());
             }
         };
         if (entered) {
@@ -1407,10 +1431,482 @@ Cells getSelectedPlanet(ActionCall& call)
     return ActionCall::retInt(call.api().sim().galaxy.selected);
 }
 
+// ---- the ending ------------------------------------------------------------
+
+constexpr float kEndGamePanelSeconds = 5.0f;   // retail 00535570
+constexpr float kCreditFadeSeconds = 1.0f;     // retail 0068f790
+constexpr float kCreditHoldSeconds = 3.0f;
+constexpr float kCreditGapSeconds = 2.0f;
+// Inferred, not proved: retail scrolls the last page one line per 305.0 / line count
+// seconds (0068f6f0, DAT_007a2670), which puts the whole scroll near this figure.
+constexpr float kCreditScrollSeconds = 305.0f;
+
+// ACT_564 EndGame(nShowEndGameGui = TRUE) 00535570.
+Cells endGame(ActionCall& call)
+{
+    GameEndingState& ending = call.api().sim().ending;
+    const bool show = call.intArg(0, 1) != 0;
+    ending.pending = true;
+    ending.showGui = show;
+    ending.timer = show ? kEndGamePanelSeconds : 0.0f;
+    return ActionCall::none();
+}
+
+// ACT_518 StartCreditSequence(bTransparentBackground) 005473e0 -> 005f4c60: makes the
+// panel from credits.2da unless one is already up.
+Cells startCreditSequence(ActionCall& call)
+{
+    ScriptApi api = call.api();
+    GameEndingState& ending = api.sim().ending;
+    if (ending.credits) {
+        return ActionCall::none();
+    }
+    ending.creditPages.clear();
+    if (auto data = api.install().find("credits", 2017); data.has_value()) {
+        const kotor::TwoDa table = kotor::TwoDa::parse(std::move(*data), "credits.2da");
+        for (std::size_t row = 0; row < table.rowCount(); ++row) {
+            const std::string text = table.cell(std::to_string(row), "name");
+            ending.creditPages.push_back(text.empty() || text == "****" ? -1 : std::atoi(text.c_str()));
+        }
+    }
+    ending.credits = !ending.creditPages.empty();
+    ending.creditsTransparent = call.intArg(0) != 0;
+    ending.creditPage = 0;
+    ending.creditFadeIn = true;
+    ending.creditClock = 0.0f;
+    ending.creditOpacity = 0.0f;
+    ending.creditScrollLeft = kCreditScrollSeconds;
+    return ActionCall::none();
+}
+
+// ACT_519 IsCreditSequenceInProgress 005473b0 -> 005ee1e0.
+Cells isCreditSequenceInProgress(ActionCall& call)
+{
+    return ActionCall::retInt(call.api().sim().ending.credits ? 1 : 0);
+}
+
+// ---- cinematic and UI requests ----------------------------------------------
+
+// ACT_461 SetDialogPlaceableCamera 00546a80: only while a conversation runs.
+Cells setDialogPlaceableCamera(ActionCall& call)
+{
+    const std::int32_t camera = static_cast<std::int32_t>(call.intArg(0));
+    if (call.api().session.setDialoguePlaceableCamera(camera)) {
+        call.api().sim().presentation.dialogPlaceableCamera = camera;
+    }
+    return ActionCall::none();
+}
+
+// ACT_738 PlayRoomAnimation 00540dd0: ignored unless the room is in the layout. Held
+// for the renderer; room models do not animate from this yet.
+Cells playRoomAnimation(ActionCall& call)
+{
+    ScriptApi api = call.api();
+    const std::string room = lowerText(call.stringArg(0));
+    for (const kotor::LytRoom& known : api.scene().rooms) {
+        if (lowerText(known.room) == room) {
+            api.sim().presentation.roomAnimations[room] = static_cast<std::int32_t>(call.intArg(1));
+            break;
+        }
+    }
+    return ActionCall::none();
+}
+
+// ACT_430 MusicBattlePlay 005400c0: the area's battle track.
+Cells musicBattlePlay(ActionCall& call)
+{
+    GameSession& session = call.api().session;
+    call.api().sim().presentation.battleMusic = true;
+    if (AudioSystem* audio = session.audioOrNull()) {
+        audio->playMusic(call.api().scene().areaAudio.musicBattleId);
+    }
+    return ActionCall::none();
+}
+
+// ACT_431 MusicBattleStop 005400c0, shared body: back to the area's own track.
+Cells musicBattleStop(ActionCall& call)
+{
+    GameSession& session = call.api().session;
+    call.api().sim().presentation.battleMusic = false;
+    if (AudioSystem* audio = session.audioOrNull()) {
+        audio->playMusic(call.api().scene().areaAudio.musicDayId);
+    }
+    return ActionCall::none();
+}
+
+// ACT_765 SetMusicVolume 00547ef0.
+Cells setMusicVolume(ActionCall& call)
+{
+    const float volume = static_cast<float>(call.floatArg(0, 1.0));
+    call.api().sim().presentation.musicVolume = volume;
+    if (AudioSystem* audio = call.api().session.audioOrNull()) {
+        audio->mixer().setBusVolume(audio::Bus::Music, volume);
+    }
+    return ActionCall::none();
+}
+
+// ACT_760 HoldWorldFadeInForDialog 00547e30: dialog field +0xb98.
+Cells holdWorldFadeInForDialog(ActionCall& call)
+{
+    call.api().sim().presentation.holdFadeInForDialog = true;
+    return ActionCall::none();
+}
+
+// ACT_749 ResetDialogState 00547bc0 -> 0062ec60(0): clears the dialog-active flag and the
+// fade hold. It does not end a running conversation here: shipped callers use it to
+// recover, and the retail teardown of the conversation object was not traced.
+Cells resetDialogState(ActionCall& call)
+{
+    PresentationState& shown = call.api().sim().presentation;
+    shown.holdFadeInForDialog = false;
+    call.api().setDialoguePaused(false);
+    return ActionCall::none();
+}
+
+// ACT_757 CancelPostDialogCharacterSwitch 00547d20 sets dialog +0xba4 invalid. This
+// engine has no switch queued for after a conversation, so nothing can be pending; the
+// call is recorded for the bot and the log only.
+Cells cancelPostDialogCharacterSwitch(ActionCall& call)
+{
+    call.api().log("post-dialog character switch cancelled");
+    return ActionCall::none();
+}
+
+// ACT_152 SetReturnStrref 005434c0: the Return button on the area transition menu.
+Cells setReturnStrref(ActionCall& call)
+{
+    PresentationState& shown = call.api().sim().presentation;
+    shown.returnOption = call.intArg(0) != 0;
+    shown.returnStrref = static_cast<std::int32_t>(call.intArg(1));
+    shown.returnQueryStrref = static_cast<std::int32_t>(call.intArg(2));
+    return ActionCall::none();
+}
+
+// ACT_354 ShowUpgradeScreen 00543990.
+Cells showUpgradeScreen(ActionCall& call)
+{
+    PresentationState& shown = call.api().sim().presentation;
+    shown.upgradeItem = call.objectArgOrInvalid(0);
+    shown.upgradeScreen = true;
+    return ActionCall::none();
+}
+
+// ACT_265 ShowLevelUpGUI 00543870: reports whether the player can level.
+Cells showLevelUpGui(ActionCall& call)
+{
+    ScriptApi api = call.api();
+    const bool can = api.session.canLevelUp();
+    api.sim().presentation.levelUpScreen = can;
+    return ActionCall::retInt(can ? 1 : 0);
+}
+
+// ACT_517 ShowTutorialWindow 00547340: once per window.
+Cells showTutorialWindow(ActionCall& call)
+{
+    PresentationState& shown = call.api().sim().presentation;
+    const std::int32_t window = static_cast<std::int32_t>(call.intArg(0));
+    if (shown.tutorialWindowsEnabled && shown.tutorialsShown.insert(window).second) {
+        shown.tutorialPending = window;
+    }
+    return ActionCall::none();
+}
+
+// ACT_57 PauseGame 00546590. Held as a request: the frontend stops the world until the
+// player acknowledges it, so a test or bot driving update() directly keeps its clock.
+Cells pauseGame(ActionCall& call)
+{
+    call.api().sim().presentation.scriptPaused = call.intArg(0) != 0;
+    return ActionCall::none();
+}
+
+// ACT_268 SetButtonMashCheck 00546a40.
+Cells setButtonMashCheck(ActionCall& call)
+{
+    call.api().sim().presentation.buttonMashCheck = static_cast<std::int32_t>(call.intArg(0));
+    return ActionCall::none();
+}
+
+// ACT_53 GetSubScreenID 005464d0: SUBSCREEN_ID_* for the open panel. k_pend_screenchg,
+// its only caller, is referenced by no module data.
+Cells getSubScreenId(ActionCall& call)
+{
+    switch (call.api().session.activePanel()) {
+    case UiPanel::Inventory:
+        return ActionCall::retInt(2);
+    case UiPanel::Character:
+        return ActionCall::retInt(3);
+    case UiPanel::Journal:
+        return ActionCall::retInt(6);
+    default:
+        return ActionCall::retInt(0);
+    }
+}
+
+// ACT_512 DoSinglePlayerAutoSave 00530660. Counted; the frontend owns the save slots.
+Cells doSinglePlayerAutoSave(ActionCall& call)
+{
+    ++call.api().sim().presentation.autosaves;
+    call.api().log("autosave requested");
+    return ActionCall::none();
+}
+
+// ACT_677 PlayVisualAreaEffect 00541280: recorded for the renderer.
+Cells playVisualAreaEffect(ActionCall& call)
+{
+    ScriptApi api = call.api();
+    kotor::Vec3 at = api.position(api.self());
+    if (const LocationData* location = api.sim().engine.get<LocationData>(call.engineArg(1))) {
+        at = location->position;
+    }
+    api.sim().presentation.areaVisuals.push_back({static_cast<std::int32_t>(call.intArg(0)), at});
+    return ActionCall::none();
+}
+
+// ACT_671 BarkString(oCreature, strRef). The string is the point: k_ai_master shows the
+// low-health warning with it and an invalid speaker. Not a voice-set sound.
+Cells barkString(ActionCall& call)
+{
+    PresentationState& shown = call.api().sim().presentation;
+    shown.lastBarkSpeaker = call.objectArgOrInvalid(0);
+    shown.lastBarkStrref = static_cast<std::int32_t>(call.intArg(1));
+    call.api().log("bark strref " + std::to_string(shown.lastBarkStrref));
+    return ActionCall::none();
+}
+
+// ---- sound objects ----------------------------------------------------------
+
+constexpr std::size_t kNoEntity = static_cast<std::size_t>(-1);
+
+std::size_t soundEntity(ActionCall& call, std::size_t arg)
+{
+    return call.api().entityFor(call.objectArgOrInvalid(arg));
+}
+
+// ACT_745 SoundObjectFadeAndStop 00543e60.
+Cells soundObjectFadeAndStop(ActionCall& call)
+{
+    const std::size_t entity = soundEntity(call, 0);
+    if (entity == kNoEntity) {
+        return ActionCall::none();
+    }
+    const float length = std::max(0.0f, static_cast<float>(call.floatArg(1)));
+    PresentationState::SoundFade fade;
+    fade.entity = static_cast<std::uint32_t>(entity);
+    fade.length = length;
+    fade.left = length;
+    call.api().sim().presentation.soundFades.push_back(fade);
+    return ActionCall::none();
+}
+
+// ACT_124 SoundObjectSetFixedVariance 00543c30. Held: the mixer has no per-source
+// variance, so a read-back through 689 is all it changes.
+Cells soundObjectSetFixedVariance(ActionCall& call)
+{
+    const std::size_t entity = soundEntity(call, 0);
+    if (entity != kNoEntity) {
+        call.api().sim().presentation.soundFixedVariance[static_cast<std::uint32_t>(entity)]
+            = static_cast<float>(call.floatArg(1));
+    }
+    return ActionCall::none();
+}
+
+// ACT_689 SoundObjectGetPitchVariance 00543b10.
+Cells soundObjectGetPitchVariance(ActionCall& call)
+{
+    const PresentationState& shown = call.api().sim().presentation;
+    const std::size_t entity = soundEntity(call, 0);
+    const auto found = shown.soundFixedVariance.find(static_cast<std::uint32_t>(entity));
+    return ActionCall::retFloat(found != shown.soundFixedVariance.end() ? found->second : 0.0);
+}
+
+// ACT_771 YavinHackCloseDoor(oDoor) 00548310.
+Cells yavinHackCloseDoor(ActionCall& call)
+{
+    const std::size_t entity = soundEntity(call, 0);
+    if (entity != kNoEntity) {
+        call.api().session.closeDoor(entity);
+    }
+    return ActionCall::none();
+}
+
+// ACT_370 is a documented no-op: rumble needs a pad motor this build does not drive.
+Cells rumbleNoOp(ActionCall&)
+{
+    return ActionCall::retInt(0);
+}
+
+} // namespace
+
+// ---- session accessors for the ending ---------------------------------------
+
+bool GameSession::gameEnded() const { return sim_->ending.ended; }
+bool GameSession::gameOverPanelVisible() const { return sim_->ending.gameOverPanel; }
+bool GameSession::creditsActive() const { return sim_->ending.credits; }
+float GameSession::creditsOpacity() const { return sim_->ending.creditOpacity; }
+bool GameSession::creditsTransparent() const { return sim_->ending.creditsTransparent; }
+
+std::int32_t GameSession::creditsPageStrref() const
+{
+    const GameEndingState& ending = sim_->ending;
+    return ending.credits && ending.creditPage < ending.creditPages.size()
+        ? ending.creditPages[ending.creditPage] : -1;
+}
+
+// Retail's skip input was not traced. This closes the panel, which is what 0068f0e0 does.
+void GameSession::skipCredits()
+{
+    sim_->ending.credits = false;
+}
+
+std::int32_t GameSession::pendingTutorialWindow() const { return sim_->presentation.tutorialPending; }
+void GameSession::dismissTutorialWindow() { sim_->presentation.tutorialPending = -1; }
+bool GameSession::scriptPauseActive() const { return sim_->presentation.scriptPaused; }
+void GameSession::clearScriptPause() { sim_->presentation.scriptPaused = false; }
+
+bool GameSession::setDialoguePlaceableCamera(std::int32_t cameraId)
+{
+    if (!dialogueView_.active) {
+        return false;
+    }
+    dialogueView_.cameraId = cameraId;
+    return true;
+}
+
+void GameSession::addPlayerClass(std::int32_t classId)
+{
+    if (character_.classId == classId || character_.secondClassId >= 0) {
+        return;
+    }
+    character_.secondClassId = classId;
+    character_.secondClassLevel = 1;
+    logEvent("second class " + std::to_string(classId));
+}
+
+std::optional<std::vector<script::Value>> GameSession::actionAsForTest(
+    std::uint32_t self, std::uint16_t id, const std::vector<std::vector<script::Value>>& args)
+{
+    if (runtime_ == nullptr) {
+        return std::nullopt;
+    }
+    const auto saved = runtime_->contextSnapshot();
+    runtime_->setContextObject("self", self);
+    script::Vm vm({});
+    auto result = runtime_->call(id, args, vm);
+    runtime_->setContext(saved);
+    return result;
+}
+
+// retail 00602eb0: tear the world down and return to the main menu.
+void GameSession::finishGameEnding()
+{
+    GameEndingState& ending = sim_->ending;
+    ending.pending = false;
+    ending.gameOverPanel = false;
+    ending.credits = false;
+    ending.ended = true;
+    if (dialogueView_.active) {
+        endDialogue();
+    }
+    if (audio_) {
+        audio_->stopMusic();
+        audio_->stopAmbient();
+    }
+    logEvent("game ended");
+}
+
+void tickEnding(ScriptApi api, float dt)
+{
+    GameEndingState& ending = api.sim().ending;
+    if (ending.credits) {
+        // retail 0068f790 and 0068f630. A movie stops this tick altogether, as retail's
+        // blocking movie loop does, so the first page starts after movie 55.
+        const std::size_t count = ending.creditPages.size();
+        if (ending.creditPage + 1 >= count) {
+            ending.creditOpacity = 1.0f;
+            ending.creditScrollLeft -= dt;
+            if (ending.creditScrollLeft <= 0.0f) {
+                ending.credits = false;
+            }
+        } else {
+            ending.creditClock += dt;
+            const float clock = ending.creditClock;
+            if (clock < kCreditFadeSeconds) {
+                ending.creditOpacity = ending.creditFadeIn ? clock : kCreditFadeSeconds - clock;
+            } else if (ending.creditFadeIn) {
+                ending.creditOpacity = 1.0f;
+                if (clock >= kCreditHoldSeconds) {
+                    ending.creditFadeIn = false;
+                    ending.creditClock = std::fmod(clock, kCreditHoldSeconds);
+                }
+            } else {
+                ending.creditOpacity = 0.0f;
+                if (clock >= kCreditGapSeconds) {
+                    ending.creditFadeIn = true;
+                    ending.creditClock = std::fmod(clock, kCreditGapSeconds);
+                    ++ending.creditPage;
+                }
+            }
+        }
+    }
+
+    PresentationState& shown = api.sim().presentation;
+    AudioSystem* audio = api.session.audioOrNull();
+    std::erase_if(shown.soundFades, [&](PresentationState::SoundFade& fade) {
+        fade.left -= dt;
+        const float gain = fade.length > 0.0f ? std::max(0.0f, fade.left / fade.length) : 0.0f;
+        if (audio != nullptr) {
+            audio->setSoundObjectVolume(fade.entity, gain * fade.start);
+            if (fade.left <= 0.0f) {
+                audio->stopSoundObject(fade.entity);
+            }
+        }
+        return fade.left <= 0.0f;
+    });
+
+    if (!ending.pending || ending.ended) {
+        return;
+    }
+    if (ending.timer <= 0.0f) {
+        api.session.finishGameEnding();
+    } else if (ending.showGui && !ending.gameOverPanel) {
+        ending.gameOverPanel = true;
+    } else {
+        ending.timer -= dt;
+    }
+}
+
+namespace {
+
 } // namespace
 
 void registerWorldStateActions(HandlerTable& table)
 {
+    table.add(53, getSubScreenId);
+    table.add(57, pauseGame);
+    table.add(124, soundObjectSetFixedVariance);
+    table.add(152, setReturnStrref);
+    table.add(265, showLevelUpGui);
+    table.add(268, setButtonMashCheck);
+    table.add(354, showUpgradeScreen);
+    table.add(370, rumbleNoOp);
+    table.add(430, musicBattlePlay);
+    table.add(431, musicBattleStop);
+    table.add(461, setDialogPlaceableCamera);
+    table.add(512, doSinglePlayerAutoSave);
+    table.add(517, showTutorialWindow);
+    table.add(518, startCreditSequence);
+    table.add(519, isCreditSequenceInProgress);
+    table.add(564, endGame);
+    table.add(671, barkString);
+    table.add(677, playVisualAreaEffect);
+    table.add(689, soundObjectGetPitchVariance);
+    table.add(738, playRoomAnimation);
+    table.add(745, soundObjectFadeAndStop);
+    table.add(749, resetDialogState);
+    table.add(757, cancelPostDialogCharacterSwitch);
+    table.add(760, holdWorldFadeInForDialog);
+    table.add(765, setMusicVolume);
+    table.add(771, yavinHackCloseDoor);
     table.add(10, setFacing);
     table.add(14, setAreaUnescapable);
     table.add(15, getAreaUnescapable);
@@ -1520,6 +2016,8 @@ void tickWorldState(ScriptApi api, float dt)
             sim.restrictHeld = 0.0f;
         }
     }
+
+    tickEnding(api, dt);
 
     // Passive detection of nearby traps, once a second (Awareness roll each time).
     sim.trapScanTimer += dt;
@@ -2042,6 +2540,385 @@ int runWorldStateFamilyTest(GameSession& game)
 
     logInfo(ok ? "worldstate: PASS" : "worldstate: FAIL");
     return ok ? 0 : 10;
+}
+
+// ---- the ending gate: --family-test endgame ---------------------------------
+//
+// Runs the shipped ending scripts through the VM in their own modules. sta_m45ad and
+// sta_m45aa lead to STUNT_55a (dark) and STUNT_57 (light). Their areas' heartbeat script
+// k_endgame calls EndGame(0) once the credits are over and CREDITPLAY is set.
+
+int runEndgameFamilyTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("endgame: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    const std::string installPath = game.installPath();
+    const auto globalBool = [](GameSession& session, const char* name) {
+        const auto value = session.actionAsForTest(session.scriptWorld().pc, 578, {text(name)});
+        return value.has_value() && !value->empty() ? value->front().asInt() : -9999;
+    };
+    const auto runShipped = [](GameSession& session, const char* script) {
+        const std::uint32_t pc = session.scriptWorld().pc;
+        ScriptApi{session}.runScript(script, pc, ScriptContext{});
+        return logHas(session, std::string("script ") + script + " status=returned");
+    };
+    // These scripts are run directly below: the module's opening conversation is closed
+    // first so it cannot stand in front of them.
+    const auto settle = [](GameSession& session) { session.endDialogue(); };
+
+    // ---- the light ending, played through its conversation (STUNT_57) ----
+    {
+        GameSession light(installPath, "STUNT_57");
+        check(!light.creditsActive() && !light.gameEnded(), "light_starts_clean");
+        check(callAction(light, 519, {}) == 0, "light_vm_no_credits_before");
+        tickFor(light, 7.0f);
+        check(!light.gameEnded(), "light_heartbeat_waits_for_creditplay");
+        // The conversation the module opens ends in k_creditsplay.
+        for (float t = 0.0f; t < 240.0f && !light.creditsActive(); t += 0.05f) {
+            if (light.dialogue().active) {
+                light.chooseDialogueOption(0);
+            }
+            light.update(0.05f, InputState{});
+        }
+        const bool throughDialogue = light.creditsActive();
+        logInfo(concat("endgame: light conversation reached the credits=", throughDialogue ? 1 : 0));
+        if (!throughDialogue) {
+            settle(light);
+            check(runShipped(light, "k_creditsplay"), "light_script_ran");
+        }
+        check(light.creditsActive(), "light_credits_active");
+        check(callAction(light, 519, {}) == 1, "light_vm_credits_in_progress");
+        check(globalBool(light, "CREDITPLAY") == 1, "light_creditplay_set");
+        const std::int32_t firstPage = light.creditsPageStrref();
+        check(firstPage > 0, "light_first_page_is_a_shipped_strref");
+        tickFor(light, 2.0f);
+        check(light.creditsOpacity() > 0.9f, "light_page_held_opaque");
+        tickFor(light, 2.5f);
+        check(light.creditsOpacity() < 0.9f, "light_page_fading");
+        tickFor(light, 1.5f);
+        check(light.creditsPageStrref() != firstPage, "light_next_page_after_five_seconds");
+        tickFor(light, 7.0f);
+        check(!light.gameEnded(), "light_heartbeat_waits_for_credits");
+        // Run the credits out on their own clock: the area heartbeat then ends the game.
+        for (float t = 0.0f; t < 420.0f && light.creditsActive(); t += 0.05f) {
+            light.update(0.05f, InputState{});
+        }
+        check(!light.creditsActive(), "light_credits_ran_out");
+        check(callAction(light, 519, {}) == 0, "light_vm_credits_over");
+        tickFor(light, 7.0f);
+        check(logHas(light, "script k_endgame"), "light_area_heartbeat_ran_k_endgame");
+        check(light.gameEnded(), "light_game_ended");
+        check(!light.gameOverPanelVisible(), "light_no_game_over_panel");
+        const float clockAtEnd = light.elapsedSeconds();
+        tickFor(light, 2.0f);
+        check(light.elapsedSeconds() == clockAtEnd, "light_world_stopped");
+    }
+
+    // ---- the dark ending: movie first, credits after (STUNT_55a) ----
+    {
+        GameSession dark(installPath, "STUNT_55a");
+        settle(dark);
+        check(runShipped(dark, "k_stunt_end"), "dark_script_ran");
+        check(!dark.creditsActive(), "dark_credits_wait_for_delay");
+        check(dark.fade().mode == FadeState::Mode::Out, "dark_faded_out");
+        check(dark.moviePlaying() || logHas(dark, "movie"), "dark_movie_55_queued");
+        for (float t = 0.0f; t < 600.0f && !dark.creditsActive(); t += 0.05f) {
+            if (dark.moviePlaying()) {
+                dark.stopMovie();
+            }
+            dark.update(0.05f, InputState{});
+        }
+        check(dark.creditsActive(), "dark_credits_start");
+        check(globalBool(dark, "CREDITPLAY") == 1, "dark_creditplay_set");
+        tickFor(dark, 7.0f);
+        check(!dark.gameEnded(), "dark_not_ended_during_credits");
+        dark.skipCredits();
+        tickFor(dark, 7.0f);
+        check(dark.gameEnded(), "dark_game_ended_by_heartbeat");
+    }
+
+    // ---- a death ending: EndGame(1) shows the panel for five seconds (korr_m39aa) ----
+    {
+        GameSession panel(installPath, "korr_m39aa");
+        settle(panel);
+        check(runShipped(panel, "k_pkor_endgame"), "panel_script_ran");
+        tickFor(panel, 0.1f);
+        check(panel.gameOverPanelVisible() && !panel.gameEnded(), "panel_visible_world_alive");
+        tickFor(panel, 3.0f);
+        check(panel.gameOverPanelVisible() && !panel.gameEnded(), "panel_still_up_at_three_seconds");
+        tickFor(panel, 2.5f);
+        check(panel.gameEnded() && !panel.gameOverPanelVisible(), "panel_then_ended");
+    }
+
+    logInfo(ok ? "endgame family: PASS" : "endgame family: FAIL");
+    return ok ? 0 : 20;
+}
+
+// ---- the last actions: --family-test actions --------------------------------
+
+int runRemainingActionsFamilyTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("actions: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    settleIntro(game);
+    ScriptApi api{game};
+    const std::uint32_t pc = game.scriptWorld().pc;
+    const std::size_t traskEntity = game.findEntity("end_trask");
+    if (traskEntity == static_cast<std::size_t>(-1)) {
+        logError("actions: end_trask missing");
+        return 21;
+    }
+    const std::uint32_t trask = game.objectForEntityIndex(traskEntity);
+    // Runs one action with `self` as the caller, through the VM's own action path.
+    const auto as = [&](std::uint32_t self, std::uint16_t id, Args args) {
+        return game.actionAsForTest(self, id, args);
+    };
+    const auto traskAt = [&] { return api.position(trask); };
+    const auto gapTo = [&](kotor::Vec3 point) {
+        const kotor::Vec3 at = traskAt();
+        return std::hypot(at.x - point.x, at.y - point.y);
+    };
+
+    // Floor items are in the area's object list; held items are not. retail 00555720.
+    {
+        const auto countFloor = [&](std::uint32_t wanted) {
+            int found = 0;
+            const std::uint32_t area = static_cast<std::uint32_t>(callAction(game, 24, {obj(pc)}));
+            for (std::int64_t id = callAction(game, 93, {obj(area), num(32767)});
+                 id != script::kObjectInvalid && id > 0;
+                 id = callAction(game, 94, {obj(area), num(32767)})) {
+                found += static_cast<std::uint32_t>(id) == wanted ? 1 : 0;
+            }
+            return found;
+        };
+        const std::int64_t location = callAction(game, 213, {obj(pc)});
+        const std::vector<script::Value> where{script::Value::makeEngine(location)};
+        script::Vm vm({});
+        const auto created = game.action(766, {text("g_w_blstrpstl001"), where, num(0)}, game.scriptWorld(), vm);
+        const std::uint32_t item = created.has_value() && !created->empty()
+            ? static_cast<std::uint32_t>(created->front().asInt()) : script::kObjectInvalid;
+        check(item != script::kObjectInvalid, "floor_item_created");
+        check(countFloor(item) == 1, "floor_item_in_area_list");
+        const auto held = game.action(31, {text("g_w_blstrpstl001"), obj(pc), num(1)}, game.scriptWorld(), vm);
+        const std::uint32_t carried = held.has_value() && !held->empty()
+            ? static_cast<std::uint32_t>(held->front().asInt()) : script::kObjectInvalid;
+        check(carried != script::kObjectInvalid && countFloor(carried) == 0, "held_item_not_in_area_list");
+    }
+
+    // ActionMoveAwayFromObject (23): opens the distance to at least the asked range.
+    {
+        const kotor::Vec3 me = api.position(pc);
+        as(trask, 23, {obj(pc), num(0), real(gapTo(me) + 3.0)});
+        tickFor(game, 8.0f);
+        check(gapTo(me) > 2.0f, "move_away_gained_distance");
+    }
+
+    // ActionForceFollowObject (167): closes it again and keeps the queue until cleared.
+    {
+        as(trask, 9, {});
+        as(trask, 167, {obj(pc), real(1.5)});
+        tickFor(game, 8.0f);
+        check(gapTo(api.position(pc)) < 4.0f, "force_follow_closed_gap");
+        check(callAction(game, 522, {obj(trask)}) == 35, "force_follow_reports_action_follow");
+        as(trask, 9, {});
+        check(api.actor(trask).queue.empty(), "clear_ends_follow");
+    }
+
+    // ActionFollowLeader (730): follows whoever leads, without naming them.
+    {
+        as(trask, 730, {});
+        check(!api.actor(trask).queue.empty()
+                  && api.actor(trask).queue.front().kind == ActorActionKind::FollowObject,
+              "follow_leader_queued");
+        as(trask, 9, {});
+    }
+
+    // ActionRandomWalk (20): moves and runs until cleared.
+    {
+        const kotor::Vec3 before = traskAt();
+        as(trask, 20, {});
+        tickFor(game, 8.0f);
+        check(gapTo(before) > 0.05f, "random_walk_moved");
+        check(!api.actor(trask).queue.empty(), "random_walk_still_running");
+        as(trask, 9, {});
+    }
+
+    // ActionBarkString (700) waits its turn; BarkString (671) does not.
+    {
+        as(trask, 700, {num(10242)});
+        check(api.sim().presentation.lastBarkStrref != 10242 || !api.actor(trask).queue.empty(), "bark_queued");
+        tickFor(game, 0.2f);
+        check(api.sim().presentation.lastBarkStrref == 10242, "bark_shown");
+        check(api.sim().presentation.lastBarkSpeaker == trask, "bark_speaker");
+    }
+
+    // ActionEquipMostDamagingMelee/Ranged (399, 400): the blaster above is the player's.
+    {
+        as(pc, 400, {num(script::kObjectInvalid)});
+        tickFor(game, 0.2f);
+        const std::uint32_t right = static_cast<std::uint32_t>(callAction(game, 155, {num(4), obj(pc)}));
+        check(right != script::kObjectInvalid && right != 0, "equip_most_damaging_ranged");
+    }
+
+    // CutsceneAttack (503): no roll; a hit result deals exactly the damage.
+    {
+        const std::int64_t before = callAction(game, 49, {obj(trask)}); // GetCurrentHitPoints
+        as(pc, 503, {obj(trask), num(0), num(1), num(3)});
+        tickFor(game, 1.5f);
+        check(callAction(game, 49, {obj(trask)}) < before, "cutscene_attack_hit_damaged");
+        const std::int64_t after = callAction(game, 49, {obj(trask)});
+        as(pc, 503, {obj(trask), num(0), num(4), num(3)}); // ATTACK_RESULT_MISS
+        tickFor(game, 1.5f);
+        check(callAction(game, 49, {obj(trask)}) == after, "cutscene_attack_miss_harmless");
+    }
+
+    // Immunity and poison queries read the effect list.
+    {
+        check(callAction(game, 751, {obj(trask)}) == 0, "not_poisoned");
+        check(callAction(game, 274, {obj(trask), num(2)}) == 0, "not_immune_to_poison");
+    }
+
+    // Presentation and movement memory.
+    {
+        as(trask, 323, {num(0), num(0), num(1)});
+        check(!api.actor(trask).destroyable && api.actor(trask).selectableWhenDead, "set_is_destroyable");
+        callAction(game, 421, {obj(pc), num(1), num(0)});
+        check(api.actor(pc).saberOverride && !api.actor(pc).saberPowered, "lightsaber_powered");
+        callAction(game, 152, {num(1), num(100), num(200)});
+        check(api.sim().presentation.returnOption && api.sim().presentation.returnStrref == 100,
+              "return_strref");
+        callAction(game, 517, {num(3)});
+        check(game.pendingTutorialWindow() == 3, "tutorial_shown");
+        game.dismissTutorialWindow();
+        callAction(game, 517, {num(3)});
+        check(game.pendingTutorialWindow() == -1, "tutorial_only_once");
+        callAction(game, 430, {});
+        check(api.sim().presentation.battleMusic, "battle_music_on");
+        callAction(game, 431, {});
+        check(!api.sim().presentation.battleMusic, "battle_music_off");
+        const std::string room = game.scene().rooms.empty() ? std::string{} : game.scene().rooms.front().room;
+        callAction(game, 738, {text(room), num(1)});
+        check(!room.empty() && !api.sim().presentation.roomAnimations.empty(), "room_animation_known_room");
+        const std::size_t rooms = api.sim().presentation.roomAnimations.size();
+        callAction(game, 738, {text("no_such_room"), num(1)});
+        check(api.sim().presentation.roomAnimations.size() == rooms, "room_animation_unknown_ignored");
+        const std::size_t visuals = api.sim().presentation.areaVisuals.size();
+        callAction(game, 677, {num(1), {script::Value::makeEngine(callAction(game, 213, {obj(pc)}))}});
+        check(api.sim().presentation.areaVisuals.size() == visuals + 1, "area_visual");
+        callAction(game, 57, {num(1)});
+        check(game.scriptPauseActive(), "pause_requested");
+        game.clearScriptPause();
+        check(callAction(game, 121, {num(2)}) == 6, "rounds_to_seconds");
+    }
+
+    // A closed door: YavinHackCloseDoor (771) closes an open one.
+    {
+        const std::size_t door = game.findEntity("end_door16");
+        if (door != static_cast<std::size_t>(-1)) {
+            game.scene().entities[door].open = true;
+            callAction(game, 771, {obj(game.objectForEntityIndex(door))});
+            check(!game.scene().entities[door].open, "yavin_hack_closes_door");
+        }
+    }
+
+    logInfo(ok ? "actions family: PASS" : "actions family: FAIL");
+    return ok ? 0 : 21;
+}
+
+// ---- --action-coverage ------------------------------------------------------
+
+namespace {
+
+// Actions shipped scripts name that have no effect here on purpose. Each needs its reason.
+const std::map<std::uint16_t, const char*>& documentedNoOps()
+{
+    static const std::map<std::uint16_t, const char*> list = {};
+    return list;
+}
+
+} // namespace
+
+int runActionCoverage(GameSession& game, const std::string& corpusDir, const std::string& outPath)
+{
+    std::map<std::uint16_t, std::pair<int, std::string>> uses;
+    int files = 0;
+    if (!corpusDir.empty()) {
+        for (const auto& entry : std::filesystem::directory_iterator(corpusDir)) {
+            if (entry.path().extension() != ".ncs") {
+                continue;
+            }
+            std::ifstream in(entry.path(), std::ios::binary);
+            const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(in)),
+                                                  std::istreambuf_iterator<char>());
+            std::set<std::uint16_t> seen;
+            try {
+                for (const script::Instruction& instruction : script::decodeNcs(bytes)) {
+                    if (instruction.op == script::Op::ACTION) {
+                        seen.insert(instruction.actionId);
+                    }
+                }
+            } catch (const std::exception&) {
+                continue;
+            }
+            ++files;
+            for (const std::uint16_t id : seen) {
+                auto& use = uses[id];
+                ++use.first;
+                if (use.second.empty()) {
+                    use.second = entry.path().stem().string();
+                }
+            }
+        }
+    }
+
+    script::World scratchWorld;
+    script::ActionRuntime scratch(&scratchWorld, nullptr);
+    script::Vm scratchVm({});
+    const HandlerTable& table = ScriptApi{game}.sim().handlers;
+    std::ofstream out(outPath);
+    out << "id\tname\tstatus\tscripts\texample\n";
+    int unhandled = 0;
+    int used = 0;
+    constexpr int kActionCount = 772;
+    for (int raw = 0; raw < kActionCount; ++raw) {
+        const std::uint16_t id = static_cast<std::uint16_t>(raw);
+        std::string status;
+        if (table.get(id)) {
+            status = "table";
+        } else {
+            // The legacy switch has no table to read, so it is asked. A scratch world,
+            // and every action declared handled by answering at all.
+            bool answered = false;
+            try {
+                script::Vm vm({});
+                answered = game.action(id, {}, scratchWorld, vm).has_value();
+            } catch (const std::exception&) {
+                answered = true;
+            }
+            status = answered ? "switch" : scratch.fallbackKind(id, scratchVm);
+        }
+        const auto use = uses.find(id);
+        const int count = use != uses.end() ? use->second.first : 0;
+        used += count > 0 ? 1 : 0;
+        const bool bad = status == "default" || status == "queue-only" || status == "swmg-cell";
+        const bool allowed = documentedNoOps().contains(id);
+        out << raw << '\t' << script::actionSpec(id).name << '\t' << status
+            << (bad && allowed ? "(documented no-op)" : "") << '\t' << count << '\t'
+            << (use != uses.end() ? use->second.second : "") << '\n';
+        if (count > 0 && bad && !allowed) {
+            ++unhandled;
+            logError(concat("action coverage: ", raw, " ", script::actionSpec(id).name, " is ", status,
+                            " and used by ", count, " scripts, e.g. ", use->second.second));
+        }
+    }
+    logInfo(concat("action coverage: files=", files, " used_actions=", used, " unhandled=", unhandled));
+    return unhandled == 0 ? 0 : 22;
 }
 
 } // namespace ke

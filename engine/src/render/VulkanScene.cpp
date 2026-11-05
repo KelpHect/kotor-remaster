@@ -610,7 +610,7 @@ bool VulkanScene::upload(const kotor::Scene& scene, std::string& error)
     }
 
     GpuMesh room = uploadMesh(scene.vertices, scene.indices, scene.batches, UINT32_MAX, error);
-    if (room.vertexBuffer == VK_NULL_HANDLE) {
+    if (room.vertexBuffer == VK_NULL_HANDLE && !(previewMode_ && scene.vertices.empty())) {
         return false;
     }
     meshes_.push_back(std::move(room));
@@ -717,7 +717,7 @@ void VulkanScene::draw(VkCommandBuffer commandBuffer, const SceneCamera& camera,
         return;
     }
     const float aspect = extent.height > 0 ? static_cast<float>(extent.width) / extent.height : 1.0f;
-    Mat4 projection = perspective(camera.fovYDegrees, aspect, 0.05f, 500.0f);
+    Mat4 projection = perspective(camera.fovYDegrees, aspect, camera.nearClip, camera.farClip);
     // The 3D pass uses the GL Y-up convention. Vulkan's viewport is Y-down,
     // so flip the projection's Y row before the view multiply; ImGui already
     // has its own Vulkan-aware projection and stays upright.
@@ -833,6 +833,192 @@ void VulkanScene::destroyMovieFrame()
         vkFreeMemory(device_, movieFrame_.memory, nullptr);
         movieFrame_.memory = VK_NULL_HANDLE;
     }
+}
+
+void VulkanScene::clearScene()
+{
+    if (device_ == VK_NULL_HANDLE) {
+        return;
+    }
+    for (GpuMesh& mesh : meshes_) {
+        destroyMesh(mesh);
+    }
+    meshes_.clear();
+    destroyTextures();
+    scene_ = nullptr;
+}
+
+void VulkanScene::drawView(VkCommandBuffer commandBuffer, const PreviewView& view,
+                           VkExtent2D windowExtent)
+{
+    if (pipeline_ == VK_NULL_HANDLE || view.width <= 0 || view.height <= 0
+        || windowExtent.width == 0 || windowExtent.height == 0) {
+        return;
+    }
+    // Scissor / clear rectangle: the view rectangle clamped to the window. Vulkan
+    // framebuffer coordinates are already top-left, so no vertical conversion.
+    const int windowWidth = static_cast<int>(windowExtent.width);
+    const int windowHeight = static_cast<int>(windowExtent.height);
+    const int left = std::max(view.x, 0);
+    const int top = std::max(view.y, 0);
+    const int right = std::min(view.x + view.width, windowWidth);
+    const int bottom = std::min(view.y + view.height, windowHeight);
+    if (right <= left || bottom <= top) {
+        return;
+    }
+    VkRect2D clampedRect{};
+    clampedRect.offset = {left, top};
+    clampedRect.extent = {static_cast<std::uint32_t>(right - left),
+                          static_cast<std::uint32_t>(bottom - top)};
+
+    VkClearAttachment clears[2]{};
+    clears[0].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    clears[0].colorAttachment = 0;
+    clears[0].clearValue.color = {{view.background.x, view.background.y, view.background.z, 1.0f}};
+    clears[1].aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    clears[1].clearValue.depthStencil = {1.0f, 0};
+    VkClearRect clearRect{};
+    clearRect.rect = clampedRect;
+    clearRect.baseArrayLayer = 0;
+    clearRect.layerCount = 1;
+    vkCmdClearAttachments(commandBuffer, 2, clears, 1, &clearRect);
+
+    // The viewport keeps the full (unclamped) rectangle so a view that sticks out of
+    // the window is cropped instead of squashed; the scissor limits writes.
+    VkViewport viewport{};
+    viewport.x = static_cast<float>(view.x);
+    viewport.y = static_cast<float>(view.y);
+    viewport.width = static_cast<float>(view.width);
+    viewport.height = static_cast<float>(view.height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+    vkCmdSetScissor(commandBuffer, 0, 1, &clampedRect);
+
+    if (!meshes_.empty()) {
+        const float aspect = static_cast<float>(view.width) / static_cast<float>(view.height);
+        const SceneCamera& camera = view.camera;
+        Mat4 projection = perspective(camera.fovYDegrees, aspect, camera.nearClip, camera.farClip);
+        projection.m[5] = -projection.m[5]; // same Y flip as draw()
+        const Mat4 viewProjection = multiply(projection, lookAt(camera.eye, camera.forward, camera.up));
+        PushConstants push;
+        std::memcpy(push.viewProjection, viewProjection.m, sizeof(push.viewProjection));
+        push.ambient[0] = ambient_.x; push.ambient[1] = ambient_.y; push.ambient[2] = ambient_.z; push.ambient[3] = 1.0f;
+        push.diffuse[0] = diffuse_.x; push.diffuse[1] = diffuse_.y; push.diffuse[2] = diffuse_.z; push.diffuse[3] = 1.0f;
+        push.fogColor[0] = fogColor_.x; push.fogColor[1] = fogColor_.y; push.fogColor[2] = fogColor_.z; push.fogColor[3] = 1.0f;
+        push.fogNearFar[0] = fogNear_;
+        push.fogNearFar[1] = fogFar_;
+        const VkDeviceSize offset = 0;
+        for (const GpuMesh& mesh : meshes_) {
+            if (!mesh.visible || mesh.vertexBuffer == VK_NULL_HANDLE
+                || mesh.indexBuffer == VK_NULL_HANDLE) {
+                continue;
+            }
+            float model[16] = {1.0f, 0.0f, 0.0f, 0.0f,
+                               0.0f, 1.0f, 0.0f, 0.0f,
+                               0.0f, 0.0f, 1.0f, 0.0f,
+                               0.0f, 0.0f, 0.0f, 1.0f};
+            if (mesh.entity == UINT32_MAX) {
+                if (!view.drawStatic) {
+                    continue;
+                }
+            } else {
+                if (std::find(view.entities.begin(), view.entities.end(), mesh.entity)
+                    == view.entities.end()) {
+                    continue;
+                }
+                if (scene_ != nullptr && mesh.entity < scene_->entities.size()) {
+                    const kotor::Entity& entity = scene_->entities[mesh.entity];
+                    if (entity.dead) {
+                        continue;
+                    }
+                    const float c = std::cos(entity.bearing);
+                    const float s = std::sin(entity.bearing);
+                    model[0] = c;  model[1] = s;
+                    model[4] = -s; model[5] = c;
+                    model[12] = entity.position.x;
+                    model[13] = entity.position.y;
+                    model[14] = entity.position.z;
+                }
+            }
+            std::memcpy(push.model, model, sizeof(push.model));
+            vkCmdPushConstants(commandBuffer, pipelineLayout_,
+                               VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                               0, sizeof(push), &push);
+            vkCmdBindVertexBuffers(commandBuffer, 0, 1, &mesh.vertexBuffer, &offset);
+            vkCmdBindIndexBuffer(commandBuffer, mesh.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+            for (const kotor::TextureBatch& batch : mesh.batches) {
+                if (batch.texture >= textures_.size() || batch.indexCount == 0) {
+                    continue;
+                }
+                VkPipeline activePipeline = pipeline_;
+                if (batch.blend == kotor::BlendMode::Additive
+                    && additivePipeline_ != VK_NULL_HANDLE) {
+                    activePipeline = additivePipeline_;
+                } else if (batch.blend == kotor::BlendMode::Alpha
+                           && alphaPipeline_ != VK_NULL_HANDLE) {
+                    activePipeline = alphaPipeline_;
+                }
+                vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, activePipeline);
+                vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_,
+                                        0, 1, &textures_[batch.texture].descriptor, 0, nullptr);
+                vkCmdDrawIndexed(commandBuffer, batch.indexCount, 1, batch.firstIndex, 0, 0);
+            }
+        }
+    }
+
+    // Restore the full-window state for whatever draws next (ImGui sets its own too).
+    VkViewport full{};
+    full.width = static_cast<float>(windowExtent.width);
+    full.height = static_cast<float>(windowExtent.height);
+    full.minDepth = 0.0f;
+    full.maxDepth = 1.0f;
+    vkCmdSetViewport(commandBuffer, 0, 1, &full);
+    VkRect2D fullScissor{};
+    fullScissor.extent = windowExtent;
+    vkCmdSetScissor(commandBuffer, 0, 1, &fullScissor);
+}
+
+bool VulkanScene::createUiImage(int width, int height, const std::uint8_t* rgba, UiImage& out,
+                                std::string& error)
+{
+    if (width <= 0 || height <= 0 || rgba == nullptr) {
+        error = "invalid UI image";
+        return false;
+    }
+    kotor::Texture texture;
+    texture.name = "ui image";
+    texture.image.width = width;
+    texture.image.height = height;
+    texture.image.rgba.assign(rgba, rgba + static_cast<std::size_t>(width) * height * 4u);
+    GpuTexture gpu;
+    const bool created = createTexture(texture, gpu, error);
+    out.image = gpu.image;
+    out.memory = gpu.memory;
+    out.view = gpu.view;
+    if (!created) {
+        destroyUiImage(out);
+        return false;
+    }
+    return true;
+}
+
+void VulkanScene::destroyUiImage(UiImage& image)
+{
+    if (device_ == VK_NULL_HANDLE) {
+        image = {};
+        return;
+    }
+    if (image.view != VK_NULL_HANDLE) {
+        vkDestroyImageView(device_, image.view, nullptr);
+    }
+    if (image.image != VK_NULL_HANDLE) {
+        vkDestroyImage(device_, image.image, nullptr);
+    }
+    if (image.memory != VK_NULL_HANDLE) {
+        vkFreeMemory(device_, image.memory, nullptr);
+    }
+    image = {};
 }
 
 void VulkanScene::shutdown()

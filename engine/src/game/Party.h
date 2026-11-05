@@ -80,11 +80,18 @@ struct PartyTable {
 class GameSession;
 // The party family gate, behind --family-test party.
 int runPartyFamilyTest(GameSession& game);
+// The companion-control gate, behind --family-test companion.
+int runCompanionFamilyTest(GameSession& game);
 
 // A party table read back from an engine save (the party_* lines).
 struct PartyLoad {
     bool present = false;
     PartyTable table;
+    // Where the controlled companion stood (the PC's own position is the save's
+    // x/y/z). Engine save only: a retail save keeps no creature positions here.
+    bool hasControlledPosition = false;
+    float controlledPosition[3] = {0.0f, 0.0f, 0.0f};
+    float controlledBearing = 0.0f;
 };
 
 // One save line. Returns false when the key is not a party line.

@@ -24,6 +24,13 @@ public:
 
     bool loadScene(const kotor::Scene& scene, std::string& error);
     void setListener(kotor::Vec3 position, float yaw);
+    // Applies the EAX environment of the ARE room (RoomName, case-insensitive) the
+    // listener stands in. Retail does this per room from ARE Rooms/EnvAudio
+    // (swkotor.exe 005ee860); an unknown or empty room leaves the environment as is.
+    void setListenerRoom(const std::string& roomName);
+    int roomEnvironment() const { return roomEnvironment_; }
+    // soundeax.2da label of environment `row` (empty when the row does not exist).
+    std::string eaxLabel(int row) const;
     void setTlk(const kotor::Tlk* tlk) { tlk_ = tlk; }
 
     bool playMusic(std::int32_t musicId);
@@ -75,6 +82,8 @@ private:
     std::uint32_t footstepCounter_ = 0;
     float musicVolume_ = 0.75f;
     float ambientVolume_ = 0.65f;
+    std::string currentRoom_;
+    int roomEnvironment_ = -1;
 };
 
 } // namespace ke

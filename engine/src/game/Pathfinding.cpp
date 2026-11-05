@@ -1210,9 +1210,24 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
     nav::NavMesh* mesh = navMesh();
 
     const auto finish = [&](ActorStep step, MoveOutcome outcome, std::size_t door) {
-        if (object == scriptWorld_.pc) {
+        // The outcome of the player's click walk belongs to the steered creature.
+        if (object == controlledObject()) {
             moveOutcome_ = outcome;
             moveBlockingDoor_ = door;
+        }
+        // retail creature +0x33c; k_ai_master answers OnBlocked by opening the door. The
+        // player's own creature gets the outcome above instead.
+        if (scriptWorld_.get(object) != nullptr) {
+            ActorState& state = api.actor(object);
+            if (outcome != MoveOutcome::DoorBlocked) {
+                state.blockedRaised = false;
+            } else {
+                state.blockingDoor = objectForEntity(door);
+                if (!state.blockedRaised && object != controlledObject()) {
+                    state.blockedRaised = true;
+                    api.raiseHook(object, "Blocked");
+                }
+            }
         }
         return step;
     };
@@ -1337,6 +1352,7 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
     // a second of contact the actor stops yielding for two, so scripted moves
     // always finish. Those two times are this engine's, not retail's.
     const std::size_t selfEntity = object == scriptWorld_.pc ? playerEntity_ : api.entityFor(object);
+    std::size_t bumped = kNoDoor;
     const auto blockedAt = [&](Vec3 point) {
         if (route.ghost > 0.0f) {
             return false;
@@ -1361,6 +1377,7 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
             const auto space = nav_->personalSpace.find(other.appearance);
             if (against(other.position,
                         space != nav_->personalSpace.end() ? space->second : kDefaultPersonalSpace)) {
+                bumped = i;
                 return true;
             }
         }
@@ -1387,6 +1404,14 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
         }
         route.contact += dt;
         if (route.contact >= kContactBeforeGhost) {
+            // GetBlockingCreature 00546e00. When retail fills it was not traced; a second
+            // of contact is this engine's moment.
+            if (bumped != kNoDoor) {
+                api.actor(object).blockingCreature = objectForEntity(bumped);
+                if (object != controlledObject()) {
+                    api.raiseHook(object, "Blocked");
+                }
+            }
             route.ghost = kGhostSeconds;
             route.contact = 0.0f;
         }
@@ -1419,7 +1444,7 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
 
 // The keyboard's step: straight, else along the edge that stopped it. A closed door
 // stops the body short by its radius rather than its centre.
-kotor::Vec3 GameSession::slidePlayer(kotor::Vec3 from, kotor::Vec3 to, bool& moved)
+kotor::Vec3 GameSession::slidePlayer(kotor::Vec3 from, kotor::Vec3 to, bool& moved, float bodyRadius)
 {
     moved = false;
     nav::NavMesh* mesh = navMesh();
@@ -1443,7 +1468,7 @@ kotor::Vec3 GameSession::slidePlayer(kotor::Vec3 from, kotor::Vec3 to, bool& mov
         return from;
     }
     // Look one body radius further, so a closed door stops the body and not its centre.
-    const float radius = creatureRadius(scriptWorld_.pc);
+    const float radius = bodyRadius >= 0.0f ? bodyRadius : creatureRadius(scriptWorld_.pc);
     const Vec3 ahead = nav::lerp(from, to, (wanted + radius) / wanted);
     nav::RayResult first = mesh->ray(from, tri, ahead, nav_->closed);
     Vec3 end;
@@ -1498,15 +1523,14 @@ kotor::Vec3 GameSession::formationSlot(kotor::Vec3 anchor, float anchorYaw, int 
 // decompile (taken here as follower to leader). No teleport for a far follower was
 // found in that path, so none happens: a follower cut off stays put until a route
 // opens, and the module-entry placement gathers the party.
-void GameSession::followLeader(std::size_t entity, kotor::Vec3 anchor, kotor::Vec3 slot, float dt)
+void GameSession::followLeader(std::uint32_t self, kotor::Vec3 anchor, kotor::Vec3 slot, float dt)
 {
-    const kotor::Entity& follower = scene_.entities[entity];
-    const float toSlot = length2D(follower.position, slot);
+    const kotor::Vec3 here = ScriptApi{*this}.position(self);
+    const float toSlot = length2D(here, slot);
     if (toSlot <= kFormationArrive) {
         return;
     }
-    const std::uint32_t self = objectForEntity(entity);
-    const float apart = length2D(follower.position, anchor);
+    const float apart = length2D(here, anchor);
     const float squared = apart * apart;
     const float scale = squared < 1.0f ? 0.9f : (squared < 225.0f ? 1.2f : 1.5f);
     const bool run = apart > 3.0f;
@@ -1516,18 +1540,36 @@ void GameSession::followLeader(std::size_t entity, kotor::Vec3 anchor, kotor::Ve
 void GameSession::placePartyAtEntry()
 {
     nav::NavMesh* mesh = navMesh();
-    int slot = 0;
-    for (const CompanionState& companion : companions_) {
-        const std::size_t index = findEntity(companion.tag);
-        if (index == static_cast<std::size_t>(-1) || scene_.entities[index].dead) {
-            continue;
-        }
-        Vec3 spot = formationSlot(position_, yaw_, slot, 2.0f);
+    // loadModule put the entry point in position_. When a companion is steered it
+    // stands on the entry point and the PC takes a formation slot like a member.
+    const Vec3 entry = position_;
+    const std::size_t none = static_cast<std::size_t>(-1);
+    const std::size_t lead = companionControlled() ? controlledEntity() : none;
+    const auto settle = [&](Vec3 spot) {
         const int tri = mesh->locate(spot);
         if (tri >= 0) {
             spot.z = mesh->height(tri, spot.x, spot.y);
         }
-        scene_.entities[index].position = spot;
+        return spot;
+    };
+    if (lead != none) {
+        scene_.entities[lead].position = settle(entry);
+        scene_.entities[lead].bearing = yaw_;
+        syncEntityToScriptWorld(lead);
+    }
+    int slot = 0;
+    if (lead != none) {
+        position_ = settle(formationSlot(entry, yaw_, slot, 2.0f));
+        playerBearing_ = yaw_;
+        syncPlayerToScriptWorld();
+        ++slot;
+    }
+    for (const CompanionState& companion : companions_) {
+        const std::size_t index = findEntity(companion.tag);
+        if (index == none || scene_.entities[index].dead || index == lead) {
+            continue;
+        }
+        scene_.entities[index].position = settle(formationSlot(entry, yaw_, slot, 2.0f));
         scene_.entities[index].bearing = yaw_;
         syncEntityToScriptWorld(index);
         ++slot;
@@ -1541,22 +1583,23 @@ bool GameSession::moveTo(kotor::Vec3 target, float stopDistance, bool run)
         moveOutcome_ = MoveOutcome::Unreachable;
         return false;
     }
+    const std::uint32_t self = controlledObject();
+    ScriptApi api{*this};
     const nav::PathResult path =
-        mesh->findPath(position_, target, creatureRadius(scriptWorld_.pc), nav_->closed);
+        mesh->findPath(api.position(self), target, creatureRadius(self), nav_->closed);
     if (path.status == nav::PathStatus::Unreachable || path.status == nav::PathStatus::NoMesh) {
         moveOutcome_ = MoveOutcome::Unreachable;
         moveBlockingDoor_ = static_cast<std::size_t>(-1);
         return false;
     }
-    ScriptApi api{*this};
-    api.clearQueue(scriptWorld_.pc);
+    api.clearQueue(self);
     ActorAction action;
     action.kind = ActorActionKind::MoveToPoint;
     action.point = target;
     action.run = run;
     action.range = stopDistance;
     action.userIssued = true;
-    if (!api.enqueue(scriptWorld_.pc, std::move(action))) {
+    if (!api.enqueue(self, std::move(action))) {
         return false;
     }
     moveOutcome_ = MoveOutcome::Moving;
@@ -1573,7 +1616,7 @@ bool GameSession::pathExists(kotor::Vec3 from, kotor::Vec3 to, std::size_t* bloc
     if (mesh->empty()) {
         return false;
     }
-    const nav::PathResult path = mesh->findPath(from, to, creatureRadius(scriptWorld_.pc), nav_->closed);
+    const nav::PathResult path = mesh->findPath(from, to, creatureRadius(controlledObject()), nav_->closed);
     if (path.status == nav::PathStatus::DoorBlocked && blockingDoor != nullptr) {
         *blockingDoor = mesh->doors()[static_cast<std::size_t>(path.blockingDoor)].entity;
     }
@@ -1582,7 +1625,7 @@ bool GameSession::pathExists(kotor::Vec3 from, kotor::Vec3 to, std::size_t* bloc
 
 bool GameSession::movePending() const
 {
-    const auto it = sim_->actors.find(scriptWorld_.pc);
+    const auto it = sim_->actors.find(controlledObject());
     if (it == sim_->actors.end()) {
         return false;
     }
@@ -1597,7 +1640,7 @@ bool GameSession::movePending() const
 bool GameSession::openDoorAsPlayer(std::size_t entityIndex)
 {
     // The world-state family owns locks, keys, traps and door hooks.
-    return openDoor(entityIndex, scriptWorld_.pc) == UseOutcome::Opened;
+    return openDoor(entityIndex, controlledObject()) == UseOutcome::Opened;
 }
 
 // ---- the family gate ------------------------------------------------------------

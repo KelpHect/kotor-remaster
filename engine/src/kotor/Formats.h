@@ -11,6 +11,7 @@
 #include <cmath>
 #include <array>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -312,6 +313,18 @@ struct MdlMeshTriangle {
     BlendMode blend = BlendMode::Opaque;
 };
 
+// One entry of an animation's event table (name fired at `time` into the clip).
+struct MdlAnimEvent {
+    float time = 0.0f;
+    std::string name;
+};
+
+// A clip being sampled at a time. Later layers replace the channels they animate.
+struct MdlAnimLayer {
+    std::string animation;
+    float time = 0.0f;
+};
+
 struct MdlAnimationInfo {
     std::string name;
     float duration = 0.0f;
@@ -388,6 +401,17 @@ public:
     float skinBindError() const;
     std::optional<Pose> nodePose(const std::string& node, const std::string& animation,
                                  float time) const;
+    // Animation names in shipped models differ in case from the scripts naming them
+    // ("Gear0" and "gear0"), so these match without regard to case.
+    bool hasAnimationAnyCase(const std::string& name) const;
+    float animationDurationAnyCase(const std::string& name) const;
+    std::vector<MdlAnimEvent> animationEvents(const std::string& name) const;
+    std::vector<MdlMeshTriangle> posedTrianglesLayered(const std::vector<MdlAnimLayer>& layers,
+                                                       bool renderableOnly) const;
+    std::optional<Pose> nodePoseLayered(const std::string& node,
+                                        const std::vector<MdlAnimLayer>& layers) const;
+    // Faces of one mesh node in model space at the bind pose (AABB hit nodes).
+    std::vector<std::array<Vec3, 3>> nodeFaces(const std::string& node) const;
 
 private:
     struct ControllerKey {
@@ -444,6 +468,7 @@ private:
         std::string texture0;
         std::string texture1;
         bool trimesh = false;
+        bool render = true; // Trimesh header flag; false on AABB hit nodes.
         std::optional<Skin> skin;
         std::optional<Dangly> dangly;
         std::optional<Saber> saber;
@@ -455,6 +480,7 @@ private:
         float duration = 0.0f;
         float transition = 0.0f;
         std::vector<Node> nodes;
+        std::vector<MdlAnimEvent> events;
     };
 
     std::vector<Node> parseNodes(std::uint32_t rootOffset) const;
@@ -463,10 +489,14 @@ private:
     static std::vector<float> sampleController(const Controller& controller, float time);
     Animation parseAnimation(std::uint32_t offset) const;
     std::map<std::uint16_t, const Node*> animationNodes(const Animation& animation) const;
+    const Animation* findAnimationAnyCase(const std::string& name) const;
+    std::vector<Pose> layeredWorld(const std::vector<MdlAnimLayer>& layers) const;
     std::vector<Pose> poseWorld(const Animation* animation, float time,
-                                const std::map<std::string, Mat3>& extraRotations = {}) const;
+                                const std::map<std::string, Mat3>& extraRotations = {},
+                                const std::vector<std::pair<const Animation*, float>>* overlays = nullptr) const;
     std::vector<MdlMeshTriangle> trianglesFromPose(const std::vector<Pose>& world,
-                                                   float danglyTime) const;
+                                                   float danglyTime,
+                                                   const std::function<bool(const Node&)>& filter = {}) const;
 
     std::string name_;
     std::string supermodel_;
@@ -530,6 +560,13 @@ public:
     std::uint32_t language() const { return language_; }
     std::size_t size() const { return entries_.size(); }
     std::string text(std::uint32_t strref) const;
+    // Gendered lookup. gender 1 reads the feminine table (dialogf.tlk, attached with
+    // attachFemale) when the language is not English, and falls back to the masculine
+    // entry when the feminine one is missing or empty. English is always masculine
+    // (retail forces gender 0 for language 0).
+    std::string text(std::uint32_t strref, int gender) const;
+    void attachFemale(Tlk female);
+    bool hasFemale() const { return female_ != nullptr; }
     std::string sound(std::uint32_t strref) const;
     // TLK V3.0 serializer for patch fixtures and mod tooling.
     std::vector<std::uint8_t> toBytes() const;
@@ -544,6 +581,7 @@ private:
     std::uint32_t language_ = 0;
     std::vector<Entry> entries_;
     std::vector<std::uint8_t> text_;
+    std::shared_ptr<const Tlk> female_;
 };
 
 // KotOR SSF V1.1 (type 2060): a fixed table of StrRefs into dialog.tlk.
@@ -628,7 +666,10 @@ struct Dlg {
     std::string endConversationAbort;
     bool skippable = true;
 
-    static Dlg parse(const Gff& gff, const Tlk* tlk, std::string name);
+    // entryGender/replyGender pick the feminine TLK text (when attached) for NPC
+    // lines (the speaker's gender) and player lines (the player's gender).
+    static Dlg parse(const Gff& gff, const Tlk* tlk, std::string name,
+                     int entryGender = 0, int replyGender = 0);
 };
 
 // ---- entity templates ---------------------------------------------------------------------------------------------------
@@ -1042,6 +1083,15 @@ private:
     int nextSequence_ = 0;
 };
 
+// One ARE "Rooms" entry. Retail (swkotor.exe 00509780) reads EnvAudio and
+// AmbientScale only from here, per room; the GIT AreaProperties EnvAudio is not
+// read. `room` is the room name that matches the LYT room model.
+struct AreaRoomAudio {
+    std::string room;
+    std::int32_t envAudio = -1;  // soundeax.2da row id, -1 when absent
+    float ambientScale = 1.0f;
+};
+
 // Area audio routing resolved from GIT AreaProperties through
 // ambientmusic.2da, ambientsound.2da and soundeax.2da.
 struct AreaAudio {
@@ -1059,6 +1109,8 @@ struct AreaAudio {
     int ambientDayVolume = 0;
     int ambientNightVolume = 0;
     int musicDelay = 0;
+    // Per-room environments from the ARE (the retail source of the EAX room).
+    std::vector<AreaRoomAudio> rooms;
 };
 
 // One GIT SoundList instance and its UTS template.
@@ -1113,6 +1165,14 @@ struct Scene {
 
 Scene loadModule(Install& install, const std::string& moduleStem);
 void refreshEntityMesh(EntityMesh& mesh);
+
+// A mesh whose vertices are already in world space (entity == UINT32_MAX). The batch
+// layout and vertex count stay fixed for every later bake; only the renderable nodes
+// of `model` are included. Used for objects that are not scene entities.
+EntityMesh buildWorldEntityMesh(Scene& scene, Install& install, const std::shared_ptr<Mdl>& model);
+void bakeWorldEntityMesh(EntityMesh& mesh, const std::shared_ptr<Mdl>& model,
+                         const std::vector<MdlAnimLayer>& layers, const Mat3& rotation, Vec3 translation);
+std::shared_ptr<Mdl> loadWorldModel(Install& install, const std::string& modelName);
 
 // Collect non-empty script hook fields from one GFF struct into a hook map.
 // Used for ARE/IFO module hooks and GIT instance overrides.

@@ -354,6 +354,8 @@ Mdl Mdl::parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std
             node.texture1 = readCString(b.data(), b.size(), m + 120u, 32, "MDL texture1", model.name_);
             node.stride = readU32(b.data(), b.size(), m + 252u, "MDL stride");
             node.vertexCount = readU32(b.data(), b.size(), m + 304u, "MDL vertex count") & 0xFFFFu;
+            requireRange(b.size(), m + 313u, 1u, "MDL render flag");
+            node.render = b[m + 313u] != 0;
             node.mdxOffset = readU32(b.data(), b.size(),
                                      m + (model.k2_ ? 332u : 324u), "MDL mdx offset");
             if (node.stride < 12u && node.vertexCount != 0 && !(node.type & 0x800u)) {
@@ -643,7 +645,46 @@ Mdl::Animation Mdl::parseAnimation(std::uint32_t offset) const
     animation.transition = readF32(mdl_.data(), mdl_.size(), base + 84u, "MDL animation transition");
     const std::uint32_t rootOffset = readU32(mdl_.data(), mdl_.size(), base + 40u, "MDL animation root");
     animation.nodes = parseNodes(rootOffset);
+    const std::uint32_t eventsOffset = readU32(mdl_.data(), mdl_.size(), base + 120u, "MDL animation events");
+    const std::uint32_t eventCount = readU32(mdl_.data(), mdl_.size(), base + 124u, "MDL animation event count");
+    if (eventCount != 0u) {
+        requireRange(mdl_.size(), 12u + static_cast<std::size_t>(eventsOffset),
+                     static_cast<std::size_t>(eventCount) * 36u, "MDL animation event table");
+        for (std::uint32_t i = 0; i < eventCount; ++i) {
+            const std::size_t at = 12u + static_cast<std::size_t>(eventsOffset) + static_cast<std::size_t>(i) * 36u;
+            animation.events.push_back({readF32(mdl_.data(), mdl_.size(), at, "MDL event time"),
+                                        readCString(mdl_.data(), mdl_.size(), at + 4u, 32, "MDL event name", name_)});
+        }
+    }
     return animation;
+}
+
+const Mdl::Animation* Mdl::findAnimationAnyCase(const std::string& name) const
+{
+    const std::string wanted = lowerAscii(name);
+    for (const Animation& animation : animationData_) {
+        if (lowerAscii(animation.name) == wanted) {
+            return &animation;
+        }
+    }
+    return nullptr;
+}
+
+bool Mdl::hasAnimationAnyCase(const std::string& name) const
+{
+    return findAnimationAnyCase(name) != nullptr;
+}
+
+float Mdl::animationDurationAnyCase(const std::string& name) const
+{
+    const Animation* animation = findAnimationAnyCase(name);
+    return animation != nullptr ? animation->duration : 0.0f;
+}
+
+std::vector<MdlAnimEvent> Mdl::animationEvents(const std::string& name) const
+{
+    const Animation* animation = findAnimationAnyCase(name);
+    return animation != nullptr ? animation->events : std::vector<MdlAnimEvent>{};
 }
 
 int Mdl::animationIndex(const std::string& name) const
@@ -953,8 +994,55 @@ std::optional<Mdl::Pose> Mdl::nodePose(const std::string& node, const std::strin
     return std::nullopt;
 }
 
+std::vector<Mdl::Pose> Mdl::layeredWorld(const std::vector<MdlAnimLayer>& layers) const
+{
+    std::vector<std::pair<const Animation*, float>> resolved;
+    for (const MdlAnimLayer& layer : layers) {
+        if (const Animation* animation = findAnimationAnyCase(layer.animation)) {
+            resolved.emplace_back(animation, layer.time);
+        }
+    }
+    if (resolved.empty()) {
+        return bindWorld_;
+    }
+    const std::pair<const Animation*, float> base = resolved.front();
+    resolved.erase(resolved.begin());
+    return poseWorld(base.first, base.second, {}, &resolved);
+}
+
+std::vector<MdlMeshTriangle> Mdl::posedTrianglesLayered(const std::vector<MdlAnimLayer>& layers,
+                                                        bool renderableOnly) const
+{
+    const auto filter = [renderableOnly](const Node& node) { return !renderableOnly || node.render; };
+    return trianglesFromPose(layeredWorld(layers), -1.0f, filter);
+}
+
+std::optional<Mdl::Pose> Mdl::nodePoseLayered(const std::string& node,
+                                              const std::vector<MdlAnimLayer>& layers) const
+{
+    const std::string wanted = lowerAscii(node);
+    for (std::size_t i = 0; i < nodes_.size(); ++i) {
+        if (lowerAscii(nodes_[i].name) == wanted) {
+            return layeredWorld(layers)[i];
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<std::array<Vec3, 3>> Mdl::nodeFaces(const std::string& node) const
+{
+    const std::string wanted = lowerAscii(node);
+    const auto filter = [&wanted](const Node& candidate) { return lowerAscii(candidate.name) == wanted; };
+    std::vector<std::array<Vec3, 3>> faces;
+    for (const MdlMeshTriangle& triangle : trianglesFromPose(bindWorld_, -1.0f, filter)) {
+        faces.push_back({triangle.v[0].position, triangle.v[1].position, triangle.v[2].position});
+    }
+    return faces;
+}
+
 std::vector<Mdl::Pose> Mdl::poseWorld(const Animation* animation, float time,
-                                     const std::map<std::string, Mat3>& extraRotations) const
+                                     const std::map<std::string, Mat3>& extraRotations,
+                                     const std::vector<std::pair<const Animation*, float>>* overlays) const
 {
     std::vector<Pose> world(nodes_.size());
     std::vector<Mat3> extra(nodes_.size());
@@ -969,12 +1057,6 @@ std::vector<Mdl::Pose> Mdl::poseWorld(const Animation* animation, float time,
             }
         }
     }
-    std::map<std::uint16_t, const Node*> animated;
-    if (animation != nullptr) {
-        for (const Node& node : animation->nodes) {
-            animated[node.supernode] = &node;
-        }
-    }
     struct Local {
         Vec3 position;
         std::array<float, 4> rotation{1.0f, 0.0f, 0.0f, 0.0f};
@@ -982,9 +1064,17 @@ std::vector<Mdl::Pose> Mdl::poseWorld(const Animation* animation, float time,
     };
     std::vector<Local> local(nodes_.size());
     for (std::size_t i = 0; i < nodes_.size(); ++i) {
+        local[i].position = nodes_[i].position;
+        local[i].rotation = {nodes_[i].qw, nodes_[i].qx, nodes_[i].qy, nodes_[i].qz};
+    }
+    // The base clip, then any overlays: a later layer replaces the channels it animates.
+    const auto applyLayer = [&](const Animation& layer, float layerTime) {
+    std::map<std::uint16_t, const Node*> animated;
+    for (const Node& node : layer.nodes) {
+        animated[node.supernode] = &node;
+    }
+    for (std::size_t i = 0; i < nodes_.size(); ++i) {
         const Node& node = nodes_[i];
-        local[i].position = node.position;
-        local[i].rotation = {node.qw, node.qx, node.qy, node.qz};
         const auto it = animated.find(node.supernode);
         if (it == animated.end()) {
             continue;
@@ -993,7 +1083,12 @@ std::vector<Mdl::Pose> Mdl::poseWorld(const Animation* animation, float time,
             if (controller.keys.empty()) {
                 continue;
             }
-            const float clamped = std::clamp(time, controller.keys.front().time,
+            if (controller.type == 8) {
+                local[i].position = node.position;
+            } else if (controller.type == 36) {
+                local[i].scale = {1.0f, 1.0f, 1.0f};
+            }
+            const float clamped = std::clamp(layerTime, controller.keys.front().time,
                                              controller.keys.back().time);
             std::size_t hi = 1;
             while (hi < controller.keys.size() && controller.keys[hi].time <= clamped) {
@@ -1044,6 +1139,15 @@ std::vector<Mdl::Pose> Mdl::poseWorld(const Animation* animation, float time,
                     local[i].scale.z *= scale;
                 }
             }
+        }
+    }
+    };
+    if (animation != nullptr) {
+        applyLayer(*animation, time);
+    }
+    if (overlays != nullptr) {
+        for (const auto& [overlay, overlayTime] : *overlays) {
+            applyLayer(*overlay, overlayTime);
         }
     }
 
@@ -1185,12 +1289,13 @@ Vec3 Mdl::rootMotion(const std::string& animation, float time) const
 }
 
 std::vector<MdlMeshTriangle> Mdl::trianglesFromPose(const std::vector<Pose>& world,
-                                                    float danglyTime) const
+                                                    float danglyTime,
+                                                    const std::function<bool(const Node&)>& filter) const
 {
     std::vector<MdlMeshTriangle> out;
     for (std::size_t nodeIndex = 0; nodeIndex < nodes_.size(); ++nodeIndex) {
         const Node& node = nodes_[nodeIndex];
-        if (!node.trimesh) {
+        if (!node.trimesh || (filter && !filter(node))) {
             continue;
         }
         const Pose& nodePose = world[nodeIndex];

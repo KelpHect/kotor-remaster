@@ -710,7 +710,8 @@ bool GameSession::removePartyNpc(int npc)
     if (party_.leader == npc) {
         party_.leader = kNpcPlayer;
     }
-    if (party_.controlled == npc) {
+    const bool wasControlled = party_.controlled == npc;
+    if (wasControlled) {
         party_.controlled = kNpcPlayer;
     }
     // The creature stays in the world as an ordinary NPC (retail leaves it to the
@@ -719,6 +720,9 @@ bool GameSession::removePartyNpc(int npc)
         scene_.entities[index].partyAvatar = false;
     }
     syncPartyViews();
+    if (wasControlled) {
+        onControlChanged(npc, kNpcPlayer);
+    }
     logEvent("party leave " + slot.tag);
     return true;
 }
@@ -824,9 +828,13 @@ bool GameSession::setPartyLeaderNpc(int npc)
     if (npc != kNpcPlayer && (!validNpc(npc) || !isNpcPartyMember(npc))) {
         return false;
     }
+    const int previous = party_.controlled;
     party_.leader = npc;
     party_.controlled = npc;
     syncPartyViews();
+    if (previous != npc) {
+        onControlChanged(previous, npc);
+    }
     return true;
 }
 
@@ -871,7 +879,8 @@ void GameSession::applyNpcSoloVisibility()
         }
         for (kotor::EntityMesh& mesh : scene_.entityMeshes) {
             if (mesh.entity == index) {
-                mesh.visible = !party_.solo;
+                // Solo mode hides the members that are not steered.
+                mesh.visible = !party_.solo || npc == party_.controlled;
             }
         }
     }
@@ -1031,6 +1040,8 @@ void GameSession::tickParty(float dt)
     if (party_.solo) {
         applyNpcSoloVisibility();
     }
+    passControlIfDown();
+    controlPcDefence();
 }
 
 bool GameSession::partyMemberDown(int npc) const
@@ -1243,6 +1254,11 @@ void GameSession::writePartyState(std::ostream& file) const
         file << (i == 0 ? "" : ",") << party_.members[i];
     }
     file << "\n";
+    // A steered companion's own position (x/y/z of the save is the PC's body).
+    if (companionControlled() && controlledEntity() != kNone) {
+        const kotor::Vec3 at = controlledPosition();
+        file << "pctl=" << at.x << "|" << at.y << "|" << at.z << "|" << controlledBearing() << "\n";
+    }
     for (int npc = 0; npc < kNpcCount; ++npc) {
         const PartyNpc& slot = party_.npcs[static_cast<std::size_t>(npc)];
         if (!slot.available) {
@@ -1286,7 +1302,7 @@ void GameSession::writePartyState(std::ostream& file) const
 bool parsePartyLine(const std::string& key, const std::string& value, PartyLoad& out)
 {
     if (key != "pt" && key != "pnpc" && key != "psheet" && key != "pskill" && key != "pfeat"
-        && key != "ppower" && key != "pitem" && key != "plock") {
+        && key != "ppower" && key != "pitem" && key != "plock" && key != "pctl") {
         return false;
     }
     out.present = true;
@@ -1294,6 +1310,16 @@ bool parsePartyLine(const std::string& key, const std::string& value, PartyLoad&
     const auto num = [&](std::size_t i, std::int64_t fallback = 0) -> std::int64_t {
         return i < p.size() && !p[i].empty() ? std::stoll(p[i]) : fallback;
     };
+    if (key == "pctl") {
+        if (p.size() >= 4) {
+            out.hasControlledPosition = true;
+            for (std::size_t i = 0; i < 3; ++i) {
+                out.controlledPosition[i] = std::stof(p[i]);
+            }
+            out.controlledBearing = std::stof(p[3]);
+        }
+        return true;
+    }
     if (key == "pt") {
         out.table.leader = static_cast<int>(num(0, kNpcPlayer));
         out.table.controlled = static_cast<int>(num(1, kNpcPlayer));
@@ -1408,6 +1434,17 @@ bool GameSession::restorePartyTable(PartyLoad&& load)
     if (party_.solo) {
         applyNpcSoloVisibility();
     }
+    // A steered companion stands where it was saved; the PC is at the save's x/y/z.
+    if (load.hasControlledPosition && companionControlled()) {
+        if (const std::size_t index = controlledEntity(); index != kNone) {
+            kotor::Entity& body = scene_.entities[index];
+            body.position = {load.controlledPosition[0], load.controlledPosition[1],
+                             load.controlledPosition[2]};
+            body.bearing = load.controlledBearing;
+            syncEntityToScriptWorld(index);
+        }
+    }
+    showControlledBodies();
     return true;
 }
 

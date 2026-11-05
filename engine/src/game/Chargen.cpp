@@ -10,7 +10,6 @@ namespace {
 constexpr std::int32_t kMinAttribute = 8;
 constexpr std::int32_t kMaxAttribute = 18;
 constexpr std::int32_t kAttributePool = 30;
-constexpr std::int32_t kMaxSkillRank = 4; // level 1 + 3
 
 } // namespace
 
@@ -25,9 +24,56 @@ void Chargen::reset()
     step_ = Step::Class;
     classId_ = 0;
     attributes_ = {8, 8, 8, 8, 8, 8};
+    gender_ = 0;
+    slot_ = 2;
     portraitIndex_ = 0;
     name_ = "Player";
+    refreshPortraits();
     refreshDerived(true);
+}
+
+void Chargen::refreshPortraits()
+{
+    portraitRows_ = rules_.pcPortraitRows(gender_);
+    if (portraitIndex_ >= static_cast<std::int32_t>(portraitRows_.size())) {
+        portraitIndex_ = 0;
+    }
+}
+
+std::int32_t Chargen::slotClass(int slot)
+{
+    static constexpr std::int32_t classes[kSlotCount] = {2, 1, 0, 0, 1, 2};
+    return slot >= 0 && slot < kSlotCount ? classes[slot] : 0;
+}
+
+std::int32_t Chargen::slotGender(int slot)
+{
+    return slot >= 3 ? 1 : 0;
+}
+
+bool Chargen::selectSlot(int slot)
+{
+    if (slot < 0 || slot >= kSlotCount) {
+        return false;
+    }
+    slot_ = slot;
+    if (!setGender(slotGender(slot))) {
+        return false;
+    }
+    return selectClass(slotClass(slot));
+}
+
+bool Chargen::setGender(std::int32_t gender)
+{
+    if (gender != 0 && gender != 1) {
+        return false;
+    }
+    if (gender != gender_) {
+        gender_ = gender;
+        portraitIndex_ = 0;
+        refreshPortraits();
+    }
+    return true;
 }
 
 void Chargen::refreshDerived(bool resetSelections)
@@ -38,8 +84,8 @@ void Chargen::refreshDerived(bool resetSelections)
     base_.hp = base_.maxHp;
     base_.maxFp = rules_.maxForcePoints(classId_, 1, attributes_[4], attributes_[5]);
     base_.fp = base_.maxFp;
-    skillPool_ = rules_.skillPointsForLevel(classId_, attributes_[3]);
-    featPool_ = std::max<std::int32_t>(1, rules_.featsForLevel(classId_, 1));
+    skillPool_ = rules_.chargenSkillPoints(classId_, attributes_[3]);
+    featPool_ = rules_.featsForLevel(classId_, 1);
     if (resetSelections) {
         skills_.assign(static_cast<std::size_t>(rules_.skillCount()), 0);
         feats_.clear();
@@ -119,6 +165,9 @@ bool Chargen::selectClass(std::int32_t classId)
         return false;
     }
     classId_ = classId;
+    if (slotClass(slot_) != classId || slotGender(slot_) != gender_) {
+        slot_ = gender_ == 0 ? 2 - classId : 3 + classId;
+    }
     attributes_ = {8, 8, 8, 8, 8, 8};
     refreshDerived(true);
     return true;
@@ -128,9 +177,7 @@ std::int32_t Chargen::skillPointsRemaining() const
 {
     std::int32_t spent = 0;
     for (std::size_t i = 0; i < skills_.size(); ++i) {
-        const std::int32_t cost = rules_.skillIsClassSkill(classId_, static_cast<std::int32_t>(i))
-            ? 1 : 2;
-        spent += skills_[i] * cost;
+        spent += skills_[i] * rules_.skillRankCost(classId_, static_cast<std::int32_t>(i));
     }
     return skillPool_ - spent;
 }
@@ -149,10 +196,10 @@ bool Chargen::adjustSkill(std::int32_t index, std::int32_t delta)
         || (delta != 1 && delta != -1)) {
         return false;
     }
-    const std::int32_t cost = rules_.skillIsClassSkill(classId_, index) ? 1 : 2;
+    const std::int32_t cost = rules_.skillRankCost(classId_, index);
     std::int32_t& rank = skills_[static_cast<std::size_t>(index)];
     if (delta > 0) {
-        if (rank >= kMaxSkillRank || skillPointsRemaining() < cost) {
+        if (rank >= skillRankCap(index) || skillPointsRemaining() < cost) {
             return false;
         }
         ++rank;
@@ -200,14 +247,28 @@ bool Chargen::toggleFeat(std::int32_t featId)
     return true;
 }
 
+std::int32_t Chargen::skillRankCap(std::int32_t index) const
+{
+    return rules_.maxSkillRank(classId_, index, 1);
+}
+
 PortraitInfo Chargen::portrait() const
 {
-    return rules_.portrait(portraitIndex_);
+    if (portraitIndex_ < 0 || portraitIndex_ >= static_cast<std::int32_t>(portraitRows_.size())) {
+        return {};
+    }
+    return rules_.portraitRow(portraitRows_[static_cast<std::size_t>(portraitIndex_)]);
+}
+
+std::int32_t Chargen::appearanceId() const
+{
+    const PortraitInfo info = portrait();
+    return info.row < 0 ? -1 : rules_.portraitAppearance(info.row, classId_);
 }
 
 void Chargen::cyclePortrait(std::int32_t delta)
 {
-    const std::int32_t count = rules_.portraitCount();
+    const std::int32_t count = static_cast<std::int32_t>(portraitRows_.size());
     if (count <= 0) {
         portraitIndex_ = 0;
         return;
@@ -242,6 +303,8 @@ CharacterSheet Chargen::build() const
     sheet.featPoints = 0;
     sheet.gold = 0;
     sheet.alignment = 50;
+    sheet.gender = gender_;
+    sheet.portraitRow = portrait().row;
     sheet.skills.clear();
     for (std::int32_t i = 0; i < rules_.skillCount(); ++i) {
         sheet.skills[rules_.skillName(i)] = skills_[static_cast<std::size_t>(i)];

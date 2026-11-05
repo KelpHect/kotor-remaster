@@ -1,8 +1,12 @@
 #include "audio/Audio.h"
 
+#include "audio/Reverb.h"
+
 #include "dr_mp3.h"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -374,41 +378,23 @@ bool resample(SoundData& data, int sampleRate, int channels)
 
 const std::vector<std::string>& reverbLabels()
 {
-    static const std::vector<std::string> labels = {
-        "GENERIC", "PADDEDCELL", "ROOM", "BATHROOM", "LIVINGROOM", "STONEROOM",
-        "AUDITORIUM", "CONCERTHALL", "CAVE", "ARENA", "HANGAR", "CARPETTEDHALLWAY",
-        "HALLWAY", "STONECORRIDOR", "ALLEY", "FOREST", "CITY", "MOUNTAINS",
-        "QUARRY", "PLAIN", "PARKINGLOT", "SEWERPIPE", "UNDERWATER", "NOREVERB",
-    };
+    static const std::vector<std::string> labels = [] {
+        std::vector<std::string> names;
+        for (int id = 0; id < kEaxEnvironmentCount; ++id) {
+            names.emplace_back(eaxEnvironment(id).label);
+        }
+        return names;
+    }();
     return labels;
 }
 
 ReverbPreset reverbPreset(const std::string& label)
 {
-    if (label == "PADDEDCELL") return {label, 10.0f, 0.15f, 0.10f};
-    if (label == "ROOM") return {label, 18.0f, 0.30f, 0.15f};
-    if (label == "BATHROOM") return {label, 12.0f, 0.25f, 0.18f};
-    if (label == "LIVINGROOM") return {label, 22.0f, 0.25f, 0.14f};
-    if (label == "STONEROOM") return {label, 38.0f, 0.45f, 0.22f};
-    if (label == "AUDITORIUM") return {label, 55.0f, 0.55f, 0.26f};
-    if (label == "CONCERTHALL") return {label, 70.0f, 0.60f, 0.29f};
-    if (label == "CAVE") return {label, 85.0f, 0.70f, 0.32f};
-    if (label == "ARENA") return {label, 65.0f, 0.60f, 0.28f};
-    if (label == "HANGAR") return {label, 95.0f, 0.72f, 0.34f};
-    if (label == "CARPETTEDHALLWAY") return {label, 15.0f, 0.20f, 0.10f};
-    if (label == "HALLWAY") return {label, 30.0f, 0.35f, 0.18f};
-    if (label == "STONECORRIDOR") return {label, 40.0f, 0.45f, 0.22f};
-    if (label == "ALLEY") return {label, 45.0f, 0.40f, 0.24f};
-    if (label == "FOREST") return {label, 30.0f, 0.30f, 0.20f};
-    if (label == "CITY") return {label, 50.0f, 0.40f, 0.24f};
-    if (label == "MOUNTAINS") return {label, 110.0f, 0.55f, 0.30f};
-    if (label == "QUARRY") return {label, 120.0f, 0.60f, 0.32f};
-    if (label == "PLAIN") return {label, 90.0f, 0.45f, 0.26f};
-    if (label == "PARKINGLOT") return {label, 60.0f, 0.50f, 0.25f};
-    if (label == "SEWERPIPE") return {label, 20.0f, 0.50f, 0.30f};
-    if (label == "UNDERWATER") return {label, 8.0f, 0.25f, 0.25f};
-    if (label == "NOREVERB") return {label, 0.0f, 0.0f, 0.0f};
-    return {"GENERIC", 25.0f, 0.35f, 0.18f};
+    const int id = eaxEnvironmentId(label.c_str());
+    if (id < 0) {
+        return {"GENERIC", 0};
+    }
+    return {label, id};
 }
 
 struct Mixer::Impl {
@@ -437,22 +423,137 @@ struct Mixer::Impl {
     std::vector<Voice> voices;
     int nextId = 1;
     std::vector<float> buses[5];
-    std::vector<float> delayLeft;
-    std::vector<float> delayRight;
-    std::size_t delayIndex = 0;
     float lastRms = 0.0f;
+
+    // Environment reverb (see audio/Reverb.h). Two engines exist so a room change
+    // can crossfade: `active` carries the current room and, while `fading`,
+    // `incoming` ramps in. Everything here is allocated once.
+    static constexpr int kNoRequest = -1000;
+    static constexpr int kChunk = 2048;
+    Reverb engines[2];
+    int active = 0;
+    int environment = -1;          // applied environment, -1 = off
+    int incomingEnvironment = -1;
+    bool fading = false;
+    std::size_t fadePos = 0;
+    std::size_t fadeTotal = 1;
+    float crossfadeSeconds = 0.15f;
+    float send = 0.6f;
+    std::atomic<int> requestedEnvironment{kNoRequest};
+    std::atomic<bool> requestedCrossfade{false};
+    int queuedEnvironment = kNoRequest;
+    bool queuedCrossfade = false;
+    std::vector<float> sendMono;
+    std::vector<float> wet;  // interleaved stereo
+    std::array<float, kChunk> chunkLeft[2] = {};
+    std::array<float, kChunk> chunkRight[2] = {};
 
     Impl()
     {
-        delayLeft.assign(32768, 0.0f);
-        delayRight.assign(32768, 0.0f);
+        for (std::vector<float>& bus : buses) {
+            bus.reserve(16384u * 2u);
+        }
+        sendMono.reserve(16384);
+        wet.reserve(16384u * 2u);
     }
 
-    void resetReverb()
+    void applyEnvironment(int next, bool crossfade)
     {
-        std::fill(delayLeft.begin(), delayLeft.end(), 0.0f);
-        std::fill(delayRight.begin(), delayRight.end(), 0.0f);
-        delayIndex = 0;
+        if (next == environment && !fading) {
+            return;
+        }
+        if (fading) {
+            queuedEnvironment = next;
+            queuedCrossfade = crossfade;
+            return;
+        }
+        const bool wasOff = environment < 0;
+        if (!crossfade || wasOff) {
+            if (next >= 0) {
+                engines[active].configure(eaxEnvironment(next), sampleRate);
+            }
+            environment = next;
+            return;
+        }
+        incomingEnvironment = next;
+        if (next >= 0) {
+            engines[1 - active].configure(eaxEnvironment(next), sampleRate);
+        }
+        fadePos = 0;
+        fadeTotal = std::max<std::size_t>(
+            1, static_cast<std::size_t>(crossfadeSeconds * static_cast<float>(sampleRate)));
+        fading = true;
+    }
+
+    void takeRequests()
+    {
+        if (!fading && queuedEnvironment != kNoRequest) {
+            const int next = queuedEnvironment;
+            queuedEnvironment = kNoRequest;
+            applyEnvironment(next, queuedCrossfade);
+        }
+        const int next = requestedEnvironment.exchange(kNoRequest);
+        if (next != kNoRequest) {
+            applyEnvironment(next, requestedCrossfade.load());
+        }
+    }
+
+    // Runs the reverb over `frames` mono send samples into `wet` (interleaved).
+    void renderReverb(int frames)
+    {
+        wet.assign(static_cast<std::size_t>(frames) * 2u, 0.0f);
+        if (environment < 0 && !fading) {
+            return;
+        }
+        for (int offset = 0; offset < frames; offset += kChunk) {
+            const int count = std::min(kChunk, frames - offset);
+            const float* in = sendMono.data() + offset;
+            const std::size_t cn = static_cast<std::size_t>(count);
+            const bool newOn = fading && incomingEnvironment >= 0;
+            std::fill_n(chunkLeft[0].begin(), cn, 0.0f);
+            std::fill_n(chunkRight[0].begin(), cn, 0.0f);
+            if (environment >= 0) {
+                engines[active].process(in, chunkLeft[0].data(), chunkRight[0].data(), count);
+            }
+            if (newOn) {
+                std::fill_n(chunkLeft[1].begin(), cn, 0.0f);
+                std::fill_n(chunkRight[1].begin(), cn, 0.0f);
+                engines[1 - active].process(in, chunkLeft[1].data(), chunkRight[1].data(), count);
+            }
+            for (int i = 0; i < count; ++i) {
+                float left = chunkLeft[0][static_cast<std::size_t>(i)];
+                float right = chunkRight[0][static_cast<std::size_t>(i)];
+                if (fading) {
+                    const float position = std::min(
+                        1.0f, static_cast<float>(fadePos + static_cast<std::size_t>(offset + i))
+                                  / static_cast<float>(fadeTotal));
+                    const float angle = position * 1.57079632679f;  // equal-power
+                    // Exact end points so the retired reverb contributes nothing once
+                    // the fade is complete, whatever the block size.
+                    const float outGain = position >= 1.0f ? 0.0f : std::cos(angle);
+                    const float inGain = position >= 1.0f ? 1.0f : std::sin(angle);
+                    left *= outGain;
+                    right *= outGain;
+                    if (newOn) {
+                        left += inGain * chunkLeft[1][static_cast<std::size_t>(i)];
+                        right += inGain * chunkRight[1][static_cast<std::size_t>(i)];
+                    }
+                }
+                wet[static_cast<std::size_t>(offset + i) * 2u] = left;
+                wet[static_cast<std::size_t>(offset + i) * 2u + 1u] = right;
+            }
+        }
+        if (fading) {
+            fadePos += static_cast<std::size_t>(frames);
+            if (fadePos >= fadeTotal) {
+                fading = false;
+                if (incomingEnvironment >= 0) {
+                    active = 1 - active;
+                }
+                environment = incomingEnvironment;
+                incomingEnvironment = -1;
+            }
+        }
     }
 
     float voiceGain(const Voice& voice) const
@@ -538,12 +639,51 @@ float Mixer::busVolume(Bus bus) const
 void Mixer::setReverb(const std::string& label)
 {
     impl_->preset = reverbPreset(label);
-    impl_->resetReverb();
+    impl_->requestedCrossfade.store(false);
+    impl_->requestedEnvironment.store(impl_->preset.environment);
+}
+
+void Mixer::setReverbEnvironment(int environment, bool crossfade)
+{
+    const int id = environment >= kEaxEnvironmentCount ? 0 : std::max(environment, -1);
+    impl_->preset = id >= 0 ? ReverbPreset{eaxEnvironment(id).label, id} : ReverbPreset{"OFF", -1};
+    impl_->requestedCrossfade.store(crossfade);
+    impl_->requestedEnvironment.store(id);
 }
 
 const ReverbPreset& Mixer::reverb() const
 {
     return impl_->preset;
+}
+
+int Mixer::reverbEnvironment() const
+{
+    return impl_->environment;
+}
+
+bool Mixer::reverbFading() const
+{
+    return impl_->fading;
+}
+
+void Mixer::setReverbCrossfadeSeconds(float seconds)
+{
+    impl_->crossfadeSeconds = std::clamp(seconds, 0.01f, 2.0f);
+}
+
+void Mixer::setReverbSend(float level)
+{
+    impl_->send = std::clamp(level, 0.0f, 1.0f);
+}
+
+float Mixer::reverbSend() const
+{
+    return impl_->send;
+}
+
+std::size_t Mixer::reverbDenormalCount() const
+{
+    return impl_->engines[0].denormalCount() + impl_->engines[1].denormalCount();
 }
 
 int Mixer::play(const std::shared_ptr<const SoundData>& data, Bus bus, float volume,
@@ -651,9 +791,15 @@ void Mixer::mix(float* interleavedStereo, int frames)
         return;
     }
     const std::size_t samples = static_cast<std::size_t>(frames) * 2u;
+    impl_->takeRequests();
     for (std::vector<float>& buffer : impl_->buses) {
         buffer.assign(samples, 0.0f);
     }
+    // Mono reverb send, summed over positional voices (retail sends only 3D
+    // samples and positional streams to the provider: swkotor.exe 005d71c0 and
+    // 005dc560; music and movie streams never get a reverb level).
+    const bool reverbOn = impl_->environment >= 0 || impl_->fading;
+    impl_->sendMono.assign(static_cast<std::size_t>(frames), 0.0f);
 
     for (Impl::Voice& voice : impl_->voices) {
         if (!voice.active || !voice.data) {
@@ -670,6 +816,11 @@ void Mixer::mix(float* interleavedStereo, int frames)
         const float leftGain = gain * std::sqrt((1.0f - pan) * 0.5f);
         const float rightGain = gain * std::sqrt((1.0f + pan) * 0.5f);
         std::vector<float>& bus = impl_->buses[static_cast<std::size_t>(voice.bus)];
+        const bool sends = reverbOn && voice.positional
+            && (voice.bus == Bus::Effects || voice.bus == Bus::Ambient || voice.bus == Bus::Voice);
+        const float sendGain = sends
+            ? impl_->send * impl_->busVolume[static_cast<std::size_t>(voice.bus)] * 0.5f
+            : 0.0f;
         for (int frame = 0; frame < frames; ++frame) {
             if (voice.cursor >= static_cast<double>(sourceFrames)) {
                 if (voice.loop) {
@@ -688,37 +839,16 @@ void Mixer::mix(float* interleavedStereo, int frames)
                 + (impl_->sample(data, hi, 1) - impl_->sample(data, lo, 1)) * t;
             bus[static_cast<std::size_t>(frame) * 2u] += left * leftGain;
             bus[static_cast<std::size_t>(frame) * 2u + 1u] += right * rightGain;
+            if (sends) {
+                impl_->sendMono[static_cast<std::size_t>(frame)] +=
+                    (left * leftGain + right * rightGain) * sendGain;
+            }
             voice.cursor += static_cast<double>(voice.pitch);
         }
     }
 
-    // EAX approximation: a damped stereo echo on the effects bus.
-    if (impl_->preset.wet > 0.0f && impl_->preset.feedback > 0.0f) {
-        const std::size_t delaySamples = std::max<std::size_t>(
-            1, static_cast<std::size_t>(impl_->preset.delayMs * 0.001f
-                                        * static_cast<float>(impl_->sampleRate)));
-        const std::size_t delayRightSamples = std::min(
-            impl_->delayRight.size() - 1, delaySamples + delaySamples / 7 + 1);
-        std::vector<float>& effects = impl_->buses[static_cast<std::size_t>(Bus::Effects)];
-        for (int frame = 0; frame < frames; ++frame) {
-            const std::size_t leftIndex = impl_->delayIndex % impl_->delayLeft.size();
-            const std::size_t rightIndex = (impl_->delayIndex + delaySamples / 3 + 1)
-                % impl_->delayRight.size();
-            const float leftDelayed = impl_->delayLeft[leftIndex];
-            const float rightDelayed = impl_->delayRight[rightIndex];
-            const float leftIn = effects[static_cast<std::size_t>(frame) * 2u];
-            const float rightIn = effects[static_cast<std::size_t>(frame) * 2u + 1u];
-            impl_->delayLeft[leftIndex] = leftIn + leftDelayed * impl_->preset.feedback;
-            impl_->delayRight[rightIndex] = rightIn + rightDelayed * impl_->preset.feedback;
-            effects[static_cast<std::size_t>(frame) * 2u] =
-                leftIn * (1.0f - impl_->preset.wet) + leftDelayed * impl_->preset.wet;
-            effects[static_cast<std::size_t>(frame) * 2u + 1u] =
-                rightIn * (1.0f - impl_->preset.wet) + rightDelayed * impl_->preset.wet;
-            ++impl_->delayIndex;
-        }
-        (void)delaySamples;
-        (void)delayRightSamples;
-    }
+    // Environment reverb: wet only, added after the dry buses below.
+    impl_->renderReverb(frames);
 
     if (impl_->voices.size() > 64) {
         impl_->voices.erase(
@@ -737,6 +867,8 @@ void Mixer::mix(float* interleavedStereo, int frames)
             left += buffer[static_cast<std::size_t>(frame) * 2u] * volume;
             right += buffer[static_cast<std::size_t>(frame) * 2u + 1u] * volume;
         }
+        left += impl_->wet[static_cast<std::size_t>(frame) * 2u];
+        right += impl_->wet[static_cast<std::size_t>(frame) * 2u + 1u];
         left = clampSample(left * impl_->master);
         right = clampSample(right * impl_->master);
         interleavedStereo[static_cast<std::size_t>(frame) * 2u] = left;

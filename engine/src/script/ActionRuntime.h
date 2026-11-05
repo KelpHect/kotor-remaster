@@ -91,6 +91,9 @@ public:
     void setContinuations(bool enabled) { continuations_ = enabled; }
     bool continuations() const { return continuations_; }
     std::int64_t registerFunctor(Functor functor) override;
+    // What this runtime does for an action when the host declines it, for
+    // --action-coverage. Runs the handler with no arguments: use a scratch instance.
+    std::string fallbackKind(std::uint16_t actionId, Vm& vm);
 
 private:
     Value cell(const Args& args, std::size_t index, ParamKind kind = ParamKind::Int) const;
@@ -107,6 +110,7 @@ private:
     std::vector<Value> generic(const std::string& name, const Args& args, Vm& vm,
                                std::uint16_t actionId);
     std::vector<Value> swmg(const std::string& name, const Args& args, std::uint16_t actionId);
+    std::map<std::string, Value> swmgStore_; // Cells of the host-less SWMG path.
     std::optional<std::vector<Value>> behaviors(const std::string& name, const Args& args,
                                                 std::uint16_t actionId);
     std::vector<Value> behaviorField(const std::string& name, const Args& args,

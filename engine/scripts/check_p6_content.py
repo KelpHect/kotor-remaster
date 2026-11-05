@@ -213,7 +213,7 @@ def main(argv=None) -> int:
                        "entity_meshes", "triggers", "encounter_volumes",
                        "cameras", "sounds", "script_hooks", "warnings")},
                      sort_keys=True))
-    for message in failures[:20]:
+    for message in failures:
         print("FAILED", message)
     print("p6 content: PASS" if not failures else "p6 content: FAIL")
     return 0 if not failures else 1

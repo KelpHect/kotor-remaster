@@ -29,11 +29,11 @@ bool resample(SoundData& data, int sampleRate, int channels);
 
 enum class Bus { Music = 0, Ambient = 1, Effects = 2, Voice = 3, Movie = 4 };
 
+// A soundeax.2da environment: the label and the retail environment id (the row
+// index). The DSP parameters live in audio/Reverb.h (EaxEnvironment).
 struct ReverbPreset {
     std::string label;
-    float delayMs = 0.0f;
-    float feedback = 0.0f;
-    float wet = 0.0f;
+    int environment = 0;
 };
 
 ReverbPreset reverbPreset(const std::string& label);
@@ -50,8 +50,24 @@ public:
     void setListener(kotor::Vec3 position, float yaw);
     void setBusVolume(Bus bus, float volume);
     float busVolume(Bus bus) const;
+    // Environment reverb. PARAMETER-FAITHFUL, NOT BIT-EXACT MILES/EAX: see
+    // audio/Reverb.h. Changes are queued and applied at the start of the next
+    // mix() call, so they are safe to request from the game thread.
+    //  - setReverb: switch to a soundeax label immediately (no crossfade).
+    //  - setReverbEnvironment: switch to a soundeax row id (negative = off); with
+    //    `crossfade` the old and new reverbs overlap for crossfadeSeconds().
     void setReverb(const std::string& label);
+    void setReverbEnvironment(int environment, bool crossfade = true);
     const ReverbPreset& reverb() const;
+    int reverbEnvironment() const;
+    bool reverbFading() const;
+    void setReverbCrossfadeSeconds(float seconds);
+    // Fraction of a positional voice's signal sent to the reverb (retail keeps
+    // one global effects level, default 0.6 at swkotor.exe 005d8813).
+    void setReverbSend(float level);
+    float reverbSend() const;
+    // Denormal floats currently stored in the reverb memory (test hook).
+    std::size_t reverbDenormalCount() const;
 
     int play(const std::shared_ptr<const SoundData>& data, Bus bus, float volume,
              bool loop, bool positional = false, kotor::Vec3 position = {},

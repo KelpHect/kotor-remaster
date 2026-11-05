@@ -131,6 +131,16 @@ bool Localization::load(int requestedLanguage, std::string& error)
             + " (" + std::to_string(loaded->language()) + ")";
         return false;
     }
+    {
+        std::vector<std::uint8_t> femaleBytes = readFile(root_ / "dialogf.tlk");
+        if (!femaleBytes.empty()) {
+            try {
+                loaded->attachFemale(Tlk::parse(std::move(femaleBytes), "dialogf.tlk"));
+            } catch (const FormatError&) {
+                // An unreadable feminine table leaves the masculine text in use.
+            }
+        }
+    }
     tlk_ = std::move(loaded);
     return true;
 }
@@ -213,6 +223,19 @@ bool Localization::load(Install& install, int requestedLanguage,
     if (!applyPatch("replace", static_cast<std::size_t>(-1))
         || !applyPatch("append", 0)) {
         return false;
+    }
+    // dialogf.tlk beside dialog.tlk is the feminine table of the non-English
+    // installs. Its file name is the conventional one; the exe string was not located.
+    {
+        std::string femaleName;
+        std::vector<std::uint8_t> femaleBytes = readCandidate("dialogf", femaleName);
+        if (!femaleBytes.empty()) {
+            try {
+                loaded->attachFemale(Tlk::parse(std::move(femaleBytes), femaleName));
+            } catch (const FormatError&) {
+                // An unreadable feminine table leaves the masculine text in use.
+            }
+        }
     }
     tlk_ = std::move(loaded);
     return true;
