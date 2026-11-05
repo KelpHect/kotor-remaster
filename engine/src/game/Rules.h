@@ -24,6 +24,10 @@ struct InventoryItem {
     std::int32_t slot = -1; // baseitems.2da equipableslots bit index, -1 = carried
     bool equipped = false;
     bool identified = true;
+    // The script-world item object that stands for this entry (0 until the item
+    // model in ScriptItems.cpp links it). The two are one model: this row is the
+    // PC-facing view, the object carries tag, plot, stolen and charges.
+    std::uint32_t object = 0;
 };
 
 struct CharacterSheet {
@@ -90,6 +94,8 @@ struct MerchantState {
 struct EncounterState {
     bool spawned = false;
     bool exhausted = false;
+    bool triggered = false; // the PC has entered and the wave was spawned
+    bool inside = false;    // PC was inside the volume on the last tick
     std::int32_t spawnedCount = 0;
     std::int32_t respawnsRemaining = 0;
     float resetTime = 0.0f;
@@ -160,6 +166,14 @@ public:
 
     int equipSlotFor(std::int32_t baseItem) const;
     int itemCost(std::int32_t baseItem) const;
+    // baseitems.2da "stacking" (1 when the column is absent) and the
+    // "equipableslots" bit mask (0 when the item cannot be equipped).
+    std::int32_t maxStack(std::int32_t baseItem) const;
+    std::uint32_t equipMask(std::int32_t baseItem) const;
+    // Any baseitems.2da cell as an integer; `fallback` when absent or "****".
+    std::int32_t baseItemInt(std::int32_t baseItem, const std::string& column,
+                             std::int32_t fallback = 0) const;
+    std::string baseItemString(std::int32_t baseItem, const std::string& column) const;
     InventoryItem makeItem(const std::string& resref, std::int32_t baseItem) const;
     bool canEquip(const CharacterSheet& sheet, const InventoryItem& item) const;
 
@@ -187,6 +201,25 @@ public:
     bool skillIsClassSkill(std::int32_t classId, std::int32_t skillIndex) const;
     bool featIsAvailable(std::int32_t classId, std::int32_t featId) const;
 
+    // ---- creature combat (retail attack, AC and XP tables) ------------------
+    // Fills entity.attackBonus, defense, saves, damage range, range and
+    // stats.mainHand/offHand from the UTC sheet and the equipped items. Once only.
+    void deriveCreatureCombat(kotor::Entity& entity) const;
+    // acbonus.2da for one class at one level.
+    std::int32_t classArmorBonus(std::int32_t classId, std::int32_t level) const;
+    // Kill award before per-member NPC scaling. retail 004f19e0.
+    std::int32_t killXp(std::int32_t leaderLevel, float challengeRating,
+                        std::int32_t partyCount) const;
+    // ranges.2da PrimaryRange (sight) / SecondaryRange (hearing). retail 005afce0.
+    float perceptionRange(std::int32_t row, bool hearing) const;
+    // difficultyopt.2da MULTIPLIER for the default setting row. retail 004f3830.
+    float partyDamageMultiplier() const;
+    // A spells.2da or feat.2da cell (`power` picks the table).
+    std::int32_t talentInt(bool power, std::int32_t id, const std::string& column,
+                           std::int32_t fallback = -1) const;
+    std::string powerImpactScript(std::int32_t powerId) const;
+    std::size_t powerCount() const { return spells_ ? spells_->rowCount() : 0; }
+
 private:
     std::int32_t cellInt(const kotor::TwoDa& table, const std::string& row,
                          const std::string& column, std::int32_t fallback = 0) const;
@@ -202,6 +235,16 @@ private:
     std::optional<kotor::TwoDa> featgain_;
     std::optional<kotor::TwoDa> spells_;
     std::optional<kotor::TwoDa> animations_;
+    std::optional<kotor::TwoDa> xptable_;
+    std::optional<kotor::TwoDa> npc_;
+    std::optional<kotor::TwoDa> ranges_;
+    std::optional<kotor::TwoDa> acbonus_;
+    std::optional<kotor::TwoDa> difficultyopt_;
+    std::optional<kotor::TwoDa> costTables_;
+    kotor::Install* install_ = nullptr;
+    // iprp_* cost tables and item templates are read on demand and never change.
+    mutable std::map<std::string, std::optional<kotor::TwoDa>> propertyTables_;
+    mutable std::map<std::string, std::optional<kotor::ItemTemplate>> itemTemplates_;
     std::map<std::string, kotor::TwoDa> attackTables_;
     std::map<std::string, kotor::TwoDa> saveTables_;
     std::map<std::string, kotor::TwoDa> skillTables_;

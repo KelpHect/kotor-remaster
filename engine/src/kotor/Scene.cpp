@@ -344,9 +344,24 @@ Scene loadModule(Install& install, const std::string& moduleStem)
     scene.fogFar = number(are, are.rootIndex(), "FogFar", scene.fogFar);
     scene.rooms = lyt.rooms;
 
+    // Which surface materials can be walked on and which stop a line of sight. A
+    // missing table falls back to the face normal alone.
+    std::vector<char> surfaceWalk;
+    std::vector<char> surfaceSight;
+    if (auto table = install.find("surfacemat", 2017); table.has_value()) {
+        const TwoDa surfaces = TwoDa::parse(std::move(*table), "surfacemat.2da");
+        const int walk = surfaces.columnIndex("walk");
+        const int sight = surfaces.columnIndex("lineofsight");
+        for (std::size_t row = 0; row < surfaces.rowCount() && walk >= 0 && sight >= 0; ++row) {
+            surfaceWalk.push_back(surfaces.cell(row, static_cast<std::size_t>(walk)) == "1" ? 1 : 0);
+            surfaceSight.push_back(surfaces.cell(row, static_cast<std::size_t>(sight)) == "1" ? 1 : 0);
+        }
+    }
+
     std::map<std::string, std::vector<MdlTriangle>> byTexture;
     std::uint32_t sourceBytes = 0;
-    for (const LytRoom& room : lyt.rooms) {
+    for (std::size_t roomIndex = 0; roomIndex < lyt.rooms.size(); ++roomIndex) {
+        const LytRoom& room = lyt.rooms[roomIndex];
         auto wokData = install.find(room.room, resType(ResType::Wok));
         auto mdlData = install.find(room.room, resType(ResType::Mdl));
         auto mdxData = install.find(room.room, resType(ResType::Mdx));
@@ -363,6 +378,12 @@ Scene loadModule(Install& install, const std::string& moduleStem)
                 facet.surface = face.surface;
                 facet.normal = face.normal;
                 facet.floor = face.floor;
+                facet.room = static_cast<std::uint32_t>(roomIndex);
+                facet.walkable = face.surface < surfaceWalk.size() ? surfaceWalk[face.surface] != 0
+                                                                   : face.floor;
+                facet.blocksSight = face.surface < surfaceSight.size()
+                    ? surfaceSight[face.surface] != 0
+                    : true;
                 scene.collision.push_back(facet);
             }
         }

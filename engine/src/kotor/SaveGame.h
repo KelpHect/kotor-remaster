@@ -62,6 +62,39 @@ struct SavedObjectState {
     std::vector<std::string> loot;
 };
 
+// One available NPC: a PARTYTABLE slot (PT_AVAIL_NPCS entry) plus the stored
+// creature (AVAILNPC<n>.utc in the outer ERF). The slot index is the nwscript
+// NPC_* constant, which is also the npc.2da row.
+struct SavedNpc {
+    bool available = false;    // PT_NPC_AVAIL
+    std::int32_t select = 1;   // PT_NPC_SELECT
+    bool hasCreature = false;  // an AVAILNPC<n> creature was read / is to be written
+    std::string templateResref;
+    std::string tag;
+    std::string name;
+    std::int32_t classId = 0;
+    std::int32_t level = 1;
+    std::int32_t xp = 0;
+    std::int32_t hp = 1;
+    std::int32_t maxHp = 1;
+    std::int32_t forcePoints = 0;
+    std::int32_t maxForcePoints = 0;
+    std::int32_t str = 10;
+    std::int32_t dex = 10;
+    std::int32_t con = 10;
+    std::int32_t intel = 10;
+    std::int32_t wis = 10;
+    std::int32_t cha = 10;
+    std::int32_t alignment = 50;
+    std::int32_t joiningXp = 0;
+    std::vector<std::int32_t> feats;
+    std::vector<std::int32_t> powers;
+    std::vector<std::int32_t> skills;
+    std::vector<SavedInventoryItem> inventory; // worn items
+};
+
+constexpr int kSavedNpcCount = 9;
+
 struct OriginalSave {
     std::filesystem::path folder;
     std::string module;
@@ -93,7 +126,12 @@ struct OriginalSave {
     std::vector<std::int32_t> powers;
     std::vector<std::int32_t> skills; // SkillList order (ComputerUse..TreatInjury)
     std::vector<SavedInventoryItem> inventory;
-    std::vector<std::pair<std::int32_t, bool>> party; // member id, leader
+    // PT_MEMBERS: NPC ids only (the PC is not a member), and whether each leads.
+    std::vector<std::pair<std::int32_t, bool>> party;
+    std::array<SavedNpc, kSavedNpcCount> npcs;
+    std::int32_t controlledNpc = -1; // PT_CONTROLLED_NP; -1 is the PC
+    bool solo = false;               // PT_SOLOMODE
+    std::int32_t xpPool = 0;         // PT_XP_POOL
     std::vector<std::string> partyTags;
     std::map<std::string, std::int32_t> journal;
     std::vector<SavedGlobal> globals;

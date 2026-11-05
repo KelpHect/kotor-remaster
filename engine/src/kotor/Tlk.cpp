@@ -262,12 +262,40 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
             tarHeightOffset = gff.number(*f);
         }
     };
+    // QuestEntry, PlotIndex, PlotXPPercentage, Delay, WaitFlags, Listener and
+    // Speaker are per-node fields; replies carry the same set in shipped data.
+    const auto nodeFields = [&](std::uint32_t s, auto& node) {
+        if (const GffField* v = gff.field(s, "Speaker"); v != nullptr) {
+            node.speaker = gff.text(*v);
+        }
+        if (const GffField* v = gff.field(s, "Listener"); v != nullptr) {
+            node.listener = gff.text(*v);
+        }
+        if (const GffField* v = gff.field(s, "QuestEntry"); v != nullptr) {
+            node.questEntry = gff.integer(*v);
+            node.hasQuestEntry = true;
+        }
+        if (const GffField* v = gff.field(s, "PlotIndex"); v != nullptr) {
+            node.plotIndex = gff.integer(*v);
+        }
+        if (const GffField* v = gff.field(s, "PlotXPPercentage"); v != nullptr) {
+            node.plotXpPercentage = gff.number(*v);
+        }
+        if (const GffField* v = gff.field(s, "Delay"); v != nullptr) {
+            node.delay = static_cast<std::uint32_t>(gff.integer(*v));
+        }
+        if (const GffField* v = gff.field(s, "WaitFlags"); v != nullptr) {
+            node.waitFlags = static_cast<std::uint32_t>(gff.integer(*v));
+        }
+    };
+    const auto linkActive = [&](std::uint32_t link) -> std::string {
+        const GffField* active = gff.field(link, "Active");
+        return active != nullptr ? gff.text(*active) : std::string{};
+    };
     if (const GffField* f = gff.field(root, "EntryList"); f != nullptr) {
         for (const std::uint32_t s : gff.list(*f)) {
             DlgEntry entry;
-            if (const GffField* v = gff.field(s, "Speaker"); v != nullptr) {
-                entry.speaker = gff.text(*v);
-            }
+            nodeFields(s, entry);
             if (const GffField* v = gff.field(s, "Text"); v != nullptr) {
                 entry.text = resolveLocString(*v);
             }
@@ -298,6 +326,7 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
                 for (const std::uint32_t link : gff.list(*v)) {
                     if (const GffField* idx = gff.field(link, "Index"); idx != nullptr) {
                         entry.replies.push_back(static_cast<std::uint32_t>(gff.integer(*idx)));
+                        entry.repliesActive.push_back(linkActive(link));
                     }
                 }
             }
@@ -307,6 +336,7 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
     if (const GffField* f = gff.field(root, "ReplyList"); f != nullptr) {
         for (const std::uint32_t s : gff.list(*f)) {
             DlgReply reply;
+            nodeFields(s, reply);
             if (const GffField* v = gff.field(s, "Text"); v != nullptr) {
                 reply.text = resolveLocString(*v);
             }
@@ -337,6 +367,7 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
                 for (const std::uint32_t link : gff.list(*v)) {
                     if (const GffField* idx = gff.field(link, "Index"); idx != nullptr) {
                         reply.entries.push_back(static_cast<std::uint32_t>(gff.integer(*idx)));
+                        reply.entriesActive.push_back(linkActive(link));
                     }
                 }
             }

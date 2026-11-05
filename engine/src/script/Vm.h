@@ -69,6 +69,17 @@ public:
     void block(std::uint16_t actionId);
     std::uint64_t steps() const { return steps_; }
     const std::vector<std::uint32_t>& traceOffsets() const { return trace_; }
+    // Names the running script so captured closures can be persisted.
+    void setScriptName(std::string name) { scriptName_ = std::move(name); }
+    // Live sessions resolve the two reserved object constants when CONST runs:
+    // 0 is OBJECT_SELF and 1 is OBJECT_INVALID (shipped scripts encode them this
+    // way). The pinned corpus oracle leaves this off and keeps the raw cells.
+    // `self` is the id OBJECT_SELF resolves to.
+    void setLiveObjectConstants(std::uint32_t self)
+    {
+        liveObjectConstants_ = true;
+        selfObject_ = self;
+    }
 
     friend struct VmTestAccess;
 
@@ -107,6 +118,9 @@ private:
     std::map<std::string, std::uint32_t> notes_;
     bool traceEnabled_ = false;
     std::vector<std::uint32_t> trace_;
+    std::string scriptName_;
+    bool liveObjectConstants_ = false;
+    std::uint32_t selfObject_ = 0;
 };
 
 } // namespace ke::script

@@ -81,6 +81,77 @@ std::int32_t intField(const Gff& gff, std::uint32_t structure, const char* label
     return field != nullptr ? gff.integer(*field) : fallback;
 }
 
+// Shared by UTC, UTD and UTP. A template that lacks a field keeps the default.
+void applyGameplayFields(Entity& entity, const Gff& gff, std::uint32_t root)
+{
+    entity.locked = intField(gff, root, "Locked", entity.locked ? 1 : 0) != 0;
+    entity.lockable = intField(gff, root, "Lockable") != 0;
+    entity.keyRequired = intField(gff, root, "KeyRequired") != 0;
+    entity.keyName = textField(gff, root, "KeyName");
+    entity.openLockDC = intField(gff, root, "OpenLockDC");
+    entity.closeLockDC = intField(gff, root, "CloseLockDC");
+    entity.autoRemoveKey = intField(gff, root, "AutoRemoveKey") != 0;
+    entity.plot = intField(gff, root, "Plot") != 0;
+    entity.min1Hp = intField(gff, root, "Min1HP") != 0;
+    entity.trapFlag = intField(gff, root, "TrapFlag") != 0;
+    entity.trapDetectable = intField(gff, root, "TrapDetectable") != 0;
+    entity.trapDisarmable = intField(gff, root, "TrapDisarmable") != 0;
+    entity.trapOneShot = intField(gff, root, "TrapOneShot") != 0;
+    entity.trapDetectDC = intField(gff, root, "TrapDetectDC");
+    entity.trapDisarmDC = intField(gff, root, "DisarmDC");
+    entity.trapType = intField(gff, root, "TrapType");
+    entity.hasInventory = intField(gff, root, "HasInventory") != 0;
+    entity.isStatic = intField(gff, root, "Static") != 0;
+    entity.hardness = intField(gff, root, "Hardness");
+}
+
+// UTC sheet fields behind GetRacialType, GetGender, GetAbilityScore, the class and
+// skill queries. Data only; ScriptObjects.cpp reads it.
+void applyCreatureStats(Entity& entity, const Gff& utc, std::uint32_t root)
+{
+    CreatureStats& stats = entity.stats;
+    stats.parsed = true;
+    stats.race = intField(utc, root, "Race");
+    stats.subRace = intField(utc, root, "SubraceIndex");
+    stats.gender = intField(utc, root, "Gender");
+    stats.challengeRating = numberField(utc, root, "ChallengeRating", 0.0f);
+    stats.perceptionRange = numberField(utc, root, "PerceptionRange", 11.0f);
+    stats.naturalAC = intField(utc, root, "NaturalAC");
+    stats.goodEvil = intField(utc, root, "GoodEvil", 50);
+    constexpr const char* kAbilities[6] = {"Str", "Dex", "Con", "Int", "Wis", "Cha"};
+    for (std::size_t i = 0; i < 6; ++i) {
+        stats.abilities[i] = intField(utc, root, kAbilities[i], 10);
+    }
+    stats.classes.clear();
+    stats.powers.clear();
+    if (const GffField* list = utc.field(root, "ClassList"); list != nullptr) {
+        for (const std::uint32_t entry : utc.list(*list)) {
+            stats.classes.emplace_back(intField(utc, entry, "Class"),
+                                       intField(utc, entry, "ClassLevel"));
+            if (const GffField* known = utc.field(entry, "KnownList0"); known != nullptr) {
+                for (const std::uint32_t spell : utc.list(*known)) {
+                    stats.powers.push_back(intField(utc, spell, "Spell", -1));
+                }
+            }
+        }
+    }
+    stats.feats.clear();
+    if (const GffField* list = utc.field(root, "FeatList"); list != nullptr) {
+        for (const std::uint32_t entry : utc.list(*list)) {
+            stats.feats.push_back(intField(utc, entry, "Feat", -1));
+        }
+    }
+    stats.maxForcePoints = intField(utc, root, "ForcePoints");
+    stats.forcePoints = intField(utc, root, "CurrentForce", stats.maxForcePoints);
+    stats.combatDerived = false;
+    stats.skills.clear();
+    if (const GffField* list = utc.field(root, "SkillList"); list != nullptr) {
+        for (const std::uint32_t entry : utc.list(*list)) {
+            stats.skills.push_back(intField(utc, entry, "Rank"));
+        }
+    }
+}
+
 std::string locField(const Gff& gff, std::uint32_t structure, const char* label, const Tlk* tlk)
 {
     const GffField* field = gff.field(structure, label);
@@ -500,6 +571,39 @@ void refreshEntityMeshImpl(EntityMesh& mesh)
     ++mesh.revision;
 }
 
+// UTC ItemList (carried, with a Dropable flag) and Equip_ItemList (worn). The
+// struct type of an Equip_ItemList entry is the slot bit mask, so the lowest set
+// bit is the INVENTORY_SLOT_* number.
+void readCreatureItems(Entity& entity, const Gff& utc)
+{
+    entity.creatureItems.clear();
+    if (const GffField* list = utc.field(utc.rootIndex(), "ItemList"); list != nullptr) {
+        for (const std::uint32_t item : utc.list(*list)) {
+            const std::string resref = textField(utc, item, "InventoryRes");
+            if (!resref.empty()) {
+                entity.creatureItems.push_back({resref, intField(utc, item, "Dropable", 1) != 0, -1});
+            }
+        }
+    }
+    if (const GffField* list = utc.field(utc.rootIndex(), "Equip_ItemList"); list != nullptr) {
+        for (const std::uint32_t item : utc.list(*list)) {
+            const std::string resref = textField(utc, item, "EquippedRes");
+            if (resref.empty()) {
+                continue;
+            }
+            std::int32_t slot = -1;
+            const std::uint32_t mask = utc.structure(item).typeId;
+            for (std::int32_t bit = 0; bit < 32 && mask != 0; ++bit) {
+                if ((mask & (1u << bit)) != 0) {
+                    slot = bit;
+                    break;
+                }
+            }
+            entity.creatureItems.push_back({resref, intField(utc, item, "Dropable", 1) != 0, slot});
+        }
+    }
+}
+
 void applyEquippedWeapon(Entity& entity, Install& install, const Gff& utc,
                          const TwoDa& baseitems)
 {
@@ -710,6 +814,10 @@ void addEncounterGeometry(Scene& scene, Install& install, const Gff& git)
             encounter.resetTime = intField(ute, ute.rootIndex(), "ResetTime", 0);
             encounter.respawns = intField(ute, ute.rootIndex(), "Respawns", 0);
             encounter.spawnOption = intField(ute, ute.rootIndex(), "SpawnOption", 0);
+            encounter.difficultyIndex = intField(ute, ute.rootIndex(), "DifficultyIndex", -1);
+            encounter.faction = intField(ute, ute.rootIndex(), "Faction", 0);
+            encounter.playerOnly = intField(ute, ute.rootIndex(), "PlayerOnly", 0) != 0;
+            encounter.reset = intField(ute, ute.rootIndex(), "Reset", 0) != 0;
             if (const GffField* list = ute.field(ute.rootIndex(), "CreatureList"); list != nullptr) {
                 for (const std::uint32_t creatureStruct : ute.list(*list)) {
                     EncounterCreature creature;
@@ -794,6 +902,23 @@ std::optional<ItemTemplate> loadItemTemplate(Install& install, const std::string
         item.cost = intField(uti, uti.rootIndex(), "Cost", 0);
         item.stackSize = std::max(1, intField(uti, uti.rootIndex(), "StackSize", 1));
         item.identified = intField(uti, uti.rootIndex(), "Identified", 1) != 0;
+        item.plot = intField(uti, uti.rootIndex(), "Plot", 0) != 0;
+        item.charges = intField(uti, uti.rootIndex(), "Charges", 0);
+        item.addCost = intField(uti, uti.rootIndex(), "AddCost", 0);
+        if (const GffField* list = uti.field(uti.rootIndex(), "PropertiesList"); list != nullptr) {
+            for (const std::uint32_t entry : uti.list(*list)) {
+                ItemTemplate::Property property;
+                property.name = intField(uti, entry, "PropertyName", 0);
+                property.subtype = intField(uti, entry, "Subtype", 0);
+                property.costTable = intField(uti, entry, "CostTable", 0);
+                property.costValue = intField(uti, entry, "CostValue", 0);
+                property.param1 = intField(uti, entry, "Param1", 0);
+                property.param1Value = intField(uti, entry, "Param1Value", 0);
+                property.usesPerDay = intField(uti, entry, "UsesPerDay", 255);
+                property.useable = intField(uti, entry, "Useable", 1) != 0;
+                item.properties.push_back(property);
+            }
+        }
         const std::optional<Tlk> tlk = loadTlk(install);
         item.name = locField(uti, uti.rootIndex(), "LocalizedName", tlk ? &*tlk : nullptr);
         return item;
@@ -838,19 +963,18 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
             entity.maxHitPoints = 1;
         }
         entity.hitPoints = std::max(1, std::min(entity.hitPoints, entity.maxHitPoints));
-        const std::int32_t dexterity = intField(utc, root, "Dex", 10);
-        entity.defense = 10 + (dexterity - 10) / 2 + intField(utc, root, "NaturalAC", 0);
+        // defense, attackBonus and damageMin/Max come from Rules::deriveCreatureCombat.
         entity.fortSave = intField(utc, root, "FortSaveThrow", 0);
         entity.willSave = intField(utc, root, "WillSaveThrow", 0);
         entity.refSave = intField(utc, root, "RefSaveThrow", 0);
-        entity.attackBonus = 2 + std::max(0, static_cast<int>(numberField(utc, root,
-                                                                        "ChallengeRating", 0.0f)));
-        entity.damageMin = 1;
-        entity.damageMax = 6;
+        applyGameplayFields(entity, utc, root);
+        applyCreatureStats(entity, utc, root);
         entity.scriptDialogue = textField(utc, root, "ScriptDialogue");
         entity.scriptOnEnter = textField(utc, root, "ScriptOnNotice");
         entity.walkRate = 3.0f + numberField(utc, root, "WalkRate", 7.0f) * 0.15f;
+        entity.walkRateRow = intField(utc, root, "WalkRate", 7);
         entity.hostile = false;
+        readCreatureItems(entity, utc);
         if (baseitems.has_value()) {
             applyEquippedWeapon(entity, install, utc, *baseitems);
         }
@@ -987,19 +1111,18 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                         entity.maxHitPoints = 1;
                     }
                     entity.hitPoints = std::max(1, std::min(entity.hitPoints, entity.maxHitPoints));
-                    const std::int32_t dexterity = intField(utc, utc.rootIndex(), "Dex", 10);
-                    entity.defense = 10 + (dexterity - 10) / 2 + intField(utc, utc.rootIndex(), "NaturalAC", 0);
+                    // defense, attackBonus and damageMin/Max: Rules::deriveCreatureCombat.
                     entity.fortSave = intField(utc, utc.rootIndex(), "FortSaveThrow", 0);
                     entity.willSave = intField(utc, utc.rootIndex(), "WillSaveThrow", 0);
                     entity.refSave = intField(utc, utc.rootIndex(), "RefSaveThrow", 0);
-                    entity.attackBonus = 2 + std::max(0, static_cast<int>(numberField(utc, utc.rootIndex(),
-                                                                                    "ChallengeRating", 0.0f)));
-                    entity.damageMin = 1;
-                    entity.damageMax = 6;
+                    applyGameplayFields(entity, utc, utc.rootIndex());
+                    applyCreatureStats(entity, utc, utc.rootIndex());
                     entity.scriptDialogue = textField(utc, utc.rootIndex(), "ScriptDialogue");
                     entity.scriptOnEnter = textField(utc, utc.rootIndex(), "ScriptOnNotice");
                     entity.walkRate = 3.0f + numberField(utc, utc.rootIndex(), "WalkRate", 7.0f) * 0.15f;
+                    entity.walkRateRow = intField(utc, utc.rootIndex(), "WalkRate", 7);
                     entity.hostile = false; // GameSession applies faction relations
+                    readCreatureItems(entity, utc);
                     if (baseitems.has_value()) {
                         applyEquippedWeapon(entity, install, utc, *baseitems);
                     }
@@ -1020,6 +1143,12 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                     collectScriptHooks(utd, utd.rootIndex(), entity.scripts);
                     entity.tag = textField(utd, utd.rootIndex(), "Tag");
                     entity.faction = static_cast<std::uint32_t>(intField(utd, utd.rootIndex(), "Faction", 0));
+                    applyGameplayFields(entity, utd, utd.rootIndex());
+                    // A door is bashable: UTD HP / CurrentHP are its hit points.
+                    entity.maxHitPoints = std::max(1, intField(utd, utd.rootIndex(), "HP", 1));
+                    entity.hitPoints = std::clamp(
+                        intField(utd, utd.rootIndex(), "CurrentHP", entity.maxHitPoints), 1,
+                        entity.maxHitPoints);
                     const std::uint32_t genericType = static_cast<std::uint32_t>(
                         intField(utd, utd.rootIndex(), "GenericType", 0));
                     entity.appearance = genericType;
@@ -1037,6 +1166,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                     collectScriptHooks(utp, utp.rootIndex(), entity.scripts);
                     entity.tag = textField(utp, utp.rootIndex(), "Tag");
                     entity.conversation = textField(utp, utp.rootIndex(), "Conversation");
+                    applyGameplayFields(entity, utp, utp.rootIndex());
                     entity.appearance = static_cast<std::uint32_t>(
                         intField(utp, utp.rootIndex(), "Appearance", 0));
                     entity.faction = static_cast<std::uint32_t>(intField(utp, utp.rootIndex(), "Faction", 0));
@@ -1066,6 +1196,8 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                     entity.tag = textField(utt, utt.rootIndex(), "Tag");
                     entity.scriptOnEnter = textField(utt, utt.rootIndex(), "ScriptOnEnter");
                     entity.scriptOnExit = textField(utt, utt.rootIndex(), "ScriptOnExit");
+                    applyGameplayFields(entity, utt, utt.rootIndex());
+                    entity.triggerType = intField(utt, utt.rootIndex(), "Type", 0);
                 } catch (const FormatError&) {
                 }
             }

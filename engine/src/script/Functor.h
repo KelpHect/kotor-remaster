@@ -23,6 +23,8 @@ struct Functor {
     std::int64_t bp = 0;
     std::map<std::string, std::uint32_t> context;
     std::string source;
+    // Resref of the script the closure came from, so a save can rebuild it.
+    std::string script;
 };
 
 } // namespace ke::script

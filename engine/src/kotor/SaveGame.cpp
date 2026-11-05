@@ -222,28 +222,18 @@ std::vector<std::uint8_t> binary(const Gff& gff, std::uint32_t structure, const 
                                      data.begin() + value->data + 4u + length);
 }
 
-std::string partyTag(std::int32_t memberId)
+// The creature tag of each available-NPC slot. Slot order is the nwscript NPC_*
+// constants and the npc.2da rows (Bastila 0 .. Zaalbar 8); the strings are the
+// tags the shipped p_* templates carry (npc.2da spells row 7 "T3M3", the
+// template says T3M4). GameSession re-derives them from the 2DA at run time.
+std::string npcTagFor(std::int32_t npc)
 {
-    static const std::array<const char*, 10> tags = {
-        "PC", "Carth", "Bastila", "Zaalbar", "Mission",
-        "Canderous", "Jolee", "Juhani", "HK-47", "T3-M4"};
-    if (memberId < 0 || memberId >= static_cast<std::int32_t>(tags.size())) {
+    static const std::array<const char*, kSavedNpcCount> tags = {
+        "Bastila", "Cand", "Carth", "HK47", "Jolee", "Juhani", "Mission", "T3M4", "Zaalbar"};
+    if (npc < 0 || npc >= kSavedNpcCount) {
         return {};
     }
-    return tags[static_cast<std::size_t>(memberId)];
-}
-
-std::int32_t partyMemberId(const std::string& tag)
-{
-    static const std::array<const char*, 10> tags = {
-        "PC", "Carth", "Bastila", "Zaalbar", "Mission",
-        "Canderous", "Jolee", "Juhani", "HK-47", "T3-M4"};
-    for (std::size_t i = 0; i < tags.size(); ++i) {
-        if (lower(tag) == lower(tags[i])) {
-            return static_cast<std::int32_t>(i);
-        }
-    }
-    return -1;
+    return tags[static_cast<std::size_t>(npc)];
 }
 
 Vec3 objectPosition(const Gff& gff, std::uint32_t structure)
@@ -440,22 +430,33 @@ void readGlobals(const Gff& gff, OriginalSave& save)
     }
 }
 
+// PARTYTABLE. PT_MEMBERS lists NPC ids only (retail 00562c40 family: the PC is
+// not a member and is id -1); PT_AVAIL_NPCS is indexed by NPC id.
 void readParty(const Gff& gff, OriginalSave& save)
 {
+    save.party.clear();
+    save.partyTags.clear();
     for (const std::uint32_t structure : list(gff, gff.rootIndex(), "PT_MEMBERS")) {
         const std::int32_t id = numberInt(gff, structure, "PT_MEMBER_ID", -1);
         const bool leader = numberInt(gff, structure, "PT_IS_LEADER", 0) != 0;
-        if (id < 0) {
+        if (id < 0 || id >= kSavedNpcCount) {
             continue;
         }
         save.party.emplace_back(id, leader);
-        const std::string tag = partyTag(id);
-        if (!tag.empty() && tag != "PC"
-            && std::find(save.partyTags.begin(), save.partyTags.end(), tag)
-                == save.partyTags.end()) {
+        const std::string tag = npcTagFor(id);
+        if (std::find(save.partyTags.begin(), save.partyTags.end(), tag)
+            == save.partyTags.end()) {
             save.partyTags.push_back(tag);
         }
     }
+    const auto available = list(gff, gff.rootIndex(), "PT_AVAIL_NPCS");
+    for (std::size_t i = 0; i < available.size() && i < save.npcs.size(); ++i) {
+        save.npcs[i].available = numberInt(gff, available[i], "PT_NPC_AVAIL", 0) != 0;
+        save.npcs[i].select = numberInt(gff, available[i], "PT_NPC_SELECT", 1);
+    }
+    save.controlledNpc = numberInt(gff, gff.rootIndex(), "PT_CONTROLLED_NP", -1);
+    save.solo = numberInt(gff, gff.rootIndex(), "PT_SOLOMODE", 0) != 0;
+    save.xpPool = numberInt(gff, gff.rootIndex(), "PT_XP_POOL", 0);
     for (const std::uint32_t structure : list(gff, gff.rootIndex(), "JNL_Entries")) {
         const std::string plot = text(gff, structure, "JNL_PlotID");
         if (!plot.empty()) {
@@ -464,6 +465,99 @@ void readParty(const Gff& gff, OriginalSave& save)
     }
     save.gold = numberInt(gff, gff.rootIndex(), "PT_GOLD", save.gold);
     save.playedSeconds = numberInt(gff, gff.rootIndex(), "PT_PLAYEDSECONDS", save.playedSeconds);
+}
+
+// AVAILNPC<n>: a stored creature in the same shape as the player node.
+SavedNpc readNpcNode(const Gff& gff)
+{
+    const std::uint32_t root = gff.rootIndex();
+    SavedNpc npc;
+    npc.hasCreature = true;
+    npc.templateResref = text(gff, root, "TemplateResRef");
+    npc.tag = text(gff, root, "Tag");
+    npc.name = firstLoc(gff, root, "FirstName");
+    npc.str = numberInt(gff, root, "Str", 10);
+    npc.dex = numberInt(gff, root, "Dex", 10);
+    npc.con = numberInt(gff, root, "Con", 10);
+    npc.intel = numberInt(gff, root, "Int", 10);
+    npc.wis = numberInt(gff, root, "Wis", 10);
+    npc.cha = numberInt(gff, root, "Cha", 10);
+    npc.hp = numberInt(gff, root, "CurrentHitPoints", numberInt(gff, root, "HitPoints", 1));
+    npc.maxHp = std::max(1, numberInt(gff, root, "MaxHitPoints", npc.hp));
+    npc.xp = numberInt(gff, root, "Experience", 0);
+    npc.joiningXp = numberInt(gff, root, "JoiningXP", 0);
+    npc.alignment = std::clamp(numberInt(gff, root, "GoodEvil", 50), 0, 100);
+    npc.forcePoints = numberInt(gff, root, "CurrentForce", 0);
+    npc.maxForcePoints = numberInt(gff, root, "MaxForcePoints",
+                                   numberInt(gff, root, "ForcePoints", 0));
+    // A multi-class NPC (a Jedi who started as a soldier) keeps only its first
+    // class here; the engine character sheet has one class.
+    const auto classes = list(gff, root, "ClassList");
+    if (!classes.empty()) {
+        npc.classId = numberInt(gff, classes.front(), "Class", 0);
+        npc.level = std::max(1, numberInt(gff, classes.front(), "ClassLevel", 1));
+        for (const std::uint32_t spell : list(gff, classes.front(), "KnownList0")) {
+            const std::int32_t id = numberInt(gff, spell, "Spell", -1);
+            if (id >= 0) {
+                npc.powers.push_back(id);
+            }
+        }
+    }
+    for (const std::uint32_t level : list(gff, root, "LvlStatList")) {
+        for (const std::uint32_t row : gff.structure(level).fieldRows) {
+            const GffField& known = gff.fieldAt(row);
+            if (known.label.rfind("KnownList", 0) != 0 || known.type != GffType::List) {
+                continue;
+            }
+            for (const std::uint32_t spell : gff.list(known)) {
+                const std::int32_t id = numberInt(gff, spell, "Spell", -1);
+                if (id >= 0 && std::find(npc.powers.begin(), npc.powers.end(), id)
+                                   == npc.powers.end()) {
+                    npc.powers.push_back(id);
+                }
+            }
+        }
+    }
+    for (const std::uint32_t feat : list(gff, root, "FeatList")) {
+        npc.feats.push_back(numberInt(gff, feat, "Feat", 0));
+    }
+    for (const std::uint32_t skill : list(gff, root, "SkillList")) {
+        npc.skills.push_back(numberInt(gff, skill, "Rank", 0));
+    }
+    if (const GffField* equip = field(gff, root, "Equip_ItemList"); equip != nullptr) {
+        for (const std::uint32_t structure : gff.list(*equip)) {
+            SavedInventoryItem item;
+            item.resref = text(gff, structure, "EquippedRes");
+            if (item.resref.empty()) {
+                item.resref = text(gff, structure, "InventoryRes");
+            }
+            if (item.resref.empty()) {
+                item.resref = text(gff, structure, "TemplateResRef");
+            }
+            if (item.resref.empty()) {
+                item.resref = text(gff, structure, "Tag");
+            }
+            item.name = firstLoc(gff, structure, "LocalizedName");
+            item.baseItem = numberInt(gff, structure, "BaseItem", 0);
+            item.cost = numberInt(gff, structure, "Cost", 0);
+            item.stack = std::max(1, numberInt(gff, structure, "StackSize", 1));
+            item.identified = numberInt(gff, structure, "Identified", 1) != 0;
+            item.equipped = true;
+            // The struct type of a worn item is its slot mask; keep the lowest bit.
+            item.slot = -1;
+            const std::uint32_t mask = gff.structure(structure).typeId;
+            for (std::int32_t bit = 0; bit < 32 && mask != 0; ++bit) {
+                if ((mask & (1u << bit)) != 0) {
+                    item.slot = bit;
+                    break;
+                }
+            }
+            if (!item.resref.empty()) {
+                npc.inventory.push_back(std::move(item));
+            }
+        }
+    }
+    return npc;
 }
 
 void readObjects(const Gff& gff, OriginalSave& save)
@@ -800,14 +894,66 @@ GffNodePtr buildPlayerNode(const OriginalSave& save)
     return node;
 }
 
+// A stored available-NPC creature: the player node shape with the NPC's own
+// identity, class, abilities, powers, skills and worn items.
+GffNodePtr buildNpcNode(const SavedNpc& npc)
+{
+    OriginalSave shape;
+    shape.pcName = npc.name.empty() ? npc.tag : npc.name;
+    shape.str = npc.str;
+    shape.dex = npc.dex;
+    shape.con = npc.con;
+    shape.intel = npc.intel;
+    shape.wis = npc.wis;
+    shape.cha = npc.cha;
+    shape.hp = npc.hp;
+    shape.maxHp = npc.maxHp;
+    shape.xp = npc.xp;
+    shape.alignment = npc.alignment;
+    shape.forcePoints = npc.forcePoints;
+    shape.maxForcePoints = npc.maxForcePoints;
+    shape.classId = npc.classId;
+    shape.level = npc.level;
+    shape.feats = npc.feats;
+    shape.powers = npc.powers;
+    shape.skills = npc.skills;
+    GffNodePtr node = buildPlayerNode(shape);
+    patchInt(*node, "IsPC", 0);
+    patchInt(*node, "Mod_IsPrimaryPlr", 0);
+    node->remove("Mod_CommntyName");
+    node->remove("Mod_FirstName");
+    node->remove("Mod_LastName");
+    patchString(*node, "Tag", npc.tag);
+    patchResRef(*node, "TemplateResRef", npc.templateResref);
+    patchInt(*node, "JoiningXP", npc.joiningXp);
+    // Worn items carry their slot mask as the struct type, as a UTC does.
+    std::vector<GffNodePtr> equipped;
+    for (const SavedInventoryItem& item : npc.inventory) {
+        if (!item.equipped) {
+            continue;
+        }
+        const std::uint32_t mask = item.slot >= 0 && item.slot < 32 ? (1u << item.slot) : 0u;
+        auto worn = std::make_shared<GffNode>(mask);
+        worn->fields() = buildItemNode(item)->fields();
+        if (item.resref.size() <= 16) { // A longer item tag is not a resref; the Tag field keeps it.
+            worn->addResRef("EquippedRes", item.resref);
+        }
+        equipped.push_back(std::move(worn));
+    }
+    if (GffNodeField* list = node->find("Equip_ItemList"); list != nullptr) {
+        list->list = std::move(equipped);
+    }
+    return node;
+}
+
 GffNodePtr buildPartyTable(const OriginalSave& save)
 {
     auto node = std::make_shared<GffNode>(0);
     node->addInt32("PT_GOLD", save.gold);
-    node->addInt32("PT_XP_POOL", save.xp);
+    node->addInt32("PT_XP_POOL", save.xpPool);
     node->addUInt32("PT_PLAYEDSECONDS", static_cast<std::uint32_t>(save.playedSeconds));
-    node->addInt32("PT_CONTROLLED_NP", -1);
-    node->addUInt8("PT_SOLOMODE", 0);
+    node->addInt32("PT_CONTROLLED_NP", save.controlledNpc);
+    node->addUInt8("PT_SOLOMODE", save.solo ? 1u : 0u);
     node->addUInt8("PT_CHEAT_USED", 0);
     node->addUInt8("PT_NUM_MEMBERS", static_cast<std::uint32_t>(std::min<std::size_t>(save.party.size(), 255)));
     std::vector<GffNodePtr> members;
@@ -819,10 +965,10 @@ GffNodePtr buildPartyTable(const OriginalSave& save)
     }
     node->addList("PT_MEMBERS", std::move(members));
     std::vector<GffNodePtr> available;
-    for (int i = 0; i < 9; ++i) {
+    for (const SavedNpc& slot : save.npcs) {
         auto npc = std::make_shared<GffNode>(0);
-        npc->addUInt8("PT_NPC_AVAIL", i == 0 ? 1u : 0u);
-        npc->addUInt8("PT_NPC_SELECT", 1);
+        npc->addUInt8("PT_NPC_AVAIL", slot.available ? 1u : 0u);
+        npc->addUInt8("PT_NPC_SELECT", static_cast<std::uint32_t>(std::clamp(slot.select, 0, 255)));
         available.push_back(std::move(npc));
     }
     node->addList("PT_AVAIL_NPCS", std::move(available));
@@ -1115,6 +1261,22 @@ OriginalSave readOriginalSave(const std::filesystem::path& folder,
     for (const ErfEntry& entry : outer) {
         const std::string name = lower(entry.resref);
         const bool known = entry.type == kSav || name == "inventory" || name == "repute";
+        if (!known && name.size() == 9 && name.starts_with("availnpc") && name[8] >= '0'
+            && name[8] <= '8' && entry.type == kUtc) {
+            // A stored available-NPC creature is modelled (SavedNpc) and rewritten
+            // from the party table; an unreadable one is preserved verbatim.
+            try {
+                SavedNpc stored = readNpcNode(Gff::parse(entry.data, entry.resref));
+                SavedNpc& slot = save.npcs[static_cast<std::size_t>(name[8] - '0')];
+                stored.available = slot.available;
+                stored.select = slot.select;
+                slot = std::move(stored);
+                continue;
+            } catch (const FormatError&) {
+                save.preservedOuter.push_back({entry.resref, entry.type, entry.data});
+                continue;
+            }
+        }
         if (!known && (name.starts_with("availnpc") || name == "pc"
                        || name == "partytable" || name == "globalvars")) {
             save.preservedOuter.push_back({entry.resref, entry.type, entry.data});
@@ -1279,6 +1441,12 @@ bool writeOriginalSave(const std::filesystem::path& folder, const OriginalSave& 
                                           : save.repute});
     for (const SavedResource& extra : save.preservedOuter) {
         outer.push_back({extra.resref, extra.type, extra.data});
+    }
+    for (std::size_t i = 0; i < save.npcs.size(); ++i) {
+        if (save.npcs[i].hasCreature) {
+            outer.push_back({"AVAILNPC" + std::to_string(i), kUtc,
+                             writeGff("UTC ", *buildNpcNode(save.npcs[i]))});
+        }
     }
     const std::vector<std::uint8_t> outerBytes = writeErf(outer, "MOD ", "V1.0");
 

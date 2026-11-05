@@ -4,7 +4,9 @@
 #include "game/FacialRig.h"
 #include "game/Factions.h"
 #include "game/Minigames.h"
+#include "game/Party.h"
 #include "game/Rules.h"
+#include "game/ScriptHost.h"
 #include "kotor/BinkDecoder.h"
 #include "kotor/Localization.h"
 #include "kotor/Media.h"
@@ -48,6 +50,12 @@ struct DialogueView {
     bool active = false;
     std::string npcTag;
     std::string speaker;
+    // The object the current line is spoken by (DLG Speaker tag, else the
+    // conversation owner) and addressed to (Listener tag, else the PC).
+    std::uint32_t speakerObject = script::kObjectInvalid;
+    std::uint32_t listenerObject = script::kObjectInvalid;
+    std::uint32_t delay = 0xFFFFFFFFu;
+    std::uint32_t waitFlags = 0;
     std::string text;
     std::vector<DialogueOption> options;
     std::uint32_t entry = UINT32_MAX;
@@ -80,7 +88,16 @@ const char* combatModeName(CombatMode mode);
 // One loaded module plus the player state. All KotOR data comes through the
 // C++ kotor::Install/VFS; this class never calls an external tool. Scripts run
 // on the engine's own NCS VM and mutate the same world the renderer uses.
+namespace nav {
+class NavMesh;
+struct Runtime;
+} // namespace nav
+
 class GameSession : public script::ActionHost {
+    friend struct ScriptApi;
+    friend struct ItemOps;
+    friend struct CombatOps;
+
 public:
     GameSession(std::string installPath, std::string module, int language = -1,
                 bool traceActions = false);
@@ -197,9 +214,17 @@ public:
     const TurretGame& turret() const { return turret_; }
     void stopSwoop() { swoopActive_ = false; }
     void stopTurret() { turretActive_ = false; }
+    // Drops the conversation without firing its end scripts (test fixtures).
+    void clearDialogueForTest() { clearDialogueState(); }
     void chooseDialogueOption(std::size_t optionIndex);
     void endDialogue();
     const DialogueView& dialogue() const { return dialogueView_; }
+    // True while an ActionPauseConversation holds the conversation; options are
+    // refused until a resume runs or nothing is left in flight.
+    bool dialoguePaused() const { return sim_->dialoguePaused; }
+    // The last start attempt found no starting link whose Active passed. This is
+    // retail behaviour for such a conversation, not a load failure.
+    bool dialogueHadNoStart() const { return sim_->noStartLink; }
     int unsupportedCamVidEffects() const { return unsupportedCamVidEffects_; }
     const std::vector<script::WorldEvent>& actionTrace() const;
     bool probeAction(std::uint16_t actionId);
@@ -211,6 +236,42 @@ public:
     }
     void clearTraces();
     bool usePlaceable(std::size_t entityIndex);
+
+    // ---- doors, traps, cinematics, galaxy map (ScriptWorldState.cpp) --------
+    // A click on a door, placeable or transition trigger, with retail's rules.
+    // The player must be within reach by walkmesh path; the bot walks first.
+    UseOutcome useObject(std::size_t entityIndex);
+    // Same rules without the reach and control checks (scripted ActionInteractObject).
+    UseOutcome useObjectImpl(std::size_t entityIndex, bool checkReach);
+    // actor 0 is the player. A locked door opens only with its key; otherwise OnFailToOpen runs.
+    UseOutcome openDoor(std::size_t entityIndex, std::uint32_t actor = 0);
+    bool closeDoor(std::size_t entityIndex);
+    bool unlockDoor(std::size_t entityIndex, std::uint32_t actor = 0); // key first, then Security (d20 + rank)
+    bool lockDoor(std::size_t entityIndex);
+    bool bashDoor(std::size_t entityIndex);        // melee damage less Hardness; not Plot
+    bool detectTrap(std::size_t entityIndex);      // Awareness check
+    bool disarmTrap(std::size_t entityIndex);      // Security check; failure springs it
+    bool playerHasKey(const std::string& keyTag);
+    // Length of the walkmesh path from the player to an entity; negative when
+    // the straight walk is blocked by a wall or leaves the walkmesh.
+    float pathDistanceTo(std::size_t entityIndex) const;
+    bool inReach(std::size_t entityIndex, float range = 2.8f) const;
+    // ChangeToStandardFaction / ChangeFaction: sets the faction, refreshes hostility.
+    bool setObjectFaction(std::uint32_t object, int faction);
+    bool controlLocked() const;
+    void releaseControl();  // clears NoClicksFor and restrict mode, ends the fade
+    const FadeState& fade() const { return sim_->fade; }
+    const GalaxyMapState& galaxyMap() const { return sim_->galaxy; }
+    bool galaxyMapOpen() const { return sim_->galaxy.open; }
+    // The UI/bot picks a planet: it must be available and selectable. Runs the
+    // engine's galaxy map script and closes the map.
+    bool selectPlanet(std::int32_t planet);
+    void closeGalaxyMap() { sim_->galaxy.open = false; }
+    std::string substituteTokens(std::string text) const;
+    std::vector<std::pair<std::int32_t, std::string>> galaxyPlanetNames();
+    bool mapPinEnabled(const std::string& waypointTag) const;
+    bool mapRevealed(kotor::Vec3 point) const;
+    bool areaUnescapable() const { return sim_->areaUnescapable; }
 
     void attackNearestHostile();
     std::uint32_t combatTarget() const { return combatTarget_; }
@@ -233,7 +294,13 @@ public:
     int activeMerchant() const { return activeMerchant_; }
     bool openStore(std::size_t entityIndex);
     bool openStoreByTag(const std::string& tag);
-    void closeStore() { activeMerchant_ = -1; }
+    void closeStore();
+    // OpenStore (ACT_378): bonuses are clamped to [-100, 100] and added to the
+    // store's MarkUp / MarkDown while this store is open.
+    bool openStoreFor(std::uint32_t store, std::uint32_t pc, std::int32_t bonusMarkUp,
+                      std::int32_t bonusMarkDown);
+    std::int32_t storeBonusMarkUp() const { return storeBonusMarkUp_; }
+    std::int32_t storeBonusMarkDown() const { return storeBonusMarkDown_; }
     std::int32_t buyPrice(std::size_t stockIndex) const;
     std::int32_t sellPrice(std::size_t inventoryIndex) const;
     bool buyMerchantItem(std::size_t stockIndex);
@@ -243,13 +310,80 @@ public:
     const std::vector<InventoryItem>& loot() const { return lootItems_; }
     bool takeLootItem(std::size_t index);
     void takeAllLoot();
-    void closeLoot() { lootItems_.clear(); lootEntity_ = -1; }
+    // Closing a container fires its OnClosed script; remaining loot stays in it.
+    void closeLoot();
     const std::vector<std::string>& partyTags() const { return partyTags_; }
     const std::vector<CompanionState>& companions() const { return companions_; }
     int selectedCompanion() const { return selectedCompanion_; }
-    void selectCompanion(int index) { selectedCompanion_ = index; if (index >= 0 && index < static_cast<int>(companions_.size())) { leaderTag_ = companions_[static_cast<std::size_t>(index)].tag; } }
+    void selectCompanion(int index);
     const std::string& partyLeaderTag() const { return leaderTag_; }
-    void setPartyLeader(const std::string& tag) { leaderTag_ = tag; selectedCompanion_ = -1; if (tag != "PC") { for (std::size_t i = 0; i < companions_.size(); ++i) { if (companions_[i].tag == tag) { selectedCompanion_ = static_cast<int>(i); break; } } } }
+    void setPartyLeader(const std::string& tag);
+
+    // ---- party table (retail PARTYTABLE model, ScriptParty.cpp) -------------
+    // NPC ids are the nwscript NPC_* constants (Party.h); the PC is NPC_PLAYER.
+    const PartyTable& partyTable() const { return party_; }
+    static int npcIdForTag(const std::string& tag); // -1 when not a companion tag
+    bool addAvailableNpcByTemplate(int npc, const std::string& templateResref);
+    bool addAvailableNpcByObject(int npc, std::uint32_t creature);
+    bool removeAvailableNpc(int npc);
+    bool isAvailableNpc(int npc) const;
+    // SetAvailableNPCId: the object standing for an available NPC.
+    void setAvailableNpcObject(int npc, std::uint32_t object);
+    // The NPC's current sheet (the member's live one, else the stored one).
+    const CharacterSheet* partySheet(int npc) const { return liveSheet(npc); }
+    // Creates (or moves) the NPC's creature at a position and returns its object.
+    std::uint32_t spawnAvailableNpc(int npc, kotor::Vec3 position, float facing);
+    bool addPartyNpc(int npc, std::uint32_t creature);
+    bool removePartyNpc(int npc);
+    bool isNpcPartyMember(int npc) const;
+    // The selectability byte; 255 for an NPC that is not available (retail).
+    int npcSelectability(int npc) const;
+    void setNpcSelectability(int npc, int value);
+    bool setPartyLeaderNpc(int npc);
+    bool switchPlayerCharacter(int npc);
+    void setSoloMode(bool solo);
+    bool soloMode() const { return party_.solo; }
+    // Refreshes the stored creature of an NPC from its live state.
+    void saveNpcState(int npc);
+    // The creature scripts see as GetFirstPC / party member 0, and the party in
+    // GetPartyMemberByIndex order (leader first).
+    std::uint32_t controlledObject() const;
+    std::vector<std::uint32_t> partyObjects() const;
+    int npcForObject(std::uint32_t object) const; // kNpcPlayer for the PC, -2 otherwise
+    // The party-table half of an XP award (retail PartyTable::AddXP): the shared
+    // pool and every member. The PC's own share is giveXp, which calls this.
+    void awardPartyXp(std::int32_t amount);
+    // Share of an award an NPC receives (npc.2da PercentXP * GAME_XP_General).
+    float npcXpFactor(int npc);
+    // ShowPartySelectionGUI. The UI and the bot drive the same state: open,
+    // toggle NPCs, then accept or cancel (both run the exit script).
+    const PartySelectionState& partySelection() const { return partySelection_; }
+    bool openPartySelection(const std::string& exitScript, int forceNpc1, int forceNpc2);
+    bool partySelectionToggle(int npc);
+    bool acceptPartySelection();
+    void cancelPartySelection();
+    // Party death (engine rules, see ScriptParty.cpp): a member at 0 HP is down;
+    // the game is lost only when the PC and every member are down.
+    bool partyMemberDown(int npc) const;
+    bool revivePartyMember(int npc, std::int32_t hp);
+    bool partyAllDown() const;
+    // SetLockHeadFollowInDialog state, read by the dialogue camera/head code.
+    bool headFollowLocked(std::uint32_t object) const {
+        return party_.headFollowLocked.contains(object);
+    }
+    void setHeadFollowLocked(std::uint32_t object, bool locked) {
+        if (locked) {
+            party_.headFollowLocked.insert(object);
+        } else {
+            party_.headFollowLocked.erase(object);
+        }
+    }
+    // Retail save mapping: the party table into / out of an original save.
+    void writePartyToOriginalSave(kotor::OriginalSave& save) const;
+    void readPartyFromOriginalSave(const kotor::OriginalSave& save);
+    // Engine save: the party_* lines.
+    void writePartyState(std::ostream& file) const;
+    bool restorePartyTable(PartyLoad&& load);
     UiPanel activePanel() const { return activePanel_; }
     void setUiPanel(UiPanel panel) { activePanel_ = panel; }
     void toggleUiPanel(UiPanel panel) {
@@ -266,10 +400,54 @@ public:
     const std::map<std::string, std::int32_t>& journal() const { return journal_; }
     bool addJournalEntry(const std::string& plotId, std::int32_t state);
     bool removeJournalEntry(const std::string& plotId);
+    // AddJournalQuestEntry semantics (ACT_367): monotonic unless override, and a
+    // state that advances awards its global.jrl plot XP.
+    bool addJournalQuest(const std::string& plotId, std::int32_t state, bool allowOverrideHigher);
+    std::string journalEntryText(const std::string& plotId, std::int32_t state);
+    std::int32_t journalQuestExperience(const std::string& plotId);
+    // GivePlotXP (ACT_714): plot.2da row by label, xp * percent / 100.
+    void givePlotXp(const std::string& plotLabel, std::int32_t percent);
+    // The XP a dialogue node's PlotIndex/PlotXPPercentage pair awards.
+    std::int32_t plotXpForIndex(std::int32_t plotIndex, float fraction);
     bool addInventoryItem(const std::string& resref, std::int32_t baseItem,
                           std::int32_t stack = 1, std::int32_t cost = 0);
     bool removeInventoryItem(const std::string& resref, std::int32_t stack = 1);
     bool equipItem(const std::string& resref);
+
+    // ---- item objects (ScriptItems.cpp) ----------------------------------------
+    // One model: an item anywhere is a script object (tag, resref, base item,
+    // stack, identified, plot, stolen, charges, loaded from its UTI). Every
+    // creature, placeable and store holds a list of them. The party shares the
+    // PC's inventory (retail routes a party member's inventory to the party's),
+    // and that list is character_.inventory, linked to its item objects.
+    // Creates an item from a UTI and puts it in `holder`'s inventory. Returns the
+    // item object (the stack it merged into, if any) or kObjectInvalid.
+    std::uint32_t giveItem(const std::string& resref, std::uint32_t holder,
+                           std::int32_t stack = 1,
+                           std::uint32_t from = script::kObjectInvalid);
+    // Moves an existing item object into `holder`'s inventory.
+    bool moveItem(std::uint32_t item, std::uint32_t holder,
+                  std::uint32_t from = script::kObjectInvalid);
+    // Removes the item from its holder and invalidates it.
+    bool destroyItem(std::uint32_t item);
+    // The tagged item in the holder's inventory or worn slots (GetItemPossessedBy).
+    std::uint32_t itemPossessedBy(std::uint32_t holder, const std::string& tag);
+    // The creature, placeable or store holding the item (the PC for the party).
+    std::uint32_t itemPossessor(std::uint32_t item);
+    // Items in a holder's carried inventory, in order. Worn items are not listed.
+    std::vector<std::uint32_t> itemsOf(std::uint32_t holder);
+    // The item object standing for character_.inventory[index].
+    std::uint32_t inventoryObject(std::size_t index);
+    bool equipItemObject(std::uint32_t creature, std::uint32_t item, std::int32_t slot = -1);
+    bool unequipItemObject(std::uint32_t creature, std::uint32_t item);
+    // Uses an item as `user`: applies its CastSpell item properties through the spell's
+    // impact script, raises the module activation event and spends a charge or one of
+    // the stack. The quest bot and the UI both call this.
+    bool useItem(std::uint32_t item, std::uint32_t user,
+                 std::uint32_t target = script::kObjectInvalid);
+    // Gold held by a creature (the party's for the PC and party members).
+    std::int32_t creatureGold(std::uint32_t creature) const;
+    void addCreatureGold(std::uint32_t creature, std::int32_t amount);
     bool addPartyMember(const std::string& tag);
     bool removePartyMember(const std::string& tag);
     bool learnFeat(std::int32_t featId);
@@ -303,7 +481,27 @@ public:
                                            std::uint32_t entering = 0,
                                            std::uint32_t caller = 0,
                                            std::uint32_t trigger = 0);
+    // Run a script with an explicit event context. Saves and restores the outer
+    // context, so nested runs cannot corrupt the calling script.
+    std::optional<script::Value> runScriptWith(const std::string& resref, std::uint32_t self,
+                                               const ScriptContext& context);
+    // Test fixtures: a compiled script served by resref ahead of the install.
+    void addScriptForTest(const std::string& resref, std::vector<std::uint8_t> bytes);
     std::uint32_t objectForTag(const std::string& tag) const;
+    std::uint32_t areaObject() const { return sim_->areaObject; }
+    std::uint32_t moduleObject() const { return sim_->moduleObject; }
+    // World-simulation queries used by gates and later families.
+    kotor::Vec3 actorPosition(std::uint32_t object);
+    std::size_t actorQueueSize(std::uint32_t object) const;
+    std::int32_t runScriptVar() const { return sim_->runScriptVar; }
+    // Central damage and death. Every kill path ends in onCreatureKilled, which
+    // is idempotent: one ScriptDeath, one XP award.
+    void damageEntity(std::size_t index, std::int32_t amount, std::uint32_t attacker);
+    void onCreatureKilled(std::size_t index, std::uint32_t killer);
+    // Runs an event pass now (a tick does this too).
+    void flushScriptEvents();
+    // Snapshot of the module with this name, or null if never left.
+    const ModuleSnapshot* moduleSnapshot(const std::string& module) const;
     std::uint32_t objectForEntityIndex(std::size_t index) const { return objectForEntity(index); }
     void setCharacterForTest(const CharacterSheet& sheet) {
         character_ = sheet;
@@ -315,6 +513,7 @@ public:
     // the live session and refresh the script world and rendered avatar.
     void applyCharacter(const CharacterSheet& sheet);
     void setPlayerAppearance(std::uint32_t appearance, const std::string& name = {});
+    std::uint32_t playerAppearance() const { return playerAppearance_; }
     void setThirdPerson(bool enabled) {
         thirdPerson_ = enabled;
         if (enabled) {
@@ -327,7 +526,7 @@ public:
     void setCameraNoClip(bool enabled) { cameraNoClip_ = enabled; }
     bool thirdPerson() const { return thirdPerson_; }
     std::size_t playerEntity() const { return playerEntity_; }
-    void attackPlayerForTest(std::size_t index) { npcAttack(index); }
+    void attackPlayerForTest(std::size_t index);
     std::int32_t forceArmorBonus() const;
     std::int32_t forceAttackBonus() const;
     std::int32_t forceDamageBonus() const;
@@ -359,6 +558,19 @@ public:
         script::World& world, script::Vm& vm) override;
     std::string moduleName() const override { return module_; }
 
+    // Player-level movement: a command on the PC's action queue, walked over the
+    // following frames along a walkmesh path. Nothing here teleports. moveTo returns
+    // false, and queues nothing, when no route exists; a route ending at a closed
+    // door still queues and finishes with MoveOutcome::DoorBlocked.
+    enum class MoveOutcome { None, Moving, Arrived, DoorBlocked, Unreachable };
+    bool moveTo(kotor::Vec3 target, float stopDistance, bool run = true);
+    bool pathExists(kotor::Vec3 from, kotor::Vec3 to, std::size_t* blockingDoor = nullptr);
+    bool movePending() const;
+    MoveOutcome moveOutcome() const { return moveOutcome_; }
+    std::size_t moveBlockingDoor() const { return moveBlockingDoor_; }
+    // Opens a door as a player's click does. False when it is locked.
+    bool openDoorAsPlayer(std::size_t entityIndex);
+
     // Deterministic helpers used by the scripted playthrough gate.
     bool walkTo(kotor::Vec3 target, float maxSeconds);
     std::size_t findEntity(const std::string& tag) const;
@@ -375,7 +587,6 @@ private:
         std::string resref;
         std::uint32_t npcObject = 0;
         kotor::Dlg dlg;
-        std::set<std::uint32_t> firedEntries;
     };
 
     bool loadModule(const std::string& module, const kotor::Vec3* spawn, const std::string& linkedDoor);
@@ -383,6 +594,35 @@ private:
     const kotor::Entity* nearestConversation(float maxDistance) const;
     bool loadDialogue(const std::string& resref, kotor::Dlg& dlg);
     void showDialogueEntry(std::uint32_t entryIndex);
+    bool startConversation(std::uint32_t owner, const std::string& resref);
+    void finishDialogue(bool aborted);
+    void clearDialogueState();
+    ScriptContext dialogueContext() const;
+    bool dialogueLinkPasses(const std::string& linkActive, const std::string& nodeActive);
+    template <typename Node>
+    bool applyDialogueNode(const Node& node, std::uint32_t generation);
+    std::vector<std::uint32_t> passingReplies(const kotor::DlgEntry& entry);
+    std::uint32_t firstPassingEntry(const kotor::DlgReply& reply);
+    void loadJournalData();
+    void loadPlotTable();
+    const JournalCategory* journalCategory(const std::string& plotId);
+    std::int32_t plotXp(std::int32_t row, double fraction);
+    std::int32_t plotXpByLabel(const std::string& label, double fraction);
+    ActorStep stepActorToward(std::uint32_t object, kotor::Vec3 target, float speed, float dt,
+                              float stopDistance);
+    bool lineOfSight(kotor::Vec3 from, kotor::Vec3 to) const;
+    std::shared_ptr<const std::vector<script::Instruction>> decodedScript(const std::string& resref);
+    ScriptContext hookContext(const std::string& hook, std::uint32_t entering) const;
+    void placeAtLink(const std::string& linkedTo);
+    // Module persistence, in WorldPersistence.cpp.
+    void leaveModule();
+    std::map<std::uint32_t, script::GameObject> collectCarried() const;
+    void restoreCarried();
+    ModuleSnapshot captureModuleSnapshot(bool leaving) const;
+    void applyModuleSnapshot(const ModuleSnapshot& snapshot);
+    void writeWorldState(std::ostream& file) const;
+    bool restoreWorldFromSave(LoadedWorldState state, const std::string& module,
+                              const kotor::Vec3& position);
     bool loadDialogueCameraModel(const std::string& resref);
     void setDialogueCameraClip(std::int32_t animation);
     void updateCombat(float dt);
@@ -390,8 +630,6 @@ private:
     void updateScripts(float dt);
     void updateTimers(float dt);
     bool runFunctor(const script::Functor& functor, std::uint32_t target);
-    void playerAttack(std::size_t target);
-    void npcAttack(std::size_t attacker);
     void logEvent(std::string line);
     std::uint32_t random();
     bool pointInTrigger(const kotor::TriggerVolume& trigger, float x, float y) const;
@@ -400,16 +638,54 @@ private:
     void syncScriptWorld();
     void refreshHostility();
     void initMerchants();
+    std::int32_t scaledPrice(std::int32_t baseItem, std::int32_t cost, std::int32_t percent) const;
     void spawnEncounters();
     std::int32_t spawnEncounterCreatures(std::size_t index);
+    // Encounter entry/spawn rules and trap/trigger helpers live in ScriptWorldState.cpp.
+    std::int32_t spawnEncounterWave(std::size_t index);
+    void updateEncounterVolumes(float dt);
+    void springTrap(std::size_t entityIndex, std::uint32_t victim);
+    bool keyUnlock(std::size_t entityIndex); // key in inventory unlocks; AutoRemoveKey consumes it
+    std::int32_t skillRank(const char* skill) const;
+    bool skillCheck(const char* skill, std::int32_t dc, const char* what);
+    std::uint32_t spawnScriptCreature(const std::string& resref, kotor::Vec3 position, float facing);
     void updateEncounters(float dt);
     void updateParty(float dt);
+    // Navigation, in Pathfinding.cpp.
+    nav::NavMesh* navMesh();
+    void loadMovementTables();
+    float creatureMoveRate(std::uint32_t object, bool run);
+    float creatureRadius(std::uint32_t object);
+    float creatureApproachRange(std::uint32_t self, std::uint32_t target, float range);
+    kotor::Vec3 slidePlayer(kotor::Vec3 from, kotor::Vec3 to, bool& moved);
+    kotor::Vec3 formationSlot(kotor::Vec3 anchor, float anchorYaw, int slot, float baseDistance);
+    void followLeader(std::size_t entity, kotor::Vec3 anchor, kotor::Vec3 slot, float dt);
+    void placePartyAtEntry();
+    friend int runPathfindingFamilyTest(GameSession& game);
     std::size_t ensureCompanionEntity(const CompanionState& companion);
+    // Party table internals (ScriptParty.cpp).
+    void tickParty(float dt);
+    void syncPartyViews();
+    void syncCompanionSheet(int npc);
+    std::size_t ensureNpcEntity(int npc, const kotor::Vec3* position, float facing,
+                                bool* created = nullptr);
+    void catchUpNpcXp(int npc);
+    bool loadNpcSheet(int npc);
+    CompanionState* companionFor(int npc);
+    void applyNpcSoloVisibility();
+    void autoLevelCompanion(CharacterSheet& sheet, std::int32_t targetLevel);
+    void loadPartyTables();
+    std::string templateForNpc(int npc);
+    std::size_t entityOfObject(std::uint32_t object) const;
+    const CharacterSheet* liveSheet(int npc) const;
+    void grantMemberXp(CompanionState& companion, int npc, std::int32_t amount);
     std::uint32_t objectForEntity(std::size_t index) const;
     void runHook(const std::string& hook, std::size_t entityIndex,
-                 std::uint32_t entering = 0);
-    void runSceneHook(const std::string& hook, std::uint32_t entering = 0);
+                 std::uint32_t entering = 0, const ScriptContext* extra = nullptr);
+    bool runSceneHook(const std::string& hook, std::uint32_t entering = 0,
+                      const ScriptContext* extra = nullptr);
     void runSpawnAndEnterScripts();
+    void runReturnScripts();
     bool scriptValueTruthy(const std::optional<script::Value>& value) const;
     void syncPlayerToScriptWorld();
     void spawnPlayerAvatar();
@@ -483,8 +759,6 @@ private:
     std::int32_t playerHp_ = 100;
     std::int32_t playerMaxHp_ = 100;
     std::uint32_t combatTarget_ = UINT32_MAX;
-    float playerAttackTimer_ = 0.0f;
-    float combatRoundTimer_ = 0.0f;
     int combatRound_ = 0;
     CombatMode combatMode_ = CombatMode::Normal;
     std::int32_t combatModeRank_ = 1;
@@ -496,7 +770,6 @@ private:
     bool animationEnabled_ = true;
     float footstepTimer_ = 0.0f;
     std::int32_t forceJumpBonus_ = 0;
-    std::vector<float> npcAttackTimers_;
     std::vector<bool> triggerInside_;
     std::vector<std::string> combatLog_;
     bool playerDead_ = false;
@@ -512,6 +785,8 @@ private:
     std::vector<CompanionState> companions_;
     int selectedCompanion_ = -1;
     std::string leaderTag_ = "PC";
+    PartyTable party_;
+    PartySelectionState partySelection_;
     UiPanel activePanel_ = UiPanel::None;
     std::map<std::string, std::int32_t> journal_;
     std::map<std::string, std::string> globalKinds_; // KotOR GVT category
@@ -528,10 +803,19 @@ private:
     int activeMerchant_ = -1;
     std::vector<InventoryItem> lootItems_;
     int lootEntity_ = -1;
+    std::int32_t storeBonusMarkUp_ = 0;
+    std::int32_t storeBonusMarkDown_ = 0;
+    std::map<std::int32_t, float> itemCostScale_; // ChangeItemCost, by base item
     std::map<std::string, kotor::ItemTemplate> itemTemplates_;
 
     script::World scriptWorld_;
     std::unique_ptr<script::ActionRuntime> runtime_;
+    std::unique_ptr<WorldSim> sim_;
+    std::unique_ptr<nav::Runtime> nav_;
+    MoveOutcome moveOutcome_ = MoveOutcome::None;
+    std::size_t moveBlockingDoor_ = static_cast<std::size_t>(-1);
+    bool quietWorldForTest_ = false; // The navigation gate: no triggers, scripts or combat.
+    std::uint32_t dialogueGeneration_ = 0;
     std::vector<std::uint32_t> entityObjects_;
     std::map<std::string, std::vector<std::uint8_t>> ncsCache_;
     std::vector<std::string> scriptLog_;

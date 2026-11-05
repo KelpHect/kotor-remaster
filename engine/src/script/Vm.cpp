@@ -202,6 +202,7 @@ std::optional<std::size_t> Vm::step(const Instruction& ins)
         functor.ip = entry;
         functor.stack = stack_;
         functor.bp = bp_;
+        functor.script = scriptName_;
         pendingFunctorData_ = std::move(functor);
         pendingFunctor_ = true;
         return next;
@@ -279,7 +280,11 @@ std::optional<std::size_t> Vm::step(const Instruction& ins)
         } else if (ins.qualifier == 0x05) {
             stack_.push_back(Value::makeString(std::string(ins.bytes.begin(), ins.bytes.end())));
         } else if (ins.qualifier == 0x06) {
-            stack_.push_back(Value::makeObject(static_cast<std::uint32_t>(ins.operand0)));
+            std::uint32_t object = static_cast<std::uint32_t>(ins.operand0);
+            if (liveObjectConstants_) {
+                object = object == 0 ? selfObject_ : object == 1 ? kObjectInvalid : object;
+            }
+            stack_.push_back(Value::makeObject(object));
         } else {
             throw VmError("bad CONST type");
         }
@@ -565,6 +570,7 @@ Functor Vm::captureContinuation(const std::string& source) const
     functor.stack = stack_;
     functor.bp = bp_;
     functor.source = source;
+    functor.script = scriptName_;
     return functor;
 }
 

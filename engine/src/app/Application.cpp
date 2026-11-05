@@ -9,6 +9,7 @@
 #include "game/GameSession.h"
 #include "game/GuiSystem.h"
 #include "game/Minigames.h"
+#include "game/Pathfinding.h"
 #include "kotor/BinkDecoder.h"
 #include "kotor/Formats.h"
 #include "kotor/GffWrite.h"
@@ -29,6 +30,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -986,6 +988,45 @@ void drawChargenTextOverlay(ChargenGuiState& state)
     ImGui::End();
 }
 
+// Script-driven fade (SetGlobalFadeOut/In) over the whole screen, and the
+// galaxy map panel ShowGalaxyMap opens. Picking a planet runs the map script.
+void drawWorldStateOverlay(GameSession& game)
+{
+    const ImGuiIO& io = ImGui::GetIO();
+    const FadeState& fade = game.fade();
+    if (fade.opacity > 0.0f && io.DisplaySize.x > 0.0f && io.DisplaySize.y > 0.0f) {
+        const auto channel = [](float value) {
+            return static_cast<int>(std::clamp(value, 0.0f, 1.0f) * 255.0f);
+        };
+        ImGui::GetForegroundDrawList()->AddRectFilled(
+            ImVec2(0.0f, 0.0f), io.DisplaySize,
+            IM_COL32(channel(fade.color[0]), channel(fade.color[1]), channel(fade.color[2]),
+                     channel(fade.opacity)));
+    }
+    if (!game.galaxyMapOpen()) {
+        return;
+    }
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f - 160.0f, 80.0f), ImGuiCond_Appearing);
+    ImGui::Begin("Galaxy Map", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    const GalaxyMapState& map = game.galaxyMap();
+    for (const auto& [planet, name] : game.galaxyPlanetNames()) {
+        const auto slot = static_cast<std::size_t>(planet);
+        if (!map.available[slot]) {
+            continue;
+        }
+        const std::string label = name + (planet == map.highlighted ? "  (current)" : "");
+        ImGui::BeginDisabled(!map.selectable[slot]);
+        if (ImGui::Button(label.c_str(), ImVec2(300.0f, 0.0f))) {
+            game.selectPlanet(planet);
+        }
+        ImGui::EndDisabled();
+    }
+    if (ImGui::Button("Close", ImVec2(300.0f, 0.0f))) {
+        game.closeGalaxyMap();
+    }
+    ImGui::End();
+}
+
 void drawGameUi(GameSession& game, float fps, const std::string& prompt)
 {
     ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
@@ -1072,6 +1113,27 @@ bool hasEvent(const GameSession& game, const std::string& needle)
     return false;
 }
 
+// Shipped timers and triggers open real conversations during a long run, and a
+// conversation holds the player until it is answered. Abort rather than answer,
+// so the journal and globals a later assertion reads are not advanced.
+bool dismissDialogue(GameSession& game)
+{
+    if (!game.dialogue().active) {
+        return false;
+    }
+    game.endDialogue();
+    return true;
+}
+
+// One combat frame. A conversation interrupts the attack, so it is reissued.
+void updateFighting(GameSession& game)
+{
+    if (dismissDialogue(game)) {
+        game.attackNearestHostile();
+    }
+    game.update(1.0f / 60.0f, InputState{});
+}
+
 int runDialogueTest(GameSession& game)
 {
     std::size_t index = static_cast<std::size_t>(-1);
@@ -1124,7 +1186,7 @@ int runCombatTest(GameSession& game)
     game.attackNearestHostile();
     int steps = 0;
     while (steps < 3600 && !game.playerDead() && !game.scene().entities[hostile].dead) {
-        game.update(1.0f / 60.0f, InputState{});
+        updateFighting(game);
         ++steps;
     }
     const kotor::Entity& target = game.scene().entities[hostile];
@@ -1139,11 +1201,25 @@ int runCombatTest(GameSession& game)
 int runPlaythrough(GameSession& game)
 {
     bool ok = true;
-    const auto teleportOrWalk = [&](kotor::Vec3 target, float seconds) {
-        if (!game.walkTo(target, seconds)) {
-            logWarn("playthrough: walk blocked, using scripted spawn");
-            game.setPositionForTest(target);
+    const auto walkOrFail = [&](kotor::Vec3 target, float seconds) {
+        for (int attempt = 0; attempt < 4; ++attempt) {
+            dismissDialogue(game);
+            if (game.walkTo(target, seconds)) {
+                return;
+            }
+            if (!game.dialogue().active) {
+                break;
+            }
         }
+        dismissDialogue(game);
+        const std::size_t door = game.moveBlockingDoor();
+        logError(concat("playthrough: walk blocked at ", game.position().x, ", ", game.position().y,
+                        " going to ", target.x, ", ", target.y, " outcome=",
+                        static_cast<int>(game.moveOutcome()), " door=",
+                        door < game.scene().entities.size() ? game.scene().entities[door].tag : "-",
+                        " locked=", door < game.scene().entities.size()
+                            && game.scene().entities[door].locked ? 1 : 0));
+        ok = false;
     };
 
     const std::size_t trask = game.findEntity("end_trask");
@@ -1151,7 +1227,9 @@ int runPlaythrough(GameSession& game)
         logError("playthrough: end_trask missing");
         ok = false;
     } else {
-        teleportOrWalk(game.scene().entities[trask].position, 20.0f);
+        // Before any frame runs: once the world runs the shipped opening reaches
+        // this conversation by itself, and entry 54 moves End_TraskTalk on, so a
+        // later start would take a different link.
         if (!game.startDialogue(trask)) {
             logError("playthrough: Trask dialogue did not start");
             ok = false;
@@ -1165,6 +1243,7 @@ int runPlaythrough(GameSession& game)
             logInfo(concat("playthrough: dialogue lines=", lines));
             ok = ok && lines > 0;
         }
+        walkOrFail(game.scene().entities[trask].position, 20.0f);
     }
 
     const std::size_t triggerEntity = game.findEntity("end_trig02");
@@ -1188,7 +1267,7 @@ int runPlaythrough(GameSession& game)
         } else {
             centre = game.scene().entities[triggerEntity].position;
         }
-        teleportOrWalk(centre, 20.0f);
+        walkOrFail(centre, 20.0f);
         game.update(1.0f / 60.0f, InputState{});
         const bool fired = hasEvent(game, "trigger end_trig02: enter");
         logInfo(concat("playthrough: trigger end_trig02 fired=", fired ? 1 : 0));
@@ -1200,7 +1279,7 @@ int runPlaythrough(GameSession& game)
         logWarn("playthrough: end_locker01 missing");
         ok = false;
     } else {
-        teleportOrWalk(game.scene().entities[locker].position, 10.0f);
+        walkOrFail(game.scene().entities[locker].position, 10.0f);
         const bool used = game.usePlaceable(locker);
         const bool logged = hasEvent(game, "use end_locker01");
         logInfo(concat("playthrough: placeable end_locker01 used=", used ? 1 : 0,
@@ -1213,11 +1292,11 @@ int runPlaythrough(GameSession& game)
         logWarn("playthrough: no hostile creature");
         ok = false;
     } else {
-        teleportOrWalk(game.scene().entities[hostile].position, 30.0f);
+        walkOrFail(game.scene().entities[hostile].position, 30.0f);
         game.attackNearestHostile();
         int steps = 0;
         while (steps < 3600 && !game.playerDead() && !game.scene().entities[hostile].dead) {
-            game.update(1.0f / 60.0f, InputState{});
+            updateFighting(game);
             ++steps;
         }
         const bool dead = game.scene().entities[hostile].dead;
@@ -1415,10 +1494,11 @@ int runScriptTest(GameSession& game)
         kotor::Vec3 spawn = game.scene().entities[hostile].position;
         spawn.x += 1.0f;
         game.setPositionForTest(spawn);
+        dismissDialogue(game);
         game.attackNearestHostile();
         int steps = 0;
         while (steps < 3600 && !game.playerDead() && !game.scene().entities[hostile].dead) {
-            game.update(1.0f / 60.0f, InputState{});
+            updateFighting(game);
             ++steps;
         }
         check(game.scene().entities[hostile].dead, "hostile_died");
@@ -1426,6 +1506,7 @@ int runScriptTest(GameSession& game)
     }
 
     // Dialogue conditions: the shipped DLG has 19 StartingList.Active entries.
+    dismissDialogue(game);
     if (!game.startDialogue("end_trask")) {
         logError("script test: Trask dialogue did not start");
         return 10;
@@ -1436,8 +1517,14 @@ int runScriptTest(GameSession& game)
         if (line.find("dialogue condition k_pend_trask00") != std::string::npos) {
             conditionSeen = true;
         }
+        // The first start is the one k_pend_trask00 decides: End_TraskTalk is still
+        // 0. A shipped script may have opened this conversation before this point,
+        // and k_pend_traskinc on entry 54 then moves later starts to other links.
         if (line.rfind("dialogue start end_trask01", 0) == 0) {
-            selected = line;
+            logInfo(concat("script test: ", line));
+            if (selected.empty()) {
+                selected = line;
+            }
         }
     }
     check(conditionSeen, "dialogue_condition_ran");
@@ -1659,17 +1746,17 @@ int runMerchantTest(GameSession& game)
         {script::Value::makeObject(game.scriptWorld().pc)}, {script::Value::makeInt(5000)}};
     game.action(322, goldArgs, game.scriptWorld(), dummy);
     const std::int32_t goldBefore = game.gold();
-    const std::int32_t storeGoldBefore = game.merchants()[merchantIndex].gold;
     const std::size_t inventoryBefore = game.inventory().size();
     check(game.buyMerchantItem(stockIndex), "buy_item");
     check(game.gold() == goldBefore - buyPrice, "buy_gold");
-    check(game.merchants()[merchantIndex].gold == storeGoldBefore + buyPrice, "store_gold_buy");
+    // A store has no purse (UTM has no gold field and K1 has no store-gold call).
+    check(game.merchants()[merchantIndex].gold == 0, "store_has_no_gold");
     check(game.inventory().size() == inventoryBefore + 1, "buy_inventory");
     game.character().inventory.back().identified = false;
     const std::int32_t goldBeforeIdentify = game.gold();
     check(game.identifyInventoryItem(game.inventory().size() - 1), "identify_item");
     check(game.character().inventory.back().identified, "identified");
-    check(game.gold() < goldBeforeIdentify, "identify_gold");
+    check(game.gold() == goldBeforeIdentify, "identify_is_free");
     if (!stock.infinite) {
         check(game.merchants()[merchantIndex].stock[stockIndex].remaining == stock.remaining - 1,
               "buy_stock_decrement");
@@ -1692,14 +1779,6 @@ int runMerchantTest(GameSession& game)
               "stock_roundtrip");
         check(restored.gold() == game.gold(), "gold_roundtrip");
         check(restored.inventory().size() == game.inventory().size(), "inventory_roundtrip");
-        bool merchantGoldMatch = false;
-        for (const MerchantState& restoredMerchant : restored.merchants()) {
-            if (restoredMerchant.resref == merchant.resref
-                && restoredMerchant.gold == game.merchants()[merchantIndex].gold) {
-                merchantGoldMatch = true;
-            }
-        }
-        check(merchantGoldMatch, "merchant_gold_roundtrip");
         check(!restored.inventory().empty() && restored.inventory().back().identified,
               "identified_roundtrip");
     }
@@ -1716,6 +1795,32 @@ int runMerchantTest(GameSession& game)
     return ok ? 0 : 11;
 }
 
+// Encounters spawn when the player enters their volume. Puts the player at the
+// volume's centroid (else its first spawn point) and ticks until it has noticed.
+bool enterEncounterVolume(GameSession& game, std::size_t volumeIndex)
+{
+    const kotor::EncounterVolume& volume = game.scene().encounters[volumeIndex];
+    kotor::Vec3 centre{};
+    for (const kotor::Vec3& vertex : volume.vertices) {
+        centre = centre + vertex;
+    }
+    if (!volume.vertices.empty()) {
+        centre = centre * (1.0f / static_cast<float>(volume.vertices.size()));
+    }
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        game.setPositionForTest(attempt == 0 || volume.spawnPoints.empty()
+                                    ? centre
+                                    : volume.spawnPoints.front().position);
+        for (int tick = 0; tick < 4; ++tick) {
+            game.update(0.05f, InputState{});
+        }
+        if (game.encounters()[volumeIndex].triggered) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int runEncounterTest(GameSession& game)
 {
     bool ok = true;
@@ -1726,6 +1831,29 @@ int runEncounterTest(GameSession& game)
     logInfo(concat("encounter test: volumes=", game.scene().encounters.size(),
                    " states=", game.encounters().size()));
     check(game.scene().encounters.size() >= 4, "volume_count");
+    std::int32_t atLoad = 0;
+    for (const EncounterState& state : game.encounters()) {
+        atLoad += state.spawnedCount;
+    }
+    // Retail spawns on entry: nothing may exist before the player walks in.
+    check(atLoad == 0, "no_spawn_before_entry");
+    std::size_t volumeIndex = static_cast<std::size_t>(-1);
+    for (std::size_t i = 0; i < game.scene().encounters.size(); ++i) {
+        const kotor::EncounterTemplate& data = game.scene().encounters[i].templateData;
+        if (data.active && !data.creatures.empty() && !game.scene().encounters[i].spawnPoints.empty()) {
+            volumeIndex = i;
+            break;
+        }
+    }
+    if (volumeIndex == static_cast<std::size_t>(-1)) {
+        logError("encounter test: no usable volume");
+        return 9;
+    }
+    const kotor::EncounterTemplate& data = game.scene().encounters[volumeIndex].templateData;
+    const std::int32_t expected = data.maxCreatures > 0
+        ? std::min(data.recCreatures > 0 ? data.recCreatures : data.maxCreatures, data.maxCreatures)
+        : data.recCreatures;
+    check(enterEncounterVolume(game, volumeIndex), "entry_triggers_spawn");
     std::int32_t total = 0;
     std::size_t firstEntity = static_cast<std::size_t>(-1);
     for (const EncounterState& state : game.encounters()) {
@@ -1734,8 +1862,9 @@ int runEncounterTest(GameSession& game)
             firstEntity = state.entities.front();
         }
     }
-    logInfo(concat("encounter test: spawned=", total));
+    logInfo(concat("encounter test: spawned=", total, " expected=", expected));
     check(total > 0, "creatures_spawned");
+    check(game.encounters()[volumeIndex].spawnedCount == expected, "retail_spawn_count");
     if (firstEntity == static_cast<std::size_t>(-1)
         || firstEntity >= game.scene().entities.size()) {
         logError("encounter test: no spawned entity");
@@ -1768,8 +1897,9 @@ int runEncounterResetTest(GameSession& game)
     std::size_t target = static_cast<std::size_t>(-1);
     for (std::size_t i = 0; i < game.encounters().size(); ++i) {
         const EncounterState& state = game.encounters()[i];
-        if (state.spawned && state.resetTime > 0.0f && state.respawnsRemaining != 0
-            && !state.entities.empty()) {
+        const kotor::EncounterTemplate& data = game.scene().encounters[i].templateData;
+        if (data.reset && data.active && !data.creatures.empty() && state.resetTime > 0.0f
+            && state.respawnsRemaining != 0 && !game.scene().encounters[i].spawnPoints.empty()) {
             target = i;
             break;
         }
@@ -1778,6 +1908,8 @@ int runEncounterResetTest(GameSession& game)
         logError("encounter reset test: no resettable encounter");
         return 9;
     }
+    check(!game.encounters()[target].spawned, "idle_until_entry");
+    check(enterEncounterVolume(game, target), "entry_spawns");
     const EncounterState before = game.encounters()[target];
     logInfo(concat("encounter reset test: volume=", target, " spawned=", before.spawnedCount,
                    " reset_time=", before.resetTime, " respawns=", before.respawnsRemaining));
@@ -1827,11 +1959,15 @@ int runPartyTest(GameSession& game)
         check(companion.sheet.maxHp > 0, "companion_hp");
     }
     const std::int32_t xpBefore = game.character().xp;
+    // A companion now starts from its template's level, not from the PC's XP.
+    const std::int32_t companionXpBefore =
+        game.companions().empty() ? 0 : game.companions().front().sheet.xp;
     game.giveXp(1000);
     check(game.character().xp == xpBefore + 1000, "pc_full_xp");
     if (!game.companions().empty()) {
         logInfo(concat("party test: companion xp=", game.companions().front().sheet.xp));
-        check(game.companions().front().sheet.xp == 800, "companion_80_percent");
+        check(game.companions().front().sheet.xp == companionXpBefore + 800,
+              "companion_80_percent");
     }
     game.selectCompanion(0);
     check(game.selectedCompanion() == 0, "selected");
@@ -1868,10 +2004,20 @@ int runPartyTest(GameSession& game)
             }
             game.setPositionForTest({target.position.x + 1.0f, target.position.y, target.position.z});
             game.attackNearestHostile();
-            for (int i = 0; i < 600 && !hasEvent(game, "Carth hits"); ++i) {
+            // Combat rounds do not advance under a conversation.
+            const auto carthAttacked = [&] {
+                return hasEvent(game, "Carth hits") || hasEvent(game, "Carth misses");
+            };
+            for (int i = 0; i < 600 && !carthAttacked(); ++i) {
+                dismissDialogue(game);
                 game.update(0.05f, InputState{});
             }
-            check(hasEvent(game, "Carth hits"), "companion_attacks");
+            if (!carthAttacked()) {
+                for (const std::string& line : game.combatLog()) {
+                    logInfo(concat("party test: event ", line));
+                }
+            }
+            check(carthAttacked(), "companion_attacks");
         }
     }
 
@@ -1885,7 +2031,8 @@ int runPartyTest(GameSession& game)
     check(restored.companions().size() == game.companions().size(), "companion_roundtrip");
     check(restored.partyTags().size() == game.partyTags().size(), "party_roundtrip");
     if (!restored.companions().empty()) {
-        check(restored.companions().front().sheet.xp == 800, "companion_xp_roundtrip");
+        check(restored.companions().front().sheet.xp == game.companions().front().sheet.xp,
+              "companion_xp_roundtrip");
     }
 
     check(game.removePartyMember("Carth"), "leave");
@@ -1903,7 +2050,10 @@ int runLootTest(GameSession& game)
     };
     std::size_t container = static_cast<std::size_t>(-1);
     for (std::size_t i = 0; i < game.scene().entities.size(); ++i) {
+        // A container is a placeable with HasInventory set; danm13 ships two
+        // FootLker templates with items and the flag clear (retail 00587420).
         if (game.scene().entities[i].kind == kotor::EntityKind::Placeable
+            && game.scene().entities[i].hasInventory
             && !game.scene().entities[i].lootItems.empty()) {
             container = i;
             break;
@@ -2330,6 +2480,9 @@ int runSaveMatrixTest(GameSession& base, const std::string& fixtureDirectory)
             const std::filesystem::path out = scratch / folder.filename();
             std::filesystem::remove_all(out, error);
             const bool saved = game.saveOriginalSave(out, source.saveName);
+            if (!saved && !game.combatLog().empty()) {
+                logWarn(concat("save matrix: ", name, " ", game.combatLog().back()));
+            }
             check(saved, "save_" + name);
             if (!saved) {
                 continue;
@@ -2622,6 +2775,7 @@ int runModulePlaythroughMatrix(const std::string& installPath)
     std::size_t conversationAttempts = 0;
     std::size_t conversationFailures = 0;
     std::size_t knownMissing = 0;
+    std::size_t noStartLink = 0;
     std::size_t lines = 0;
     std::size_t warnings = 0;
     // Shipped KotOR 1 data references one DLG that is absent from the VFS;
@@ -2665,6 +2819,10 @@ int runModulePlaythroughMatrix(const std::string& installPath)
                         ++knownMissing;
                         logInfo(concat("module playthrough: ", module,
                                        " known missing dialogue ", entity.conversation));
+                    } else if (game.dialogueHadNoStart()) {
+                        // Every starting link's Active failed in this world state.
+                        // Retail shows nothing here; it is not a load failure.
+                        ++noStartLink;
                     } else {
                         ++conversationFailures;
                         logWarn(concat("module playthrough: ", module,
@@ -2709,14 +2867,15 @@ int runModulePlaythroughMatrix(const std::string& installPath)
     check(loaded == modules.size(), "modules");
     check(dialogues > 0, "dialogues");
     check(conversationFailures == 0, "conversation_load");
-    check(conversationAttempts == dialogues + knownMissing, "conversation_attempts");
+    check(conversationAttempts == dialogues + knownMissing + noStartLink,
+          "conversation_attempts");
     check(knownMissing == 1, "known_missing");
     check(lines > 0, "lines");
     check(warnings == 0, "warnings");
     logInfo(concat("module playthrough: modules=", loaded, " dialogues=", dialogues,
                    " attempts=", conversationAttempts,
                    " failures=", conversationFailures,
-                   " knownMissing=", knownMissing,
+                   " knownMissing=", knownMissing, " noStartLink=", noStartLink,
                    " lines=", lines, " warnings=", warnings));
     logInfo(ok ? "module playthrough: PASS" : "module playthrough: FAIL");
     return ok ? 0 : 71;
@@ -2968,8 +3127,16 @@ int runAvatarTest(GameSession& game)
         InputState input;
         input.forward = true;
         input.run = true;
+        dismissDialogue(game);
         game.update(1.0f / 60.0f, input);
     }
+    dismissDialogue(game);
+    game.update(1.0f / 60.0f, [] {
+        InputState input;
+        input.forward = true;
+        input.run = true;
+        return input;
+    }());
     const std::string clip = game.animationName(game.playerEntity());
     check(clip == "run" || clip == "walk", "player_locomotion");
     check(game.animationTime(game.playerEntity()) > 0.0f, "player_clock");
@@ -3339,8 +3506,13 @@ int runK2Test(GameSession& game)
     check(game.module() == "001EBO", "module");
     check(scene.area == "001ebo", "area");
     check(scene.rooms.size() == 18, "rooms");
-    check(scene.entities.size() == 175, "entities");
-    check(scene.entityMeshes.size() == 70, "entity_meshes");
+    // One more than before this wave: the shipped OnEnter script a_bet3m4 calls
+    // CreateObject(creature, "c_medbaypc"), which never reached the scene.
+    check(scene.entities.size() == 176, "entities");
+    check(scene.entityMeshes.size() == 71, "entity_meshes");
+    check(scene.entities.back().tag == "MEDBAY_PC"
+              && scene.entities.back().kind == kotor::EntityKind::Creature,
+          "script_created_creature");
     check(scene.triggers.size() == 17, "triggers");
     check(scene.warnings.empty(), "warnings");
     check(scene.vertices.size() > 200'000, "vertices");
@@ -5207,6 +5379,8 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
         check(std::fabs(cinematic.eye.z - (definition.position.z + definition.height)) < 0.001f,
               "camera_height");
         check(std::fabs(kotor::length(cinematic.forward) - 1.0f) < 0.01f, "camera_forward");
+        // A shipped conversation may already be up with its own camera.
+        dismissDialogue(game);
         game.setDialogueCameraForTest(static_cast<std::int32_t>(cameraId));
         const SceneCamera applied = game.camera();
         check(std::fabs(applied.eye.x - cinematic.eye.x) < 0.001f
@@ -5626,7 +5800,8 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
         check(scriptLocal("2") == 1, "script_has_spell");
         check(scriptLocal("3") == fpBeforeScript, "script_force_points");
         check(scriptLocal("4") == game.maxForcePoints(), "script_max_force_points");
-        check(scriptLocal("5") == 1, "script_talent_type");
+        // TalentSpell is TALENT_TYPE_FORCE, 0. retail 00544c70
+        check(scriptLocal("5") == 0, "script_talent_type");
         check(scriptLocal("6") == 35, "script_talent_id");
         check(game.combatMode() == CombatMode::PowerAttack, "script_action_feat");
         check(game.forceArmorBonus() > 0, "script_action_spell");
@@ -5674,6 +5849,684 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     return ok ? 0 : 42;
 }
 
+// Assembles small NCS fixtures for the world-simulation gate, so the assertions
+// run real bytecode through the real VM against shipped data.
+class NcsFixture {
+public:
+    NcsFixture& constInt(std::int32_t value)
+    {
+        op(0x04, 0x03);
+        be32(static_cast<std::uint32_t>(value));
+        return *this;
+    }
+    NcsFixture& constFloat(float value)
+    {
+        std::uint32_t bits = 0;
+        std::memcpy(&bits, &value, sizeof(bits));
+        op(0x04, 0x04);
+        be32(bits);
+        return *this;
+    }
+    NcsFixture& constString(const std::string& value)
+    {
+        op(0x04, 0x05);
+        code_.push_back(static_cast<std::uint8_t>(value.size() >> 8));
+        code_.push_back(static_cast<std::uint8_t>(value.size() & 0xFF));
+        code_.insert(code_.end(), value.begin(), value.end());
+        return *this;
+    }
+    NcsFixture& constObject(std::uint32_t value) // 0 is OBJECT_SELF, as compiled.
+    {
+        op(0x04, 0x06);
+        be32(value);
+        return *this;
+    }
+    NcsFixture& action(std::uint16_t id, std::uint8_t argc)
+    {
+        op(0x05, 0x00);
+        code_.push_back(static_cast<std::uint8_t>(id >> 8));
+        code_.push_back(static_cast<std::uint8_t>(id & 0xFF));
+        code_.push_back(argc);
+        return *this;
+    }
+    NcsFixture& copyTop() // CPTOPSP -4, 4: duplicate the top cell.
+    {
+        op(0x03, 0x01);
+        be32(static_cast<std::uint32_t>(-4));
+        code_.push_back(0x00);
+        code_.push_back(0x04);
+        return *this;
+    }
+    NcsFixture& returns()
+    {
+        op(0x20, 0x00);
+        return *this;
+    }
+    NcsFixture& location(kotor::Vec3 at, float facing)
+    {
+        constFloat(facing).constFloat(at.x).constFloat(at.y).constFloat(at.z);
+        return action(215, 2);
+    }
+    // SetLocalNumber(OBJECT_SELF, index, value)
+    NcsFixture& setLocal(std::int32_t index, std::int32_t value)
+    {
+        constInt(value).constInt(index).constObject(0);
+        return action(682, 3);
+    }
+    // A compiled action argument: STORESTATE, a JMP over the body, the body.
+    template <typename Body>
+    NcsFixture& closure(Body body)
+    {
+        op(0x2C, 0x10);
+        be32(0);
+        be32(0);
+        const std::size_t jump = code_.size();
+        op(0x1D, 0x00);
+        be32(0);
+        body(*this);
+        returns();
+        const std::uint32_t distance = static_cast<std::uint32_t>(code_.size() - jump);
+        code_[jump + 2] = static_cast<std::uint8_t>(distance >> 24);
+        code_[jump + 3] = static_cast<std::uint8_t>(distance >> 16);
+        code_[jump + 4] = static_cast<std::uint8_t>(distance >> 8);
+        code_[jump + 5] = static_cast<std::uint8_t>(distance);
+        return *this;
+    }
+    std::vector<std::uint8_t> bytes()
+    {
+        returns();
+        const std::string magic = "NCS V1.0";
+        std::vector<std::uint8_t> out(magic.begin(), magic.end());
+        out.push_back(0x42);
+        const std::uint32_t size = static_cast<std::uint32_t>(13 + code_.size());
+        for (const int shift : {24, 16, 8, 0}) {
+            out.push_back(static_cast<std::uint8_t>(size >> shift));
+        }
+        out.insert(out.end(), code_.begin(), code_.end());
+        return out;
+    }
+
+private:
+    void op(std::uint8_t code, std::uint8_t qualifier)
+    {
+        code_.push_back(code);
+        code_.push_back(qualifier);
+    }
+    void be32(std::uint32_t value)
+    {
+        for (const int shift : {24, 16, 8, 0}) {
+            code_.push_back(static_cast<std::uint8_t>(value >> shift));
+        }
+    }
+    std::vector<std::uint8_t> code_;
+};
+
+// --family-test <name>: one Wave 2 family gate per name. Each family adds one line.
+int runFamilyTest(const std::string& name, GameSession& game)
+{
+    if (name == "combat") {
+        return runCombatFamilyTest(game);
+    }
+    if (name == "worldstate") {
+        return runWorldStateFamilyTest(game);
+    }
+    if (name == "items") {
+        return runItemsFamilyTest(game);
+    }
+    if (name == "pathfinding") {
+        return runPathfindingFamilyTest(game);
+    }
+    if (name == "party") {
+        return runPartyFamilyTest(game);
+    }
+    if (name == "objects") {
+        return runObjectsFamilyTest(game);
+    }
+    logError(concat("unknown family test: ", name));
+    return 2;
+}
+
+int runWorldSimTest(GameSession& game)
+{
+    bool ok = true;
+    const auto check = [&](bool condition, const char* label) {
+        logInfo(concat("world sim: ", label, "=", condition ? 1 : 0));
+        ok = ok && condition;
+    };
+    const auto tick = [&](float seconds) {
+        for (float t = 0.0f; t < seconds; t += 1.0f / 30.0f) {
+            game.update(1.0f / 30.0f, InputState{});
+        }
+    };
+    const auto local = [&](std::uint32_t object, int index) {
+        return game.scriptWorld()
+            .getLocal(object, std::to_string(index), script::ValueType::Int)
+            .asInt();
+    };
+    const auto logged = [&](const char* text) { return scriptLogHas(game, text); };
+    const auto flat = [](kotor::Vec3 a, kotor::Vec3 b) {
+        return std::hypot(a.x - b.x, a.y - b.y);
+    };
+    const std::uint32_t pc = game.scriptWorld().pc;
+    const std::string startModule = game.module();
+    script::Vm dummy({});
+
+    // ---- EngineStore: the proving family, called the way the VM calls it.
+    {
+        std::vector<std::vector<script::Value>> args = {
+            {script::Value::makeFloat(3.0), script::Value::makeFloat(4.0),
+             script::Value::makeFloat(5.0)},
+            {script::Value::makeFloat(90.0)}};
+        const auto created = game.action(215, args, game.scriptWorld(), dummy);
+        check(created.has_value() && created->size() == 1
+                  && created->front().type == script::ValueType::Engine
+                  && created->front().integer != 0,
+              "location_is_engine_value");
+        const std::vector<std::vector<script::Value>> read = {{created->front()}};
+        const auto position = game.action(223, read, game.scriptWorld(), dummy);
+        check(position.has_value() && position->size() == 3 && (*position)[0].asFloat() == 3.0
+                  && (*position)[2].asFloat() == 5.0,
+              "location_position_read_back");
+        const auto facing = game.action(225, read, game.scriptWorld(), dummy);
+        check(facing.has_value() && facing->front().asFloat() == 90.0, "location_facing_read_back");
+        const std::vector<std::vector<script::Value>> invalid = {{script::Value::makeEngine(0)}};
+        const auto none = game.action(223, invalid, game.scriptWorld(), dummy);
+        check(none.has_value() && (*none)[0].asFloat() == 0.0, "invalid_location_reads_zero");
+    }
+
+    // ---- Parser: gameplay flags on shipped templates.
+    {
+        std::size_t keyDoors = 0;
+        std::size_t lockDc = 0;
+        std::size_t plot = 0;
+        for (const kotor::Entity& entity : game.scene().entities) {
+            keyDoors += entity.kind == kotor::EntityKind::Door && entity.keyRequired ? 1u : 0u;
+            lockDc += entity.openLockDC > 0 ? 1u : 0u;
+            plot += entity.plot ? 1u : 0u;
+        }
+        logInfo(concat("world sim: key_doors=", keyDoors, " lock_dc=", lockDc, " plot=", plot));
+        check(keyDoors > 0, "utd_key_required_parsed");
+        check(lockDc > 0, "open_lock_dc_parsed");
+        check(plot > 0, "plot_flag_parsed");
+    }
+
+    // ---- Dialogue: a shipped starting link reads a global. k_pend_trask00 passes
+    // while End_TraskTalk is 0; setting it must select a different branch.
+    const std::size_t trask = game.findEntity("end_trask");
+    check(trask != static_cast<std::size_t>(-1), "fixture_trask");
+    if (trask == static_cast<std::size_t>(-1)) {
+        return 40;
+    }
+    const auto startEntry = [&]() {
+        game.clearTraces();
+        const std::size_t before = game.scriptLog().size();
+        game.startDialogue(trask);
+        std::string entry;
+        for (std::size_t i = before; i < game.scriptLog().size(); ++i) {
+            if (game.scriptLog()[i].rfind("dialogue start end_trask01", 0) == 0) {
+                entry = game.scriptLog()[i];
+            }
+        }
+        game.clearDialogueForTest();
+        return entry;
+    };
+    game.scriptWorld().setGlobal("End_TraskTalk", script::Value::makeInt(0));
+    const std::string branchBefore = startEntry();
+    game.scriptWorld().setGlobal("End_TraskTalk", script::Value::makeInt(1));
+    const std::string branchAfter = startEntry();
+    logInfo(concat("world sim: ", branchBefore, " then ", branchAfter));
+    check(!branchBefore.empty() && !branchAfter.empty() && branchBefore != branchAfter,
+          "start_link_follows_global");
+    game.scriptWorld().setGlobal("End_TraskTalk", script::Value::makeInt(0));
+
+    // ---- Dialogue state machine, with fixture conditions on a built DLG.
+    game.addScriptForTest("wsim_cond", NcsFixture().constString("WSIM").action(580, 1).bytes());
+    game.addScriptForTest("wsim_entry", NcsFixture().setLocal(21, 1).bytes());
+    game.addScriptForTest("wsim_end", NcsFixture().setLocal(22, 1).bytes());
+    game.addScriptForTest("wsim_abort", NcsFixture().setLocal(23, 1).bytes());
+    {
+        kotor::Dlg dlg;
+        kotor::DlgEntry first;
+        first.text = "first";
+        first.script = "wsim_entry";
+        first.replies = {0, 1};
+        first.repliesActive = {"wsim_cond", ""};
+        kotor::DlgEntry gated;
+        gated.text = "gated";
+        kotor::DlgEntry open;
+        open.text = "open";
+        dlg.entries = {first, gated, open};
+        kotor::DlgReply both;
+        both.text = "both";
+        both.entries = {1, 2};
+        both.entriesActive = {"wsim_cond", ""};
+        kotor::DlgReply leave;
+        leave.text = "leave";
+        dlg.replies = {both, leave};
+        dlg.endConversation = "wsim_end";
+        dlg.endConversationAbort = "wsim_abort";
+
+        game.scriptWorld().setGlobal("WSIM", script::Value::makeInt(0));
+        game.setDialogueForTest(dlg, "wsim", "fixture");
+        check(game.dialogue().options.size() == 1 && game.dialogue().options[0].text == "leave",
+              "reply_link_filtered_when_false");
+        check(local(pc, 21) == 1, "entry_script_ran");
+        game.chooseDialogueOption(0);
+        check(!game.dialogue().active && local(pc, 22) == 1 && local(pc, 23) == 0,
+              "reply_without_links_ends_normally");
+
+        game.scriptWorld().setGlobal("WSIM", script::Value::makeInt(1));
+        game.scriptWorld().setLocal(pc, "21", script::Value::makeInt(0));
+        game.setDialogueForTest(dlg, "wsim", "fixture");
+        check(game.dialogue().options.size() == 2, "reply_link_shown_when_true");
+        check(local(pc, 21) == 1, "entry_script_runs_each_time_reached");
+        game.chooseDialogueOption(0);
+        check(game.dialogue().active && game.dialogue().text == "gated",
+              "first_truthy_entry_link_wins");
+        game.endDialogue();
+        check(!game.dialogue().active && local(pc, 23) == 1, "abort_runs_end_converabort");
+
+        game.scriptWorld().setGlobal("WSIM", script::Value::makeInt(1));
+        game.setDialogueForTest(dlg, "wsim", "fixture");
+        game.scriptWorld().setGlobal("WSIM", script::Value::makeInt(0));
+        game.chooseDialogueOption(0);
+        check(game.dialogue().active && game.dialogue().text == "open",
+              "false_entry_link_skipped");
+        game.clearDialogueForTest();
+    }
+
+    // ---- Journal and plot XP from a dialogue node, on the shipped global.jrl and
+    // plot.2da. The category and row are ones shipped end_m01aa nodes use.
+    {
+        constexpr const char* kQuest = "end_attack";
+        check(!game.journalEntryText(kQuest, 10).empty()
+                  || !game.journalEntryText(kQuest, 1).empty(),
+              "global_jrl_loaded");
+        const std::int32_t plotAward = game.plotXpForIndex(47, 0.1f);
+        logInfo(concat("world sim: plot row 47 at 0.1 = ", plotAward));
+        check(plotAward > 0, "plot_2da_loaded");
+        kotor::Dlg dlg;
+        kotor::DlgEntry node;
+        node.text = "node";
+        node.quest = kQuest;
+        node.hasQuestEntry = true;
+        node.questEntry = 20;
+        node.plotIndex = 47;
+        node.plotXpPercentage = 0.1f;
+        dlg.entries = {node};
+        const std::int32_t xpBefore = game.character().xp;
+        check(game.journalState(kQuest) == 0, "journal_starts_empty");
+        game.setDialogueForTest(dlg, "wsim_q", "fixture");
+        check(game.journalState(kQuest) == 20, "dialogue_node_sets_journal");
+        check(game.character().xp >= xpBefore + plotAward, "dialogue_node_awards_xp");
+        game.clearDialogueForTest();
+        check(!game.addJournalQuest(kQuest, 10, false) && game.journalState(kQuest) == 20,
+              "journal_cannot_go_back_without_override");
+        check(game.addJournalQuest(kQuest, 10, true) && game.journalState(kQuest) == 10,
+              "journal_override_goes_back");
+        const std::int32_t xpGiven = game.character().xp;
+        game.givePlotXp("no_such_plot_row", 100);
+        check(game.character().xp == xpGiven, "unknown_plot_label_awards_nothing");
+    }
+
+    // ---- Action queues: walking blocks what is queued behind it.
+    const std::uint32_t npc = game.objectForEntityIndex(trask);
+    {
+        // The conversations above ran shipped node scripts that queue on Trask, and
+        // the module's opening has a timer that starts him talking a few seconds
+        // in. Give the assertions below a known empty queue and a quiet clock.
+        game.scriptWorld().timers.clear();
+        const auto reset = NcsFixture()
+                               .constObject(0)
+                               .constInt(1)
+                               .action(162, 2) // SetCommandable(TRUE, OBJECT_SELF)
+                               .action(9, 0)   // ClearAllActions
+                               .bytes();
+        game.runScriptNcsForTest("wsim_reset", reset, npc);
+        check(game.actorQueueSize(npc) == 0, "clear_all_actions_empties_shipped_queue");
+        kotor::Vec3 target;
+        check(game.findClearView(game.scene().entities[trask].position, 2.5f, target),
+              "fixture_walk_target");
+        const kotor::Vec3 start = game.actorPosition(npc);
+        const auto bytes = NcsFixture()
+                               .constInt(0)
+                               .location(target, 0.0f)
+                               .action(21, 2) // ActionMoveToLocation
+                               .closure([](NcsFixture& body) { body.setLocal(7, 1); })
+                               .action(294, 1) // ActionDoCommand
+                               .constInt(99)
+                               .constInt(8)
+                               .constObject(0)
+                               .action(682, 3) // Runs now, before anything queued.
+                               .bytes();
+        check(game.runScriptNcsForTest("wsim_queue", bytes, npc), "queue_script_ran");
+        check(game.actorQueueSize(npc) == 2, "move_and_docommand_queued");
+        check(local(npc, 7) == 0 && local(npc, 8) == 99, "script_continues_past_queued_actions");
+        game.update(1.0f / 30.0f, InputState{});
+        check(local(npc, 7) == 0, "docommand_waits_for_move");
+        float travelled = 0.0f;
+        float atCommand = -1.0f;
+        for (int step = 0; step < 900 && atCommand < 0.0f; ++step) {
+            game.update(1.0f / 30.0f, InputState{});
+            travelled = std::max(travelled, flat(game.actorPosition(npc), start));
+            if (local(npc, 7) == 1) {
+                atCommand = flat(game.actorPosition(npc), target);
+            }
+        }
+        logInfo(concat("world sim: travelled=", travelled, " at_command=", atCommand));
+        check(travelled > 0.5f, "actor_walked");
+        check(atCommand >= 0.0f && atCommand < 0.5f, "docommand_ran_after_arrival");
+        check(game.actorQueueSize(npc) == 0, "queue_drained");
+
+        // ActionWait blocks the queue, not the script.
+        const auto wait = NcsFixture()
+                              .constFloat(1.0f)
+                              .action(202, 1)
+                              .closure([](NcsFixture& body) { body.setLocal(9, 1); })
+                              .action(294, 1)
+                              .bytes();
+        game.runScriptNcsForTest("wsim_wait", wait, npc);
+        tick(0.5f);
+        check(local(npc, 9) == 0, "wait_blocks_queue");
+        tick(0.8f);
+        check(local(npc, 9) == 1, "queue_resumes_after_wait");
+
+        // Not commandable: retail drops the queued action (0057cb10).
+        const auto locked = NcsFixture()
+                                .constObject(0)
+                                .constInt(0)
+                                .action(162, 2)
+                                .closure([](NcsFixture& body) { body.setLocal(10, 1); })
+                                .action(294, 1)
+                                .constObject(0)
+                                .constInt(1)
+                                .action(162, 2)
+                                .bytes();
+        game.runScriptNcsForTest("wsim_locked", locked, npc);
+        tick(0.2f);
+        check(local(npc, 10) == 0 && game.actorQueueSize(npc) == 0, "not_commandable_drops");
+
+        // ClearAllActions empties a commandable queue, closures included.
+        const auto cleared = NcsFixture()
+                                 .constFloat(5.0f)
+                                 .action(202, 1)
+                                 .closure([](NcsFixture& body) { body.setLocal(11, 1); })
+                                 .action(294, 1)
+                                 .action(9, 0)
+                                 .bytes();
+        game.runScriptNcsForTest("wsim_cleared", cleared, npc);
+        check(game.actorQueueSize(npc) == 0, "clear_all_actions");
+
+        // AssignCommand runs later, on the target, with OBJECT_SELF = target. An
+        // engine value captured by the closure arrives intact: the actor jumps to
+        // the location the outer script built.
+        const kotor::Vec3 home = start;
+        const auto assign = NcsFixture()
+                                .location(home, 180.0f)
+                                .closure([](NcsFixture& body) {
+                                    body.setLocal(12, 1).copyTop().action(214, 1);
+                                })
+                                .constObject(npc)
+                                .action(6, 2)
+                                .bytes();
+        game.runScriptNcsForTest("wsim_assign", assign, pc);
+        check(local(npc, 12) == 0 && local(pc, 12) == 0, "assign_is_deferred");
+        tick(0.2f);
+        check(local(npc, 12) == 1 && local(pc, 12) == 0, "assign_runs_as_target");
+        check(flat(game.actorPosition(npc), home) < 0.2f, "engine_value_survives_closure");
+        check(flat(game.actorPosition(npc), target) > 0.5f, "jump_moved_actor");
+    }
+
+    // ---- Events and ExecuteScript.
+    {
+        kotor::Entity& entity = game.scene().entities[trask];
+        entity.scripts["ScriptUserDefine"] = "wsim_ud";
+        game.addScriptForTest("wsim_ud", NcsFixture()
+                                             .action(247, 0) // GetUserDefinedEventNumber
+                                             .constInt(13)
+                                             .constObject(0)
+                                             .action(682, 3)
+                                             .bytes());
+        const auto signal = NcsFixture()
+                                .constInt(1001)
+                                .action(132, 1) // EventUserDefined
+                                .constObject(npc)
+                                .action(131, 2) // SignalEvent
+                                .bytes();
+        game.runScriptNcsForTest("wsim_signal", signal, pc);
+        check(local(npc, 13) == 0, "signal_is_deferred");
+        tick(0.1f);
+        check(local(npc, 13) == 1001, "signal_reaches_user_defined_as_target");
+        check(logged("hook ScriptUserDefine end_trask -> wsim_ud"), "user_defined_hook_logged");
+
+        game.scene().scripts["Mod_OnUsrDefined"] = "wsim_mod";
+        game.addScriptForTest("wsim_mod", NcsFixture().setLocal(14, 1).bytes());
+        const auto signalModule = NcsFixture()
+                                      .constInt(1)
+                                      .action(132, 1)
+                                      .action(242, 0) // GetModule
+                                      .action(131, 2)
+                                      .bytes();
+        game.runScriptNcsForTest("wsim_signal_mod", signalModule, pc);
+        tick(0.1f);
+        check(local(game.moduleObject(), 14) == 1, "module_user_defined_runs_on_module");
+
+        // ExecuteScript runs now, on the target, carries its var, and returning
+        // leaves the outer script's OBJECT_SELF alone.
+        game.addScriptForTest("wsim_inner", NcsFixture()
+                                                .action(565, 0) // GetRunScriptVar
+                                                .constInt(15)
+                                                .constObject(0)
+                                                .action(682, 3)
+                                                .bytes());
+        const auto outer = NcsFixture()
+                               .constInt(77)
+                               .action(548, 0) // GetFirstPC: 1 as a constant is OBJECT_INVALID.
+                               .constString("wsim_inner")
+                               .action(8, 3)
+                               .setLocal(16, 1)
+                               .bytes();
+        game.runScriptNcsForTest("wsim_outer", outer, npc);
+        check(local(pc, 15) == 77 && local(npc, 15) == 0, "execute_script_on_target_with_var");
+        check(local(npc, 16) == 1 && local(pc, 16) == 0, "nested_run_keeps_outer_self");
+        check(game.runScriptVar() == 77, "run_script_var_is_not_restored");
+    }
+
+    // ---- Kill, leave, return.
+    const std::size_t hostile = firstHostile(game);
+    check(hostile != static_cast<std::size_t>(-1), "fixture_hostile");
+    if (hostile == static_cast<std::size_t>(-1)) {
+        return 41;
+    }
+    const std::uint32_t hostileObject = game.objectForEntityIndex(hostile);
+    const std::string hostileTemplate = game.scene().entities[hostile].templateResref;
+    const std::uint32_t areaBefore = game.areaObject();
+    const std::uint32_t trigger = static_cast<std::uint32_t>(game.scene().triggers.size());
+    {
+        game.scene().entities[hostile].scripts["ScriptDeath"] = "wsim_death";
+        game.addScriptForTest("wsim_death", NcsFixture().setLocal(17, 1).bytes());
+        const std::int32_t xpBefore = game.character().xp;
+        game.damageEntity(hostile, 100000, pc);
+        check(game.scene().entities[hostile].dead, "kill_marks_dead");
+        const std::int32_t xpAfter = game.character().xp;
+        check(xpAfter > xpBefore, "kill_awards_xp");
+        game.onCreatureKilled(hostile, pc);
+        check(game.character().xp == xpAfter, "second_kill_is_ignored");
+        game.flushScriptEvents();
+        check(local(hostileObject, 17) == 1, "death_hook_ran_once_as_victim");
+    }
+    // Object locals, a pending timer, looted items and a created creature all have
+    // to come back. The timer is longer than the time spent away.
+    game.scriptWorld().setLocal(npc, "18", script::Value::makeInt(4242));
+    const auto delayed = NcsFixture()
+                             .closure([](NcsFixture& body) { body.setLocal(19, 1); })
+                             .constFloat(3.0f)
+                             .action(7, 2) // DelayCommand
+                             .bytes();
+    game.runScriptNcsForTest("wsim_delay", delayed, npc);
+    const std::size_t entitiesBefore = game.scene().entities.size();
+    const auto create = NcsFixture()
+                            .constInt(0)
+                            .location(game.scene().entities[trask].position, 0.0f)
+                            .constString(hostileTemplate)
+                            .constInt(1)
+                            .action(243, 4) // CreateObject(OBJECT_TYPE_CREATURE, ...)
+                            .bytes();
+    game.runScriptNcsForTest("wsim_create", create, pc);
+    check(game.scene().entities.size() == entitiesBefore + 1, "create_object_spawned");
+    const std::uint32_t createdObject = game.objectForEntityIndex(entitiesBefore);
+    game.scriptWorld().setLocal(createdObject, "24", script::Value::makeInt(5));
+
+    const std::size_t locker = game.findEntity("end_locker01");
+    std::size_t lootBefore = 0;
+    if (locker != static_cast<std::size_t>(-1)) {
+        game.scene().entities[locker].scripts["OnInvDisturbed"] = "wsim_disturb";
+        game.addScriptForTest("wsim_disturb", NcsFixture()
+                                                  .action(352, 0) // GetInventoryDisturbType
+                                                  .constInt(25)
+                                                  .constObject(0)
+                                                  .action(682, 3)
+                                                  .bytes());
+        lootBefore = game.scene().entities[locker].lootItems.size();
+        if (lootBefore > 0 && game.openLoot(locker)) {
+            game.takeLootItem(0);
+            game.flushScriptEvents();
+            check(local(game.objectForEntityIndex(locker), 25) == 1, "loot_fires_disturbed");
+        }
+    }
+
+    game.scene().scripts["Mod_OnClientLeav"] = "wsim_leave";
+    game.scene().scripts["OnExit"] = "wsim_exit";
+    game.addScriptForTest("wsim_leave", NcsFixture()
+                                            .constInt(1)
+                                            .constString("WSIM_LEFT")
+                                            .action(581, 2)
+                                            .bytes());
+    game.addScriptForTest("wsim_exit", NcsFixture()
+                                           .constInt(1)
+                                           .constString("WSIM_EXIT")
+                                           .action(581, 2)
+                                           .bytes());
+    std::string from;
+    std::string nextModule;
+    check(game.testTransition(from, nextModule) && nextModule != startModule, "left_module");
+    logInfo(concat("world sim: ", from, " -> ", nextModule));
+    const auto globalValue = [&](const char* name) {
+        return game.scriptWorld().getGlobal(name, script::ValueType::Int).asInt();
+    };
+    check(globalValue("WSIM_LEFT") == 1 && globalValue("WSIM_EXIT") == 1,
+          "leave_hooks_ran_before_the_swap");
+    check(game.moduleSnapshot(startModule) != nullptr, "snapshot_captured");
+    check(local(pc, 21) == 1, "pc_locals_travel_with_the_player");
+    tick(0.5f);
+
+    // ---- Arrive at the StartNewModule waypoint.
+    std::string waypoint;
+    kotor::Vec3 waypointAt;
+    for (const kotor::Entity& entity : game.scene().entities) {
+        if (entity.kind == kotor::EntityKind::Waypoint && !entity.tag.empty()) {
+            waypoint = entity.tag;
+            waypointAt = entity.position;
+            break;
+        }
+    }
+    check(!waypoint.empty(), "fixture_waypoint");
+    const auto travel = [&](const std::string& module, const std::string& wp) {
+        NcsFixture script;
+        for (int i = 0; i < 6; ++i) {
+            script.constString("");
+        }
+        script.constString(wp).constString(module).action(509, 8);
+        game.runScriptNcsForTest("wsim_travel", script.bytes(), pc);
+        game.update(1.0f / 30.0f, InputState{});
+    };
+
+    travel(startModule, "");
+    check(game.module() == startModule, "returned_to_module");
+    check(game.scene().entities[hostile].dead, "dead_creature_stays_dead");
+    check(game.objectForEntityIndex(hostile) == hostileObject, "object_id_stable_across_return");
+    check(game.areaObject() == areaBefore, "area_object_stable_across_return");
+    check(game.objectForEntityIndex(trask) == npc, "npc_id_stable_across_return");
+    check(local(npc, 18) == 4242, "object_local_survives_return");
+    check(flat(game.actorPosition(npc), game.scene().entities[trask].position) < 0.01f,
+          "actor_position_is_entity_position");
+    check(local(hostileObject, 17) == 1, "dead_creature_local_survives");
+    check(game.scene().triggers.size() == trigger, "trigger_count_stable");
+    bool createdBack = false;
+    for (std::size_t i = 0; i < game.scene().entities.size(); ++i) {
+        if (game.objectForEntityIndex(i) == createdObject) {
+            createdBack = true;
+            check(local(createdObject, 24) == 5, "created_object_local_survives");
+        }
+    }
+    check(createdBack, "created_object_survives_return");
+    if (locker != static_cast<std::size_t>(-1) && lootBefore > 0) {
+        check(game.scene().entities[locker].lootItems.size() == lootBefore - 1,
+              "looted_item_stays_taken");
+    }
+    check(local(npc, 19) == 0, "timer_did_not_fire_while_away");
+    tick(3.5f);
+    check(local(npc, 19) == 1, "pending_timer_fires_after_return");
+
+    travel(nextModule, waypoint);
+    check(game.module() == nextModule, "start_new_module_loaded");
+    logInfo(concat("world sim: arrived ", game.position().x, ",", game.position().y,
+                   " waypoint ", waypoint, " ", waypointAt.x, ",", waypointAt.y));
+    check(flat(game.position(), waypointAt) < 0.5f, "start_new_module_uses_waypoint");
+    travel(startModule, "");
+
+    // ---- Through a save file. World state round-trips, including a timer.
+    {
+        const auto timer = NcsFixture()
+                               .closure([](NcsFixture& body) { body.setLocal(26, 1); })
+                               .constFloat(2.0f)
+                               .action(7, 2)
+                               .bytes();
+        game.addScriptForTest("wsim_save_timer", timer);
+        game.runScript("wsim_save_timer", npc);
+        check(!game.scriptWorld().timers.empty(), "timer_pending_at_save");
+        const double worldTime = game.scriptWorld().time;
+        const std::filesystem::path path =
+            std::filesystem::temp_directory_path() / "kotor_engine_world_sim.save";
+        check(game.save(path), "saved");
+        // Change the world so a load has something to undo.
+        game.scriptWorld().setLocal(npc, "18", script::Value::makeInt(1));
+        game.scriptWorld().setLocal(pc, "21", script::Value::makeInt(9));
+        check(game.load(path), "loaded");
+        check(game.module() == startModule, "save_module");
+        check(game.scene().entities[hostile].dead, "save_keeps_dead");
+        check(game.objectForEntityIndex(hostile) == hostileObject, "save_keeps_object_id");
+        check(local(npc, 18) == 4242, "save_keeps_object_local");
+        check(local(pc, 21) == 1, "save_keeps_pc_local");
+        check(std::fabs(game.scriptWorld().time - worldTime) < 0.01, "save_keeps_world_time");
+        check(game.moduleSnapshot(nextModule) != nullptr, "save_keeps_other_module");
+        check(local(npc, 26) == 0, "saved_timer_has_not_fired");
+        tick(2.5f);
+        check(local(npc, 26) == 1, "saved_timer_fires_after_load");
+        std::filesystem::remove(path);
+
+        // Older saves still load.
+        const std::filesystem::path oldPath =
+            std::filesystem::temp_directory_path() / "kotor_engine_world_sim_old.save";
+        {
+            std::ofstream old(oldPath, std::ios::binary | std::ios::trunc);
+            old << "schema=kotor.engine.player/3\nmodule=" << startModule << "\nhp=10\n";
+        }
+        check(game.load(oldPath), "old_schema_loads");
+        check(game.moduleSnapshot(nextModule) == nullptr, "old_schema_has_no_snapshots");
+        std::filesystem::remove(oldPath);
+    }
+
+    if (!ok) {
+        const std::vector<std::string>& lines = game.scriptLog();
+        for (std::size_t i = lines.size() > 80 ? lines.size() - 80 : 0; i < lines.size(); ++i) {
+            logInfo(concat("world sim: log ", lines[i]));
+        }
+    }
+    logInfo(ok ? "world sim: PASS" : "world sim: FAIL");
+    return ok ? 0 : 42;
+}
+
 int runDelayedTest(GameSession& game, const std::string& path)
 {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
@@ -5693,8 +6546,10 @@ int runDelayedTest(GameSession& game, const std::string& path)
     const auto local = [&](const char* name) {
         return game.scriptWorld().getLocal(self, name, script::ValueType::Int).asInt();
     };
+    // ACT_202 queues and returns (00545800): the statements after ActionWait run
+    // immediately, and only the action queue waits.
     ok = ok && local("0") == 1 && local("1") == 0 && local("2") == 0
-        && local("5") == 1 && local("6") == 0;
+        && local("5") == 1 && local("6") == 2;
     logInfo(concat("delayed test: immediate local0=", local("0"),
                    " local1=", local("1"), " local2=", local("2"),
                    " local5=", local("5"), " local6=", local("6")));
@@ -6105,6 +6960,9 @@ int runApplication(const Options& options)
                 for (const auto& [hook, resref] : loaded.scripts) {
                     logInfo(concat("  scene script ", hook, " -> ", resref));
                 }
+                for (const std::string& line : game->scriptLog()) {
+                    logInfo(concat("  script run ", line));
+                }
                 return 0;
             }
             if (!options.panel.empty()) {
@@ -6214,6 +7072,12 @@ int runApplication(const Options& options)
             }
             if (options.dialogueTest) {
                 return runDialogueTest(*game);
+            }
+            if (options.worldSimTest) {
+                return runWorldSimTest(*game);
+            }
+            if (!options.familyTest.empty()) {
+                return runFamilyTest(options.familyTest, *game);
             }
             if (options.scriptTest) {
                 return runScriptTest(*game);
@@ -6770,6 +7634,9 @@ int runApplication(const Options& options)
                         drawMovieOverlay(*game->movieFrame(), movieTexture);
                     }
                 }
+            }
+            if (game) {
+                drawWorldStateOverlay(*game);
             }
             if (!movieMode && guiMode && game) {
                 std::function<bool(const std::string&)> handler;
