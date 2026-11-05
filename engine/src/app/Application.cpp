@@ -1,10 +1,14 @@
 #include "app/Application.h"
 
 #include "audio/Output.h"
+#include "audio/Reverb.h"
+#include "audio/ReverbGate.h"
 #include "core/Log.h"
 #include "game/AudioSystem.h"
 #include "game/BugParity.h"
 #include "game/Chargen.h"
+#include "game/ChargenGui.h"
+#include "game/ChargenPreview.h"
 #include "game/Factions.h"
 #include "game/GameSession.h"
 #include "game/GuiSystem.h"
@@ -25,6 +29,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <cctype>
 #include <array>
 #include <cstdint>
 #include <cstdlib>
@@ -84,13 +89,552 @@ struct RuntimeState {
     bool requestChargen = false;
 };
 
-struct ChargenGuiState {
-    explicit ChargenGuiState(const Rules& rules) : chargen(rules) {}
-    Chargen chargen;
-    int step = 0; // classsel, portcust, abchrgen, skchrgen, ftchrgen, name
-    std::string nameBuffer = "Player";
-    bool active = true;
+// Window-side companions of the chargen screens: portrait art uploaded as backend UI
+// images, and the 3D model controls' rectangles (physical pixels) for the backend's
+// preview pass. Also feeds the PC portrait shown in the HUD and character panel.
+struct ChargenVisuals {
+    IRenderBackend* backend = nullptr;
+    PortraitImages* portraits = nullptr;
+    ChargenPreview* preview = nullptr;
+    std::map<std::string, std::uint64_t> textures; // resref -> backend UI image id
+    std::map<std::string, PreviewRect> rects;       // 3D control tag -> pixels, last frame
+    std::uint32_t uploadedRevision = UINT32_MAX;
+    std::string portraitResref;                     // last portrait drawn by the overlay
+
+    std::uint64_t portraitTexture(const std::string& resref)
+    {
+        if (backend == nullptr || portraits == nullptr || resref.empty()) {
+            return 0;
+        }
+        const auto found = textures.find(resref);
+        if (found != textures.end()) {
+            return found->second;
+        }
+        std::uint64_t id = 0;
+        std::string error;
+        const kotor::Image* image = portraits->image(resref);
+        if (image == nullptr) {
+            logWarn(concat("portrait art not found: ", resref));
+        } else if (!backend->uploadUiImage(image->width, image->height, image->rgba.data(), id,
+                                           error)) {
+            logWarn(concat("portrait upload failed (", resref, "): ", error));
+            id = 0;
+        }
+        textures[resref] = id;
+        return id;
+    }
+
+    void syncPreviewScene()
+    {
+        if (backend == nullptr || preview == nullptr || uploadedRevision == preview->revision()) {
+            return;
+        }
+        std::string error;
+        if (!backend->setPreviewScene(&preview->scene(), error)) {
+            logWarn(concat("preview scene upload failed: ", error));
+        }
+        uploadedRevision = preview->revision();
+    }
+
+    void release()
+    {
+        if (backend != nullptr) {
+            for (auto& entry : textures) {
+                if (entry.second != 0) {
+                    backend->releaseUiImage(entry.second);
+                }
+            }
+        }
+        textures.clear();
+    }
 };
+
+ChargenVisuals* gVisuals = nullptr;
+
+// Fills [low, high] with `color` except the rectangles in `holes` (where a 3D model
+// control draws underneath the UI). Horizontal bands keep it to a few quads.
+void fillExcluding(ImDrawList* draw, ImVec2 low, ImVec2 high, ImU32 color,
+                   const std::vector<std::pair<ImVec2, ImVec2>>& holes)
+{
+    std::vector<float> ys = {low.y, high.y};
+    for (const auto& hole : holes) {
+        ys.push_back(std::clamp(hole.first.y, low.y, high.y));
+        ys.push_back(std::clamp(hole.second.y, low.y, high.y));
+    }
+    std::sort(ys.begin(), ys.end());
+    ys.erase(std::unique(ys.begin(), ys.end()), ys.end());
+    for (std::size_t band = 0; band + 1 < ys.size(); ++band) {
+        const float y0 = ys[band];
+        const float y1 = ys[band + 1];
+        std::vector<std::pair<float, float>> cuts;
+        for (const auto& hole : holes) {
+            if (hole.first.y < y1 && hole.second.y > y0) {
+                cuts.emplace_back(std::clamp(hole.first.x, low.x, high.x),
+                                  std::clamp(hole.second.x, low.x, high.x));
+            }
+        }
+        std::sort(cuts.begin(), cuts.end());
+        float x = low.x;
+        for (const auto& cut : cuts) {
+            if (cut.first > x) {
+                draw->AddRectFilled(ImVec2(x, y0), ImVec2(cut.first, y1), color);
+            }
+            x = std::max(x, cut.second);
+        }
+        if (x < high.x) {
+            draw->AddRectFilled(ImVec2(x, y0), ImVec2(high.x, y1), color);
+        }
+    }
+}
+
+// --chargen-preview-test: drives the shipped classsel and portcust screens with pointer
+// events through GuiSystem and asserts on the presented frame that each 3D model control
+// holds drawn pixels, that they differ between classes and between portraits.
+class ChargenPreviewGate {
+public:
+    // fromMenu: start on the main menu, click New Game and run the whole shipped flow
+    // (classsel to the name screen) with pointer events, then expect the first module.
+    ChargenPreviewGate(std::string outDir, bool fromMenu)
+        : outDir_(std::move(outDir)), fromMenu_(fromMenu)
+    {
+        if (fromMenu_) {
+            phase_ = Phase::MenuWait;
+        }
+    }
+
+    bool finished() const { return phase_ == Phase::Done; }
+    int exitCode() const { return ok_ ? 0 : 77; }
+
+    void step(IRenderBackend& backend, GuiSystem& gui, ChargenGuiState* flowPointer,
+              ChargenVisuals& visuals, GameSession& game)
+    {
+        if (phase_ == Phase::Done) {
+            return;
+        }
+        if (phase_ == Phase::MenuWait || phase_ == Phase::MenuClick || phase_ == Phase::MenuOpen) {
+            stepMenu(gui, flowPointer);
+            return;
+        }
+        const bool afterPreviews = phase_ == Phase::AcceptChain || phase_ == Phase::ChainSettle
+            || phase_ == Phase::ModuleWait;
+        if (flowPointer == nullptr || (visuals.preview == nullptr && !afterPreviews)) {
+            check(false, "preview_available");
+            phase_ = Phase::Done;
+            return;
+        }
+        ChargenGuiState& flow = *flowPointer;
+        ++frames_;
+        if (frames_ == 1) {
+            // GL arms its pre-swap read on the first request; later captures return the
+            // cached presented frame.
+            CapturedFrame warm;
+            backend.captureFrame(warm);
+        }
+        if (frames_ > 600) {
+            check(false, "gate_timeout");
+            phase_ = Phase::Done;
+            return;
+        }
+        switch (phase_) {
+        case Phase::ClassWait:
+            if (frames_ >= 8) {
+                classScreen(backend, visuals);
+                click(gui, "BTN_SEL2");
+                phase_ = Phase::ClassClick;
+            }
+            break;
+        case Phase::ClassClick:
+            if (clickStep(gui)) {
+                phase_ = Phase::PortraitWait;
+                frames_ = 0;
+            }
+            break;
+        case Phase::PortraitWait:
+            if (gui.screenName() == "portcust" && frames_ >= 8) {
+                first_ = portraitScreen(backend, visuals, "portrait_a");
+                firstIndex_ = flow.chargen.portraitIndex();
+                click(gui, "BTN_ARRR");
+                phase_ = Phase::PortraitClick;
+            }
+            break;
+        case Phase::PortraitClick:
+            if (clickStep(gui)) {
+                phase_ = Phase::CycleWait;
+                frames_ = 0;
+            }
+            break;
+        case Phase::CycleWait:
+            if (frames_ >= 8) {
+                check(flow.chargen.portraitIndex() == firstIndex_ + 1, "cycled_portrait_index");
+                const CapturedFrame second = portraitScreen(backend, visuals, "portrait_b");
+                check(differs(first_, second, visuals.rects["LBL_HEAD"], 0.01), "head_changes");
+                if (fromMenu_) {
+                    chainIndex_ = 0;
+                    phase_ = Phase::AcceptChain;
+                    startChainClick(gui);
+                } else {
+                    phase_ = Phase::Done;
+                }
+            }
+            break;
+        case Phase::AcceptChain:
+            if (clickStep(gui)) {
+                phase_ = Phase::ChainSettle;
+                frames_ = 0;
+            }
+            break;
+        case Phase::ChainSettle:
+            if (frames_ >= 4) {
+                const ChainStep& done = kChain[chainIndex_];
+                check(std::string(done.expectScreen).empty()
+                          || gui.screenName() == done.expectScreen,
+                      "chain_" + std::to_string(chainIndex_) + "_" + done.tag + "_screen");
+                ++chainIndex_;
+                if (chainIndex_ >= kChain.size()) {
+                    phase_ = Phase::ModuleWait;
+                    frames_ = 0;
+                } else {
+                    phase_ = Phase::AcceptChain;
+                    startChainClick(gui);
+                }
+            }
+            break;
+        case Phase::ModuleWait:
+            if (lowerCase(game.module()) == "end_m01aa") {
+                check(flow.finished && !flow.active, "flow_finished");
+                check(game.character().classId == 1 && game.character().gender == 0,
+                      "character_applied");
+                check(game.character().name == "PLAYER", "name_applied");
+                check(game.playerEntity() != static_cast<std::size_t>(-1), "avatar_in_module");
+                check(!game.scene().entities.empty(), "first_module_scene");
+                phase_ = Phase::Done;
+            } else if (frames_ >= 300) {
+                check(false, "first_module_entered");
+                phase_ = Phase::Done;
+            }
+            break;
+        case Phase::MenuWait:
+        case Phase::MenuClick:
+        case Phase::MenuOpen:
+        case Phase::Done:
+            break;
+        }
+    }
+
+private:
+    enum class Phase {
+        MenuWait, MenuClick, MenuOpen,
+        ClassWait, ClassClick, PortraitWait, PortraitClick, CycleWait,
+        AcceptChain, ChainSettle, ModuleWait, Done
+    };
+
+    struct ChainStep {
+        const char* tag;
+        const char* expectScreen; // screen shown after the click ("" = not checked)
+    };
+    static constexpr std::array<ChainStep, 6> kChain{{
+        {"BTN_ACCEPT", "abchrgen"}, {"BTN_ACCEPT", "skchrgen"}, {"BTN_ACCEPT", "ftchrgen"},
+        {"BTN_SELECT", ""}, {"BTN_ACCEPT", "name"}, {"END_BTN", ""}}};
+
+    static std::string lowerCase(std::string value)
+    {
+        std::transform(value.begin(), value.end(), value.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return value;
+    }
+
+    void startChainClick(GuiSystem& gui) { click(gui, kChain[chainIndex_].tag); }
+
+    // Main menu: wait, click BTN_NEWGAME, then let the flow open classsel.
+    void stepMenu(GuiSystem& gui, ChargenGuiState* flow)
+    {
+        ++frames_;
+        if (frames_ > 600) {
+            check(false, "menu_timeout");
+            phase_ = Phase::Done;
+            return;
+        }
+        switch (phase_) {
+        case Phase::MenuWait:
+            if (frames_ >= 8) {
+                check(gui.screenName() == "mainmenu", "menu_screen");
+                click(gui, "BTN_NEWGAME");
+                phase_ = Phase::MenuClick;
+            }
+            break;
+        case Phase::MenuClick:
+            if (clickStep(gui)) {
+                phase_ = Phase::MenuOpen;
+                frames_ = 0;
+            }
+            break;
+        default:
+            if (frames_ >= 3 && gui.screenName() == "classsel" && flow != nullptr
+                && flow->active) {
+                check(true, "new_game_opens_classsel");
+                phase_ = Phase::ClassWait;
+                frames_ = 0;
+            }
+            break;
+        }
+    }
+
+    void check(bool condition, const std::string& label)
+    {
+        logInfo(concat("chargen_preview: ", label, "=", condition ? 1 : 0));
+        ok_ = ok_ && condition;
+    }
+
+    static bool near(std::uint8_t a, std::uint8_t b, int tolerance)
+    {
+        return std::abs(static_cast<int>(a) - static_cast<int>(b)) <= tolerance;
+    }
+
+    // Share of the rectangle's pixels that differ from the view clear colour.
+    static double drawnShare(const CapturedFrame& frame, const PreviewRect& rect)
+    {
+        const std::uint8_t clear[3] = {5, 5, 10}; // PreviewView::background in bytes
+        long long total = 0;
+        long long drawn = 0;
+        for (int y = std::max(rect.y + 2, 0); y < std::min(rect.y + rect.height - 2, frame.height);
+             ++y) {
+            for (int x = std::max(rect.x + 2, 0);
+                 x < std::min(rect.x + rect.width - 2, frame.width); ++x) {
+                const std::uint8_t* pixel =
+                    &frame.rgba[(static_cast<std::size_t>(y) * frame.width + x) * 4];
+                ++total;
+                if (!near(pixel[0], clear[0], 10) || !near(pixel[1], clear[1], 10)
+                    || !near(pixel[2], clear[2], 10)) {
+                    ++drawn;
+                }
+            }
+        }
+        return total > 0 ? static_cast<double>(drawn) / static_cast<double>(total) : 0.0;
+    }
+
+    // Share of pixels inside `rect` that differ noticeably between two frames.
+    static double differenceShare(const CapturedFrame& a, const CapturedFrame& b,
+                                  const PreviewRect& rect)
+    {
+        if (a.width != b.width || a.height != b.height) {
+            return 1.0;
+        }
+        long long total = 0;
+        long long changed = 0;
+        for (int y = std::max(rect.y + 2, 0); y < std::min(rect.y + rect.height - 2, a.height);
+             ++y) {
+            for (int x = std::max(rect.x + 2, 0); x < std::min(rect.x + rect.width - 2, a.width);
+                 ++x) {
+                const std::size_t at = (static_cast<std::size_t>(y) * a.width + x) * 4;
+                ++total;
+                if (!near(a.rgba[at], b.rgba[at], 24) || !near(a.rgba[at + 1], b.rgba[at + 1], 24)
+                    || !near(a.rgba[at + 2], b.rgba[at + 2], 24)) {
+                    ++changed;
+                }
+            }
+        }
+        return total > 0 ? static_cast<double>(changed) / static_cast<double>(total) : 0.0;
+    }
+
+    static bool differs(const CapturedFrame& a, const CapturedFrame& b, const PreviewRect& rect,
+                        double share)
+    {
+        return differenceShare(a, b, rect) > share;
+    }
+
+    // Compares the same rectangle of two frames cropped from one capture: the
+    // second rectangle is moved onto the first so two controls can be compared.
+    static double crossDifference(const CapturedFrame& frame, const PreviewRect& left,
+                                  const PreviewRect& right)
+    {
+        const int width = std::min(left.width, right.width) - 4;
+        const int height = std::min(left.height, right.height) - 4;
+        long long changed = 0;
+        long long total = 0;
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                const int ax = left.x + 2 + x;
+                const int ay = left.y + 2 + y;
+                const int bx = right.x + 2 + x;
+                const int by = right.y + 2 + y;
+                if (ax >= frame.width || ay >= frame.height || bx >= frame.width
+                    || by >= frame.height) {
+                    continue;
+                }
+                const std::size_t a = (static_cast<std::size_t>(ay) * frame.width + ax) * 4;
+                const std::size_t b = (static_cast<std::size_t>(by) * frame.width + bx) * 4;
+                ++total;
+                if (!near(frame.rgba[a], frame.rgba[b], 24)
+                    || !near(frame.rgba[a + 1], frame.rgba[b + 1], 24)
+                    || !near(frame.rgba[a + 2], frame.rgba[b + 2], 24)) {
+                    ++changed;
+                }
+            }
+        }
+        return total > 0 ? static_cast<double>(changed) / static_cast<double>(total) : 0.0;
+    }
+
+    bool capture(IRenderBackend& backend, CapturedFrame& frame, const char* name)
+    {
+        if (!backend.captureFrame(frame) || frame.rgba.empty()) {
+            check(false, std::string("capture_") + name);
+            return false;
+        }
+        if (!outDir_.empty()) {
+            std::error_code ignored;
+            std::filesystem::create_directories(outDir_, ignored);
+            writeBmpTopDown(std::filesystem::path(outDir_) / (std::string(name) + ".bmp"),
+                            frame.width, frame.height, frame.rgba);
+        }
+        return true;
+    }
+
+    void classScreen(IRenderBackend& backend, ChargenVisuals& visuals)
+    {
+        CapturedFrame frame;
+        if (!capture(backend, frame, "classsel")) {
+            return;
+        }
+        for (int slot = 1; slot <= 6; ++slot) {
+            const std::string tag = "3D_MODEL" + std::to_string(slot);
+            const auto found = visuals.rects.find(tag);
+            check(found != visuals.rects.end(), tag + "_rect");
+            if (found == visuals.rects.end()) {
+                continue;
+            }
+            const double share = drawnShare(frame, found->second);
+            logInfo(concat("chargen_preview: ", tag, " drawn share ", share));
+            check(share > 0.03, tag + "_drawn");
+        }
+        // BTN_SEL2 = male Scout and BTN_SEL3 = male Soldier have equal rectangles;
+        // BTN_SEL3 and BTN_SEL4 = female Soldier differ by gender only.
+        if (visuals.rects.count("3D_MODEL2") && visuals.rects.count("3D_MODEL3")
+            && visuals.rects.count("3D_MODEL4")) {
+            const double classes = crossDifference(frame, visuals.rects["3D_MODEL2"],
+                                                   visuals.rects["3D_MODEL3"]);
+            const double genders = crossDifference(frame, visuals.rects["3D_MODEL3"],
+                                                   visuals.rects["3D_MODEL4"]);
+            logInfo(concat("chargen_preview: scout vs soldier ", classes, " male vs female ",
+                           genders));
+            check(classes > 0.02, "classes_differ");
+            check(genders > 0.02, "genders_differ");
+        }
+    }
+
+    CapturedFrame portraitScreen(IRenderBackend& backend, ChargenVisuals& visuals,
+                                 const char* name)
+    {
+        CapturedFrame frame;
+        if (!capture(backend, frame, name)) {
+            return frame;
+        }
+        const auto head = visuals.rects.find("LBL_HEAD");
+        check(head != visuals.rects.end(), std::string(name) + "_head_rect");
+        if (head != visuals.rects.end()) {
+            const double share = drawnShare(frame, head->second);
+            logInfo(concat("chargen_preview: ", name, " head drawn share ", share));
+            check(share > 0.02, std::string(name) + "_head_drawn");
+        }
+        return frame;
+    }
+
+    void click(GuiSystem& gui, const std::string& tag)
+    {
+        clickTag_ = tag;
+        clickState_ = 0;
+        const kotor::GuiControl* control = findControl(gui.screen(), tag);
+        if (control == nullptr) {
+            check(false, "click_target_" + tag);
+            clickState_ = 3;
+            return;
+        }
+        clickX_ = static_cast<float>(control->extent.left + control->extent.width / 2);
+        clickY_ = static_cast<float>(control->extent.top + control->extent.height / 2);
+    }
+
+    // pointer move, down, up on consecutive frames; true once the release was sent.
+    bool clickStep(GuiSystem& gui)
+    {
+        switch (clickState_) {
+        case 0:
+            gui.pointerMove(clickX_, clickY_);
+            break;
+        case 1:
+            gui.pointerDown(clickX_, clickY_);
+            break;
+        case 2:
+            check(gui.pointerUp(clickX_, clickY_), "click_" + clickTag_);
+            break;
+        default:
+            return true;
+        }
+        return ++clickState_ > 2;
+    }
+
+    static const kotor::GuiControl* findControl(const kotor::GuiScreen* screen,
+                                                const std::string& tag)
+    {
+        if (screen == nullptr) {
+            return nullptr;
+        }
+        std::function<const kotor::GuiControl*(const kotor::GuiControl&)> search =
+            [&](const kotor::GuiControl& control) -> const kotor::GuiControl* {
+            if (control.tag == tag) {
+                return &control;
+            }
+            for (const kotor::GuiControl& child : control.children) {
+                if (const kotor::GuiControl* hit = search(child)) {
+                    return hit;
+                }
+            }
+            return nullptr;
+        };
+        for (const kotor::GuiControl& control : screen->controls) {
+            if (const kotor::GuiControl* hit = search(control)) {
+                return hit;
+            }
+        }
+        return nullptr;
+    }
+
+    std::string outDir_;
+    bool fromMenu_ = false;
+    std::size_t chainIndex_ = 0;
+    Phase phase_ = Phase::ClassWait;
+    int frames_ = 0;
+    bool ok_ = true;
+    std::string clickTag_;
+    int clickState_ = 3;
+    float clickX_ = 0.0f;
+    float clickY_ = 0.0f;
+    CapturedFrame first_;
+    int firstIndex_ = 0;
+};
+
+// The PC portrait (portraits.2da art for the player's row and alignment) as a UI image;
+// nothing is drawn when the sheet has no portrait row or the backend cannot show images.
+void drawPcPortrait(GameSession& game, float size)
+{
+    if (gVisuals == nullptr) {
+        return;
+    }
+    const CharacterSheet& sheet = game.character();
+    if (sheet.portraitRow < 0) {
+        return;
+    }
+    const PortraitInfo info = game.rules().portraitRow(sheet.portraitRow);
+    const std::uint64_t texture = gVisuals->portraitTexture(
+        game.rules().portraitResrefFor(info, sheet.alignment));
+    if (texture != 0) {
+        ImGui::Image(static_cast<ImTextureID>(texture), ImVec2(size, size));
+    }
+}
+
+bool isPreviewTag(const std::string& tag)
+{
+    return tag == "LBL_HEAD"
+        || (tag.size() == 9 && tag.rfind("3D_MODEL", 0) == 0 && tag[8] >= '1' && tag[8] <= '6');
+}
 
 SDL_WindowFlags windowFlagsFor(BackendKind kind, const Options& options)
 {
@@ -249,8 +793,10 @@ void drawSystemsUi(GameSession& game)
     const CharacterSheet& sheet = game.character();
     switch (game.activePanel()) {
     case UiPanel::Character: {
-        ImGui::Text("%s  %s %d", sheet.name.c_str(), game.rules().className(sheet.classId).c_str(),
-                    sheet.level);
+        drawPcPortrait(game, 96.0f);
+        ImGui::Text("%s  %s %d  (%s)", sheet.name.c_str(),
+                    game.rules().className(sheet.classId).c_str(), sheet.level,
+                    sheet.gender == 1 ? "female" : "male");
         ImGui::Text("XP %d   HP %d/%d   FP %d/%d   Gold %d", sheet.xp, sheet.hp,
                     sheet.maxHp, sheet.fp, sheet.maxFp, game.gold());
         ImGui::Text("Alignment %d (0 dark .. 100 light)   Combat mode %s   Effects %zu",
@@ -496,7 +1042,8 @@ void drawFacialRigOverlay(const FacialRig& rig)
 }
 
 void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game, bool& requestChargen,
-                          const std::function<bool(const std::string&)>& actionHandler = {})
+                          const std::function<bool(const std::string&)>& actionHandler = {},
+                          ChargenVisuals* visuals = nullptr)
 {
     const kotor::GuiScreen* screen = gui.screen();
     if (screen == nullptr) {
@@ -505,7 +1052,13 @@ void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game, bool& requestCharge
     ImGui::SetNextWindowFocus();
     ImGui::SetNextWindowPos(ImVec2(40.0f, 40.0f), ImGuiCond_Once);
     ImGui::SetNextWindowSize(ImVec2(700.0f, 620.0f), ImGuiCond_Once);
-    if (!ImGui::Begin("GUI screen", nullptr, ImGuiWindowFlags_NoCollapse)) {
+    // With 3D model controls the window background is drawn by the fills below (which
+    // leave the model rectangles open); the stock window background would cover them.
+    ImGuiWindowFlags guiFlags = ImGuiWindowFlags_NoCollapse;
+    if (visuals != nullptr && visuals->preview != nullptr) {
+        guiFlags |= ImGuiWindowFlags_NoBackground;
+    }
+    if (!ImGui::Begin("GUI screen", nullptr, guiFlags)) {
         ImGui::End();
         return;
     }
@@ -514,12 +1067,45 @@ void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game, bool& requestCharge
                 gui.hovered().empty() ? "-" : gui.hovered().c_str(),
                 gui.lastAction().empty() ? "-" : gui.lastAction().c_str());
     ImDrawList* draw = ImGui::GetWindowDrawList();
-    draw->AddRectFilled(ImGui::GetWindowPos(),
-                        ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowSize().x,
-                               ImGui::GetWindowPos().y + ImGui::GetWindowSize().y),
-                        IM_COL32(20, 20, 24, 255));
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     constexpr float kScale = 1.0f;
+    // 3D model controls (classsel 3D_MODELn, portcust LBL_HEAD) are drawn by the
+    // backend underneath the UI, so the window fill leaves their rectangles open.
+    std::vector<std::pair<ImVec2, ImVec2>> holes;
+    const bool previewScreen = visuals != nullptr && visuals->preview != nullptr;
+    if (previewScreen) {
+        visuals->rects.clear();
+        const ImVec2 fb = ImGui::GetIO().DisplayFramebufferScale;
+        std::function<void(const kotor::GuiControl&)> collect =
+            [&](const kotor::GuiControl& control) {
+                if (isPreviewTag(control.tag)
+                    && visuals->preview->entityForTag(control.tag) >= 0) {
+                    const ImVec2 low(origin.x + static_cast<float>(control.extent.left) * kScale,
+                                     origin.y + static_cast<float>(control.extent.top) * kScale);
+                    const ImVec2 high(low.x + static_cast<float>(control.extent.width) * kScale,
+                                      low.y + static_cast<float>(control.extent.height) * kScale);
+                    holes.emplace_back(low, high);
+                    PreviewRect rect;
+                    rect.tag = control.tag;
+                    rect.x = static_cast<int>(std::lround(low.x * fb.x));
+                    rect.y = static_cast<int>(std::lround(low.y * fb.y));
+                    rect.width = static_cast<int>(std::lround((high.x - low.x) * fb.x));
+                    rect.height = static_cast<int>(std::lround((high.y - low.y) * fb.y));
+                    visuals->rects[control.tag] = rect;
+                }
+                for (const kotor::GuiControl& child : control.children) {
+                    collect(child);
+                }
+            };
+        for (const kotor::GuiControl& control : screen->controls) {
+            collect(control);
+        }
+    }
+    const ImVec2 windowLow = ImGui::GetWindowPos();
+    fillExcluding(draw, windowLow,
+                  ImVec2(windowLow.x + ImGui::GetWindowSize().x,
+                         windowLow.y + ImGui::GetWindowSize().y),
+                  IM_COL32(20, 20, 24, 255), holes);
     ImGui::InvisibleButton("gui_canvas", ImVec2(640.0f * kScale, 480.0f * kScale));
     const ImVec2 mouse = ImGui::GetIO().MousePos;
     const float localX = (mouse.x - origin.x) / kScale;
@@ -543,6 +1129,26 @@ void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game, bool& requestCharge
                              origin.y + static_cast<float>(control.extent.top) * kScale);
             const ImVec2 high(low.x + static_cast<float>(control.extent.width) * kScale,
                               low.y + static_cast<float>(control.extent.height) * kScale);
+            // The 3D model controls and the transparent class buttons laid over them
+            // keep the models visible; only the portrait art is a UI image.
+            const bool modelControl = previewScreen && isPreviewTag(control.tag)
+                && visuals->preview->entityForTag(control.tag) >= 0;
+            const bool overModel = previewScreen && control.tag.rfind("BTN_SEL", 0) == 0;
+            if (modelControl || overModel) {
+                if (control.key == gui.hovered()) {
+                    draw->AddRectFilled(low, high, IM_COL32(120, 150, 190, 60));
+                }
+                draw->AddRect(low, high, IM_COL32(120, 130, 150, 160));
+                return;
+            }
+            if (visuals != nullptr && control.tag == "LBL_PORTRAIT") {
+                const std::uint64_t texture = visuals->portraitTexture(visuals->portraitResref);
+                if (texture != 0) {
+                    draw->AddImage(static_cast<ImTextureID>(texture), low, high);
+                    draw->AddRect(low, high, IM_COL32(160, 170, 190, 255));
+                    return;
+                }
+            }
             ImU32 fill = IM_COL32(40, 46, 58, 180);
             if (control.type == 6) {
                 fill = state.pressed ? IM_COL32(110, 140, 180, 240)
@@ -560,7 +1166,8 @@ void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game, bool& requestCharge
             if (control.key == gui.hovered()) {
                 fill = IM_COL32(120, 150, 190, 230);
             }
-            draw->AddRectFilled(low, high, fill);
+            // Fills leave the 3D model rectangles open so the backend's models show.
+            fillExcluding(draw, low, high, fill, holes);
             draw->AddRect(low, high, state.enabled ? IM_COL32(160, 170, 190, 255)
                                                     : IM_COL32(90, 90, 90, 255));
             if (control.type == 8 || control.type == 9 || control.type == 10) {
@@ -584,6 +1191,13 @@ void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game, bool& requestCharge
         };
     for (const kotor::GuiControl& control : screen->controls) {
         drawControl(control);
+    }
+    if (previewScreen && visuals->backend != nullptr) {
+        std::vector<PreviewRect> rectList;
+        for (const auto& entry : visuals->rects) {
+            rectList.push_back(entry.second);
+        }
+        visuals->backend->setPreviewViews(visuals->preview->views(rectList));
     }
     if (!gui.lastAction().empty()) {
         const std::string action = gui.lastAction();
@@ -699,7 +1313,8 @@ void drawChargenUi(Chargen& chargen, GameSession& game, bool& active)
                     sheet.str, sheet.dex, sheet.con, sheet.intel, sheet.wis, sheet.cha);
         if (ImGui::Button("Start Game")) {
             game.applyCharacter(sheet);
-            game.setPlayerAppearance(chargen.portrait().appearance, chargen.name());
+            game.setPlayerAppearance(static_cast<std::uint32_t>(std::max(0, chargen.appearanceId())),
+                                     chargen.name());
             game.setThirdPerson(true);
             active = false;
         }
@@ -783,193 +1398,6 @@ void drawMinigameUi(GameSession& game)
         }
         ImGui::End();
     }
-    if (game.swoopActive()) {
-        SwoopRace& race = game.swoop();
-        ImGui::SetNextWindowPos(ImVec2(120.0f, 120.0f), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Swoop Race", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        const SwoopState& state = race.state();
-        ImGui::Text("Lap %d/%d  Speed %.1f  Distance %.0f / %.0f",
-                    state.lap, SwoopRace::kLaps, state.speed, state.distance,
-                    SwoopRace::kTrackLength * SwoopRace::kLaps);
-        if (state.finished) {
-            ImGui::Text("Finished in %.2f s", state.time);
-            if (ImGui::Button("Close")) {
-                game.stopSwoop();
-            }
-        } else {
-            const ImGuiIO& io = ImGui::GetIO();
-            const float throttle = ImGui::IsKeyDown(ImGuiKey_W) ? 1.0f : 0.0f;
-            const bool boost = ImGui::IsKeyDown(ImGuiKey_LeftShift)
-                || ImGui::IsKeyDown(ImGuiKey_RightShift);
-            const bool brake = ImGui::IsKeyDown(ImGuiKey_S);
-            game.updateSwoop(std::min(io.DeltaTime, 0.05f), throttle, boost, brake);
-            ImGui::TextUnformatted("W throttle, Shift boost, S brake");
-            if (ImGui::Button("Abort")) {
-                game.stopSwoop();
-            }
-        }
-        ImGui::End();
-    }
-    if (game.turretActive()) {
-        TurretGame& turret = game.turret();
-        ImGui::SetNextWindowPos(ImVec2(120.0f, 120.0f), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Turret", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        const TurretState& state = turret.state();
-        ImGui::Text("Hull %d  Score %d  Shots %d  Hits %d",
-                    state.hitPoints, state.score, state.shots, state.hits);
-        if (state.hitPoints <= 0) {
-            ImGui::TextUnformatted("Hull destroyed");
-            if (ImGui::Button("Close")) {
-                game.stopTurret();
-            }
-        } else {
-            const auto& targets = turret.targets();
-            for (std::size_t i = 0; i < targets.size(); ++i) {
-                if (!targets[i].alive) {
-                    continue;
-                }
-                const std::string label = "Fire " + std::to_string(i + 1)
-                    + " (" + std::to_string(static_cast<int>(targets[i].distance)) + " m)";
-                if (ImGui::Button((label + "##turret").c_str())) {
-                    turret.fireAt(i);
-                }
-            }
-            if (ImGui::Button("Abort")) {
-                game.stopTurret();
-            }
-        }
-        ImGui::End();
-    }
-}
-
-const char* chargenScreenName(int step)
-{
-    switch (step) {
-    case 0: return "classsel";
-    case 1: return "portcust";
-    case 2: return "abchrgen";
-    case 3: return "skchrgen";
-    case 4: return "ftchrgen";
-    case 5: return "name";
-    default: return "classsel";
-    }
-}
-
-bool handleChargenGuiAction(const std::string& action, ChargenGuiState& state,
-                            GuiSystem& gui, GameSession& game)
-{
-    if (!state.active) {
-        return false;
-    }
-    const auto advance = [&](int step) {
-        state.step = step;
-        gui.open(chargenScreenName(step));
-    };
-    const auto back = [&](int step) {
-        state.step = step;
-        gui.open(chargenScreenName(step));
-    };
-    if (state.step == 0) {
-        if (action.rfind("BTN_SEL", 0) == 0 && action.size() == 8) {
-            const int index = action[7] - '1';
-            if (index >= 0 && index < 6) {
-                state.chargen.selectClass(index % 3);
-                advance(1);
-            }
-            return true;
-        }
-        if (action == "BTN_BACK") {
-            state.active = false;
-            gui.close();
-            return true;
-        }
-        return false;
-    }
-    if (action == "BTN_BACK") {
-        back(state.step - 1);
-        return true;
-    }
-    if (state.step == 1) {
-        if (action == "BTN_ARRL") {
-            state.chargen.cyclePortrait(-1);
-            return true;
-        }
-        if (action == "BTN_ARRR") {
-            state.chargen.cyclePortrait(1);
-            return true;
-        }
-        if (action == "BTN_ACCEPT") {
-            advance(2);
-            return true;
-        }
-        return false;
-    }
-    if (state.step == 2) {
-        static const char* names[] = {"STR", "DEX", "CON", "INT", "WIS", "CHA"};
-        for (int i = 0; i < 6; ++i) {
-            if (action == std::string(names[i]) + "_PLUS_BTN") {
-                state.chargen.adjustAttribute(i, 1);
-                return true;
-            }
-            if (action == std::string(names[i]) + "_MINUS_BTN") {
-                state.chargen.adjustAttribute(i, -1);
-                return true;
-            }
-        }
-        if (action == "BTN_ACCEPT") {
-            advance(3);
-            return true;
-        }
-        return false;
-    }
-    if (state.step == 3) {
-        static const char* names[] = {"COM", "DEM", "STE", "AWA",
-                                      "PER", "REP", "SEC", "TRE"};
-        for (int i = 0; i < 8; ++i) {
-            if (action == std::string(names[i]) + "_PLUS_BTN") {
-                state.chargen.adjustSkill(i, 1);
-                return true;
-            }
-            if (action == std::string(names[i]) + "_MINUS_BTN") {
-                state.chargen.adjustSkill(i, -1);
-                return true;
-            }
-        }
-        if (action == "BTN_ACCEPT") {
-            advance(4);
-            return true;
-        }
-        return false;
-    }
-    if (state.step == 4) {
-        if (action == "BTN_SELECT") {
-            const std::vector<std::int32_t> feats = state.chargen.availableFeats();
-            if (!feats.empty()) {
-                state.chargen.toggleFeat(feats.front());
-            }
-            return true;
-        }
-        if (action == "BTN_ACCEPT") {
-            advance(5);
-            return true;
-        }
-        return false;
-    }
-    if (state.step == 5) {
-        if (action == "END_BTN") {
-            state.chargen.setName(state.nameBuffer);
-            const CharacterSheet sheet = state.chargen.build();
-            game.applyCharacter(sheet);
-            game.setPlayerAppearance(state.chargen.portrait().appearance,
-                                     state.chargen.name());
-            game.setThirdPerson(true);
-            state.active = false;
-            gui.close();
-            return true;
-        }
-        return false;
-    }
-    return false;
 }
 
 void drawChargenTextOverlay(ChargenGuiState& state)
@@ -1027,17 +1455,39 @@ void drawWorldStateOverlay(GameSession& game)
     ImGui::End();
 }
 
-void drawGameUi(GameSession& game, float fps, const std::string& prompt)
+void drawSlicePanel(GameSession& game, float fps, const std::string& prompt)
 {
     ImGui::SetNextWindowPos(ImVec2(16.0f, 16.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(470.0f, 0.0f), ImGuiCond_FirstUseEver);
     ImGui::Begin("KotOR Remaster - Playable Slice", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+    drawPcPortrait(game, 48.0f);
     ImGui::Text("Module: %s  Area: %s", game.module().c_str(), game.scene().area.c_str());
-    ImGui::Text("Position: %.2f %.2f %.2f  %s", game.position().x, game.position().y, game.position().z,
+    const kotor::Vec3 steeredAt = game.controlledPosition();
+    ImGui::Text("Position: %.2f %.2f %.2f  %s", steeredAt.x, steeredAt.y, steeredAt.z,
                 game.grounded() ? "grounded" : "airborne");
     ImGui::Text("FPS: %.1f", fps);
-    ImGui::Text("HP: %d / %d", game.playerHp(), game.playerMaxHp());
-    ImGui::ProgressBar(static_cast<float>(game.playerHp()) / static_cast<float>(std::max(1, game.playerMaxHp())),
+    // The party strip: one button per creature the player may take control of
+    // (Tab cycles the same list). The highlighted one is steered.
+    for (const int npc : game.selectableLeaders()) {
+        const bool steered = npc == game.partyTable().controlled;
+        const std::string label = npc == kNpcPlayer
+            ? std::string("PC")
+            : game.partyTable().npcs[static_cast<std::size_t>(npc)].tag;
+        if (steered) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.20f, 0.45f, 0.75f, 1.0f));
+        }
+        if (ImGui::Button((label + "##leader" + std::to_string(npc)).c_str())) {
+            game.selectLeaderNpc(npc);
+        }
+        if (steered) {
+            ImGui::PopStyleColor();
+        }
+        ImGui::SameLine();
+    }
+    ImGui::NewLine();
+    ImGui::Text("HP: %d / %d", game.controlledHp(), game.controlledMaxHp());
+    ImGui::ProgressBar(static_cast<float>(game.controlledHp())
+                           / static_cast<float>(std::max(1, game.controlledMaxHp())),
                        ImVec2(-1.0f, 0.0f));
     if (game.combatTarget() != UINT32_MAX) {
         ImGui::TextColored(ImVec4(1.0f, 0.55f, 0.35f, 1.0f), "Target: %s", game.combatTargetName().c_str());
@@ -1047,7 +1497,7 @@ void drawGameUi(GameSession& game, float fps, const std::string& prompt)
     }
     ImGui::Separator();
     ImGui::TextUnformatted("WASD move, mouse look, Shift run, Space jump");
-    ImGui::TextUnformatted("E interact, F attack, P pazaak, O swoop, T turret");
+    ImGui::TextUnformatted("E interact, F attack, Tab next party member, P pazaak");
     ImGui::TextUnformatted("F5 save, F9 load, F1 mouse, Esc quit");
     ImGui::Text("Triangles: %zu  Collision facets: %zu  Entities: %zu",
                 game.scene().indices.size() / 3, game.scene().collision.size(), game.scene().entities.size());
@@ -1060,6 +1510,15 @@ void drawGameUi(GameSession& game, float fps, const std::string& prompt)
         }
     }
     ImGui::End();
+}
+
+void drawGameUi(GameSession& game, float fps, const std::string& prompt)
+{
+    // A minigame's HUD is its shipped models: no slice panel or walking crosshair over it.
+    const bool miniGame = game.miniGameActive();
+    if (!miniGame) {
+        drawSlicePanel(game, fps, prompt);
+    }
 
     if (game.dialogue().active) {
         ImGui::SetNextWindowPos(ImVec2(16.0f, 390.0f), ImGuiCond_FirstUseEver);
@@ -1084,7 +1543,7 @@ void drawGameUi(GameSession& game, float fps, const std::string& prompt)
     drawSystemsUi(game);
 
     const ImGuiIO& io = ImGui::GetIO();
-    if (io.DisplaySize.x > 0.0f && io.DisplaySize.y > 0.0f) {
+    if (!miniGame && io.DisplaySize.x > 0.0f && io.DisplaySize.y > 0.0f) {
         ImDrawList* draw = ImGui::GetBackgroundDrawList();
         const ImVec2 centre(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
         draw->AddLine(ImVec2(centre.x - 6.0f, centre.y), ImVec2(centre.x + 6.0f, centre.y), IM_COL32(235, 235, 235, 160));
@@ -1198,12 +1657,37 @@ int runCombatTest(GameSession& game)
     return target.dead && roundSeen ? 0 : 10;
 }
 
+constexpr std::size_t kNoEntityIndex = static_cast<std::size_t>(-1);
+
 int runPlaythrough(GameSession& game)
 {
     bool ok = true;
+    int spokenLines = 0;
+    // Click through whatever is being said, first reply each time.
+    const auto talk = [&]() {
+        for (int guard = 0; game.dialogue().active && guard < 64; ++guard) {
+            logInfo(concat("  dialogue: ", game.dialogue().speaker, ": ", game.dialogue().text));
+            game.chooseDialogueOption(0);
+            ++spokenLines;
+        }
+        // A party screen a script opened: take what it offers.
+        if (game.partySelection().active) {
+            logInfo(concat("playthrough: party selection, chosen=", game.partySelection().chosen.size()));
+            game.acceptPartySelection();
+        }
+    };
+    // Let the world run, talking as it comes, until done() or the time is up.
+    const auto play = [&](float seconds, const auto& done) {
+        for (float t = 0.0f; t < seconds && !done(); t += 0.05f) {
+            talk();
+            game.update(0.05f, InputState{});
+        }
+        talk();
+        return done();
+    };
     const auto walkOrFail = [&](kotor::Vec3 target, float seconds) {
-        for (int attempt = 0; attempt < 4; ++attempt) {
-            dismissDialogue(game);
+        for (int attempt = 0; attempt < 8; ++attempt) {
+            talk();
             if (game.walkTo(target, seconds)) {
                 return;
             }
@@ -1211,9 +1695,10 @@ int runPlaythrough(GameSession& game)
                 break;
             }
         }
-        dismissDialogue(game);
+        talk();
         const std::size_t door = game.moveBlockingDoor();
-        logError(concat("playthrough: walk blocked at ", game.position().x, ", ", game.position().y,
+        logError(concat("playthrough: walk blocked at ", game.controlledPosition().x, ", ",
+                        game.controlledPosition().y,
                         " going to ", target.x, ", ", target.y, " outcome=",
                         static_cast<int>(game.moveOutcome()), " door=",
                         door < game.scene().entities.size() ? game.scene().entities[door].tag : "-",
@@ -1221,36 +1706,80 @@ int runPlaythrough(GameSession& game)
                             && game.scene().entities[door].locked ? 1 : 0));
         ok = false;
     };
+    // The shipped tutorial's own state variable: the conversation it selects next.
+    const auto trainingStage = [&]() -> std::int64_t {
+        const std::vector<std::vector<script::Value>> args{{script::Value::makeString("END_TRASK_DLG")}};
+        const auto value = game.actionAsForTest(game.scriptWorld().pc, 580, args);
+        return value.has_value() && !value->empty() ? value->front().asInt() : -999;
+    };
 
+    // The shipped opening of end_m01aa, as a player meets it. Trask locks himself and the
+    // player in; he only moves on once the player has taken gear from the footlocker and
+    // put it on, and then joins the party. The bulkhead end_door01 refuses the player:
+    // its OnFailToOpen (k_pend_door01) opens only with Trask in the lead, so the party
+    // leader is switched to him and he opens it.
     const std::size_t trask = game.findEntity("end_trask");
-    if (trask == static_cast<std::size_t>(-1)) {
-        logError("playthrough: end_trask missing");
-        ok = false;
-    } else {
-        // Before any frame runs: once the world runs the shipped opening reaches
-        // this conversation by itself, and entry 54 moves End_TraskTalk on, so a
-        // later start would take a different link.
-        if (!game.startDialogue(trask)) {
-            logError("playthrough: Trask dialogue did not start");
-            ok = false;
-        } else {
-            int lines = 0;
-            while (game.dialogue().active && lines < 24) {
-                logInfo(concat("  dialogue: ", game.dialogue().speaker, ": ", game.dialogue().text));
-                game.chooseDialogueOption(0);
-                ++lines;
-            }
-            logInfo(concat("playthrough: dialogue lines=", lines));
-            ok = ok && lines > 0;
-        }
-        walkOrFail(game.scene().entities[trask].position, 20.0f);
-    }
-
+    const std::size_t locker = game.findEntity("end_locker01");
+    const std::size_t bulkhead = game.findEntity("end_door01");
     const std::size_t triggerEntity = game.findEntity("end_trig02");
-    if (triggerEntity == static_cast<std::size_t>(-1)) {
-        logWarn("playthrough: end_trig02 missing");
+    constexpr std::size_t kAbsent = static_cast<std::size_t>(-1);
+    if (trask == kAbsent || locker == kAbsent || bulkhead == kAbsent || triggerEntity == kAbsent) {
+        logError("playthrough: end_trask, end_locker01, end_door01 or end_trig02 missing");
         ok = false;
     } else {
+        play(30.0f, [] { return false; });
+        logInfo(concat("playthrough: opening lines=", spokenLines, " stage=", trainingStage()));
+        ok = ok && spokenLines > 0;
+
+        walkOrFail(game.scene().entities[locker].position, 20.0f);
+        talk();
+        // Clicks wait out whatever still holds the controls.
+        UseOutcome lockerOutcome = UseOutcome::Refused;
+        const bool used = play(15.0f, [&] {
+            lockerOutcome = game.useObject(locker);
+            return lockerOutcome == UseOutcome::Looted || lockerOutcome == UseOutcome::Used;
+        });
+        const bool logged = hasEvent(game, "use end_locker01");
+        logInfo(concat("playthrough: placeable end_locker01 used=", used ? 1 : 0, " outcome=",
+                       static_cast<int>(lockerOutcome), " logged=", logged ? 1 : 0,
+                       " pos=", game.controlledPosition().x, ", ", game.controlledPosition().y));
+        ok = ok && used && logged;
+        game.takeAllLoot();
+        game.closeLoot();
+        // Put on what the locker held, as the conversation asks.
+        std::vector<std::string> gear;
+        for (const InventoryItem& item : game.inventory()) {
+            if (!item.equipped) {
+                gear.push_back(item.resref);
+            }
+        }
+        for (const std::string& resref : gear) {
+            const bool worn = game.equipItem(resref);
+            logInfo(concat("playthrough: equip ", resref, " ok=", worn ? 1 : 0));
+        }
+
+        const bool trained = play(240.0f, [&] { return trainingStage() == 9 && !game.dialogue().active; });
+        logInfo(concat("playthrough: training stage=", trainingStage(), " reached=", trained ? 1 : 0));
+        ok = ok && trained;
+
+        const bool switched = play(10.0f, [&] { return game.selectLeaderNpc(0); });
+        logInfo(concat("playthrough: leader switched to Trask=", switched ? 1 : 0,
+                       " choices=", game.selectableLeaders().size(),
+                       " member=", game.isNpcPartyMember(0) ? 1 : 0,
+                       " solo=", game.soloMode() ? 1 : 0,
+                       " control_locked=", game.controlLocked() ? 1 : 0,
+                       " dialogue=", game.dialogue().active ? 1 : 0));
+        ok = ok && switched;
+
+        const auto bulkheadOpen = [&] { return game.scene().entities[bulkhead].open; };
+        if (game.useObject(bulkhead) == UseOutcome::OutOfRange) {
+            walkOrFail(game.scene().entities[bulkhead].position, 20.0f);
+            game.useObject(bulkhead);
+        }
+        const bool opened = play(30.0f, [&] { return bulkheadOpen() && !game.dialogue().active; });
+        logInfo(concat("playthrough: end_door01 opened=", opened ? 1 : 0, " stage=", trainingStage()));
+        ok = ok && opened;
+
         kotor::Vec3 centre{};
         float count = 0.0f;
         for (const kotor::TriggerVolume& volume : game.scene().triggers) {
@@ -1262,56 +1791,124 @@ int runPlaythrough(GameSession& game)
                 count += 1.0f;
             }
         }
-        if (count > 0.0f) {
-            centre = centre * (1.0f / count);
-        } else {
-            centre = game.scene().entities[triggerEntity].position;
-        }
+        centre = count > 0.0f ? centre * (1.0f / count) : game.scene().entities[triggerEntity].position;
         walkOrFail(centre, 20.0f);
-        game.update(1.0f / 60.0f, InputState{});
-        const bool fired = hasEvent(game, "trigger end_trig02: enter");
+        const bool fired = play(2.0f, [&] { return hasEvent(game, "trigger end_trig02: enter"); });
         logInfo(concat("playthrough: trigger end_trig02 fired=", fired ? 1 : 0));
         ok = ok && fired;
+        play(2.0f, [] { return false; });
+        // k_pend_trig02 hands the lead back; the rest is the player's own walk.
+        game.selectLeaderNpc(kNpcPlayer);
     }
 
-    const std::size_t locker = game.findEntity("end_locker01");
-    if (locker == static_cast<std::size_t>(-1)) {
-        logWarn("playthrough: end_locker01 missing");
-        ok = false;
-    } else {
-        walkOrFail(game.scene().entities[locker].position, 10.0f);
-        const bool used = game.usePlaceable(locker);
-        const bool logged = hasEvent(game, "use end_locker01");
-        logInfo(concat("playthrough: placeable end_locker01 used=", used ? 1 : 0,
-                       " logged=", logged ? 1 : 0));
-        ok = ok && used && logged;
-    }
-
-    const std::size_t hostile = firstHostile(game);
-    if (hostile == static_cast<std::size_t>(-1)) {
-        logWarn("playthrough: no hostile creature");
-        ok = false;
-    } else {
-        walkOrFail(game.scene().entities[hostile].position, 30.0f);
-        game.attackNearestHostile();
-        int steps = 0;
-        while (steps < 3600 && !game.playerDead() && !game.scene().entities[hostile].dead) {
-            updateFighting(game);
-            ++steps;
-        }
-        const bool dead = game.scene().entities[hostile].dead;
-        logInfo(concat("playthrough: combat target ", game.scene().entities[hostile].tag,
-                       " dead=", dead ? 1 : 0, " playerHp=", game.playerHp(),
-                       "/", game.playerMaxHp(), " steps=", steps));
-        if (!dead) {
-            const std::size_t total = game.combatLog().size();
-            const std::size_t first = total > 40 ? total - 40 : 0;
-            for (std::size_t i = first; i < total; ++i) {
-                logInfo(concat("playthrough event: ", game.combatLog()[i]));
+    // From here the ship is walked to its exit as a player does it: stop for what is said,
+    // fight what comes in range, click a door that stops the walk, pick a lock that holds.
+    int kills = 0;
+    std::set<std::size_t> gaveUpOn;
+    const auto fightNearby = [&] {
+        for (;;) {
+            std::size_t nearest = static_cast<std::size_t>(-1);
+            float nearestGap = 12.0f;
+            const kotor::Vec3 at = game.position();
+            for (std::size_t i = 0; i < game.scene().entities.size(); ++i) {
+                const kotor::Entity& entity = game.scene().entities[i];
+                const float gap = std::hypot(entity.position.x - at.x, entity.position.y - at.y);
+                if (entity.hostile && !entity.dead && gap < nearestGap && !gaveUpOn.contains(i)) {
+                    nearest = i;
+                    nearestGap = gap;
+                }
+            }
+            if (nearest == static_cast<std::size_t>(-1) || game.playerDead()) {
+                return;
+            }
+            game.attackNearestHostile();
+            int steps = 0;
+            while (steps < 1800 && !game.playerDead() && !game.scene().entities[nearest].dead) {
+                talk();
+                updateFighting(game);
+                ++steps;
+            }
+            const bool dead = game.scene().entities[nearest].dead;
+            logInfo(concat("playthrough: fought ", game.scene().entities[nearest].tag, " dead=", dead ? 1 : 0,
+                           " playerHp=", game.playerHp(), "/", game.playerMaxHp(), " steps=", steps));
+            if (dead) {
+                ++kills;
+            } else {
+                gaveUpOn.insert(nearest);
             }
         }
-        ok = ok && dead;
+    };
+    const auto advanceTo = [&](kotor::Vec3 target) {
+        for (int attempt = 0; attempt < 60; ++attempt) {
+            talk();
+            fightNearby();
+            if (game.walkTo(target, 30.0f)) {
+                return true;
+            }
+            const std::size_t door = game.moveOutcome() == GameSession::MoveOutcome::DoorBlocked
+                ? game.moveBlockingDoor() : static_cast<std::size_t>(-1);
+            if (door < game.scene().entities.size() && game.scene().entities[door].locked
+                && !game.dialogue().active && !game.controlLocked()) {
+                // end_trask01: put Trask in the lead and use his security skill.
+                const bool trasked = game.selectLeaderNpc(0);
+                const bool picked = game.unlockDoor(door);
+                logInfo(concat("playthrough: door ", game.scene().entities[door].tag, " locked, as Trask=",
+                               trasked ? 1 : 0, " picked=", picked ? 1 : 0, " stage=", trainingStage()));
+                game.selectLeaderNpc(kNpcPlayer);
+                // A door no skill opens is opened by clearing the room: the shipped death
+                // scripts count the kills (k_pend_room5_01 and its like). Go find the fight.
+                if (!picked) {
+                    std::size_t nearest = static_cast<std::size_t>(-1);
+                    float nearestGap = 1.0e9f;
+                    const kotor::Vec3 at = game.position();
+                    for (std::size_t i = 0; i < game.scene().entities.size(); ++i) {
+                        const kotor::Entity& entity = game.scene().entities[i];
+                        const float gap = std::hypot(entity.position.x - at.x, entity.position.y - at.y);
+                        if (entity.hostile && !entity.dead && gap < nearestGap && !gaveUpOn.contains(i)) {
+                            nearest = i;
+                            nearestGap = gap;
+                        }
+                    }
+                    if (nearest != static_cast<std::size_t>(-1)) {
+                        logInfo(concat("playthrough: hunting ", game.scene().entities[nearest].tag, " at ",
+                                       game.scene().entities[nearest].position.x, ", ",
+                                       game.scene().entities[nearest].position.y));
+                        if (!game.walkTo(game.scene().entities[nearest].position, 30.0f)
+                            && !game.dialogue().active && nearestGap > 12.0f
+                            && game.moveOutcome() != GameSession::MoveOutcome::Moving) {
+                            gaveUpOn.insert(nearest);
+                        }
+                        talk();
+                        fightNearby();
+                    }
+                }
+            }
+            play(2.0f, [] { return false; });
+        }
+        talk();
+        const std::size_t door = game.moveBlockingDoor();
+        logError(concat("playthrough: stopped at ", game.position().x, ", ", game.position().y, " going to ",
+                        target.x, ", ", target.y, " outcome=", static_cast<int>(game.moveOutcome()), " door=",
+                        door < game.scene().entities.size() ? game.scene().entities[door].tag : "-",
+                        " stage=", trainingStage()));
+        const auto& lines = game.scriptLog();
+        for (std::size_t i = lines.size() > 30 ? lines.size() - 30 : 0; i < lines.size(); ++i) {
+            logInfo(concat("playthrough: recent ", lines[i]));
+        }
+        return false;
+    };
+
+    const std::size_t exitDoor = game.findEntity("end_door10");
+    if (exitDoor == kNoEntityIndex) {
+        logError("playthrough: end_door10 missing");
+        ok = false;
+    } else {
+        const bool atExit = advanceTo(game.scene().entities[exitDoor].position);
+        logInfo(concat("playthrough: reached exit door=", atExit ? 1 : 0, " pos=", game.position().x, ", ",
+                       game.position().y, " kills=", kills, " playerDead=", game.playerDead() ? 1 : 0));
+        ok = ok && atExit;
     }
+    ok = ok && kills > 0;
 
     std::string from;
     std::string to;
@@ -1560,7 +2157,9 @@ int runRulesTest(GameSession& game)
     check(rules.baseAttackBonus(0, 1) == 1, "bab_1");
     check(rules.savingThrow(0, 1, 0) == 2, "fort_2");
     check(soldier.maxHp == 12, "hp_12");
-    check(soldier.skillPoints == 2, "skill_points_2");
+    // Level 1 awards four times (SkillPointBase/2 + INT mod), at least 4; the old
+    // expectation of 2 used the level-up rule at level 1.
+    check(soldier.skillPoints == 4, "skill_points_4");
     check(soldier.featPoints == 1, "feat_points_1");
     check(rules.levelForXp(0) == 1, "level_0");
     check(rules.levelForXp(999) == 1, "level_999");
@@ -2721,16 +3320,51 @@ int runDialogueCorpusTest(GameSession& game)
     check(camVidEffects == 0, "camvid_defaults");
     check(links > 0 && invalidLinks == 0, "links");
 
-    kotor::Dlg camDlg;
-    kotor::DlgEntry camEntry;
-    camEntry.text = "CamVid fixture";
-    camEntry.camVidEffect = 1;
-    camDlg.entries.push_back(camEntry);
-    const int before = game.unsupportedCamVidEffects();
-    game.setDialogueForTest(std::move(camDlg), "camvid_fixture", "Tester");
+    // Non-default CamVidEffect (none ship in the corpus). Retail applies the
+    // value only through a static camera (CameraAngle 6): the row becomes the
+    // video effect, a missing row is ignored, -1 leaves the state alone, any
+    // other camera disables it, and ending the conversation disables it.
+    const auto camVidDialogue = [&](std::int32_t effect, std::int32_t angle, std::int32_t cameraId) {
+        kotor::Dlg dlg;
+        kotor::DlgEntry node;
+        node.text = "CamVid fixture";
+        node.camVidEffect = effect;
+        node.cameraAngle = angle;
+        node.cameraId = cameraId;
+        dlg.entries.push_back(node);
+        game.setDialogueForTest(std::move(dlg), "camvid_fixture", "Tester");
+    };
+    game.disableVideoEffect();
+    const int rejectedBefore = game.unsupportedCamVidEffects();
+    camVidDialogue(1, 6, 1);
     check(game.dialogue().camVidEffect == 1, "camvid_fixture_effect");
-    check(game.unsupportedCamVidEffects() == before + 1,
-          "camvid_fixture_rejected");
+    check(game.videoEffect().row == 1 && game.videoEffect().saturation
+              && game.videoEffect().scanNoise,
+          "camvid_fixture_applied");
+    check(game.unsupportedCamVidEffects() == rejectedBefore, "camvid_fixture_not_rejected");
+    game.endDialogue();
+    check(!game.videoEffect().active(), "camvid_end_disables");
+    camVidDialogue(2, 6, 1);
+    check(game.videoEffect().row == 2, "camvid_row2_applied");
+    game.endDialogue();
+    camVidDialogue(0, 6, 1);
+    check(game.videoEffect().row == 0, "camvid_row0_applied");
+    game.endDialogue();
+    camVidDialogue(99, 6, 1);
+    check(!game.videoEffect().active()
+              && game.unsupportedCamVidEffects() == rejectedBefore + 1,
+          "camvid_undefined_row_rejected");
+    game.endDialogue();
+    camVidDialogue(-1, 6, 1);
+    check(!game.videoEffect().active(), "camvid_default_leaves_off");
+    game.endDialogue();
+    game.enableVideoEffect(1);
+    camVidDialogue(-1, 6, 1);
+    check(game.videoEffect().row == 1, "camvid_default_keeps_running_effect");
+    game.endDialogue();
+    game.enableVideoEffect(1);
+    camVidDialogue(1, -1, -1);
+    check(!game.videoEffect().active(), "camvid_non_static_camera_disables");
     game.endDialogue();
     logInfo(concat("dialogue corpus: dlgs=", dlgs, " entries=", entries,
                    " replies=", replies, " scripts=", scripts,
@@ -2802,11 +3436,12 @@ int runModulePlaythroughMatrix(const std::string& installPath)
             const std::string startModule = game.module();
             bool transitioned = false;
             for (std::size_t i = 0; i < game.scene().entities.size() && !transitioned; ++i) {
-                const kotor::Entity& entity = game.scene().entities[i];
-                if (entity.conversation.empty() || entity.dead) {
+                // Copied: a conversation's scripts can spawn and move the entity vector.
+                const std::string conversation = game.scene().entities[i].conversation;
+                if (conversation.empty() || game.scene().entities[i].dead) {
                     continue;
                 }
-                std::string key = entity.conversation;
+                std::string key = conversation;
                 for (char& ch : key) {
                     ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
                 }
@@ -2818,7 +3453,7 @@ int runModulePlaythroughMatrix(const std::string& installPath)
                     if (knownMissingConversations.contains(key)) {
                         ++knownMissing;
                         logInfo(concat("module playthrough: ", module,
-                                       " known missing dialogue ", entity.conversation));
+                                       " known missing dialogue ", conversation));
                     } else if (game.dialogueHadNoStart()) {
                         // Every starting link's Active failed in this world state.
                         // Retail shows nothing here; it is not a load failure.
@@ -2826,7 +3461,7 @@ int runModulePlaythroughMatrix(const std::string& installPath)
                     } else {
                         ++conversationFailures;
                         logWarn(concat("module playthrough: ", module,
-                                       " conversation load failed ", entity.conversation));
+                                       " conversation load failed ", conversation));
                     }
                     continue;
                 }
@@ -2844,7 +3479,7 @@ int runModulePlaythroughMatrix(const std::string& installPath)
                 }
                 const bool completed = !game.dialogue().active;
                 logInfo(concat("module playthrough: ", module,
-                               " dialogue=", entity.conversation,
+                               " dialogue=", conversation,
                                " lines=", conversationLines,
                                " completed=", completed ? 1 : 0,
                                " transitioned=", transitioned ? 1 : 0));
@@ -2947,7 +3582,8 @@ int runChargenTest(GameSession& game)
     game.applyCharacter(sheet);
     check(game.character().name == "REVAN", "applied_name");
     check(game.character().classId == 1, "applied_class");
-    game.setPlayerAppearance(chargen.portrait().appearance, chargen.name());
+    game.setPlayerAppearance(static_cast<std::uint32_t>(std::max(0, chargen.appearanceId())),
+                                     chargen.name());
     game.setThirdPerson(true);
     check(game.playerEntity() != static_cast<std::size_t>(-1), "player_entity");
     check(!game.scene().entityMeshes.empty(), "player_mesh");
@@ -3058,6 +3694,102 @@ int runCampaignTest(GameSession& base, const std::string& fixtureDirectory)
     return ok ? 0 : 74;
 }
 
+// Tiny NCS builder for the chargen gate (same encoding the objects gate uses).
+class ChargenNcs {
+public:
+    ChargenNcs& constObject(std::uint32_t value)
+    {
+        op(0x04, 0x06);
+        be32(value);
+        return *this;
+    }
+    ChargenNcs& constString(const std::string& value)
+    {
+        op(0x04, 0x05);
+        code_.push_back(static_cast<std::uint8_t>(value.size() >> 8));
+        code_.push_back(static_cast<std::uint8_t>(value.size() & 0xFF));
+        code_.insert(code_.end(), value.begin(), value.end());
+        return *this;
+    }
+    ChargenNcs& action(std::uint16_t id, std::uint8_t argc)
+    {
+        op(0x05, 0x00);
+        code_.push_back(static_cast<std::uint8_t>(id >> 8));
+        code_.push_back(static_cast<std::uint8_t>(id & 0xFF));
+        code_.push_back(argc);
+        return *this;
+    }
+    std::vector<std::uint8_t> bytes()
+    {
+        op(0x20, 0x00); // RETN
+        const std::string magic = "NCS V1.0";
+        std::vector<std::uint8_t> out(magic.begin(), magic.end());
+        out.push_back(0x42);
+        const std::uint32_t size = static_cast<std::uint32_t>(13 + code_.size());
+        for (const int shift : {24, 16, 8, 0}) {
+            out.push_back(static_cast<std::uint8_t>(size >> shift));
+        }
+        out.insert(out.end(), code_.begin(), code_.end());
+        return out;
+    }
+
+private:
+    void op(std::uint8_t code, std::uint8_t qualifier)
+    {
+        code_.push_back(code);
+        code_.push_back(qualifier);
+    }
+    void be32(std::uint32_t value)
+    {
+        for (const int shift : {24, 16, 8, 0}) {
+            code_.push_back(static_cast<std::uint8_t>(value >> shift));
+        }
+    }
+    std::vector<std::uint8_t> code_;
+};
+
+// GetGender(PC) (action 358) run through the script VM with the PC as self.
+int chargenVmGender(GameSession& game)
+{
+    ChargenNcs script;
+    // Object constant 0 is OBJECT_SELF (the PC here); the PC's own id is 1, which the VM
+    // reads as OBJECT_INVALID in a compiled script.
+    script.constObject(0).action(358, 1);
+    script.constString("chargen_gender_out").action(581, 2); // SetGlobalNumber
+    game.scriptWorld().setGlobal("chargen_gender_out", script::Value::makeInt(-999));
+    const bool ran = game.runScriptNcsForTest("chargen_gender", script.bytes(),
+                                              game.scriptWorld().pc);
+    if (!ran && !game.scriptLog().empty()) {
+        logWarn(concat("chargen_gui: vm gender script: ", game.scriptLog().back()));
+    }
+    return static_cast<int>(game.scriptWorld()
+                                .getGlobal("chargen_gender_out", script::ValueType::Int)
+                                .asInt());
+}
+
+// Runs the shipped opening conversation (m01aa_c01) and returns the entries shown. The
+// conversation branches on GetGender through the shipped k_pend_male / k_pend_female
+// condition scripts (entries 6/5 for the small-body start, 11/10 for the medium one).
+std::vector<std::uint32_t> chargenOpeningEntries(GameSession& game)
+{
+    std::vector<std::uint32_t> entries;
+    ScriptApi api{game};
+    if (!api.startConversation(game.scriptWorld().pc, "m01aa_c01")) {
+        return entries;
+    }
+    for (int step = 0; step < 40 && game.dialogue().active; ++step) {
+        if (entries.empty() || entries.back() != game.dialogue().entry) {
+            entries.push_back(game.dialogue().entry);
+        }
+        if (!game.dialogue().options.empty()) {
+            game.chooseDialogueOption(0);
+        } else {
+            game.update(0.5f, InputState{});
+        }
+    }
+    return entries;
+}
+
 int runChargenGuiTest(GameSession& game)
 {
     bool ok = true;
@@ -3070,40 +3802,347 @@ int runChargenGuiTest(GameSession& game)
     install.addPacks();
     GuiSystem gui(install);
     ChargenGuiState state(game.rules());
+    PortraitImages portraits(game.install());
     check(gui.open("classsel") && gui.screenName() == "classsel", "classsel_open");
+    // Real pointer events: move, press and release over the control centre, the way
+    // the window loop feeds GuiSystem; the action then goes to the chargen flow.
+    const auto click = [&](const std::string& tag) {
+        const kotor::GuiScreen* screen = gui.screen();
+        const kotor::GuiControl* hit = nullptr;
+        std::function<void(const kotor::GuiControl&)> search = [&](const kotor::GuiControl& c) {
+            if (hit == nullptr && c.tag == tag) {
+                hit = &c;
+            }
+            for (const kotor::GuiControl& child : c.children) {
+                search(child);
+            }
+        };
+        if (screen != nullptr) {
+            for (const kotor::GuiControl& control : screen->controls) {
+                search(control);
+            }
+        }
+        if (hit == nullptr) {
+            return false;
+        }
+        const float x = static_cast<float>(hit->extent.left + hit->extent.width / 2);
+        const float y = static_cast<float>(hit->extent.top + hit->extent.height / 2);
+        gui.pointerMove(x, y);
+        gui.pointerDown(x, y);
+        const bool released = gui.pointerUp(x, y);
+        if (!released || gui.lastAction().empty()) {
+            return false;
+        }
+        const std::string action = gui.lastAction();
+        gui.clearActions();
+        return handleChargenGuiAction(action, state, gui, game);
+    };
     const auto act = [&](const std::string& tag) {
         return handleChargenGuiAction(tag, state, gui, game);
     };
-    check(act("BTN_SEL2"), "select_scout");
-    check(state.chargen.classId() == 1, "class_id");
+
+    // The six classsel buttons: class and gender per slot (retail 006dc3c0).
+    {
+        const int expectedClass[6] = {2, 1, 0, 0, 1, 2};
+        const int expectedGender[6] = {0, 0, 0, 1, 1, 1};
+        for (int slot = 0; slot < 6; ++slot) {
+            check(click("BTN_SEL" + std::to_string(slot + 1)),
+                  "slot_click_" + std::to_string(slot + 1));
+            check(state.chargen.classId() == expectedClass[slot]
+                      && state.chargen.gender() == expectedGender[slot],
+                  "slot_class_gender_" + std::to_string(slot + 1));
+            const std::vector<std::int32_t> rows =
+                game.rules().pcPortraitRows(state.chargen.gender());
+            check(!rows.empty() && game.rules().portraitRow(rows.front()).sex
+                      == expectedGender[slot], "slot_portrait_sex_" + std::to_string(slot + 1));
+            check(act("BTN_BACK") && state.step == 0 && gui.screenName() == "classsel",
+                  "slot_back_" + std::to_string(slot + 1));
+        }
+    }
+
+    check(click("BTN_SEL2"), "select_scout");
+    check(state.chargen.classId() == 1 && state.chargen.gender() == 0, "class_id");
     check(state.step == 1 && gui.screenName() == "portcust", "portrait_screen");
+
+    // Portrait control: the texture is the portraits.2da row's art, and cycling changes it.
+    std::optional<kotor::TwoDa> portraitTable;
+    if (auto data = install.find("portraits", 2017); data.has_value()) {
+        portraitTable = kotor::TwoDa::parse(std::move(*data), "portraits");
+    }
+    check(portraitTable.has_value(), "portraits_table");
+    const PortraitInfo first = state.chargen.portrait();
+    check(first.row >= 0 && first.sex == 0, "portrait_row_male");
+    std::string expectedResref;
+    if (portraitTable.has_value() && first.row >= 0) {
+        expectedResref = portraitTable->cell(portraitTable->rowLabel(
+                                                 static_cast<std::size_t>(first.row)),
+                                             "baseresref");
+    }
+    check(!expectedResref.empty() && first.resref == expectedResref, "portrait_matches_2da");
+    const std::uint64_t firstDigest = portraits.digest(first.resref);
+    const kotor::Image* firstImage = portraits.image(first.resref);
+    check(firstImage != nullptr && firstImage->width >= 32 && firstImage->height >= 32
+              && firstDigest != 0, "portrait_texture_decoded");
     check(act("BTN_ARRR"), "portrait_right");
     check(state.chargen.portraitIndex() == 1, "portrait_index");
+    const PortraitInfo second = state.chargen.portrait();
+    check(second.row != first.row && second.row >= 0, "portrait_row_changed");
+    const std::uint64_t secondDigest = portraits.digest(second.resref);
+    check(secondDigest != 0 && secondDigest != firstDigest, "portrait_art_changes");
+    // The arrows cycle only this gender's rows, wrapping at the ends.
+    const std::int32_t listSize = state.chargen.portraitListSize();
+    check(listSize > 1 && listSize == static_cast<std::int32_t>(
+                                          game.rules().pcPortraitRows(0).size()), "portrait_list");
+    check(act("BTN_ARRL") && act("BTN_ARRL") && state.chargen.portraitIndex() == listSize - 1,
+          "portrait_wraps");
+    check(act("BTN_ARRR") && state.chargen.portraitIndex() == 0, "portrait_wraps_back");
+    // Alignment art: the row's dark-side variants replace the base art below 41.
+    if (!first.darkVariants[3].empty()) {
+        const std::string dark = game.rules().portraitResrefFor(first, 5);
+        check(dark == first.darkVariants[3] && portraits.digest(dark) != 0
+                  && portraits.digest(dark) != firstDigest, "portrait_dark_variant");
+        check(game.rules().portraitResrefFor(first, 50) == first.resref,
+              "portrait_neutral_art");
+    }
+    // The body follows the portrait row and the class column (Scout = AppearanceNumber).
+    check(state.chargen.appearanceId() == static_cast<std::int32_t>(first.appearance),
+          "appearance_scout_column");
+    check(game.rules().portraitAppearance(first.row, 0)
+              == static_cast<std::int32_t>(first.appearanceLarge)
+              && game.rules().portraitAppearance(first.row, 2)
+                  == static_cast<std::int32_t>(first.appearanceSmall)
+              && first.appearanceLarge != first.appearance
+              && first.appearanceSmall != first.appearance, "appearance_class_columns");
+
     check(act("BTN_BACK"), "portrait_back");
     check(state.step == 0 && gui.screenName() == "classsel", "back_to_class");
-    check(act("BTN_SEL2"), "reselect_scout");
+    check(click("BTN_SEL2"), "reselect_scout");
     check(act("BTN_ACCEPT"), "portrait_accept");
     check(state.step == 2 && gui.screenName() == "abchrgen", "abilities_screen");
     check(act("STR_PLUS_BTN") && act("STR_PLUS_BTN"), "strength_plus");
     check(state.chargen.attribute(0) == 10, "strength_value");
     check(act("BTN_ACCEPT"), "abilities_accept");
     check(state.step == 3 && gui.screenName() == "skchrgen", "skills_screen");
+    // Skill points: four times (base/2 + INT mod), at least 4 (INT 8 -> -1).
+    const std::int32_t scoutPoints = state.chargen.skillPointsRemaining();
+    check(scoutPoints == std::max(4, 4 * (game.rules().classSkillPointBase(1) / 2 - 1)),
+          "scout_skill_points");
     for (int i = 0; i < 4; ++i) {
         check(act("AWA_PLUS_BTN"), "awareness_plus");
     }
     check(state.chargen.skillRank(3) == 4, "awareness_value");
+    // Cross-class skills (Persuade for a Scout) cost 2 and stop at half the class cap.
+    int persuade = -1;
+    for (int i = 0; i < game.rules().skillCount(); ++i) {
+        if (game.rules().skillName(i) == "Persuade") {
+            persuade = i;
+        }
+    }
+    check(persuade >= 0 && !game.rules().skillIsClassSkill(1, persuade), "persuade_cross_class");
+    const std::int32_t beforeCross = state.chargen.skillPointsRemaining();
+    check(act("PER_PLUS_BTN") && state.chargen.skillPointsRemaining() == beforeCross - 2,
+          "cross_class_costs_two");
+    check(act("PER_PLUS_BTN") && state.chargen.skillRank(persuade) == 2, "cross_class_rank_two");
+    check(act("PER_PLUS_BTN") && state.chargen.skillRank(persuade) == 2, "cross_class_capped");
     check(act("BTN_ACCEPT"), "skills_accept");
     check(state.step == 4 && gui.screenName() == "ftchrgen", "feats_screen");
     act("BTN_SELECT");
+    check(state.chargen.featPointsRemaining() == 0, "one_feat_spent");
     check(act("BTN_ACCEPT"), "feats_accept");
     check(state.step == 5 && gui.screenName() == "name", "name_screen");
     state.nameBuffer = "Revan";
     check(act("END_BTN"), "name_end");
-    check(!state.active, "flow_finished");
+    check(!state.active && state.finished, "flow_finished");
     check(game.character().name == "REVAN", "applied_name");
     check(game.character().classId == 1, "applied_class");
     check(game.character().str == 10, "applied_strength");
     check(game.playerEntity() != static_cast<std::size_t>(-1), "player_entity");
+    check(game.character().gender == 0 && game.character().portraitRow == first.row,
+          "applied_gender_portrait");
+    check(game.playerAppearance() == first.appearance, "applied_appearance");
+    const int maleVm = chargenVmGender(game);
+    logInfo(concat("chargen_gui: male vm gender value=", maleVm));
+    check(maleVm == 0, "male_get_gender_vm");
+
+    // Derived statistics against classes.2da / the class tables, for every base class.
+    {
+        std::optional<kotor::TwoDa> classes;
+        if (auto data = install.find("classes", 2017); data.has_value()) {
+            classes = kotor::TwoDa::parse(std::move(*data), "classes");
+        }
+        check(classes.has_value(), "classes_table");
+        for (int classId = 0; classId < 3 && classes.has_value(); ++classId) {
+            Chargen chargen(game.rules());
+            chargen.selectClass(classId);
+            const CharacterSheet sheet = chargen.build();
+            const std::string row = std::to_string(classId);
+            const int hitDie = std::stoi(classes->cell(row, "hitdie"));
+            const int conMod = (sheet.con - 10) / 2;
+            check(sheet.maxHp == hitDie + conMod, "class_hp_" + row);
+            check(sheet.maxFp == 0 && std::stoi(classes->cell(row, "forcedie")) == 0,
+                  "class_fp_" + row);
+            std::optional<kotor::TwoDa> saves;
+            std::string tableName = classes->cell(row, "savingthrowtable");
+            for (char& ch : tableName) {
+                ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            }
+            if (auto data = install.find(tableName, 2017); data.has_value()) {
+                saves = kotor::TwoDa::parse(std::move(*data), tableName);
+            }
+            check(saves.has_value()
+                      && game.rules().savingThrow(sheet, 0) == std::stoi(saves->cell("0", "fortsave"))
+                      && game.rules().savingThrow(sheet, 1) == std::stoi(saves->cell("0", "refsave"))
+                      && game.rules().savingThrow(sheet, 2) == std::stoi(saves->cell("0", "willsave")),
+                  "class_saves_" + row);
+        }
+        // Jedi: ForceDie per level plus the WIS and CHA modifiers; FeatGain columns by prefix.
+        std::optional<kotor::TwoDa> featgain;
+        if (auto data = install.find("featgain", 2017); data.has_value()) {
+            featgain = kotor::TwoDa::parse(std::move(*data), "featgain");
+        }
+        check(featgain.has_value(), "featgain_table");
+        const char* prefixes[6] = {"sol", "sct", "scd", "jgd", "jcn", "jsn"};
+        for (int classId = 0; classId < 6 && classes.has_value() && featgain.has_value();
+             ++classId) {
+            const std::string row = std::to_string(classId);
+            bool allLevels = true;
+            for (int level = 1; level <= 20; ++level) {
+                const std::string label = std::to_string(level - 1);
+                const int expected =
+                    std::stoi(featgain->cell(label, std::string(prefixes[classId]) + "_reg"))
+                    + std::stoi(featgain->cell(label, std::string(prefixes[classId]) + "_bon"));
+                allLevels = allLevels && game.rules().featsForLevel(classId, level) == expected;
+            }
+            check(allLevels, "feats_by_level_" + row);
+            if (classId >= 3) {
+                const CharacterSheet jedi = game.rules().createCharacter(classId, 1);
+                const int die = std::stoi(classes->cell(row, "forcedie"));
+                const int wisMod = (jedi.wis - 10) / 2;
+                const int chaMod = (jedi.cha - 10) / 2;
+                check(die > 0 && jedi.maxFp == std::max(1, die + wisMod + chaMod),
+                      "jedi_fp_" + row);
+                check(jedi.maxHp == std::stoi(classes->cell(row, "hitdie")) + (jedi.con - 10) / 2,
+                      "jedi_hp_" + row);
+            }
+        }
+        check(game.rules().classColumnPrefix(4) == "jcn" && game.rules().classColumnPrefix(5) == "jsn",
+              "consular_sentinel_prefixes");
+    }
+    // Granted feats come from feat.2da (JEDI_DEFENSE etc. for a Guardian, none selectable).
+    {
+        const CharacterSheet guardian = game.rules().createCharacter(3, 1);
+        check(guardian.feats.contains(43) && guardian.feats.contains(55), "guardian_granted_feats");
+        const CharacterSheet soldier = game.rules().createCharacter(0, 1);
+        check(soldier.feats.contains(4) && soldier.feats.contains(44)
+                  && !soldier.feats.contains(55), "soldier_granted_feats");
+    }
+
+    // Engine save round trip keeps gender, portrait and body.
+    {
+        const std::filesystem::path temp =
+            std::filesystem::temp_directory_path() / "kotor-chargen-gender";
+        std::error_code ignored;
+        std::filesystem::remove_all(temp, ignored);
+        check(game.save(temp / "player.txt"), "gender_save");
+        GameSession restored(game.installPath(), game.module());
+        check(restored.load(temp / "player.txt"), "gender_load");
+        check(restored.character().gender == 0 && restored.character().portraitRow == first.row
+                  && restored.playerAppearance() == first.appearance,
+              "gender_roundtrip_male");
+    }
+
+    // The female half: a fresh session, BTN_SEL5 (female Scout) through the same screens.
+    GameSession womanGame(game.installPath(), game.module());
+    {
+        ChargenGuiState womanState(womanGame.rules());
+        GuiSystem womanGui(install);
+        womanGui.open("classsel");
+        const auto womanAct = [&](const std::string& tag) {
+            return handleChargenGuiAction(tag, womanState, womanGui, womanGame);
+        };
+        check(womanAct("BTN_SEL5"), "female_scout_select");
+        check(womanState.chargen.classId() == 1 && womanState.chargen.gender() == 1,
+              "female_scout_state");
+        const PortraitInfo woman = womanState.chargen.portrait();
+        check(woman.row >= 0 && woman.sex == 1 && woman.row != first.row, "female_portrait_row");
+        std::string womanResref;
+        if (portraitTable.has_value() && woman.row >= 0) {
+            womanResref = portraitTable->cell(portraitTable->rowLabel(
+                                                  static_cast<std::size_t>(woman.row)),
+                                              "baseresref");
+        }
+        check(!womanResref.empty() && woman.resref == womanResref, "female_portrait_matches_2da");
+        check(portraits.digest(woman.resref) != 0
+                  && portraits.digest(woman.resref) != firstDigest, "female_portrait_art");
+        // Every female row stays female while cycling.
+        bool allFemale = true;
+        for (int i = 0; i < womanState.chargen.portraitListSize(); ++i) {
+            allFemale = allFemale && womanState.chargen.portrait().sex == 1;
+            womanAct("BTN_ARRR");
+        }
+        check(allFemale && womanState.chargen.portraitIndex() == 0, "female_cycle_stays_female");
+        for (const char* step : {"BTN_ACCEPT", "BTN_ACCEPT", "BTN_ACCEPT", "BTN_ACCEPT"}) {
+            womanAct(step);
+        }
+        check(womanState.step == 5, "female_reaches_name");
+        womanState.nameBuffer = "Bastila";
+        check(womanAct("END_BTN") && womanState.finished, "female_flow_finished");
+        check(womanGame.character().gender == 1, "female_sheet_gender");
+        check(chargenVmGender(womanGame) == 1, "female_get_gender_vm");
+        const std::size_t avatar = womanGame.playerEntity();
+        check(avatar != static_cast<std::size_t>(-1)
+                  && womanGame.scene().entities[avatar].stats.gender == 1
+                  && womanGame.scene().entities[avatar].appearance == woman.appearance
+                  && womanGame.playerAppearance() == woman.appearance,
+              "female_avatar_model");
+        // Saves keep it: engine text save and the retail SAVEGAME layout.
+        const std::filesystem::path temp =
+            std::filesystem::temp_directory_path() / "kotor-chargen-gender-f";
+        std::error_code ignored;
+        std::filesystem::remove_all(temp, ignored);
+        check(womanGame.save(temp / "player.txt"), "female_save");
+        GameSession restored(game.installPath(), game.module());
+        check(restored.load(temp / "player.txt") && restored.character().gender == 1
+                  && restored.playerAppearance() == woman.appearance
+                  && chargenVmGender(restored) == 1, "female_engine_roundtrip");
+        const std::filesystem::path retail = temp / "slot";
+        check(womanGame.saveOriginalSave(retail, "Chargen gender"), "female_original_save");
+        kotor::OriginalSave readBack;
+        try {
+            readBack = kotor::readOriginalSave(retail, {});
+        } catch (const std::exception& exception) {
+            logWarn(concat("original save read failed: ", exception.what()));
+        }
+        check(readBack.gender == 1 && readBack.portraitId == woman.row
+                  && readBack.appearance == static_cast<std::int32_t>(woman.appearance),
+              "female_original_fields");
+        GameSession retailLoaded(game.installPath(), game.module());
+        check(retailLoaded.loadOriginalSave(retail) && retailLoaded.character().gender == 1
+                  && chargenVmGender(retailLoaded) == 1, "female_original_roundtrip");
+
+        // A shipped gender-conditional dialogue: the opening conversation takes the
+        // male or the female branch (k_pend_male / k_pend_female).
+        const std::vector<std::uint32_t> womanEntries = chargenOpeningEntries(womanGame);
+        const std::vector<std::uint32_t> manEntries = chargenOpeningEntries(game);
+        const auto has = [](const std::vector<std::uint32_t>& list, std::uint32_t entry) {
+            return std::find(list.begin(), list.end(), entry) != list.end();
+        };
+        std::string visited;
+        for (const std::uint32_t entry : manEntries) {
+            visited += std::to_string(entry) + " ";
+        }
+        visited += "| ";
+        for (const std::uint32_t entry : womanEntries) {
+            visited += std::to_string(entry) + " ";
+        }
+        logInfo(concat("chargen_gui: opening conversation entries (male | female) ", visited));
+        const bool manBranch = has(manEntries, 6) || has(manEntries, 11);
+        const bool womanBranch = has(womanEntries, 5) || has(womanEntries, 10);
+        check(manBranch && !has(manEntries, 5) && !has(manEntries, 10), "dialogue_male_branch");
+        check(womanBranch && !has(womanEntries, 6) && !has(womanEntries, 11),
+              "dialogue_female_branch");
+    }
+
     logInfo(ok ? "chargen_gui: PASS" : "chargen_gui: FAIL");
     return ok ? 0 : 76;
 }
@@ -4098,65 +5137,6 @@ int runMinigameTest(GameSession& game, const std::string& scriptPath)
     check(pazaak.opponentTurn(), "pazaak_opponent");
     check(pazaak.playerSets() + pazaak.opponentSets() == 1, "pazaak_set_scored");
 
-    // Swoop: throttle/boost/brake and three laps of 3,000 m.
-    const auto runSwoop = []() {
-        SwoopRace race;
-        race.reset();
-        for (int frame = 0; frame < 60 * 150; ++frame) {
-            const float t = static_cast<float>(frame) / 60.0f;
-            race.update(1.0f / 60.0f, 1.0f, t > 5.0f, false);
-        }
-        return race.state();
-    };
-    const SwoopState swoopA = runSwoop();
-    const SwoopState swoopB = runSwoop();
-    check(swoopA.finished, "swoop_finished");
-    check(swoopA.lap == SwoopRace::kLaps, "swoop_laps");
-    check(swoopA.distance >= SwoopRace::kTrackLength * SwoopRace::kLaps,
-          "swoop_distance");
-    check(swoopA.speed > 100.0f && swoopA.time > 0.0f, "swoop_speed_time");
-    check(swoopA.distance == swoopB.distance && swoopA.speed == swoopB.speed
-              && swoopA.time == swoopB.time,
-          "swoop_deterministic");
-    SwoopRace braked;
-    braked.reset();
-    for (int frame = 0; frame < 60; ++frame) {
-        braked.update(1.0f / 60.0f, 1.0f, false, true);
-    }
-    check(braked.state().speed < swoopA.speed, "swoop_brake_slower");
-
-    // Turret: five approaching targets, hits/score and damage on arrival.
-    TurretGame turret;
-    turret.reset();
-    check(turret.targets().size() == 5, "turret_targets");
-    check(turret.fireAt(0), "turret_fire_hit");
-    check(turret.state().hits == 1 && turret.state().shots == 1
-              && turret.state().score == 100,
-          "turret_score");
-    check(!turret.fireAt(0), "turret_dead_target");
-    check(turret.state().shots == 1, "turret_shot_count");
-    turret.update(1.0f);
-    check(turret.state().hitPoints == 100, "turret_approach");
-    turret.update(10.0f);
-    check(!turret.targets()[1].alive && !turret.targets()[4].alive,
-          "turret_arrival");
-    check(turret.state().hitPoints == 20, "turret_damage");
-
-    TurretGame turretA;
-    TurretGame turretB;
-    turretA.reset();
-    turretB.reset();
-    for (TurretGame* sim : {&turretA, &turretB}) {
-        sim->update(0.5f);
-        sim->fireAt(2);
-        sim->update(2.0f);
-        sim->fireAt(3);
-    }
-    check(turretA.state().score == turretB.state().score
-              && turretA.state().hitPoints == turretB.state().hitPoints
-              && turretA.state().shots == 2 && turretA.state().hits == 2,
-          "turret_deterministic");
-
     // Script bridge: the compiled fixture calls PlayPazaak(1, "", 0, FALSE,
     // OBJECT_SELF); drive the match with the same stand-at-17 policy.
     if (!scriptPath.empty()) {
@@ -4232,29 +5212,18 @@ int runMinigameTest(GameSession& game, const std::string& scriptPath)
         check(game.gold() == expected, "pazaak_wager");
     }
 
+    // The swoop and turret assertions that lived here encoded an invented 3 x 3000 m
+    // track and invented targets. Those are gone; kotor_family_minigame3d plays the shipped
+    // modules. What holds here: an ordinary module has no minigame, and SWMG getters there
+    // return defaults rather than constants from a fake game.
+    check(!game.miniGameActive(), "no_minigame_in_normal_module");
     script::Vm bridgeVm({});
     const auto enemyCount = game.action(612, {}, game.scriptWorld(), bridgeVm);
-    check(enemyCount.has_value() && enemyCount->front().asInt() == 5,
-          "space_enemy_count");
-    check(game.turretActive(), "space_turret_start");
-    const auto enemy = game.action(613, {{script::Value::makeInt(0)}},
-                                   game.scriptWorld(), bridgeVm);
-    check(enemy.has_value() && enemy->front().type == script::ValueType::Object,
-          "space_enemy_object");
-    if (enemy.has_value()) {
-        const auto hp = game.action(616, {{enemy->front()}}, game.scriptWorld(), bridgeVm);
-        check(hp.has_value() && hp->front().asInt() == 100, "space_enemy_hp");
-        const auto isEnemy = game.action(601, {{enemy->front()}}, game.scriptWorld(), bridgeVm);
-        check(isEnemy.has_value() && isEnemy->front().asInt() == 1, "space_is_enemy");
-    }
-    const auto speed = game.action(643, {}, game.scriptWorld(), bridgeVm);
-    check(speed.has_value() && game.swoopActive(), "space_swoop_start");
+    check(!enemyCount.has_value() || enemyCount->empty() || enemyCount->front().asInt() == 0,
+          "no_enemies_outside_minigame");
 
     logInfo(concat("minigame test: pazaak sets=", std::get<2>(pazaakA), "-",
-                   std::get<3>(pazaakA), " turns=", std::get<0>(pazaakA).size(),
-                   " swoop distance=", swoopA.distance, " time=", swoopA.time,
-                   " turret score=", turret.state().score,
-                   " hp=", turret.state().hitPoints));
+                   std::get<3>(pazaakA), " turns=", std::get<0>(pazaakA).size()));
     logInfo(ok ? "minigame test: PASS" : "minigame test: FAIL");
     return ok ? 0 : 63;
 }
@@ -4786,6 +5755,11 @@ int runAudioTest(GameSession& game, const std::string& scriptPath)
     check(mixer.lastRms() > 0.0001f, "eax_reverb");
     mixer.stopAll();
     mixer.mix(toneMix.data(), 4800);
+    // The reverb tail of the positional voice keeps ringing after the voice stops
+    // (retail's provider reverb does the same); with the reverb off the mixer is silent.
+    check(mixer.activeVoices() == 0 && mixer.lastRms() > 0.0f, "reverb_tail_after_stop");
+    mixer.setReverbEnvironment(-1, false);
+    mixer.mix(toneMix.data(), 4800);
     check(mixer.activeVoices() == 0 && mixer.lastRms() == 0.0f, "stop_all");
 
     std::vector<float> loopMix(960 * 2);
@@ -4795,6 +5769,64 @@ int runAudioTest(GameSession& game, const std::string& scriptPath)
     mixer.mix(loopMix.data(), 960);
     check(loopVoice > 0 && mixer.activeVoices() == 1, "loop_wrap");
     mixer.stopAll();
+
+    // Per-room EAX environments: ARE Rooms/EnvAudio, matched to LYT rooms by name,
+    // applied with a crossfade when the listener's room changes. The soundeax.2da
+    // labels must agree with the engine's EAX preset table row for row.
+    {
+        bool labelsAgree = audio.eaxLabel(0) == "GENERIC";
+        for (int row = 0; row < ke::audio::kEaxEnvironmentCount; ++row) {
+            labelsAgree = labelsAgree && audio.eaxLabel(row) == ke::audio::eaxEnvironment(row).label;
+        }
+        check(labelsAgree, "soundeax_rows_match_presets");
+        const auto lowerName = [](std::string text) {
+            for (char& ch : text) {
+                ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            }
+            return text;
+        };
+        const std::vector<kotor::AreaRoomAudio>& rooms = audio.areaAudio().rooms;
+        check(!rooms.empty(), "are_rooms_loaded");
+        std::size_t matched = 0;
+        for (const kotor::AreaRoomAudio& room : rooms) {
+            for (const kotor::LytRoom& lyt : game.scene().rooms) {
+                if (lowerName(room.room) == lowerName(lyt.room)) {
+                    ++matched;
+                    break;
+                }
+            }
+        }
+        check(matched == rooms.size(), "are_rooms_match_lyt");
+        const kotor::AreaRoomAudio* roomA = rooms.empty() ? nullptr : &rooms.front();
+        const kotor::AreaRoomAudio* roomB = nullptr;
+        for (const kotor::AreaRoomAudio& room : rooms) {
+            if (roomA != nullptr && room.envAudio != roomA->envAudio) {
+                roomB = &room;
+                break;
+            }
+        }
+        check(roomA != nullptr && roomB != nullptr, "are_rooms_distinct_environments");
+        if (roomA != nullptr && roomB != nullptr) {
+            std::vector<float> roomMix(4800 * 2);
+            audio.setListenerRoom(roomA->room);
+            audio.mixer().mix(roomMix.data(), 4800);
+            audio.mixer().mix(roomMix.data(), 4800);
+            check(audio.mixer().reverbEnvironment() == roomA->envAudio, "room_a_environment");
+            audio.setListenerRoom(roomB->room);
+            audio.mixer().mix(roomMix.data(), 480);
+            check(audio.mixer().reverbFading(), "room_change_crossfades");
+            audio.mixer().mix(roomMix.data(), 4800);
+            audio.mixer().mix(roomMix.data(), 4800);
+            check(!audio.mixer().reverbFading()
+                      && audio.mixer().reverbEnvironment() == roomB->envAudio,
+                  "room_b_environment");
+        }
+        const ke::audio::ReverbGateResult reverbGate = ke::audio::runReverbGate();
+        for (const std::string& line : reverbGate.lines) {
+            logInfo(concat("reverb gate: ", line));
+        }
+        check(reverbGate.passed, "reverb_gate");
+    }
 
     if (!scriptPath.empty()) {
         std::ifstream scriptFile(scriptPath, std::ios::binary | std::ios::ate);
@@ -5967,6 +6999,9 @@ int runFamilyTest(const std::string& name, GameSession& game)
     if (name == "combat") {
         return runCombatFamilyTest(game);
     }
+    if (name == "minigame3d") {
+        return runMiniGame3DFamilyTest(game);
+    }
     if (name == "worldstate") {
         return runWorldStateFamilyTest(game);
     }
@@ -5981,6 +7016,15 @@ int runFamilyTest(const std::string& name, GameSession& game)
     }
     if (name == "objects") {
         return runObjectsFamilyTest(game);
+    }
+    if (name == "companion") {
+        return runCompanionFamilyTest(game);
+    }
+    if (name == "endgame") {
+        return runEndgameFamilyTest(game);
+    }
+    if (name == "actions") {
+        return runRemainingActionsFamilyTest(game);
     }
     logError(concat("unknown family test: ", name));
     return 2;
@@ -6797,7 +7841,14 @@ int runApplication(const Options& options)
     std::unique_ptr<ChargenGuiState> chargenGui;
     bool chargenActive = options.chargen;
     std::unique_ptr<audio::Output> audioOutput;
-    if (!options.module.empty()) {
+    // --start-minigame needs no --module: swoop is the first race the story reaches.
+    std::string startModule = options.module;
+    if (startModule.empty() && options.startMinigame == "swoop") {
+        startModule = "tar_m03mg";
+    } else if (startModule.empty() && options.startMinigame == "turret") {
+        startModule = "M12ab";
+    }
+    if (!startModule.empty()) {
         std::string installPath = options.install;
         if (installPath.empty()) {
 #if defined(_WIN32)
@@ -6817,7 +7868,7 @@ int runApplication(const Options& options)
             }
         }
         try {
-            game.emplace(installPath, options.module, options.language,
+            game.emplace(installPath, startModule, options.language,
                          options.retailDifferentialTest || !options.engineTrace.empty());
             logInfo(concat("Language: ", game->localization().languageName(),
                            " (", game->languageId(), ") tlk entries=",
@@ -6838,10 +7889,10 @@ int runApplication(const Options& options)
             }
             if (options.startMinigame == "pazaak") {
                 game->startPazaak(0, "", 0, false, 0);
-            } else if (options.startMinigame == "swoop") {
-                game->startSwoop();
-            } else if (options.startMinigame == "turret") {
-                game->startTurret();
+            } else if (options.startMinigame == "swoop" && game->module() != "tar_m03mg") {
+                game->enterMiniGameModule("tar_m03mg");
+            } else if (options.startMinigame == "turret" && game->module() != "M12ab") {
+                game->enterMiniGameModule("M12ab");
             }
             const ke::kotor::Scene& loaded = game->scene();
             const auto countKind = [&](ke::kotor::EntityKind kind) {
@@ -7076,6 +8127,12 @@ int runApplication(const Options& options)
             if (options.worldSimTest) {
                 return runWorldSimTest(*game);
             }
+            if (options.familyTest == "videoeffect") {
+                return runVideoEffectFamilyTest(*game, options.videoEffectFixtures);
+            }
+            if (!options.actionCoverage.empty()) {
+                return runActionCoverage(*game, options.actionCorpus, options.actionCoverage);
+            }
             if (!options.familyTest.empty()) {
                 return runFamilyTest(options.familyTest, *game);
             }
@@ -7203,7 +8260,7 @@ int runApplication(const Options& options)
                         logError(concat("Could not save player state to ", options.savePath));
                         return 10;
                     }
-                    GameSession restored(installPath, options.module);
+                    GameSession restored(installPath, startModule);
                     if (!restored.load(options.savePath)) {
                         logError(concat("Could not load player state from ", options.savePath));
                         return 11;
@@ -7444,8 +8501,61 @@ int runApplication(const Options& options)
             SDL_SetWindowRelativeMouseMode(state.window, true);
         }
     }
+    // Portrait art for the HUD, character panel and chargen, and the chargen 3D stage.
+    ChargenVisuals visuals;
+    std::unique_ptr<PortraitImages> portraitImages;
+    std::unique_ptr<ChargenPreview> chargenPreview;
+    std::unique_ptr<ChargenPreviewGate> previewGate;
+    int gateExit = 0;
+    bool chargenStage = false;
+    // New Game from the main menu runs the shipped chargen and then enters the first module.
+    bool newGameFlow = false;
+    // The 3D stage behind classsel/portcust: only the models, as in retail, no module.
+    const auto setUpChargenStage = [&]() {
+        if (!state.backend->supportsPreview()) {
+            logWarn("chargen: this backend cannot draw 3D previews; model controls stay empty");
+            return;
+        }
+        if (!chargenPreview) {
+            chargenPreview = std::make_unique<ChargenPreview>(game->install(), game->rules());
+        }
+        if (!chargenPreview->ready()) {
+            logWarn(concat("chargen: preview unavailable: ", chargenPreview->error()));
+            chargenPreview.reset();
+            return;
+        }
+        visuals.preview = chargenPreview.get();
+        state.backend->setScene(nullptr);
+        chargenStage = true;
+    };
+    if (game && state.imguiReady) {
+        portraitImages = std::make_unique<PortraitImages>(game->install());
+        visuals.backend = state.backend.get();
+        visuals.portraits = portraitImages.get();
+        gVisuals = &visuals;
+        if (chargenGui) {
+            setUpChargenStage();
+            if (options.chargenPreviewTest) {
+                previewGate = std::make_unique<ChargenPreviewGate>(options.chargenPreviewOut,
+                                                                   false);
+            }
+        }
+        if (options.newGameFlowTest) {
+            previewGate = std::make_unique<ChargenPreviewGate>(options.chargenPreviewOut, true);
+        }
+    }
 
     std::uint64_t frames = 0;
+    // Verification only: --video-effect-sequence runs one compiled fixture per
+    // frame (row0|row1|row2|off) so the GPU gate can drive the real script path.
+    std::vector<std::string> videoEffectSequence;
+    for (std::size_t start = 0; !options.videoEffectSequence.empty()
+         && start <= options.videoEffectSequence.size();) {
+        const std::size_t comma = options.videoEffectSequence.find(',', start);
+        const std::size_t end = comma == std::string::npos ? options.videoEffectSequence.size() : comma;
+        videoEffectSequence.push_back(options.videoEffectSequence.substr(start, end - start));
+        start = end + 1;
+    }
     bool loggedUiGeometry = false;
     std::uint32_t lastAnimationRevision = UINT32_MAX;
     std::uint64_t movieTexture = 0;
@@ -7455,6 +8565,11 @@ int runApplication(const Options& options)
     bool running = true;
     bool mouseRelative = game && !options.headless;
     float mouseDx = 0.0f;
+    bool miniGameFireHeld = false;
+    bool miniGameFrozen = false;
+    int renderCheckExit = options.minigameRenderCheck && !game ? 66 : 0;
+    CapturedFrame renderCheckFull;
+    std::string renderedModule = game ? game->module() : std::string{};
     float mouseDy = 0.0f;
     std::string exitReason = "loop exited";
     double smoothedFrameMs = 0.0;
@@ -7499,14 +8614,15 @@ int runApplication(const Options& options)
                     } else {
                         logInfo("Nothing to interact with");
                     }
+                } else if (game && event.key.key == SDLK_TAB) {
+                    // keymap.2da ChangeChar: the next party member takes the controls.
+                    if (game->cycleLeader()) {
+                        logInfo(concat("Controlling ", game->partyLeaderTag()));
+                    }
                 } else if (game && event.key.key == SDLK_F) {
                     game->attackNearestHostile();
                 } else if (game && event.key.key == SDLK_P) {
                     game->startPazaak(0, "", 0, false, 0);
-                } else if (game && event.key.key == SDLK_O) {
-                    game->startSwoop();
-                } else if (game && event.key.key == SDLK_T) {
-                    game->startTurret();
                 } else if (game && game->dialogue().active
                            && event.key.key >= SDLK_1 && event.key.key <= SDLK_9) {
                     game->chooseDialogueOption(static_cast<std::size_t>(event.key.key - SDLK_1));
@@ -7565,9 +8681,45 @@ int runApplication(const Options& options)
                 if (options.noMovies && game->moviePlaying()) {
                     game->stopMovie();
                 }
-                game->update(static_cast<float>(deltaMs / 1000.0), input);
-                if (game->turretActive()) {
-                    game->updateTurret(static_cast<float>(deltaMs / 1000.0));
+                // PauseGame holds the world until the player acknowledges it with the
+                // pause key; no pause panel is drawn yet.
+                if (game->scriptPauseActive() && input.jump) {
+                    game->clearScriptPause();
+                }
+                if (const MiniGameWorld* world = game->miniGame()) {
+                    // Keys follow the retail layout's meaning (006227e0). Mouse sensitivity
+                    // is this window's choice: retail's raw device scale was not recovered.
+                    const float seconds = std::max(static_cast<float>(deltaMs / 1000.0), 0.001f);
+                    const bool leftKey = keys[SDL_SCANCODE_A] != 0 || keys[SDL_SCANCODE_LEFT] != 0;
+                    const bool rightKey = keys[SDL_SCANCODE_D] != 0 || keys[SDL_SCANCODE_RIGHT] != 0;
+                    const bool upKey = keys[SDL_SCANCODE_W] != 0 || keys[SDL_SCANCODE_UP] != 0;
+                    const bool downKey = keys[SDL_SCANCODE_S] != 0 || keys[SDL_SCANCODE_DOWN] != 0;
+                    const bool fireKey = keys[SDL_SCANCODE_SPACE] != 0
+                        || (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_LMASK) != 0;
+                    MiniGameInput miniInput;
+                    miniInput.axisX = (rightKey ? 1.0f : 0.0f) - (leftKey ? 1.0f : 0.0f);
+                    if (world->data.type == 1) {
+                        miniInput.fire = fireKey && !miniGameFireHeld; // One gear per press.
+                    } else {
+                        constexpr float kDegreesPerPixel = 0.1f;
+                        const float toAxis = world->movementPerSec > 0.0f
+                            ? kDegreesPerPixel / (seconds * world->movementPerSec)
+                            : 0.0f;
+                        miniInput.axisY = (downKey ? 1.0f : 0.0f) - (upKey ? 1.0f : 0.0f);
+                        miniInput.mouseX = mouseDx * toAxis;
+                        miniInput.mouseY = mouseDy * toAxis;
+                        miniInput.fire = fireKey; // The bank's Rate_Of_Fire paces a held trigger.
+                    }
+                    miniGameFireHeld = fireKey;
+                    game->miniGameSetInput(miniInput);
+                }
+                if (!miniGameFrozen && !game->scriptPauseActive()) {
+                    game->update(static_cast<float>(deltaMs / 1000.0), input);
+                }
+                // retail 00602eb0 returns to the main menu. This frontend has none yet.
+                if (game->gameEnded()) {
+                    logInfo("game ended: leaving the session");
+                    running = false;
                 }
             }
             mouseDx = 0.0f;
@@ -7582,6 +8734,14 @@ int runApplication(const Options& options)
                                    " frame=", game->movieFrameIndex()));
                 }
             }
+            if (game->module() != renderedModule) {
+                // A script's StartNewModule lands here, not through a key press.
+                renderedModule = game->module();
+                state.backend->setScene(&game->scene());
+            }
+            if (!miniGameFrozen) {
+                game->bakeMiniGame();
+            }
             state.backend->setCamera(game->camera());
             if (game->animationRevision() != lastAnimationRevision) {
                 lastAnimationRevision = game->animationRevision();
@@ -7595,12 +8755,11 @@ int runApplication(const Options& options)
             ImGui::NewFrame();
             const bool movieMode = game && game->moviePlaying();
             const bool guiMode = state.guiSystem && state.guiSystem->active();
-            const bool minigameMode = game
-                && (game->pazaakActive() || game->swoopActive() || game->turretActive());
+            const bool minigameMode = game && game->pazaakActive();
             if (chargenActive && chargen && game) {
                 drawChargenUi(*chargen, *game, chargenActive);
             } else if (!shippedChargen) {
-                if (!movieMode && !guiMode && !minigameMode) {
+                if (!movieMode && !guiMode && !minigameMode && !(game && game->miniGameActive())) {
                     drawDebugUi(state, frames, smoothedFrameMs, elapsedSeconds, exitReason);
                 }
                 if (game) {
@@ -7635,8 +8794,46 @@ int runApplication(const Options& options)
                     }
                 }
             }
-            if (game) {
+            if (game && !shippedChargen) {
+                // The module's own fade (m01aa starts from black) is not part of chargen,
+                // which has no module behind it.
                 drawWorldStateOverlay(*game);
+            }
+            if (chargenStage && chargenGui && !chargenGui->active) {
+                // The flow handed the character to the session: leave the stage.
+                std::string stageError;
+                state.backend->setPreviewViews({});
+                state.backend->setPreviewScene(nullptr, stageError);
+                visuals.preview = nullptr;
+                state.backend->setScene(&game->scene());
+                state.backend->setCamera(game->camera());
+                chargenStage = false;
+            }
+            if (newGameFlow && chargenGui && !chargenGui->active) {
+                newGameFlow = false;
+                if (chargenGui->finished) {
+                    // Retail enters end_m01aa straight after the name screen; no movie is
+                    // played between chargen and the module (nothing in 0067ace0 or the
+                    // chargen handlers queues one).
+                    game->requestModule("end_m01aa");
+                } else if (state.guiSystem) {
+                    // BTN_BACK on classsel returns to the main menu.
+                    state.guiSystem->open("mainmenu");
+                }
+            }
+            if (chargenStage && chargenGui && chargenGui->active && visuals.preview != nullptr) {
+                const Chargen& chargenState = chargenGui->chargen;
+                if (chargenGui->step == 0) {
+                    visuals.preview->showClassSelection(game->rules());
+                } else if (chargenGui->step == 1) {
+                    visuals.preview->showHead(chargenState.appearanceId(), chargenState.gender());
+                }
+                visuals.syncPreviewScene();
+                if (visuals.preview->advance(static_cast<float>(deltaMs / 1000.0))) {
+                    state.backend->refreshPreviewMeshes();
+                }
+                visuals.portraitResref = game->rules().portraitResrefFor(
+                    chargenState.portrait(), chargenState.build().alignment);
             }
             if (!movieMode && guiMode && game) {
                 std::function<bool(const std::string&)> handler;
@@ -7646,17 +8843,20 @@ int runApplication(const Options& options)
                                                       *state.guiSystem, *game);
                     };
                 }
-                drawGuiScreenOverlay(*state.guiSystem, *game, state.requestChargen, handler);
+                drawGuiScreenOverlay(*state.guiSystem, *game, state.requestChargen, handler,
+                                     &visuals);
                 if (chargenGui) {
                     drawChargenTextOverlay(*chargenGui);
                 }
             }
-            if (state.requestChargen && game && !chargenActive) {
-                chargen = std::make_unique<Chargen>(game->rules());
-                chargenActive = true;
+            if (state.requestChargen && game) {
+                // BTN_NEWGAME: the shipped classsel flow, by real GuiSystem events.
                 state.requestChargen = false;
-                if (state.guiSystem) {
-                    state.guiSystem->close();
+                if (state.guiSystem && !(chargenGui && chargenGui->active)) {
+                    chargenGui = std::make_unique<ChargenGuiState>(game->rules());
+                    newGameFlow = true;
+                    setUpChargenStage();
+                    state.guiSystem->open("classsel");
                 }
             }
             if (!movieMode && state.guiSystem && state.guiSystem->quitRequested()) {
@@ -7674,6 +8874,30 @@ int runApplication(const Options& options)
             }
         }
 
+        const std::uint64_t warmup = static_cast<std::uint64_t>(options.videoEffectWarmup);
+        const bool inEffectSequence = frames >= warmup && frames - warmup < videoEffectSequence.size();
+        const std::size_t sequenceIndex = inEffectSequence ? static_cast<std::size_t>(frames - warmup) : 0;
+        if (game && inEffectSequence && !options.videoEffectFixtures.empty()
+            && videoEffectSequence[sequenceIndex] != "keep") {
+            const std::filesystem::path fixture = std::filesystem::path(options.videoEffectFixtures)
+                / ("video_effect_" + videoEffectSequence[sequenceIndex] + ".ncs");
+            std::ifstream fixtureFile(fixture, std::ios::binary | std::ios::ate);
+            if (fixtureFile) {
+                std::vector<std::uint8_t> bytes(static_cast<std::size_t>(fixtureFile.tellg()));
+                fixtureFile.seekg(0);
+                fixtureFile.read(reinterpret_cast<char*>(bytes.data()),
+                                 static_cast<std::streamsize>(bytes.size()));
+                game->runScriptNcsForTest("video_effect_sequence", bytes, game->scriptWorld().pc);
+                logInfo(concat("video effect: frame ", frames, " ran ", fixture.filename().string(),
+                               " -> row ", game->videoEffect().row, " active ",
+                               game->videoEffect().active() ? 1 : 0));
+            } else {
+                logWarn(concat("video effect fixture missing: ", fixture.string()));
+            }
+        }
+        if (game) {
+            state.backend->setVideoEffect(game->videoEffect());
+        }
         error.clear();
         const FrameStatus status = state.backend->renderFrame(error);
         if (status == FrameStatus::Fatal) {
@@ -7685,6 +8909,59 @@ int runApplication(const Options& options)
             audioOutput.reset();
             SDL_Quit();
             return 6;
+        }
+        if (inEffectSequence && !options.videoEffectShots.empty()) {
+            const std::string shot = options.videoEffectShots + "-" + std::to_string(sequenceIndex) + ".bmp";
+            if (!state.backend->screenshot(shot)) {
+                logWarn(concat("video effect shot failed: ", shot));
+            }
+        }
+        if (options.minigameRenderCheck && game && options.frames > 3) {
+            // The same frozen view with and without the minigame's own meshes: what
+            // differs is the shipped scene content, so an empty pass cannot satisfy this.
+            const std::uint64_t limit = static_cast<std::uint64_t>(options.frames);
+            if (frames + 3 == limit) {
+                if (!game->miniGameActive() || !state.backend->captureFrame(renderCheckFull)) {
+                    logError("minigame render check: no minigame or no capture");
+                    renderCheckExit = 66;
+                }
+                miniGameFrozen = true;
+                game->setMiniGameMeshesHidden(true);
+            } else if (frames + 1 == limit && renderCheckExit == 0) {
+                CapturedFrame hidden;
+                renderCheckExit = 66;
+                if (state.backend->captureFrame(hidden) && hidden.rgba.size() == renderCheckFull.rgba.size()
+                    && !hidden.rgba.empty()) {
+                    std::size_t different = 0;
+                    std::set<std::uint32_t> colours;
+                    for (std::size_t i = 0; i + 3 < hidden.rgba.size(); i += 4) {
+                        const int delta = std::abs(hidden.rgba[i] - renderCheckFull.rgba[i])
+                            + std::abs(hidden.rgba[i + 1] - renderCheckFull.rgba[i + 1])
+                            + std::abs(hidden.rgba[i + 2] - renderCheckFull.rgba[i + 2]);
+                        different += delta > 24 ? 1u : 0u;
+                        colours.insert(static_cast<std::uint32_t>(renderCheckFull.rgba[i])
+                                       | (static_cast<std::uint32_t>(renderCheckFull.rgba[i + 1]) << 8u)
+                                       | (static_cast<std::uint32_t>(renderCheckFull.rgba[i + 2]) << 16u));
+                    }
+                    const std::size_t pixels = hidden.rgba.size() / 4;
+                    const bool pass = different * 200 >= pixels && colours.size() >= 64;
+                    logInfo(concat("minigame render check: module=", game->module(), " backend=",
+                                   state.backend->info().name, " pixels=", pixels, " scene_pixels=",
+                                   different, " colours=", colours.size(), pass ? " PASS" : " FAIL"));
+                    renderCheckExit = pass ? 0 : 66;
+                } else {
+                    logError("minigame render check: second capture failed");
+                }
+            }
+        }
+        if (previewGate && state.guiSystem && game) {
+            previewGate->step(*state.backend, *state.guiSystem, chargenGui.get(), visuals, *game);
+            if (previewGate->finished()) {
+                gateExit = previewGate->exitCode();
+                logInfo(gateExit == 0 ? "chargen_preview: PASS" : "chargen_preview: FAIL");
+                exitReason = "chargen preview gate finished";
+                running = false;
+            }
         }
         if (!options.screenshot.empty() && options.frames > 0
             && frames + 1 >= static_cast<std::uint64_t>(options.frames)) {
@@ -7720,11 +8997,13 @@ int runApplication(const Options& options)
 
     if (state.backend) {
         state.backend->releaseMovieFrame(movieTexture);
+        visuals.release();
     }
+    gVisuals = nullptr;
     destroyRuntime(state);
     audioOutput.reset();
     SDL_Quit();
-    return 0;
+    return gateExit != 0 ? gateExit : renderCheckExit;
 }
 
 } // namespace ke

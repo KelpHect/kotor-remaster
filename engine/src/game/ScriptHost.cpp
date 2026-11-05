@@ -36,6 +36,8 @@ WorldSim::WorldSim()
     registerCombatActions(handlers);
     registerWorldStateActions(handlers);
     registerEventActions(handlers);
+    registerVideoEffectActions(handlers);
+    registerMiniGameActions(handlers);
 }
 
 // ---- ActionCall ------------------------------------------------------------
@@ -197,7 +199,8 @@ kotor::Vec3 ScriptApi::position(std::uint32_t object) const
 float ScriptApi::facing(std::uint32_t object) const
 {
     if (object == pc()) {
-        return session.thirdPerson_ ? session.playerBearing_ : session.yaw_;
+        return session.thirdPerson_ || session.companionControlled() ? session.playerBearing_
+                                                                      : session.yaw_;
     }
     const std::size_t index = entityFor(object);
     return index != static_cast<std::size_t>(-1) ? session.scene_.entities[index].bearing : 0.0f;
@@ -225,7 +228,10 @@ void ScriptApi::setPosition(std::uint32_t object, kotor::Vec3 position, float fa
 {
     if (object == pc()) {
         session.playerBearing_ = facing;
-        session.yaw_ = facing;
+        // The camera heading follows the PC only while the PC is the steered body.
+        if (!session.companionControlled()) {
+            session.yaw_ = facing;
+        }
     } else if (const std::size_t index = entityFor(object);
                index != static_cast<std::size_t>(-1)) {
         session.scene_.entities[index].bearing = facing;
@@ -314,6 +320,7 @@ const std::vector<std::string>& labelsFor(const std::string& hook)
         {"EndRound", {"ScriptEndRound"}},
         {"Notice", {"ScriptOnNotice"}},
         {"Dialogue", {"ScriptDialogue"}},
+        {"Blocked", {"ScriptOnBlocked"}},
     };
     const auto it = labels.find(hook);
     if (it != labels.end()) {
@@ -337,7 +344,7 @@ bool ScriptApi::dispatchHook(std::uint32_t target, const std::string& hook,
         const std::string label = hook == "UserDefined"
             ? (target == state.moduleObject ? "Mod_OnUsrDefined" : "OnUserDefined")
             : hook;
-        return session.runSceneHook(label, pc(), &context);
+        return session.runSceneHook(label, session.controlledObject(), &context);
     }
     const std::size_t index = entityFor(target);
     if (index == static_cast<std::size_t>(-1)) {
@@ -347,7 +354,7 @@ bool ScriptApi::dispatchHook(std::uint32_t target, const std::string& hook,
         const auto& scripts = session.scene_.entities[index].scripts;
         const auto it = scripts.find(label);
         if (it != scripts.end() && !it->second.empty()) {
-            session.runHook(label, index, pc(), &context);
+            session.runHook(label, index, session.controlledObject(), &context);
             return true;
         }
     }

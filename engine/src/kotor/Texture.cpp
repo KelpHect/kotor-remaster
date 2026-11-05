@@ -140,7 +140,10 @@ Image decodeTpc(const std::vector<std::uint8_t>& data, const std::string& name)
             const std::uint8_t g = data[payload + static_cast<std::size_t>(i)];
             put(image, i % w, i / w, g, g, g, 255);
         }
-    } else if (encoding == 2 && dataSize == static_cast<std::uint32_t>(w * h * 3)) {
+    } else if (encoding == 2
+               && (dataSize == static_cast<std::uint32_t>(w * h * 3) || dataSize == 0)) {
+        // dataSize 0 marks an uncompressed TPC (the portraits.2da art is 64x64 RGB);
+        // a compressed one carries its payload size and is DXT1.
         requireRange(data.size(), payload, static_cast<std::size_t>(w) * h * 3u, "TPC rgb");
         for (int i = 0; i < w * h; ++i) {
             const std::size_t o = payload + static_cast<std::size_t>(i) * 3u;

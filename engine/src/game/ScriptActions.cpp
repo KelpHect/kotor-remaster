@@ -4,6 +4,9 @@
 
 #include "game/GameSession.h"
 
+#include "core/Log.h"
+
+#include <algorithm>
 #include <cmath>
 
 namespace ke {
@@ -20,6 +23,12 @@ constexpr float kForceStuckJump = 3.0f;
 // not known here for every actor (the PC may have no avatar).
 constexpr float kOneShotAnimation = 1.0f;
 constexpr int kInstantActionsPerTick = 32;
+// Stops at this gap from the followed creature when the script names no distance
+// (ActionFollowLeader). No retail value was recovered.
+constexpr float kDefaultFollowDistance = 2.0f;
+// How far one leg of ActionRandomWalk wanders. No retail value was recovered.
+constexpr float kRandomWalkRadius = 5.0f;
+constexpr float kRandomWalkPauseMax = 3.0f;
 
 // nwscript ACTION_* constants.
 constexpr std::int64_t kActionMoveToPoint = 0;
@@ -32,6 +41,7 @@ constexpr std::int64_t kActionWait = 36;
 // Retail's internal DoCommand type is 0x25 (0057cb10), numerically ACTION_SIT.
 // Scripts cannot tell them apart in retail either.
 constexpr std::int64_t kActionDoCommand = 37;
+constexpr std::int64_t kActionFollow = 35;
 constexpr std::int64_t kActionInvalid = 65535;
 constexpr std::int64_t kActionQueueEmpty = 65534;
 
@@ -252,6 +262,115 @@ bool runFrontAction(ScriptApi api, std::uint32_t self, float dt)
         pop();
         return true;
     }
+    case ActorActionKind::RandomWalk: {
+        // retail 0052d440 queues action 0x2d, which only ClearAllActions ends. The leg
+        // length and the pause between legs are this engine's: see the constants.
+        if (action.remaining > 0.0f) {
+            action.remaining -= dt;
+            return false;
+        }
+        if (!action.started) {
+            action.started = true;
+            const float angle = static_cast<float>(api.world().rng.randint(0, 359)) / kDegrees;
+            const float reach = kRandomWalkRadius
+                * static_cast<float>(api.world().rng.randint(20, 100)) / 100.0f;
+            const kotor::Vec3 from = api.position(self);
+            action.point = {from.x + std::cos(angle) * reach, from.y + std::sin(angle) * reach, from.z};
+            action.stuck = 0.0f;
+        }
+        if (walkAction(api, self, action, action.point, kArrivalTolerance, dt) == Progress::Finished) {
+            action.started = false;
+            action.remaining = kRandomWalkPauseMax
+                * static_cast<float>(api.world().rng.randint(0, 100)) / 100.0f;
+        }
+        return false;
+    }
+    case ActorActionKind::FollowObject: {
+        // ActionForceFollowObject (0052c960) names the creature; ActionFollowLeader
+        // (0052cbe0) leaves it invalid and tracks whoever leads. Neither finishes by
+        // itself: the queue holds until the target goes or ClearAllActions runs.
+        const std::uint32_t target = action.object != script::kObjectInvalid
+            ? action.object : api.session.controlledObject();
+        if (target == self) {
+            return false;
+        }
+        if (api.world().get(target) == nullptr) {
+            pop();
+            return true;
+        }
+        const kotor::Vec3 at = api.position(self);
+        const kotor::Vec3 there = api.position(target);
+        const float gap = std::hypot(there.x - at.x, there.y - at.y);
+        const float stop = std::max(action.range, api.approachRange(self, target, 0.0f));
+        if (gap > stop + kArrivalTolerance) {
+            api.step(self, there, api.moveSpeed(self, gap > stop * 2.0f), dt, stop);
+        }
+        return false;
+    }
+    case ActorActionKind::MoveAwayFromObject: {
+        // retail 0053f990: walk straight off until fMoveAwayRange of clearance.
+        if (api.world().get(action.object) == nullptr) {
+            pop();
+            return true;
+        }
+        const kotor::Vec3 at = api.position(self);
+        const kotor::Vec3 threat = api.position(action.object);
+        const float dx = at.x - threat.x;
+        const float dy = at.y - threat.y;
+        const float gap = std::hypot(dx, dy);
+        if (gap >= action.range) {
+            pop();
+            return true;
+        }
+        if (!action.started) {
+            action.started = true;
+            const float nx = gap > 1.0e-3f ? dx / gap : std::cos(api.facing(self));
+            const float ny = gap > 1.0e-3f ? dy / gap : std::sin(api.facing(self));
+            action.point = {threat.x + nx * action.range, threat.y + ny * action.range, at.z};
+        }
+        if (walkAction(api, self, action, action.point, kArrivalTolerance, dt) == Progress::Finished) {
+            pop();
+            return true;
+        }
+        return false;
+    }
+    case ActorActionKind::BarkString: {
+        const ActorAction taken = pop();
+        PresentationState& shown = api.sim().presentation;
+        shown.lastBarkStrref = taken.animation;
+        shown.lastBarkSpeaker = self;
+        api.log("bark strref " + std::to_string(taken.animation));
+        return true;
+    }
+    case ActorActionKind::EquipMostDamaging: {
+        const ActorAction taken = pop();
+        equipMostDamaging(api.session, self, taken.result != 0, taken.force);
+        return true;
+    }
+    case ActorActionKind::UseSkill: {
+        // retail 0052d9b0 was not traced past its arguments. Security works a lock and
+        // Demolitions a trap, the two skills shipped scripts name on objects.
+        const std::size_t index = api.entityFor(action.object);
+        if (index == static_cast<std::size_t>(-1)) {
+            pop();
+            return true;
+        }
+        Progress progress = Progress::Running;
+        if (!reachObject(api, self, action, kInteractRange, dt, progress)) {
+            return false;
+        }
+        const ActorAction taken = pop();
+        if (taken.spell == 6) {
+            api.session.unlockDoor(index, self);
+        } else if (taken.spell == 1) {
+            api.session.disarmTrap(index);
+        } else {
+            api.log("ActionUseSkill: skill " + std::to_string(taken.spell) + " has no object effect");
+        }
+        return true;
+    }
+    case ActorActionKind::CutsceneAttack:
+        return runCutsceneAttackAction(api, self, dt);
     case ActorActionKind::Attack:
         return runAttackAction(api, self, dt);
     case ActorActionKind::CastSpell:
@@ -270,10 +389,24 @@ void tickOneActor(ScriptApi api, std::uint32_t self, float dt)
     if (isDebilitated(api, self)) {
         return; // A disabled creature's queue waits. retail 005b4880
     }
-    for (int budget = kInstantActionsPerTick; budget > 0; --budget) {
+    // Only actions queued before this tick run in it, so a script that re-queues itself
+    // from an instant action (seen on dan13_jedif2 in danm13) waits for the next tick
+    // rather than rebuilding a VM many times per frame. An engine bound: no retail
+    // limit was recovered.
+    const std::size_t queued = api.actor(self).queue.size();
+    const std::size_t limit = std::min<std::size_t>(queued, kInstantActionsPerTick);
+    for (std::size_t ran = 0; ran < limit; ++ran) {
         if (api.actor(self).queue.empty() || !runFrontAction(api, self, dt)) {
             return;
         }
+    }
+    static int warnings = 0;
+    if (queued > kInstantActionsPerTick && warnings < 40) {
+        ++warnings;
+        const script::GameObject* object = api.world().get(self);
+        logWarn(concat("actor queue: ", object != nullptr ? object->tag : std::string("?"),
+                       " has ", queued, " actions queued, over the ", kInstantActionsPerTick,
+                       " instant actions run per tick"));
     }
 }
 
@@ -346,6 +479,7 @@ Cells actionMoveToObject(ActionCall& call)
     ActorAction action;
     action.kind = ActorActionKind::MoveToObject;
     action.object = call.objectArgOrInvalid(0);
+    call.api().actor(call.self()).attemptedMoveTarget = action.object; // retail +0x508
     action.run = call.intArg(1) != 0;
     action.range = static_cast<float>(call.floatArg(2, 1.0));
     call.api().enqueue(call.self(), std::move(action));
@@ -373,6 +507,7 @@ Cells actionForceMoveToObject(ActionCall& call)
     ActorAction action;
     action.kind = ActorActionKind::MoveToObject;
     action.object = call.objectArgOrInvalid(0);
+    call.api().actor(call.self()).attemptedMoveTarget = action.object; // retail +0x508
     action.run = call.intArg(1) != 0;
     action.range = static_cast<float>(call.floatArg(2, 1.0));
     action.force = true;
@@ -497,6 +632,12 @@ Cells getCurrentAction(ActionCall& call)
         return ActionCall::retInt(kActionWait);
     case ActorActionKind::DoCommand:
         return ActionCall::retInt(kActionDoCommand);
+    case ActorActionKind::FollowObject:
+        return ActionCall::retInt(kActionFollow);
+    case ActorActionKind::RandomWalk:
+    case ActorActionKind::MoveAwayFromObject:
+        return ActionCall::retInt(kActionMoveToPoint);
+    case ActorActionKind::CutsceneAttack:
     case ActorActionKind::Attack:
         return ActionCall::retInt(3); // ACTION_ATTACKOBJECT
     case ActorActionKind::CastSpell:
@@ -526,6 +667,87 @@ Cells actionStartConversation(ActionCall& call)
     action.object = call.objectArgOrInvalid(0);
     action.text = call.stringArg(1);
     action.ignoreRange = call.intArg(4) != 0;
+    call.api().enqueue(call.self(), std::move(action));
+    return ActionCall::none();
+}
+
+// ACT_20 ActionRandomWalk 0052d440.
+Cells actionRandomWalk(ActionCall& call)
+{
+    ActorAction action;
+    action.kind = ActorActionKind::RandomWalk;
+    call.api().enqueue(call.self(), std::move(action));
+    return ActionCall::none();
+}
+
+// ACT_23 ActionMoveAwayFromObject(oFleeFrom, bRun, fMoveAwayRange = 40) 0053f990.
+Cells actionMoveAwayFromObject(ActionCall& call)
+{
+    ActorAction action;
+    action.kind = ActorActionKind::MoveAwayFromObject;
+    action.object = call.objectArgOrInvalid(0);
+    action.run = call.intArg(1) != 0;
+    action.range = static_cast<float>(call.floatArg(2, 40.0));
+    call.api().enqueue(call.self(), std::move(action));
+    return ActionCall::none();
+}
+
+// ACT_167 ActionForceFollowObject(oFollow, fFollowDistance = 0) 0052c960.
+Cells actionForceFollowObject(ActionCall& call)
+{
+    ActorAction action;
+    action.kind = ActorActionKind::FollowObject;
+    action.object = call.objectArgOrInvalid(0);
+    if (action.object == script::kObjectInvalid) {
+        return ActionCall::none();
+    }
+    action.range = static_cast<float>(call.floatArg(1, 0.0));
+    action.force = true;
+    call.api().enqueue(call.self(), std::move(action));
+    return ActionCall::none();
+}
+
+// ACT_730 ActionFollowLeader 0052cbe0, action 0x3d.
+Cells actionFollowLeader(ActionCall& call)
+{
+    ActorAction action;
+    action.kind = ActorActionKind::FollowObject;
+    action.range = kDefaultFollowDistance;
+    call.api().enqueue(call.self(), std::move(action));
+    return ActionCall::none();
+}
+
+// ACT_700 ActionBarkString(strRef) 0052c6a0: queued, so it waits its turn.
+Cells actionBarkString(ActionCall& call)
+{
+    ActorAction action;
+    action.kind = ActorActionKind::BarkString;
+    action.animation = static_cast<std::int32_t>(call.intArg(0));
+    call.api().enqueue(call.self(), std::move(action));
+    return ActionCall::none();
+}
+
+// ACT_399 / ACT_400 ActionEquipMostDamaging* 0052c7b0, 0052c820. oVersus is read and
+// not used here: the weighing against a target was not traced.
+template <bool Ranged>
+Cells actionEquipMostDamaging(ActionCall& call)
+{
+    ActorAction action;
+    action.kind = ActorActionKind::EquipMostDamaging;
+    action.result = Ranged ? 1 : 0;
+    action.force = !Ranged && call.intArg(1) != 0; // bOffHand
+    call.api().enqueue(call.self(), std::move(action));
+    return ActionCall::none();
+}
+
+// ACT_288 ActionUseSkill(nSkill, oTarget, nSubSkill, oItemUsed) 0052d9b0.
+Cells actionUseSkill(ActionCall& call)
+{
+    ActorAction action;
+    action.kind = ActorActionKind::UseSkill;
+    action.spell = static_cast<std::int32_t>(call.intArg(0));
+    action.object = call.objectArgOrInvalid(1);
+    action.amount = static_cast<std::int32_t>(call.intArg(2));
     call.api().enqueue(call.self(), std::move(action));
     return ActionCall::none();
 }
@@ -576,6 +798,14 @@ void tickActors(ScriptApi api, float dt)
 void registerActorActions(HandlerTable& table)
 {
     table.add(6, assignCommand);
+    table.add(20, actionRandomWalk);
+    table.add(23, actionMoveAwayFromObject);
+    table.add(167, actionForceFollowObject);
+    table.add(288, actionUseSkill);
+    table.add(399, actionEquipMostDamaging<false>);
+    table.add(400, actionEquipMostDamaging<true>);
+    table.add(700, actionBarkString);
+    table.add(730, actionFollowLeader);
     table.add(9, clearAllActions);
     table.add(21, actionMoveToLocation);
     table.add(22, actionMoveToObject);

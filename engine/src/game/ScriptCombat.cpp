@@ -1278,6 +1278,32 @@ bool isDebilitated(ScriptApi api, std::uint32_t object)
     return false;
 }
 
+bool runCutsceneAttackAction(ScriptApi api, std::uint32_t self, float dt)
+{
+    ActorState& state = api.actor(self);
+    ActorAction& action = state.queue.front();
+    if (!action.started) {
+        action.started = true;
+        action.remaining = 1.0f; // No retail length recovered.
+        const std::size_t index = api.entityFor(self);
+        const std::string name = api.animationName(action.animation);
+        if (index != kNone && !name.empty()) {
+            api.playAnimation(index, name, false);
+        }
+    }
+    action.remaining -= dt;
+    if (action.remaining > 0.0f) {
+        return false;
+    }
+    const ActorAction taken = action;
+    state.queue.pop_front();
+    // ATTACK_RESULT_HIT_SUCCESSFUL 1, CRITICAL_HIT 2, AUTOMATIC_HIT 3.
+    if (taken.result >= 1 && taken.result <= 3 && taken.amount > 0 && api.isAlive(taken.object)) {
+        applyScriptDamage(api, taken.object, taken.amount, kDamageUniversal, self);
+    }
+    return true;
+}
+
 bool runAttackAction(ScriptApi api, std::uint32_t self, float dt)
 {
     CombatOps ops{api.session};
@@ -1370,6 +1396,106 @@ bool runCastAction(ScriptApi api, std::uint32_t self, float dt)
 namespace {
 
 // ACT_37 ActionAttack 0052e7f0
+// ---- cutscene attacks and immunity queries ----------------------------------
+
+// ACT_503 CutsceneAttack(oTarget, nAnimation, nAttackResult, nDamage) 0052e890: plays the
+// animation with no attack roll and applies the damage on a hit result.
+Cells actionCutsceneAttack(ActionCall& call)
+{
+    ActorAction action;
+    action.kind = ActorActionKind::CutsceneAttack;
+    action.object = call.objectArgOrInvalid(0);
+    action.animation = static_cast<std::int32_t>(call.intArg(1));
+    action.result = static_cast<std::int32_t>(call.intArg(2));
+    action.amount = static_cast<std::int32_t>(call.intArg(3));
+    call.api().enqueue(call.self(), std::move(action));
+    return ActionCall::none();
+}
+
+// ACT_169 ResistForce 00541cc0. Retail rolls a d20 plus the source's level against the
+// target's spell resistance (effect 52). 0 not resisted, 1 resisted; the three-way
+// result the header mentions (global immunity) was not traced.
+Cells resistForce(ActionCall& call)
+{
+    ScriptApi api = call.api();
+    const std::int32_t resistance = effectTotal(api, call.objectArg(1), 52);
+    if (resistance <= 0) {
+        return ActionCall::retInt(0);
+    }
+    const std::int32_t roll = api.world().rng.randint(1, 20) + creatureTotalLevel(api, call.objectArg(0));
+    return ActionCall::retInt(roll < resistance ? 1 : 0);
+}
+
+// ACT_751 GetIsPoisoned 00547a80: holds an EffectPoison.
+Cells getIsPoisoned(ActionCall& call)
+{
+    return ActionCall::retInt(hasEffectOfType(call.api(), call.objectArg(0), 31) ? 1 : 0);
+}
+
+// Does the creature hold an EffectImmunity (type 15) of this IMMUNITY_TYPE_*?
+bool holdsImmunity(ScriptApi api, std::uint32_t object, std::int32_t immunity)
+{
+    for (const AppliedEffect& held : api.actor(object).effects) {
+        if (held.type != 15) {
+            continue;
+        }
+        const EffectData* data = api.sim().engine.get<EffectData>(held.effect);
+        if (data != nullptr && !data->args.empty() && data->args.front().asInt() == immunity) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// ACT_274 GetIsImmune 00545840.
+Cells getIsImmune(ActionCall& call)
+{
+    return ActionCall::retInt(holdsImmunity(call.api(), call.objectArg(0),
+                                            static_cast<std::int32_t>(call.intArg(1))) ? 1 : 0);
+}
+
+// IMMUNITY_TYPE_* for an effect's type, or -1 when no immunity covers it.
+std::int32_t immunityForEffect(std::int32_t type)
+{
+    switch (type) {
+    case 31: return 2;  // poison
+    case 25: return 4;  // frightened
+    case 27: return 6;  // paralysis
+    case 29: return 12; // stun
+    case 30: return 13; // sleep
+    case 24: return 16; // confused
+    default: return -1;
+    }
+}
+
+// ACT_390 GetIsLinkImmune 005458d0: immune to the effect or to any effect linked to it.
+Cells getIsLinkImmune(ActionCall& call)
+{
+    ScriptApi api = call.api();
+    const std::uint32_t target = call.objectArg(0);
+    std::vector<std::int64_t> pending{call.engineArg(1)};
+    while (!pending.empty()) {
+        const EffectData* data = api.sim().engine.get<EffectData>(pending.back());
+        pending.pop_back();
+        if (data == nullptr) {
+            continue;
+        }
+        const std::int32_t immunity = immunityForEffect(data->type);
+        if (immunity >= 0 && holdsImmunity(api, target, immunity)) {
+            return ActionCall::retInt(1);
+        }
+        pending.insert(pending.end(), data->links.begin(), data->links.end());
+    }
+    return ActionCall::retInt(0);
+}
+
+// ACT_366 DisplayFeedBackText 00541560: a feedback line. Logged; the HUD reads the log.
+Cells displayFeedBackText(ActionCall& call)
+{
+    call.api().log("feedback text " + std::to_string(call.intArg(1)));
+    return ActionCall::none();
+}
+
 Cells actionAttack(ActionCall& call)
 {
     ActorAction action;
@@ -2298,6 +2424,12 @@ int runCombatFamilyTest(GameSession& game)
 
 void registerCombatActions(HandlerTable& table)
 {
+    table.add(169, resistForce);
+    table.add(274, getIsImmune);
+    table.add(366, displayFeedBackText);
+    table.add(390, getIsLinkImmune);
+    table.add(503, actionCutsceneAttack);
+    table.add(751, getIsPoisoned);
     table.add(37, actionAttack);
     table.add(48, actionCastSpellAtObject);
     table.add(54, cancelCombat);

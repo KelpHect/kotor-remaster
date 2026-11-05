@@ -2,6 +2,7 @@
 #include "render/Backend.h"
 #include "render/Bmp.h"
 #include "render/VulkanScene.h"
+#include "render/VulkanPost.h"
 #include "core/Log.h"
 
 #include "imgui.h"
@@ -21,6 +22,7 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace ke {
@@ -188,6 +190,17 @@ public:
             if (!resizeError.empty()) {
                 logError(concat("Vulkan scene depth initialization failed: ", resizeError));
             }
+            std::string postError;
+            if (postRenderer_.initialize(device_, physicalDevice_, commandPool_, graphicsQueue_,
+                                         format_, postError)) {
+                std::string postResizeError;
+                postRenderer_.resize(extent_, postResizeError);
+                if (!postResizeError.empty()) {
+                    logError(concat("Vulkan video effect target failed: ", postResizeError));
+                }
+            } else {
+                logWarn(concat("Vulkan video effect pass unavailable: ", postError));
+            }
         } else {
             logWarn(concat("Vulkan scene renderer unavailable; HUD-only: ", sceneError));
         }
@@ -264,6 +277,11 @@ public:
 
     void setCamera(const SceneCamera& camera) override { camera_ = camera; }
 
+    void setVideoEffect(const VideoEffectState& effect) override
+    {
+        postRenderer_.setEffect(effect);
+    }
+
     void refreshEntityMeshes(const kotor::Scene& scene) override
     {
         if (sceneReady_) {
@@ -271,7 +289,9 @@ public:
         }
     }
 
-    bool screenshot(const std::filesystem::path& path) override
+    // Reads the last presented swapchain image back as tightly packed RGBA8 in
+    // top-down row order (shared by screenshot() and captureFrame()).
+    bool readbackPresented(std::vector<std::uint8_t>& rgba)
     {
         if (!initialized_ || swapchain_ == VK_NULL_HANDLE || lastImageIndex_ >= swapchainImages_.size()) {
             return false;
@@ -349,7 +369,7 @@ public:
         vkFreeCommandBuffers(device_, commandPool_, 1, &command);
 
         void* mapped = nullptr;
-        std::vector<std::uint8_t> rgba(static_cast<std::size_t>(bytes), 0u);
+        rgba.assign(static_cast<std::size_t>(bytes), 0u);
         if (vkMapMemory(device_, memory, 0, bytes, 0, &mapped) == VK_SUCCESS) {
             std::memcpy(rgba.data(), mapped, static_cast<std::size_t>(bytes));
             vkUnmapMemory(device_, memory);
@@ -360,6 +380,30 @@ public:
                 std::swap(rgba[i], rgba[i + 2]);
             }
         }
+        vkDestroyBuffer(device_, buffer, nullptr);
+        vkFreeMemory(device_, memory, nullptr);
+        return true;
+    }
+
+    bool captureFrame(CapturedFrame& frame) override
+    {
+        if (!readbackPresented(frame.rgba)) {
+            return false;
+        }
+        for (std::size_t i = 3; i < frame.rgba.size(); i += 4) {
+            frame.rgba[i] = 255u; // presented frames are opaque
+        }
+        frame.width = static_cast<int>(extent_.width);
+        frame.height = static_cast<int>(extent_.height);
+        return true;
+    }
+
+    bool screenshot(const std::filesystem::path& path) override
+    {
+        std::vector<std::uint8_t> rgba;
+        if (!readbackPresented(rgba)) {
+            return false;
+        }
         // Vulkan images are top-down; BMP stores rows bottom-up.
         const std::size_t rowBytes = static_cast<std::size_t>(extent_.width) * 4u;
         for (std::uint32_t y = 0; y < extent_.height / 2u; ++y) {
@@ -367,8 +411,6 @@ public:
             std::uint8_t* bottom = rgba.data() + static_cast<std::size_t>(extent_.height - 1u - y) * rowBytes;
             std::swap_ranges(top, top + rowBytes, bottom);
         }
-        vkDestroyBuffer(device_, buffer, nullptr);
-        vkFreeMemory(device_, memory, nullptr);
         return writeBmp(path, static_cast<int>(extent_.width), static_cast<int>(extent_.height), rgba);
     }
 
@@ -406,6 +448,97 @@ public:
         }
         textureId = 0;
         sceneRenderer_.destroyMovieFrame();
+    }
+
+    bool supportsPreview() const noexcept override { return initialized_ && sceneReady_; }
+
+    bool setPreviewScene(const kotor::Scene* scene, std::string& error) override
+    {
+        if (!initialized_ || !sceneReady_) {
+            error = "Vulkan scene renderer is unavailable";
+            return false;
+        }
+        // Previous frames may still reference the buffers and textures being replaced.
+        vkDeviceWaitIdle(device_);
+        previewScene_ = nullptr;
+        if (scene == nullptr) {
+            if (previewReady_) {
+                previewRenderer_.clearScene();
+            }
+            return true;
+        }
+        if (!previewReady_) {
+            previewRenderer_.setPreviewMode(true);
+            if (!previewRenderer_.initialize(device_, physicalDevice_, commandPool_, graphicsQueue_,
+                                             format_, error)) {
+                previewRenderer_.shutdown();
+                return false;
+            }
+            previewReady_ = true;
+        }
+        if (!previewRenderer_.upload(*scene, error)) {
+            previewRenderer_.clearScene();
+            return false;
+        }
+        previewScene_ = scene;
+        return true;
+    }
+
+    void setPreviewViews(const std::vector<PreviewView>& views) override
+    {
+        const std::size_t count = std::min<std::size_t>(views.size(), kMaxPreviewViews);
+        previewViews_.assign(views.begin(), views.begin() + static_cast<std::ptrdiff_t>(count));
+    }
+
+    void refreshPreviewMeshes() override
+    {
+        if (previewReady_ && previewScene_ != nullptr) {
+            previewRenderer_.refreshEntityMeshes(*previewScene_);
+        }
+    }
+
+    // Each image is its own GPU image registered with ImGui. Like the movie path the
+    // returned id changes when an existing id is re-uploaded (the old one is released).
+    bool uploadUiImage(int width, int height, const std::uint8_t* rgba,
+                       std::uint64_t& textureId, std::string& error) override
+    {
+        if (!initialized_ || !sceneReady_ || !imguiInitialized_) {
+            error = "Vulkan UI images need the scene renderer and ImGui";
+            return false;
+        }
+        VulkanScene::UiImage image;
+        if (!sceneRenderer_.createUiImage(width, height, rgba, image, error)) {
+            return false;
+        }
+        const VkDescriptorSet descriptor = ImGui_ImplVulkan_AddTexture(
+            sceneRenderer_.sampler(), image.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        if (descriptor == VK_NULL_HANDLE) {
+            sceneRenderer_.destroyUiImage(image);
+            error = "ImGui Vulkan texture registration failed";
+            return false;
+        }
+        if (textureId != 0) {
+            releaseUiImage(textureId);
+        }
+        const std::uint64_t id = static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(descriptor));
+        uiImages_[id] = image;
+        textureId = id;
+        return true;
+    }
+
+    void releaseUiImage(std::uint64_t& textureId) override
+    {
+        const auto found = uiImages_.find(textureId);
+        if (found != uiImages_.end()) {
+            vkDeviceWaitIdle(device_); // frames in flight may still sample the image
+            if (imguiInitialized_) {
+                ImGui_ImplVulkan_RemoveTexture(
+                    reinterpret_cast<VkDescriptorSet>(static_cast<std::uintptr_t>(textureId)));
+            }
+            sceneRenderer_.destroyUiImage(found->second);
+            uiImages_.erase(found);
+        }
+        textureId = 0;
     }
 
     FrameStatus renderFrame(std::string& error) override
@@ -514,6 +647,14 @@ public:
         if (device_ != VK_NULL_HANDLE) {
             vkDeviceWaitIdle(device_);
         }
+        for (auto& entry : uiImages_) { // leaked UI images
+            if (imguiInitialized_) {
+                ImGui_ImplVulkan_RemoveTexture(
+                    reinterpret_cast<VkDescriptorSet>(static_cast<std::uintptr_t>(entry.first)));
+            }
+            sceneRenderer_.destroyUiImage(entry.second);
+        }
+        uiImages_.clear();
         if (imguiInitialized_) {
             ImGui_ImplVulkan_Shutdown();
             imguiInitialized_ = false;
@@ -523,6 +664,13 @@ public:
             platformInitialized_ = false;
         }
 
+        if (previewReady_) {
+            previewRenderer_.shutdown();
+            previewReady_ = false;
+        }
+        previewScene_ = nullptr;
+        previewViews_.clear();
+        postRenderer_.shutdown();
         if (sceneReady_) {
             sceneRenderer_.shutdown();
             sceneReady_ = false;
@@ -1013,7 +1161,10 @@ private:
         createInfo.imageColorSpace = chosenFormat.colorSpace;
         createInfo.imageExtent = extent;
         createInfo.imageArrayLayers = 1;
-        createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+        // TRANSFER_SRC lets the video effect pass copy the finished scene.
+        createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+            | ((capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+                   ? VK_IMAGE_USAGE_TRANSFER_SRC_BIT : 0u);
         createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
         createInfo.preTransform = capabilities.currentTransform;
         createInfo.compositeAlpha = pickCompositeAlpha(capabilities.supportedCompositeAlpha);
@@ -1077,6 +1228,11 @@ private:
             sceneRenderer_.resize(extent_, resizeError);
             if (!resizeError.empty()) {
                 logError(concat("Vulkan scene depth resize failed: ", resizeError));
+            }
+            std::string postResizeError;
+            postRenderer_.resize(extent_, postResizeError);
+            if (!postResizeError.empty()) {
+                logError(concat("Vulkan video effect target resize failed: ", postResizeError));
             }
         }
 
@@ -1200,8 +1356,58 @@ private:
         scissor.extent = extent_;
         vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
+        bool postPassActive = false;
         if (sceneReady_ && scene_ != nullptr) {
             sceneRenderer_.draw(commandBuffer, camera_, extent_);
+        }
+
+        // Video effect (ACT_508/510): finish the scene, copy it, then redraw it
+        // through the effect before the UI so the HUD is never tinted. Without
+        // an active effect the frame stays a single pass.
+        if (sceneReady_ && scene_ != nullptr && postRenderer_.needed()) {
+            vkCmdEndRendering(commandBuffer);
+            postRenderer_.recordCopy(commandBuffer, swapchainImages_[imageIndex]);
+            colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+            renderingInfo.pDepthAttachment = nullptr;
+            vkCmdBeginRendering(commandBuffer, &renderingInfo);
+            vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+            vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+            postRenderer_.recordDraw(commandBuffer);
+            postPassActive = true;
+        }
+
+        // 3D GUI previews (after the world pass and its video effect, before the UI).
+        if (sceneReady_ && previewReady_ && previewScene_ != nullptr && !previewViews_.empty()
+            && depthAttachment.imageView != VK_NULL_HANDLE) {
+            if (postPassActive) {
+                // The effect pass has no depth attachment; reopen the pass with
+                // colour and depth so previews can depth-test.
+                vkCmdEndRendering(commandBuffer);
+                VkMemoryBarrier reopen{};
+                reopen.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+                reopen.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                    | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+                reopen.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT
+                    | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                    | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT
+                    | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+                vkCmdPipelineBarrier(commandBuffer,
+                                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+                                         | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+                                         | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+                                     0, 1, &reopen, 0, nullptr, 0, nullptr);
+                colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+                depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+                renderingInfo.pDepthAttachment = &depthAttachment;
+                vkCmdBeginRendering(commandBuffer, &renderingInfo);
+                vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+                vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+            }
+            const std::size_t viewCount = std::min<std::size_t>(previewViews_.size(), kMaxPreviewViews);
+            for (std::size_t i = 0; i < viewCount; ++i) {
+                previewRenderer_.drawView(commandBuffer, previewViews_[i], extent_);
+            }
         }
 
         if (ImDrawData* drawData = ImGui::GetDrawData(); drawData != nullptr) {
@@ -1280,6 +1486,12 @@ private:
     const kotor::Scene* scene_ = nullptr;
     SceneCamera camera_;
     VulkanScene sceneRenderer_;
+    VulkanScene previewRenderer_;
+    bool previewReady_ = false;
+    const kotor::Scene* previewScene_ = nullptr;
+    std::vector<PreviewView> previewViews_;
+    std::unordered_map<std::uint64_t, VulkanScene::UiImage> uiImages_;
+    VulkanPost postRenderer_;
     std::uint32_t lastImageIndex_ = 0;
 
     std::string deviceName_ = "unknown";

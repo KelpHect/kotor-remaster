@@ -89,13 +89,16 @@ void testWok()
         }
     }
     const std::size_t face = header + vertices;
-    bytes[face + 0] = 0; bytes[face + 1] = 0;
-    bytes[face + 2] = 1; bytes[face + 3] = 0;
-    bytes[face + 4] = 2; bytes[face + 5] = 0;
+    // Faces are three u32 vertex indices. Reading them as u16 was the cause of walks
+    // being blocked on shipped walkmeshes, so index 1 and 2 are checked explicitly.
+    put32(bytes, face + 0, 0);
+    put32(bytes, face + 4, 1);
+    put32(bytes, face + 8, 2);
     put32(bytes, header + vertices + faces, 7);
     const ke::kotor::Wok wok = ke::kotor::parseWok(bytes, "test.wok");
     expect(wok.vertices.size() == 3, "WOK vertices");
     expect(wok.faces.size() == 1 && wok.faces[0].floor, "WOK upward face is floor");
+    expect(wok.faces[0].a == 0 && wok.faces[0].b == 1 && wok.faces[0].c == 2, "WOK face indices are u32");
     expect(wok.faces[0].surface == 7, "WOK surface id");
 }
 

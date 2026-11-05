@@ -83,6 +83,7 @@ endif()
 # This is engine code, not a Python tool; the research tools remain oracles.
 # ---------------------------------------------------------------------------
 add_library(kotor_data STATIC
+    src/kotor/MiniGameData.cpp
     src/kotor/Archive.cpp
     src/kotor/BinkDecoder.cpp
     src/kotor/Entities.cpp
@@ -110,7 +111,9 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(kotor_audio STATIC
     src/audio/Audio.cpp
-    src/audio/Output.cpp)
+    src/audio/Output.cpp
+    src/audio/Reverb.cpp
+    src/audio/ReverbGate.cpp)
 target_include_directories(kotor_audio PUBLIC src)
 target_link_libraries(kotor_audio PUBLIC kotor_engine_options kotor_data kotor_dr_mp3
                                               SDL3::SDL3-static)
@@ -139,11 +142,15 @@ add_executable(kotor_engine
     src/core/Log.cpp
     src/game/AudioSystem.cpp
     src/game/Chargen.cpp
+    src/game/ChargenGui.cpp
+    src/game/ChargenPreview.cpp
     src/game/FacialRig.cpp
     src/game/Factions.cpp
     src/game/GameSession.cpp
     src/game/GuiSystem.cpp
     src/game/Minigames.cpp
+    src/game/MiniGame3D.cpp
+    src/game/ScriptMiniGame.cpp
     src/game/Rules.cpp
     src/game/Pathfinding.cpp
     src/game/ScriptActions.cpp
@@ -154,14 +161,19 @@ add_executable(kotor_engine
     src/game/ScriptItems.cpp
     src/game/ScriptObjects.cpp
     src/game/ScriptParty.cpp
+    src/game/PartyControl.cpp
+    src/game/ScriptVideoEffect.cpp
     src/game/ScriptWorldState.cpp
+    src/game/VideoEffectController.cpp
     src/game/WorldPersistence.cpp
     src/render/BackendFactory.cpp
     src/render/Bmp.cpp
     src/render/NullBackend.cpp
     src/render/GlBackend.cpp
     src/render/GlScene.cpp
+    src/render/VideoEffect.cpp
     src/render/VulkanBackend.cpp
+    src/render/VulkanPost.cpp
     src/render/VulkanScene.cpp)
 
 target_include_directories(kotor_engine PRIVATE src)
@@ -252,11 +264,33 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                  COMMAND kotor_engine --module end_m01aa --family-test items --null --headless)
         add_test(NAME kotor_family_party
                  COMMAND kotor_engine --module end_m01aa --family-test party --null --headless)
+        add_test(NAME kotor_family_companion
+                 COMMAND kotor_engine --module end_m01aa --family-test companion --null --headless)
         add_test(NAME kotor_family_combat
                  COMMAND kotor_engine --module end_m01aa --family-test combat --null --headless)
         set_tests_properties(kotor_family_combat PROPERTIES TIMEOUT 900)
         add_test(NAME kotor_family_objects
                  COMMAND kotor_engine --module end_m01aa --family-test objects --null --headless)
+        add_test(NAME kotor_family_videoeffect
+                 COMMAND kotor_engine --module end_m01aa --family-test videoeffect
+                         --video-effect-fixtures "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
+                         --null --headless)
+        add_test(NAME kotor_family_endgame
+                 COMMAND kotor_engine --module end_m01aa --family-test endgame --no-movies --null --headless)
+        set_tests_properties(kotor_family_endgame PROPERTIES TIMEOUT 600)
+        add_test(NAME kotor_family_actions
+                 COMMAND kotor_engine --module end_m01aa --family-test actions --null --headless)
+        add_test(NAME kotor_family_minigame3d
+                 COMMAND kotor_engine --module end_m01aa --family-test minigame3d --null --headless)
+        set_tests_properties(kotor_family_minigame3d PROPERTIES TIMEOUT 900)
+        foreach(backend gl vulkan)
+            foreach(kind swoop turret)
+                add_test(NAME kotor_family_minigame3d_${kind}_${backend}
+                         COMMAND kotor_engine --${backend} --start-minigame ${kind} --no-movies
+                                 --minigame-render-check --frames 120)
+                set_tests_properties(kotor_family_minigame3d_${kind}_${backend} PROPERTIES TIMEOUT 300)
+            endforeach()
+        endforeach()
         add_test(NAME kotor_world_sim
                  COMMAND kotor_engine --module end_m01aa --world-sim-test --null --headless)
         add_test(NAME kotor_combat
@@ -371,7 +405,7 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                      COMMAND kotor_engine --module end_m01aa --campaign-test
                              --save-fixtures "${KOTOR_CAMPAIGN_SAVES}" --null --headless)
             set_tests_properties(kotor_campaign
-                                 PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+                                 PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 600)
         endif()
         add_test(NAME kotor_avatar
                  COMMAND kotor_engine --module end_m01aa --avatar-test --null --headless)
@@ -381,6 +415,31 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                  COMMAND kotor_engine --module end_m01aa --chargen-gui-test --null --headless)
         set_tests_properties(kotor_chargen_gui
                              PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 180)
+        # Pixel gate for the 3D chargen controls: needs a real GL / Vulkan device and fails
+        # (never skips) when the requested backend cannot start. The window stays visible:
+        # a hidden window presents nothing to read back on these drivers.
+        add_test(NAME kotor_chargen_preview_gl
+                 COMMAND kotor_engine --module end_m01aa --chargen-preview-test --opengl
+                         --no-fallback --width 1280 --height 960
+                         --chargen-preview-out "${CMAKE_BINARY_DIR}/chargen_preview/gl")
+        set_tests_properties(kotor_chargen_preview_gl
+                             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+        add_test(NAME kotor_chargen_preview_vulkan
+                 COMMAND kotor_engine --module end_m01aa --chargen-preview-test --vulkan
+                         --no-fallback --width 1280 --height 960
+                         --chargen-preview-out "${CMAKE_BINARY_DIR}/chargen_preview/vulkan")
+        set_tests_properties(kotor_chargen_preview_vulkan
+                             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+        # New Game from the main menu through the shipped chargen to end_m01aa, driven by
+        # pointer events (starts in end_m01ab so the module change is observable).
+        foreach(backend gl vulkan)
+            add_test(NAME kotor_new_game_flow_${backend}
+                     COMMAND kotor_engine --module end_m01ab --new-game-flow-test --${backend}
+                             --no-fallback --width 1280 --height 960
+                             --chargen-preview-out "${CMAKE_BINARY_DIR}/new_game_flow/${backend}")
+            set_tests_properties(kotor_new_game_flow_${backend}
+                                 PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+        endforeach()
         add_test(NAME kotor_profile_k1
                  COMMAND kotor_engine --profile-info "${KOTOR_TEST_INSTALL}" --null --headless)
         set(KOTOR2_TEST_INSTALL "$ENV{KOTOR2_INSTALL}")
@@ -398,7 +457,7 @@ if(KOTOR_ENGINE_BUILD_TESTS)
         set_tests_properties(kotor_scene_stats kotor_scene_assert kotor_door_transition
                              kotor_taris_transition kotor_walk_collision kotor_dialogue kotor_world_sim
                              kotor_combat kotor_script kotor_rules kotor_systems
-                             kotor_family_items kotor_family_party kotor_family_objects kotor_family_combat kotor_merchant kotor_encounter kotor_encounter_reset kotor_party kotor_ui kotor_loot
+                             kotor_family_items kotor_family_party kotor_family_endgame kotor_family_actions kotor_family_companion kotor_family_objects kotor_family_combat kotor_merchant kotor_encounter kotor_encounter_reset kotor_party kotor_ui kotor_loot
                              kotor_delayed_functors kotor_combat_force kotor_animation kotor_audio kotor_media kotor_gui kotor_minigame kotor_localization kotor_vfs kotor_faction
                              kotor_playthrough kotor_landmark kotor_save_load kotor_original_save_create kotor_profile_k1
             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
@@ -432,6 +491,14 @@ if(KOTOR_ENGINE_BUILD_TESTS)
         endif()
         set(KOTOR_VM_CORPUS "${CMAKE_SOURCE_DIR}/../artifacts/lanes/04-ncs/extracted/unique")
         set(KOTOR_VM_DEFAULT_ORACLE "${CMAKE_SOURCE_DIR}/../artifacts/lanes/s6-01-vm/default_oracle_s6.json")
+        if(EXISTS "${KOTOR_VM_CORPUS}")
+            add_test(NAME kotor_action_coverage
+                     COMMAND kotor_engine --module end_m01aa
+                             --action-coverage "${CMAKE_BINARY_DIR}/action_coverage.tsv"
+                             --action-corpus "${KOTOR_VM_CORPUS}" --null --headless)
+            set_tests_properties(kotor_action_coverage PROPERTIES
+                                 ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+        endif()
         set(KOTOR_VM_FUNCTIONAL_ORACLE "${CMAKE_SOURCE_DIR}/../artifacts/lanes/s6-02-actions/functional_oracle_s6.json")
         if(Python3_Interpreter_FOUND AND EXISTS "${KOTOR_VM_CORPUS}" AND EXISTS "${KOTOR_VM_DEFAULT_ORACLE}")
             add_test(NAME kotor_vm_corpus

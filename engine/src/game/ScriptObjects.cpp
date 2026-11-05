@@ -192,7 +192,11 @@ std::vector<AreaEntry> scanArea(const ScriptApi& api)
         } else {
             entry.type = attrInt(object, "object_type");
         }
-        if (entry.type == 0 || entry.type == kTypeItem) {
+        // Items in a hold are not in the area; one on the floor is. retail ACT_766
+        // 00547f60 adds it to the area's object list (00555720), which ACT_93 0053c390
+        // walks.
+        if (entry.type == 0
+            || (entry.type == kTypeItem && attrInt(object, "item_floor") == 0)) {
             continue;
         }
         if (entry.entity != kNone && entry.entity == avatar) {
@@ -243,6 +247,9 @@ void applySheet(const ScriptApi& api, const CharacterSheet& source, Sheet& out)
 {
     out.abilities = {source.str, source.dex, source.con, source.intel, source.wis, source.cha};
     out.classes.assign(1, {source.classId, source.level});
+    if (source.secondClassId >= 0) {
+        out.classes.emplace_back(source.secondClassId, source.secondClassLevel);
+    }
     out.skills.clear();
     const Rules& rules = api.session.rules();
     for (std::int32_t i = 0; i < rules.skillCount(); ++i) {
@@ -251,18 +258,11 @@ void applySheet(const ScriptApi& api, const CharacterSheet& source, Sheet& out)
     }
 }
 
-// The player's gender is the portrait the player picked (portraits.2da sex).
+// The player's gender is the sheet's (chosen in character generation, read from a
+// save); retail keeps it as the creature stats byte at +0x31.
 std::int32_t playerGender(const ScriptApi& api)
 {
-    const Rules& rules = api.session.rules();
-    const std::uint32_t appearance = api.session.playerAppearance();
-    for (std::int32_t i = 0; i < rules.portraitCount(); ++i) {
-        const PortraitInfo info = rules.portrait(i);
-        if (info.appearance == appearance) {
-            return info.sex;
-        }
-    }
-    return 0;
+    return api.session.character().gender;
 }
 
 // What a creature is, from the UTC (entities) or the live character (the player
@@ -703,11 +703,11 @@ Cells getName(ActionCall& call)
     return ActionCall::retString(entity.name);
 }
 
-// retail 0053f1c0 (via 004b2a50): true only for the player object.
+// retail 0053f1c0 (via 004b2a50): true for the creature on the server's player list,
+// which is the steered creature (the PC, or the companion switched to).
 Cells getIsPC(ActionCall& call)
 {
-    ScriptApi api = call.api();
-    return ActionCall::retInt(call.objectArg(0) == api.pc() ? 1 : 0);
+    return ActionCall::retInt(call.objectArg(0) == call.session.controlledObject() ? 1 : 0);
 }
 
 // retail 00540170: the object id in lower-case hex.
@@ -736,8 +736,10 @@ Cells getLoadFromSaveGame(ActionCall& call)
     return ActionCall::retInt(call.api().sim().restoringSave ? 1 : 0);
 }
 
-// retail 0053d610: the TLK text. The original also picks dialogf.tlk for a female
-// player; this build has one table (evidence gap).
+// retail 0053d610: the TLK text. The handler passes gender 0 to the lookup (the
+// script API here has no gender argument), so the masculine table is read; the
+// feminine table (dialogf.tlk) is reached through Tlk::text(strref, gender) by
+// dialogue lines and loc strings.
 Cells getStringByStrRef(ActionCall& call)
 {
     const kotor::Localization& localization = call.session.localization();
@@ -955,8 +957,8 @@ Cells setGlobalLocation(ActionCall& call)
 
 // GetFirstObjectInArea / GetNextObjectInArea. One cursor per area, so a nested
 // loop leaves the outer one exhausted, as in the original. An invalid area means
-// the caller's own; the module has none. Corpses are visited, destroyed objects
-// and held items are not.
+// the caller's own; the module has none. Corpses and items on the floor are visited,
+// destroyed objects and held items are not.
 Cells nextInArea(ActionCall& call, bool first)
 {
     ScriptApi api = call.api();
@@ -1657,13 +1659,165 @@ Cells printVector(ActionCall& call)
     return ActionCall::none();
 }
 
-// Cheat codes, credits and the meta-magic feat have no state in this build.
+// Cheat codes and the meta-magic feat have no state in this build.
 Cells alwaysZero(ActionCall&)
 {
     return ActionCall::retInt(0);
 }
 
+// ACT_84 GetCasterLevel 00536ad0: only the dead nw_s0_lghtnbolt script asks. Total
+// levels; retail's per-spell class was not traced.
+Cells getCasterLevel(ActionCall& call)
+{
+    const std::optional<Sheet> sheet = sheetOf(call.api(), call.objectArg(0));
+    return ActionCall::retInt(sheet.has_value() ? totalLevels(*sheet) : 0);
+}
+
+// ACT_121 RoundsToSeconds and ACT_122 HoursToSeconds share 00544e50. A round is the
+// 3-second K1 combat round; an hour is Mod_MinPerHour real minutes.
+Cells roundsToSeconds(ActionCall& call)
+{
+    return ActionCall::retFloat(static_cast<double>(call.intArg(0)) * 3.0);
+}
+
+Cells hoursToSeconds(ActionCall& call)
+{
+    return ActionCall::retFloat(static_cast<double>(call.intArg(0))
+                                * call.api().sim().clockMinPerHour * 60.0);
+}
+
+// ACT_323 SetIsDestroyable(bDestroyable, bRaiseable, bSelectableWhenDead) 00542dc0, on
+// the caller. Corpses never fade in this engine, so bDestroyable is data only.
+Cells setIsDestroyable(ActionCall& call)
+{
+    ActorState& state = call.api().actor(call.self());
+    state.destroyable = call.intArg(0) != 0;
+    state.raiseable = call.intArg(1, 1) != 0;
+    state.selectableWhenDead = call.intArg(2) != 0;
+    return ActionCall::none();
+}
+
+// ACT_336 GetBlockingDoor 00536a80 reads the caller's +0x33c.
+Cells getBlockingDoor(ActionCall& call)
+{
+    return ActionCall::retObject(call.api().actor(call.self()).blockingDoor);
+}
+
+// ACT_489 GetAttemptedMovementTarget 00536900 reads the caller's +0x508.
+Cells getAttemptedMovementTarget(ActionCall& call)
+{
+    return ActionCall::retObject(call.api().actor(call.self()).attemptedMoveTarget);
+}
+
+// ACT_490 GetBlockingCreature(oTarget) 00546e00.
+Cells getBlockingCreature(ActionCall& call)
+{
+    return ActionCall::retObject(call.api().actor(call.objectArg(0)).blockingCreature);
+}
+
+// ACT_389 AddMultiClass(nClass, oSource) 0052ddc0: the Dantooine Jedi training. The
+// retail body was not traced. K1 has two class slots; the new one starts at level 1,
+// which is what k_pdan_makejedi tests with GetLevelByClass.
+Cells addMultiClass(ActionCall& call)
+{
+    ScriptApi api = call.api();
+    if (call.objectArg(1) == api.pc()) {
+        api.session.addPlayerClass(static_cast<std::int32_t>(call.intArg(0)));
+    }
+    return ActionCall::none();
+}
+
+// ACT_421 SetLightsaberPowered 00542f10. Held for the renderer; saber blades are
+// not switched on or off by the model code yet.
+Cells setLightsaberPowered(ActionCall& call)
+{
+    ActorState& state = call.api().actor(call.objectArg(0));
+    state.saberOverride = call.intArg(1) != 0;
+    state.saberPowered = call.intArg(2, 1) != 0;
+    return ActionCall::none();
+}
+
+// ACT_479 GetCreatureSize 00536f80: appearance.2da sizecategory.
+std::int32_t appearanceCell(const ScriptApi& api, std::int32_t row, const char* column)
+{
+    static std::optional<kotor::TwoDa> table;
+    if (!table.has_value()) {
+        if (auto data = api.install().find("appearance", 2017); data.has_value()) {
+            table = kotor::TwoDa::parse(std::move(*data), "appearance.2da");
+        } else {
+            return 0;
+        }
+    }
+    return std::atoi(table->cell(std::to_string(row), column).c_str());
+}
+
+Cells getCreatureSize(ActionCall& call)
+{
+    ScriptApi api = call.api();
+    const std::optional<Sheet> sheet = sheetOf(api, call.objectArg(0));
+    return ActionCall::retInt(sheet.has_value() ? appearanceCell(api, sheet->appearance, "sizecategory") : 0);
+}
+
+// ACT_566 GetCreatureMovmentType 0053efa0: the UTC walk-rate row, the same index the
+// movement code reads from creaturespeed.2da. The player's is the default row.
+Cells getCreatureMovementType(ActionCall& call)
+{
+    ScriptApi api = call.api();
+    const std::size_t index = api.entityFor(call.objectArg(0));
+    return ActionCall::retInt(index != kNone ? api.scene().entities[index].walkRateRow : 7);
+}
+
+// ACT_758 SetMaxHitPoints 00547d40. Shipped use is k_def_buff, on creatures.
+Cells setMaxHitPoints(ActionCall& call)
+{
+    ScriptApi api = call.api();
+    const std::size_t index = api.entityFor(call.objectArg(0));
+    if (index != kNone) {
+        kotor::Entity& entity = api.scene().entities[index];
+        entity.maxHitPoints = static_cast<std::int32_t>(call.intArg(1));
+        entity.hitPoints = std::min(entity.hitPoints, entity.maxHitPoints);
+    }
+    return ActionCall::none();
+}
+
+// ACT_549 GetNextPC 0053c920: a single-player world has one PC.
+Cells getNextPC(ActionCall&)
+{
+    return ActionCall::retObject(script::kObjectInvalid);
+}
+
+// ACT_500 DuplicateHeadAppearance(oChange, oMatch) 00546f90: the stunt scenes dress a
+// clone in the player's face.
+Cells duplicateHeadAppearance(ActionCall& call)
+{
+    ScriptApi api = call.api();
+    const auto entityOfObject = [&](std::uint32_t id) {
+        return id == api.pc() ? api.session.playerEntity() : api.entityFor(id);
+    };
+    const std::size_t change = entityOfObject(call.objectArgOrInvalid(0));
+    const std::size_t match = entityOfObject(call.objectArgOrInvalid(1));
+    kotor::Scene& scene = api.scene();
+    kotor::EntityMesh* target = nullptr;
+    const kotor::EntityMesh* source = nullptr;
+    for (kotor::EntityMesh& mesh : scene.entityMeshes) {
+        target = mesh.entity == change ? &mesh : target;
+        source = mesh.entity == match ? &mesh : source;
+    }
+    if (target != nullptr && source != nullptr) {
+        target->headModel = source->headModel;
+        target->headNode = source->headNode;
+        kotor::refreshEntityMesh(*target);
+    }
+    return ActionCall::none();
+}
+
 } // namespace
+
+std::int32_t creatureTotalLevel(ScriptApi api, std::uint32_t object)
+{
+    const std::optional<Sheet> sheet = sheetOf(api, object);
+    return sheet.has_value() ? totalLevels(*sheet) : 0;
+}
 
 void registerObjectActions(HandlerTable& table)
 {
@@ -1728,7 +1882,6 @@ void registerObjectActions(HandlerTable& table)
     table.add(494, getChallengeRating);
     table.add(495, getFoundEnemyCreature);
     table.add(497, getSubRace);
-    table.add(519, alwaysZero);
     table.add(524, getAppearanceType);
     table.add(531, getTrapBaseType);
     table.add(582, auroraPostString);
@@ -1736,6 +1889,21 @@ void registerObjectActions(HandlerTable& table)
     table.add(693, setGlobalLocation);
     table.add(761, shipBuild);
     table.add(764, alwaysZero);
+    table.add(84, getCasterLevel);
+    table.add(105, alwaysZero); // METAMAGIC_NONE: K1 casting has no meta-magic.
+    table.add(121, roundsToSeconds);
+    table.add(122, hoursToSeconds);
+    table.add(323, setIsDestroyable);
+    table.add(336, getBlockingDoor);
+    table.add(389, addMultiClass);
+    table.add(421, setLightsaberPowered);
+    table.add(479, getCreatureSize);
+    table.add(489, getAttemptedMovementTarget);
+    table.add(490, getBlockingCreature);
+    table.add(500, duplicateHeadAppearance);
+    table.add(549, getNextPC);
+    table.add(566, getCreatureMovementType);
+    table.add(758, setMaxHitPoints);
 }
 
 // ---- the family gate: --family-test objects -------------------------------------------

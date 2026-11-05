@@ -130,23 +130,9 @@ CharacterSheet Rules::createCharacter(std::int32_t classId, std::int32_t level,
         sheet.cha = cellInt(*classes_, row, "cha", 10);
         sheet.name = classes_->cell(row, "label");
     }
-    switch (classId) {
-    case 0: // Soldier
-        sheet.feats = {4, 5, 6, 39, 40, 42, 44};
-        break;
-    case 1: // Scout
-        sheet.feats = {5, 39, 40, 44};
-        break;
-    case 2: // Scoundrel
-        sheet.feats = {5, 39, 44};
-        break;
-    case 3:
-    case 4:
-    case 5: // Jedi Guardian/Consular/Sentinel
-        sheet.feats = {5, 43, 44, 55, 116};
-        break;
-    default:
-        break;
+    // Granted feats come from feat.2da (<prefix>_list == 3, <prefix>_granted <= level).
+    for (const std::int32_t feat : grantedFeats(classId, sheet.level)) {
+        sheet.feats.insert(feat);
     }
     sheet.maxHp = maxHitPoints(sheet.classId, sheet.level, sheet.con);
     sheet.hp = sheet.maxHp;
@@ -161,7 +147,8 @@ CharacterSheet Rules::createCharacter(std::int32_t classId, std::int32_t level,
     sheet.skillPoints = 0;
     sheet.featPoints = 0;
     for (std::int32_t current = 1; current <= sheet.level; ++current) {
-        sheet.skillPoints += skillPointsForLevel(sheet.classId, sheet.intel);
+        sheet.skillPoints += current == 1 ? chargenSkillPoints(sheet.classId, sheet.intel)
+                                          : skillPointsForLevel(sheet.classId, sheet.intel);
         sheet.featPoints += featsForLevel(sheet.classId, current);
     }
     return sheet;
@@ -249,29 +236,95 @@ std::int32_t Rules::maxHitPoints(std::int32_t classId, std::int32_t level,
 
 std::int32_t Rules::skillPointsForLevel(std::int32_t classId, std::int32_t intelligence) const
 {
+    // Level-up award (levels 2+): (SkillPointBase + INT mod) / 2, at least 1. From the
+    // retail level-up path; the rounding was not re-verified against the exe.
+    const std::int32_t base = classSkillPointBase(classId);
+    return std::max<std::int32_t>(1, (base + abilityModifier(intelligence)) / 2);
+}
+
+std::int32_t Rules::chargenSkillPoints(std::int32_t classId, std::int32_t intelligence) const
+{
+    // Level-1 award: four times (SkillPointBase / 2 + INT mod), never below 4.
+    const std::int32_t term = classSkillPointBase(classId) / 2 + abilityModifier(intelligence);
+    return std::max<std::int32_t>(4, term * 4);
+}
+
+std::int32_t Rules::classSkillPointBase(std::int32_t classId) const
+{
     if (!classes_ || classId < 0
         || classId >= static_cast<std::int32_t>(classes_->rowCount())) {
-        return 1;
+        return 2;
     }
-    const std::int32_t base = cellInt(*classes_, std::to_string(classId), "skillpointbase", 1);
-    return std::max<std::int32_t>(1, base + static_cast<std::int32_t>(abilityModifier(intelligence)));
+    return cellInt(*classes_, std::to_string(classId), "skillpointbase", 2);
+}
+
+std::int32_t Rules::classForceDie(std::int32_t classId) const
+{
+    if (!classes_ || classId < 0
+        || classId >= static_cast<std::int32_t>(classes_->rowCount())) {
+        return 0;
+    }
+    return cellInt(*classes_, std::to_string(classId), "forcedie", 0);
+}
+
+std::string Rules::classColumnPrefix(std::int32_t classId) const
+{
+    // classes.2da FeatGain names the column family used by featgain.2da, feat.2da
+    // (<p>_list/_granted) and skills.2da (<p>_class): SOL, SCT, SCD, JGD, JCN, JSN.
+    if (!classes_ || classId < 0
+        || classId >= static_cast<std::int32_t>(classes_->rowCount())) {
+        return {};
+    }
+    const std::string value = lower(classes_->cell(std::to_string(classId), "featgain"));
+    return value == "****" ? std::string{} : value;
 }
 
 std::int32_t Rules::featsForLevel(std::int32_t classId, std::int32_t level) const
 {
+    // The columns follow the class's own FeatGain prefix, not class id order: ids 4
+    // and 5 are Consular (JCN) and Sentinel (JSN); the old table had them swapped.
     if (!featgain_) {
         return 0;
     }
-    static const char* columns[] = {"sol_reg", "sct_reg", "scd_reg", "jgd_reg", "jsn_reg", "jcn_reg"};
-    if (classId < 0 || classId >= 6) {
+    const std::string prefix = classColumnPrefix(classId);
+    if (prefix.empty()) {
         return 0;
     }
     const int row = featgain_->rowIndex(std::to_string(std::max(1, std::min(level, 20)) - 1));
     if (row < 0) {
         return 0;
     }
-    return cellInt(*featgain_, featgain_->rowLabel(static_cast<std::size_t>(row)),
-                   columns[classId], 0);
+    const std::string label = featgain_->rowLabel(static_cast<std::size_t>(row));
+    return cellInt(*featgain_, label, prefix + "_reg", 0)
+        + cellInt(*featgain_, label, prefix + "_bon", 0);
+}
+
+std::vector<std::int32_t> Rules::grantedFeats(std::int32_t classId, std::int32_t level) const
+{
+    std::vector<std::int32_t> result;
+    const std::string prefix = classColumnPrefix(classId);
+    if (!feat_ || prefix.empty()) {
+        return result;
+    }
+    // Inferred from the table shape: list 3 with an empty recommendation rank is the
+    // class's automatic grant at `granted`; list 3 with a rank (Power Attack and
+    // similar) is a selectable signature feat. retail reads these columns by index and
+    // that reader was not located, so this reading is unverified.
+    for (std::size_t row = 0; row < feat_->rowCount(); ++row) {
+        const std::string label = feat_->rowLabel(row);
+        if (cellInt(*feat_, label, prefix + "_list", 0) != 3) {
+            continue;
+        }
+        const std::string recom = feat_->cell(label, prefix + "_recom");
+        if (!recom.empty() && recom != "****") {
+            continue;
+        }
+        const std::int32_t at = cellInt(*feat_, label, prefix + "_granted", -1);
+        if (at >= 0 && at <= level) {
+            result.push_back(static_cast<std::int32_t>(row));
+        }
+    }
+    return result;
 }
 
 bool Rules::canTakeFeat(const CharacterSheet& sheet, std::int32_t featId) const
@@ -406,15 +459,16 @@ std::optional<ForcePowerInfo> Rules::forcePower(std::int32_t powerId) const
 std::int32_t Rules::maxForcePoints(std::int32_t classId, std::int32_t level,
                                    std::int32_t wisdom, std::int32_t charisma) const
 {
-    // Jedi Guardian/Consular/Sentinel have force points. The engine uses a
-    // transparent data-scaled rule (10 + positive WIS/CHA modifiers per level)
-    // because the shipped tables do not carry a force-point progression.
-    if (classId < 3 || classId > 5) {
+    // classes.2da ForceDie per level plus the WIS and CHA modifiers per level, at
+    // least 1 per level; ForceDie 0 classes have no Force points. The die is applied
+    // flat (not rolled), the same way hit points are awarded here.
+    const std::int32_t die = classForceDie(classId);
+    if (die <= 0) {
         return 0;
     }
-    const std::int32_t wis = std::max(0, static_cast<std::int32_t>(abilityModifier(wisdom)));
-    const std::int32_t cha = std::max(0, static_cast<std::int32_t>(abilityModifier(charisma)));
-    return std::max<std::int32_t>(1, level * (10 + wis + cha));
+    const std::int32_t perLevel = std::max<std::int32_t>(
+        1, die + abilityModifier(wisdom) + abilityModifier(charisma));
+    return std::max<std::int32_t>(1, level) * perLevel;
 }
 
 std::int32_t Rules::forcePowerSaveDC(const CharacterSheet& sheet) const
@@ -1250,28 +1304,138 @@ std::string Rules::skillName(std::int32_t index) const
 
 bool Rules::skillIsClassSkill(std::int32_t classId, std::int32_t skillIndex) const
 {
-    if (!skills_ || classId < 0 || classId > 2 || skillIndex < 0
+    const std::string prefix = classColumnPrefix(classId);
+    if (!skills_ || prefix.empty() || skillIndex < 0
         || skillIndex >= static_cast<std::int32_t>(skills_->rowCount())) {
         return false;
     }
-    static const char* columns[] = {"sol_class", "sct_class", "scd_class"};
     const std::string row = skills_->rowLabel(static_cast<std::size_t>(skillIndex));
-    return cellInt(*skills_, row, columns[classId], 0) != 0;
+    return cellInt(*skills_, row, prefix + "_class", 0) != 0;
+}
+
+std::int32_t Rules::skillRankCost(std::int32_t classId, std::int32_t skillIndex) const
+{
+    return skillIsClassSkill(classId, skillIndex) ? 1 : 2;
+}
+
+std::int32_t Rules::maxSkillRank(std::int32_t classId, std::int32_t skillIndex,
+                                 std::int32_t level) const
+{
+    // Class skills rise to level + 3 ranks, cross-class skills to half of that.
+    const std::int32_t cap = std::max<std::int32_t>(1, level) + 3;
+    return skillIsClassSkill(classId, skillIndex) ? cap : cap / 2;
 }
 
 bool Rules::featIsAvailable(std::int32_t classId, std::int32_t featId) const
 {
-    if (!feat_ || classId < 0 || classId > 2 || featId < 0
+    const std::string prefix = classColumnPrefix(classId);
+    if (!feat_ || prefix.empty() || featId < 0
         || featId >= static_cast<std::int32_t>(feat_->rowCount())) {
         return false;
     }
-    const std::string row = std::to_string(featId);
-    if (cellInt(*feat_, row, "allclassescanuse", 0) != 0) {
+    const std::string row = feat_->rowLabel(static_cast<std::size_t>(featId));
+    // <prefix>_list: 1 = selectable, 3 = granted (selectable only when it carries a
+    // recommendation rank), 0 and 4 = not offered to the class. Inferred from the
+    // table shape; the retail reader was not located.
+    const std::int32_t list = cellInt(*feat_, row, prefix + "_list", 0);
+    if (list == 1) {
         return true;
     }
-    static const char* columns[] = {"sol_list", "sct_list", "scd_list"};
-    const std::string value = feat_->cell(row, columns[classId]);
-    return !value.empty() && value != "****" && value != "0";
+    if (list == 3) {
+        const std::string recom = feat_->cell(row, prefix + "_recom");
+        return !recom.empty() && recom != "****";
+    }
+    return false;
+}
+
+std::vector<std::int32_t> Rules::pcPortraitRows(std::int32_t gender) const
+{
+    std::vector<std::int32_t> rows;
+    if (!portraits_) {
+        return rows;
+    }
+    for (std::size_t row = 0; row < portraits_->rowCount(); ++row) {
+        const std::string label = portraits_->rowLabel(row);
+        if (cellInt(*portraits_, label, "forpc", 0) == 1
+            && cellInt(*portraits_, label, "sex", -1) == gender) {
+            rows.push_back(static_cast<std::int32_t>(row));
+        }
+    }
+    return rows;
+}
+
+PortraitInfo Rules::portraitRow(std::int32_t row) const
+{
+    PortraitInfo info;
+    if (!portraits_ || row < 0 || row >= static_cast<std::int32_t>(portraits_->rowCount())) {
+        return info;
+    }
+    const std::string label = portraits_->rowLabel(static_cast<std::size_t>(row));
+    info.row = row;
+    info.resref = portraits_->cell(label, "baseresref");
+    info.appearance = static_cast<std::uint32_t>(cellInt(*portraits_, label, "appearancenumber", 0));
+    info.appearanceSmall = static_cast<std::uint32_t>(cellInt(*portraits_, label, "appearance_s", 0));
+    info.appearanceLarge = static_cast<std::uint32_t>(cellInt(*portraits_, label, "appearance_l", 0));
+    info.sex = cellInt(*portraits_, label, "sex", 0);
+    static const char* columns[4] = {"baseresrefe", "baseresrefve", "baseresrefvve",
+                                     "baseresrefvvve"};
+    for (int i = 0; i < 4; ++i) {
+        const std::string value = portraits_->cell(label, columns[i]);
+        info.darkVariants[i] = value == "****" ? std::string{} : value;
+    }
+    return info;
+}
+
+std::string Rules::portraitResrefFor(const PortraitInfo& info, std::int32_t alignment) const
+{
+    // retail 00647e80: alignment <= 10 uses BaseResRefVVVE, 11..20 VVE, 21..30 VE,
+    // 31..40 E; anything higher (or a missing variant) uses BaseResRef.
+    int variant = -1;
+    if (alignment < 11) {
+        variant = 3;
+    } else if (alignment < 21) {
+        variant = 2;
+    } else if (alignment < 31) {
+        variant = 1;
+    } else if (alignment < 41) {
+        variant = 0;
+    }
+    if (variant >= 0 && !info.darkVariants[variant].empty()) {
+        return info.darkVariants[variant];
+    }
+    return info.resref;
+}
+
+std::int32_t Rules::portraitAppearance(std::int32_t row, std::int32_t classId) const
+{
+    const PortraitInfo info = portraitRow(row);
+    if (info.row < 0) {
+        return -1;
+    }
+    switch (classId) {
+    case 0: return static_cast<std::int32_t>(info.appearanceLarge);
+    case 2: return static_cast<std::int32_t>(info.appearanceSmall);
+    default: return static_cast<std::int32_t>(info.appearance);
+    }
+}
+
+std::int32_t Rules::portraitRowForAppearance(std::int32_t appearance) const
+{
+    if (!portraits_ || appearance < 0) {
+        return -1;
+    }
+    for (std::size_t row = 0; row < portraits_->rowCount(); ++row) {
+        const std::string label = portraits_->rowLabel(row);
+        if (cellInt(*portraits_, label, "forpc", 0) != 1) {
+            continue;
+        }
+        for (const char* column : {"appearancenumber", "appearance_s", "appearance_l"}) {
+            if (cellInt(*portraits_, label, column, -1) == appearance) {
+                return static_cast<std::int32_t>(row);
+            }
+        }
+    }
+    return -1;
 }
 
 } // namespace ke

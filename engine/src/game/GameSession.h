@@ -3,9 +3,11 @@
 #include "game/AudioSystem.h"
 #include "game/FacialRig.h"
 #include "game/Factions.h"
+#include "game/MiniGame3D.h"
 #include "game/Minigames.h"
 #include "game/Party.h"
 #include "game/Rules.h"
+#include "game/VideoEffectController.h"
 #include "game/ScriptHost.h"
 #include "kotor/BinkDecoder.h"
 #include "kotor/Localization.h"
@@ -107,6 +109,7 @@ public:
     kotor::Scene& scene() { return scene_; }
     const std::string& module() const { return module_; }
     const std::string& installPath() const { return installPath_; }
+    kotor::Install& install() { return install_; }
     const std::string& buildSha256() const { return install_.buildSha256(); }
     const Rules& rules() const { return rules_; }
     const kotor::Localization& localization() const { return *localization_; }
@@ -147,6 +150,9 @@ public:
     std::string interactionPrompt() const;
     bool interact();
     bool testTransition(std::string& from, std::string& to);
+    // Queues the module the next update() enters, through the same path as the
+    // StartNewModule action (new game: chargen hands the character here).
+    void requestModule(const std::string& module) { pendingModule_ = module; }
     bool save(const std::filesystem::path& path) const;
     bool load(const std::filesystem::path& path);
     // Original KotOR save folder (SAVEGAME.sav + sidecars). The reader maps
@@ -202,18 +208,18 @@ public:
     int lastPazaakResult() const { return lastPazaakResult_; }
     void resolvePazaakIfOver();
     void stopPazaak() { pazaak_.reset(); pazaakEndScript_.clear(); pazaakWager_ = 0; }
-    void startSwoop();
-    void startTurret();
-    void updateSwoop(float dt, float throttle, bool boost, bool brake);
-    void updateTurret(float dt);
-    bool swoopActive() const { return swoopActive_; }
-    bool turretActive() const { return turretActive_; }
-    SwoopRace& swoop() { return swoop_; }
-    const SwoopRace& swoop() const { return swoop_; }
-    TurretGame& turret() { return turret_; }
-    const TurretGame& turret() const { return turret_; }
-    void stopSwoop() { swoopActive_ = false; }
-    void stopTurret() { turretActive_ = false; }
+    // Shipped minigame modules. Entering one is a normal module load; these are the
+    // player-level input and the state a window or a bot reads (game/MiniGame3D.h).
+    bool miniGameActive() const;
+    bool enterMiniGameModule(const std::string& module) { return loadModule(module, nullptr, {}); }
+    void miniGameSetInput(const MiniGameInput& input);
+    MiniGameView miniGameView() const;
+    MiniGameWorld* miniGame();
+    const MiniGameWorld* miniGame() const;
+    void setMiniGameSeed(std::uint32_t seed);
+    void setMiniGameMeshesHidden(bool hidden);
+    // Writes the minigame's poses into the scene's meshes before a frame is drawn.
+    void bakeMiniGame();
     // Drops the conversation without firing its end scripts (test fixtures).
     void clearDialogueForTest() { clearDialogueState(); }
     void chooseDialogueOption(std::size_t optionIndex);
@@ -222,10 +228,42 @@ public:
     // True while an ActionPauseConversation holds the conversation; options are
     // refused until a resume runs or nothing is left in flight.
     bool dialoguePaused() const { return sim_->dialoguePaused; }
+    // The ending (ScriptWorldState.cpp). gameEnded: EndGame finished and the world is
+    // torn down; the UI goes back to the main menu.
+    bool gameEnded() const;
+    void finishGameEnding();
+    // One action with `self` as the caller, as a family gate needs it (ScriptWorldState.cpp).
+    std::optional<std::vector<script::Value>> actionAsForTest(
+        std::uint32_t self, std::uint16_t id, const std::vector<std::vector<script::Value>>& args);
+    // Level-up points waiting to be spent. Levels themselves arrive with the XP.
+    bool canLevelUp() const {
+        return character_.attributePoints > 0 || character_.skillPoints > 0 || character_.featPoints > 0;
+    }
+    void addPlayerClass(std::int32_t classId);
+    AudioSystem* audioOrNull() { return audio_.get(); }
+    bool setDialoguePlaceableCamera(std::int32_t cameraId);
+    bool gameOverPanelVisible() const;
+    bool creditsActive() const;
+    std::int32_t creditsPageStrref() const; // -1 when no credits are showing.
+    float creditsOpacity() const;
+    bool creditsTransparent() const;
+    void skipCredits();
+    // A tutorial window a script asked for, or -1; dismiss clears it.
+    std::int32_t pendingTutorialWindow() const;
+    void dismissTutorialWindow();
+    bool scriptPauseActive() const;
+    void clearScriptPause();
     // The last start attempt found no starting link whose Active passed. This is
     // retail behaviour for such a conversation, not a load failure.
     bool dialogueHadNoStart() const { return sim_->noStartLink; }
-    int unsupportedCamVidEffects() const { return unsupportedCamVidEffects_; }
+    // Dialogue CamVidEffect values the install cannot apply (no such
+    // videoeffects.2da row or no enabled pass). Retail ignores them too.
+    int unsupportedCamVidEffects() const { return videoEffects_.rejectedCount(); }
+    // Video effects (ACT_508/510 and dialogue CamVidEffect; render/VideoEffect.h).
+    void enableVideoEffect(std::int32_t row) { videoEffects_.enable(install_, row); }
+    void disableVideoEffect() { videoEffects_.disable(); }
+    const VideoEffectState& videoEffect() const { return videoEffects_.state(); }
+    const VideoEffectController& videoEffectController() const { return videoEffects_; }
     const std::vector<script::WorldEvent>& actionTrace() const;
     bool probeAction(std::uint16_t actionId);
     const std::vector<DialogueChoiceEvent>& dialogueChoiceTrace() const {
@@ -341,6 +379,28 @@ public:
     void setNpcSelectability(int npc, int value);
     bool setPartyLeaderNpc(int npc);
     bool switchPlayerCharacter(int npc);
+
+    // ---- companion control (PartyControl.cpp) --------------------------------
+    // The controlled creature receives the input, the camera and the player's
+    // interactions. The PC keeps position_, playerHp_ and its combat state while
+    // a companion is controlled and follows like any other member.
+    bool companionControlled() const;
+    // Entity index of the controlled creature; the PC's avatar entity (which may
+    // be -1 outside third person) while the PC leads.
+    std::size_t controlledEntity() const;
+    kotor::Vec3 controlledPosition() const;
+    float controlledBearing() const;
+    std::int32_t controlledHp() const;
+    std::int32_t controlledMaxHp() const;
+    bool controlledDead() const;
+    // UI and bot: choose who to control. Refused for an unavailable, unselectable
+    // or dead creature, and while solo mode is on or the player has no control.
+    bool selectLeaderNpc(int npc);
+    // Tab (keymap.2da ChangeChar): the next selectable living creature in
+    // PC-then-member order. False when nobody else can be chosen.
+    bool cycleLeader();
+    // The creatures the player may pick, PC first (kNpcPlayer then member ids).
+    std::vector<int> selectableLeaders() const;
     void setSoloMode(bool solo);
     bool soloMode() const { return party_.solo; }
     // Refreshes the stored creature of an NPC from its live state.
@@ -592,7 +652,7 @@ private:
     bool loadModule(const std::string& module, const kotor::Vec3* spawn, const std::string& linkedDoor);
     const kotor::Entity* nearestDoor(float maxDistance) const;
     const kotor::Entity* nearestConversation(float maxDistance) const;
-    bool loadDialogue(const std::string& resref, kotor::Dlg& dlg);
+    bool loadDialogue(const std::string& resref, kotor::Dlg& dlg, int speakerGender = 0);
     void showDialogueEntry(std::uint32_t entryIndex);
     bool startConversation(std::uint32_t owner, const std::string& resref);
     void finishDialogue(bool aborted);
@@ -653,15 +713,24 @@ private:
     void updateParty(float dt);
     // Navigation, in Pathfinding.cpp.
     nav::NavMesh* navMesh();
+    // Name of the LYT room under `point` (empty off the walkmesh). Drives the per-room EAX environment.
+    std::string roomNameAt(kotor::Vec3 point);
     void loadMovementTables();
     float creatureMoveRate(std::uint32_t object, bool run);
     float creatureRadius(std::uint32_t object);
     float creatureApproachRange(std::uint32_t self, std::uint32_t target, float range);
-    kotor::Vec3 slidePlayer(kotor::Vec3 from, kotor::Vec3 to, bool& moved);
+    kotor::Vec3 slidePlayer(kotor::Vec3 from, kotor::Vec3 to, bool& moved, float radius = -1.0f);
     kotor::Vec3 formationSlot(kotor::Vec3 anchor, float anchorYaw, int slot, float baseDistance);
-    void followLeader(std::size_t entity, kotor::Vec3 anchor, kotor::Vec3 slot, float dt);
+    void followLeader(std::uint32_t follower, kotor::Vec3 anchor, kotor::Vec3 slot, float dt);
     void placePartyAtEntry();
     friend int runPathfindingFamilyTest(GameSession& game);
+    friend int runCompanionFamilyTest(GameSession& game);
+    // Companion control internals (PartyControl.cpp).
+    void stepControlledCompanion(float dt, const InputState& input);
+    void onControlChanged(int previous, int next);
+    void passControlIfDown();
+    void controlPcDefence();
+    void showControlledBodies();
     std::size_t ensureCompanionEntity(const CompanionState& companion);
     // Party table internals (ScriptParty.cpp).
     void tickParty(float dt);
@@ -691,10 +760,6 @@ private:
     void spawnPlayerAvatar();
     void updatePlayerAvatar(float dt, bool moving);
     void updateFacialMeshes();
-    std::optional<std::vector<script::Value>> spaceMinigameAction(
-        std::uint16_t actionId, const std::vector<std::vector<script::Value>>& args);
-    void ensureSpaceEnemies();
-    std::uint32_t spaceEnemy(std::size_t index);
     void syncEntityToScriptWorld(std::size_t index);
     std::string scriptSource(const std::string& resref);
 
@@ -723,7 +788,7 @@ private:
     std::optional<kotor::Tlk> tlk_;
     std::optional<ActiveDialogue> activeDialogue_;
     DialogueView dialogueView_;
-    int unsupportedCamVidEffects_ = 0;
+    VideoEffectController videoEffects_;
     std::shared_ptr<kotor::Mdl> dialogueCameraModel_;
     std::string dialogueCameraClip_;
     float dialogueCameraTime_ = 0.0f;
@@ -743,14 +808,6 @@ private:
     std::shared_ptr<audio::SoundData> movieAudioData_;
     int movieAudioVoice_ = 0;
     std::unique_ptr<PazaakGame> pazaak_;
-    SwoopRace swoop_;
-    TurretGame turret_;
-    bool swoopActive_ = false;
-    bool turretActive_ = false;
-    enum class SpaceMode { None, Swoop, Turret };
-    SpaceMode spaceMode_ = SpaceMode::None;
-    std::vector<std::uint32_t> spaceEnemies_;
-    std::string spaceLastEvent_;
     std::string pazaakEndScript_;
     std::uint32_t pazaakOpponent_ = 0;
     std::int32_t pazaakWager_ = 0;

@@ -1002,6 +1002,39 @@ std::uint32_t GameSession::inventoryObject(std::size_t index)
                                                 : script::kObjectInvalid;
 }
 
+// ActionEquipMostDamaging*: the carried weapon with the highest numdice x dietoroll
+// (baseitems.2da). Item-property damage is not weighed; the retail comparison was not
+// traced. Slot 4 is the right hand, 5 the left.
+bool equipMostDamaging(GameSession& session, std::uint32_t creature, bool ranged, bool offHand)
+{
+    if (!session.rules().loaded()) {
+        return false;
+    }
+    ItemOps ops(session);
+    std::uint32_t best = script::kObjectInvalid;
+    std::int32_t bestScore = 0;
+    for (const std::uint32_t id : ops.carried(creature)) {
+        const script::GameObject* gear = ops.object(id);
+        if (gear == nullptr || !ops.isItem(id)) {
+            continue;
+        }
+        const std::int32_t base = static_cast<std::int32_t>(gear->baseItem);
+        const std::int32_t score = session.rules().baseItemInt(base, "numdice", 0)
+            * session.rules().baseItemInt(base, "dietoroll", 0);
+        if (score <= bestScore
+            || (session.rules().baseItemInt(base, "rangedweapon", 0) != 0) != ranged) {
+            continue;
+        }
+        best = id;
+        bestScore = score;
+    }
+    if (best == script::kObjectInvalid) {
+        return false;
+    }
+    const std::int32_t slot = offHand ? 5 : 4;
+    return ops.slotOf(best) == slot || ops.equip(creature, best, slot);
+}
+
 bool GameSession::equipItemObject(std::uint32_t creature, std::uint32_t item, std::int32_t slot)
 {
     return ItemOps(*this).equip(creature, item, slot);
@@ -1247,7 +1280,7 @@ bool GameSession::useItem(std::uint32_t item, std::uint32_t user, std::uint32_t 
 {
     ItemOps ops(*this);
     if (user == 0 || user == script::kObjectInvalid) {
-        user = scriptWorld_.pc;
+        user = controlledObject(); // the creature the player steers uses it
     }
     if (!ops.isItem(item)) {
         return false;

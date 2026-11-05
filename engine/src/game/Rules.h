@@ -33,6 +33,8 @@ struct InventoryItem {
 struct CharacterSheet {
     std::string name = "Player";
     std::int32_t classId = 0;
+    std::int32_t secondClassId = -1; // AddMultiClass; -1 = none.
+    std::int32_t secondClassLevel = 0;
     std::int32_t level = 1;
     std::int32_t xp = 0;
     std::int32_t hp = 1;
@@ -47,6 +49,8 @@ struct CharacterSheet {
     std::int32_t wis = 10;
     std::int32_t cha = 10;
     std::int32_t alignment = 50; // 0 dark .. 50 neutral .. 100 light
+    std::int32_t gender = 0;     // gender.2da row: 0 male, 1 female (retail stats byte +0x31)
+    std::int32_t portraitRow = -1; // portraits.2da row, -1 = unset
     std::map<std::string, std::int32_t> skills;
     std::set<std::int32_t> feats;
     std::set<std::int32_t> powers;
@@ -114,6 +118,11 @@ struct PortraitInfo {
     std::string resref;
     std::uint32_t appearance = 0;
     int sex = 0;
+    int row = -1; // portraits.2da row
+    std::uint32_t appearanceSmall = 0; // Appearance_S column
+    std::uint32_t appearanceLarge = 0; // Appearance_L column
+    // BaseResRefE, VE, VVE, VVVE: dark-side art, mildest first. retail 00647e80.
+    std::string darkVariants[4];
 };
 
 // Read-only rules facade. One instance per install; tables are loaded once.
@@ -196,6 +205,32 @@ public:
     std::int32_t playableClassCount() const { return 3; }
     std::int32_t portraitCount() const;
     PortraitInfo portrait(std::int32_t index) const;
+    // portraits.2da rows a new player character may use: Sex == gender, ForPC == 1
+    // (retail 006f9430). Row numbers are table row indices.
+    std::vector<std::int32_t> pcPortraitRows(std::int32_t gender) const;
+    PortraitInfo portraitRow(std::int32_t row) const;
+    // The portrait art for an alignment (0 dark .. 100 light): the BaseResRef*
+    // variants apply below 41, falling back to the base art when the row has none.
+    std::string portraitResrefFor(const PortraitInfo& info, std::int32_t alignment) const;
+    // appearance.2da row for a portrait row and a base class: Soldier uses
+    // Appearance_L, Scout AppearanceNumber, Scoundrel Appearance_S (retail 006dc3c0).
+    // Jedi classes use the Scout (medium) body.
+    std::int32_t portraitAppearance(std::int32_t row, std::int32_t classId) const;
+    // Inverse of the above for a stored appearance id, -1 when no PC row has it.
+    std::int32_t portraitRowForAppearance(std::int32_t appearance) const;
+    // Feats the class receives automatically at `level` (feat.2da <prefix>_list == 3
+    // with no recommendation rank and <prefix>_granted <= level).
+    std::vector<std::int32_t> grantedFeats(std::int32_t classId, std::int32_t level) const;
+    // Skill points at character creation (retail doubles-and-quadruples rule).
+    std::int32_t chargenSkillPoints(std::int32_t classId, std::int32_t intelligence) const;
+    // Highest rank for a skill at a level and the cost of one rank.
+    std::int32_t maxSkillRank(std::int32_t classId, std::int32_t skillIndex,
+                              std::int32_t level) const;
+    std::int32_t skillRankCost(std::int32_t classId, std::int32_t skillIndex) const;
+    // classes.2da cell helpers for the Jedi/base classes.
+    std::int32_t classForceDie(std::int32_t classId) const;
+    std::int32_t classSkillPointBase(std::int32_t classId) const;
+    std::string classColumnPrefix(std::int32_t classId) const;
     std::int32_t skillCount() const;
     std::string skillName(std::int32_t index) const;
     bool skillIsClassSkill(std::int32_t classId, std::int32_t skillIndex) const;

@@ -1,7 +1,9 @@
 #pragma once
 
 #include "kotor/Formats.h"
+#include "render/Backend.h"
 #include "render/SceneView.h"
+#include "render/VideoEffect.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -73,6 +75,10 @@ struct GlApi {
     void(KE_GLAPI* PixelStorei)(GlEnum, GlInt) = nullptr;
     void(KE_GLAPI* GenerateMipmap)(GlEnum) = nullptr;
     GlEnum(KE_GLAPI* GetError)() = nullptr;
+    void(KE_GLAPI* DrawArrays)(GlEnum, GlInt, GlSizei) = nullptr;
+    void(KE_GLAPI* CopyTexSubImage2D)(GlEnum, GlInt, GlInt, GlInt, GlInt, GlInt, GlSizei, GlSizei) = nullptr;
+    void(KE_GLAPI* Uniform3fv)(GlInt, GlSizei, const GlFloat*) = nullptr;
+    void(KE_GLAPI* Scissor)(GlInt, GlInt, GlSizei, GlSizei) = nullptr;
 };
 
 class GlScene {
@@ -82,10 +88,22 @@ public:
     bool upload(const kotor::Scene& scene, std::string& error);
     void refreshEntityMeshes(const kotor::Scene& scene);
     void render(const SceneCamera& camera, int width, int height);
+    void setVideoEffect(const VideoEffectState& effect) { effect_ = effect; }
     bool screenshot(const std::filesystem::path& path, int width, int height);
     bool uploadMovieFrame(int width, int height, const std::uint8_t* rgba,
                           GlUint& texture, std::string& error);
     void destroyMovieFrame(GlUint& texture);
+
+    // 3D GUI preview: draws one PreviewView of the uploaded (preview) scene into its
+    // window rectangle (top-left pixel origin) without touching pixels outside it.
+    // Restores viewport and scissor state afterwards. Never clears the whole window.
+    void renderView(const PreviewView& view, int windowWidth, int windowHeight);
+    // Frees the uploaded scene's GPU resources but keeps the shader program.
+    void clearScene() { destroyGpu(); }
+    // Reads the window framebuffer (GL_BACK before the swap, GL_FRONT after) into
+    // tightly packed RGBA8 with a top-left origin and opaque alpha.
+    bool readFramePixels(bool backBuffer, int width, int height,
+                         std::vector<std::uint8_t>& rgbaTopLeft);
 
 private:
     struct GlMesh {
@@ -103,6 +121,8 @@ private:
                       const std::vector<kotor::TextureBatch>& batches, std::uint32_t entity);
     void drawMesh(const GlMesh& mesh);
     void destroyGpu();
+    bool createPostProgram(std::string& error);
+    void applyVideoEffect(int width, int height);
 
     GlApi gl_;
     GlUint program_ = 0;
@@ -115,6 +135,16 @@ private:
     float fogNear_ = 40.0f;
     float fogFar_ = 160.0f;
     bool loggedFirstFrame_ = false;
+
+    // Video effect post pass (ACT_508/510): the scene is copied to a texture
+    // and redrawn through the effect program, as retail does.
+    VideoEffectState effect_;
+    GlUint postProgram_ = 0;
+    GlUint postVao_ = 0;
+    GlUint sceneCopy_ = 0;
+    GlUint noiseTexture_ = 0;
+    int copyWidth_ = 0;
+    int copyHeight_ = 0;
 };
 
 } // namespace ke

@@ -120,7 +120,11 @@ bool AudioSystem::loadScene(const kotor::Scene& scene, std::string& error)
             entitySoundSets_[static_cast<std::uint32_t>(index)] = entity.soundSet;
         }
     }
+    // Stand-in until the first room lookup: the GIT EnvAudio label. Retail does not
+    // read that field (it starts at environment 0 and follows ARE Rooms/EnvAudio).
     mixer_.setReverb(areaAudio_.eaxPreset);
+    currentRoom_.clear();
+    roomEnvironment_ = -1;
     mixer_.setBusVolume(audio::Bus::Music, musicVolume_);
     ambientVolume_ = areaAudio_.ambientDayVolume > 0
         ? static_cast<float>(areaAudio_.ambientDayVolume) / 100.0f
@@ -143,6 +147,33 @@ bool AudioSystem::loadScene(const kotor::Scene& scene, std::string& error)
         playAmbient(ambientId);
     }
     return true;
+}
+
+std::string AudioSystem::eaxLabel(int row) const
+{
+    if (!eaxTable_.has_value() || row < 0) {
+        return {};
+    }
+    const std::string key = std::to_string(row);
+    return eaxTable_->rowIndex(key) >= 0 ? eaxTable_->cell(key, "label") : std::string{};
+}
+
+void AudioSystem::setListenerRoom(const std::string& roomName)
+{
+    if (roomName.empty() || roomName == currentRoom_) {
+        return;
+    }
+    const std::string wanted = lower(roomName);
+    for (const kotor::AreaRoomAudio& room : areaAudio_.rooms) {
+        if (lower(room.room) == wanted) {
+            currentRoom_ = roomName;
+            if (room.envAudio >= 0 && room.envAudio != roomEnvironment_) {
+                roomEnvironment_ = room.envAudio;
+                mixer_.setReverbEnvironment(room.envAudio, true);
+            }
+            return;
+        }
+    }
 }
 
 void AudioSystem::setListener(kotor::Vec3 position, float yaw)

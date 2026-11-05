@@ -237,6 +237,22 @@ void addAreaAudio(Install& install, const Gff& git, std::uint32_t root, Scene& s
     }
 }
 
+// ARE "Rooms": the per-room EAX environment (EnvAudio) and AmbientScale.
+void addRoomAudio(const Gff& are, std::uint32_t root, Scene& scene)
+{
+    for (const std::uint32_t structure : list(are, root, "Rooms")) {
+        AreaRoomAudio room;
+        room.room = text(are, structure, "RoomName");
+        if (const GffField* env = field(are, structure, "EnvAudio")) {
+            room.envAudio = are.integer(*env);
+        }
+        room.ambientScale = number(are, structure, "AmbientScale", 1.0f);
+        if (!room.room.empty()) {
+            scene.areaAudio.rooms.push_back(std::move(room));
+        }
+    }
+}
+
 void addSoundEmitters(Install& install, const Gff& git, std::uint32_t root, Scene& scene)
 {
     const GffField* listField = git.field(root, "SoundList");
@@ -490,6 +506,7 @@ Scene loadModule(Install& install, const std::string& moduleStem)
     addEntities(git, git.rootIndex(), "StoreList", EntityKind::Store, scene);
     addCameras(git, git.rootIndex(), scene);
     addAreaAudio(install, git, git.rootIndex(), scene);
+    addRoomAudio(are, are.rootIndex(), scene);
     addSoundEmitters(install, git, git.rootIndex(), scene);
 
     loadEntityAssets(scene, install, git);

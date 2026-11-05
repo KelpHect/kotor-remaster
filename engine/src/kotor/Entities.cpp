@@ -869,6 +869,73 @@ void refreshEntityMesh(EntityMesh& mesh)
     refreshEntityMeshImpl(mesh);
 }
 
+EntityMesh buildWorldEntityMesh(Scene& scene, Install& install, const std::shared_ptr<Mdl>& model)
+{
+    EntityMesh mesh;
+    mesh.entity = UINT32_MAX;
+    if (!model) {
+        return mesh;
+    }
+    std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
+    for (MdlMeshTriangle& triangle : model->posedTrianglesLayered({}, true)) {
+        std::string texture = lower(triangle.texture);
+        if (texture.empty()) {
+            texture = "__default";
+        }
+        byTexture[texture].push_back(std::move(triangle));
+    }
+    for (const auto& [textureName, list] : byTexture) {
+        TextureBatch batch;
+        batch.texture = ensureTexture(scene, install, textureName);
+        batch.blend = list.front().blend;
+        batch.firstIndex = static_cast<std::uint32_t>(mesh.indices.size());
+        for (const MdlMeshTriangle& triangle : list) {
+            for (int i = 0; i < 3; ++i) {
+                mesh.vertices.push_back({triangle.v[i].position, triangle.v[i].normal, triangle.v[i].uv});
+                mesh.indices.push_back(static_cast<std::uint32_t>(mesh.vertices.size() - 1));
+            }
+        }
+        batch.indexCount = static_cast<std::uint32_t>(mesh.indices.size()) - batch.firstIndex;
+        mesh.batches.push_back(batch);
+    }
+    return mesh;
+}
+
+void bakeWorldEntityMesh(EntityMesh& mesh, const std::shared_ptr<Mdl>& model,
+                         const std::vector<MdlAnimLayer>& layers, const Mat3& rotation, Vec3 translation)
+{
+    if (!model || mesh.vertices.empty()) {
+        return;
+    }
+    std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
+    for (MdlMeshTriangle& triangle : model->posedTrianglesLayered(layers, true)) {
+        std::string texture = lower(triangle.texture);
+        if (texture.empty()) {
+            texture = "__default";
+        }
+        byTexture[texture].push_back(std::move(triangle));
+    }
+    std::size_t at = 0;
+    for (const auto& [textureName, list] : byTexture) {
+        (void)textureName;
+        for (const MdlMeshTriangle& triangle : list) {
+            for (int i = 0; i < 3 && at < mesh.vertices.size(); ++i, ++at) {
+                SceneVertex& vertex = mesh.vertices[at];
+                vertex.position = translation + rotate(rotation, triangle.v[i].position);
+                vertex.normal = rotate(rotation, triangle.v[i].normal);
+                vertex.uv = triangle.v[i].uv;
+            }
+        }
+    }
+    ++mesh.revision;
+}
+
+std::shared_ptr<Mdl> loadWorldModel(Install& install, const std::string& modelName)
+{
+    std::string error;
+    return loadModel(install, modelName, error);
+}
+
 void collectScriptHooks(const Gff& gff, std::uint32_t structure,
                         std::map<std::string, std::string>& scripts)
 {

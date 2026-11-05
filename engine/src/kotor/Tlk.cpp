@@ -5,6 +5,24 @@
 
 namespace ke::kotor {
 
+void Tlk::attachFemale(Tlk female)
+{
+    female_ = std::make_shared<const Tlk>(std::move(female));
+}
+
+std::string Tlk::text(std::uint32_t strref, int gender) const
+{
+    // retail CExoLocString::GetString: table index = language * 2 + gender, with
+    // gender forced to 0 for English; a missing feminine entry reads masculine.
+    if (gender == 1 && female_ != nullptr && language_ != 0) {
+        std::string value = female_->text(strref);
+        if (!value.empty()) {
+            return value;
+        }
+    }
+    return text(strref);
+}
+
 std::string Tlk::text(std::uint32_t strref) const
 {
     if (strref >= entries_.size()) {
@@ -178,9 +196,11 @@ std::size_t Ssf::filledSlots() const
         [](std::int32_t value) { return value >= 0; }));
 }
 
-Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
+Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name, int entryGender,
+               int replyGender)
 {
     Dlg dlg;
+    int gender = entryGender; // switched to replyGender while the reply list is read
     const std::uint32_t root = gff.rootIndex();
     dlg.endConversation = [&]() {
         const GffField* f = gff.field(root, "EndConversation");
@@ -203,7 +223,7 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
         }
         try {
             const std::uint32_t strref = static_cast<std::uint32_t>(std::stoul(value));
-            const std::string resolved = tlk->text(strref);
+            const std::string resolved = tlk->text(strref, gender);
             return resolved.empty() ? value : resolved;
         } catch (const std::exception&) {
             return value;
@@ -215,7 +235,7 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
         }
         try {
             const std::uint32_t strref = static_cast<std::uint32_t>(std::stoul(raw));
-            return tlk->text(strref);
+            return tlk->text(strref, gender);
         } catch (const std::exception&) {
             return raw;
         }
@@ -226,7 +246,7 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
         }
         const std::uint32_t strref = gff.locStringStrref(field);
         if (tlk != nullptr && strref != UINT32_MAX) {
-            const std::string resolved = tlk->text(strref);
+            const std::string resolved = tlk->text(strref, gender);
             if (!resolved.empty()) {
                 return resolved;
             }
@@ -333,6 +353,7 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name)
             dlg.entries.push_back(std::move(entry));
         }
     }
+    gender = replyGender;
     if (const GffField* f = gff.field(root, "ReplyList"); f != nullptr) {
         for (const std::uint32_t s : gff.list(*f)) {
             DlgReply reply;

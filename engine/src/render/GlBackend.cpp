@@ -9,6 +9,7 @@
 
 #include <SDL3/SDL.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -175,6 +176,11 @@ public:
 
     void setCamera(const SceneCamera& camera) override { camera_ = camera; }
 
+    void setVideoEffect(const VideoEffectState& effect) override
+    {
+        sceneRenderer_.setVideoEffect(effect);
+    }
+
     void refreshEntityMeshes(const kotor::Scene& scene) override
     {
         if (sceneReady_) {
@@ -211,6 +217,100 @@ public:
         textureId = texture;
     }
 
+    bool supportsPreview() const noexcept override { return initialized_ && sceneReady_; }
+
+    bool setPreviewScene(const kotor::Scene* scene, std::string& error) override
+    {
+        if (!initialized_ || !sceneReady_) {
+            error = "OpenGL scene renderer is unavailable";
+            return false;
+        }
+        if (scene == nullptr) {
+            previewScene_ = nullptr;
+            if (previewReady_) {
+                previewRenderer_.clearScene();
+            }
+            return true;
+        }
+        if (!previewReady_) {
+            if (!previewRenderer_.initialize(error)) {
+                return false;
+            }
+            previewReady_ = true;
+        }
+        previewScene_ = nullptr;
+        if (!previewRenderer_.upload(*scene, error)) {
+            return false;
+        }
+        previewScene_ = scene;
+        return true;
+    }
+
+    void setPreviewViews(const std::vector<PreviewView>& views) override
+    {
+        const std::size_t count = std::min<std::size_t>(views.size(), kMaxPreviewViews);
+        previewViews_.assign(views.begin(), views.begin() + static_cast<std::ptrdiff_t>(count));
+    }
+
+    void refreshPreviewMeshes() override
+    {
+        if (previewReady_ && previewScene_ != nullptr) {
+            previewRenderer_.refreshEntityMeshes(*previewScene_);
+        }
+    }
+
+    bool uploadUiImage(int width, int height, const std::uint8_t* rgba,
+                       std::uint64_t& textureId, std::string& error) override
+    {
+        if (!initialized_) {
+            error = "OpenGL backend is not initialized";
+            return false;
+        }
+        GlUint texture = static_cast<GlUint>(textureId);
+        if (!sceneRenderer_.uploadMovieFrame(width, height, rgba, texture, error)) {
+            return false;
+        }
+        textureId = texture;
+        return true;
+    }
+
+    void releaseUiImage(std::uint64_t& textureId) override
+    {
+        if (!initialized_) {
+            textureId = 0;
+            return;
+        }
+        GlUint texture = static_cast<GlUint>(textureId);
+        sceneRenderer_.destroyMovieFrame(texture);
+        textureId = texture;
+    }
+
+    bool captureFrame(CapturedFrame& frame) override
+    {
+        if (!initialized_ || !sceneReady_ || window_ == nullptr) {
+            return false;
+        }
+        // The first request arms the pre-swap read in renderFrame (the front buffer is
+        // undefined after SwapWindow on some drivers); until a cached frame exists the
+        // front buffer is read like screenshot() does.
+        captureArmed_ = true;
+        if (captureWidth_ > 0 && captureHeight_ > 0 && !capturePixels_.empty()) {
+            frame.width = captureWidth_;
+            frame.height = captureHeight_;
+            frame.rgba = capturePixels_;
+            return true;
+        }
+        int width = 0;
+        int height = 0;
+        SDL_GetWindowSizeInPixels(window_, &width, &height);
+        if (!sceneRenderer_.readFramePixels(false, width, height, frame.rgba)) {
+            return false;
+        }
+        frame.width = width;
+        frame.height = height;
+        return true;
+    }
+
     FrameStatus renderFrame(std::string& error) override
     {
         if (!initialized_ || window_ == nullptr) {
@@ -234,8 +334,21 @@ public:
             glClear_(kGlColorBufferBit);
         }
 
+        if (previewReady_ && previewScene_ != nullptr) {
+            for (const PreviewView& view : previewViews_) {
+                previewRenderer_.renderView(view, width, height);
+            }
+        }
+
         if (ImDrawData* drawData = ImGui::GetDrawData(); drawData != nullptr) {
             ImGui_ImplOpenGL3_RenderDrawData(drawData);
+        }
+
+        if (captureArmed_ && sceneReady_) {
+            if (sceneRenderer_.readFramePixels(true, width, height, capturePixels_)) {
+                captureWidth_ = width;
+                captureHeight_ = height;
+            }
         }
 
         SDL_GL_SwapWindow(window_);
@@ -253,6 +366,14 @@ public:
             ImGui_ImplSDL3_Shutdown();
             platformInitialized_ = false;
         }
+        if (previewReady_) {
+            previewRenderer_.shutdown();
+            previewReady_ = false;
+        }
+        previewScene_ = nullptr;
+        previewViews_.clear();
+        capturePixels_.clear();
+        captureArmed_ = false;
         if (sceneReady_) {
             sceneRenderer_.shutdown();
             sceneReady_ = false;
@@ -279,6 +400,14 @@ private:
     const kotor::Scene* scene_ = nullptr;
     SceneCamera camera_;
     GlScene sceneRenderer_;
+    GlScene previewRenderer_;
+    bool previewReady_ = false;
+    const kotor::Scene* previewScene_ = nullptr;
+    std::vector<PreviewView> previewViews_;
+    bool captureArmed_ = false;
+    int captureWidth_ = 0;
+    int captureHeight_ = 0;
+    std::vector<std::uint8_t> capturePixels_;
     std::uint64_t frameIndex_ = 0;
 
     GlClearColorFn glClearColor_ = nullptr;
