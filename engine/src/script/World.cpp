@@ -96,7 +96,6 @@ void World::clearObjects()
     actionQueue.clear();
     timers.clear();
     functors.clear();
-    nextFunctor = 1;
     events.clear();
     // Keep the PC as object id 1 and the persistent party/globals/journal.
     GameObject& player = objects[1];
@@ -122,6 +121,23 @@ GameObject& World::addObject(const std::string& tag, std::int64_t area,
     object.valid = valid;
     tags[tag].push_back(id);
     return object;
+}
+
+GameObject& World::restoreObject(GameObject object)
+{
+    const std::uint32_t id = object.id;
+    nextId = std::max(nextId, id + 1);
+    const auto existing = objects.find(id);
+    if (existing != objects.end()) {
+        std::erase(tags[existing->second.tag], id);
+    }
+    std::vector<std::uint32_t>& sameTag = tags[object.tag];
+    if (std::find(sameTag.begin(), sameTag.end(), id) == sameTag.end()) {
+        sameTag.push_back(id);
+    }
+    GameObject& stored = objects[id];
+    stored = std::move(object);
+    return stored;
 }
 
 GameObject* World::get(std::uint32_t id)

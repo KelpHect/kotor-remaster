@@ -135,6 +135,10 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.dialogueTest = true;
             continue;
         }
+        if (arg == "--world-sim-test") {
+            result.options.worldSimTest = true;
+            continue;
+        }
         if (arg == "--combat-test") {
             result.options.combatTest = true;
             continue;
@@ -362,6 +366,10 @@ ParseResult parseArguments(int argc, char** argv)
                 return fail(std::move(result), "--start-minigame requires pazaak, swoop or turret");
             }
             result.options.startMinigame = value;
+            continue;
+        }
+        if (arg == "--family-test") {
+            result.options.familyTest = requireValue();
             continue;
         }
         if (arg == "--player-appearance") {
@@ -704,6 +712,7 @@ void printUsage()
         << "  --walk-test           Run the headless player/collision smoke test\n"
         << "  --door-test           Load a linked door transition and report the target module\n"
         << "  --dialogue-test       Load a real DLG, start it and follow one branch\n"
+        << "  --world-sim-test      Assert action queues, events, dialogue rules and module state\n"
         << "  --combat-test         Resolve a real hostile creature to death\n"
         << "  --playthrough         Run the deterministic 30-minute scripted gate\n"
         << "  --landmark-test       Check GIT landmarks/headings against the verified oracle\n"
@@ -752,6 +761,7 @@ void printUsage()
         << "  --no-movies           Suppress module/movie overlays for inspection\n"
         << "  --camera-noclip       Disable third-person camera collision (debug)\n"
         << "  --start-minigame <pazaak|swoop|turret>  Open a minigame panel\n"
+        << "  --family-test <name>  Run one Wave 2 family gate (e.g. worldstate)\n"
         << "  --player-appearance <row>  appearance.2da row for the player (default 92)\n"
         << "  --player-name <text>  Player display name (default Player)\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"

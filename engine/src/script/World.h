@@ -69,6 +69,9 @@ public:
 
     GameObject& addObject(const std::string& tag, std::int64_t area = 100,
                           std::int64_t baseItem = 0, bool valid = true);
+    // Reinsert an object under its own id (module return, save load). Keeps the
+    // id allocator ahead of every restored id.
+    GameObject& restoreObject(GameObject object);
     GameObject* get(std::uint32_t id);
     const GameObject* get(std::uint32_t id) const;
     bool valid(std::uint32_t id) const;

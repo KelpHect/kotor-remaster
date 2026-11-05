@@ -565,10 +565,17 @@ private:
 
 struct DlgEntry {
     std::string speaker;
+    std::string listener;
     std::string text;
     std::string script;
     std::string active;
     std::string quest;
+    std::int32_t questEntry = 0;
+    bool hasQuestEntry = false;
+    std::int32_t plotIndex = -1;
+    float plotXpPercentage = 1.0f;
+    std::uint32_t delay = 0xFFFFFFFFu;
+    std::uint32_t waitFlags = 0;
     std::int32_t action[4]{};
     std::string comment;
     std::string sound;
@@ -579,13 +586,24 @@ struct DlgEntry {
     float camHeightOffset = 0.0f;
     float tarHeightOffset = 0.0f;
     std::vector<std::uint32_t> replies;
+    // RepliesList[i].Active, parallel to `replies`. The condition lives on the
+    // link, not the node; a shorter vector means unconditional.
+    std::vector<std::string> repliesActive;
 };
 
 struct DlgReply {
+    std::string speaker;
+    std::string listener;
     std::string text;
     std::string script;
     std::string active;
     std::string quest;
+    std::int32_t questEntry = 0;
+    bool hasQuestEntry = false;
+    std::int32_t plotIndex = -1;
+    float plotXpPercentage = 1.0f;
+    std::uint32_t delay = 0xFFFFFFFFu;
+    std::uint32_t waitFlags = 0;
     std::int32_t action[4]{};
     std::string comment;
     std::string sound;
@@ -596,6 +614,8 @@ struct DlgReply {
     float camHeightOffset = 0.0f;
     float tarHeightOffset = 0.0f;
     std::vector<std::uint32_t> entries;
+    // EntriesList[i].Active, parallel to `entries`.
+    std::vector<std::string> entriesActive;
 };
 
 struct Dlg {
@@ -665,6 +685,28 @@ struct ItemTemplate {
     std::int32_t cost = 0;
     std::int32_t stackSize = 1;
     bool identified = true;
+    bool plot = false;
+    std::int32_t charges = 0;
+    std::int32_t addCost = 0;
+    // UTI PropertiesList, in file order (ScriptItems.cpp reads these for item use).
+    struct Property {
+        std::int32_t name = 0;
+        std::int32_t subtype = 0;
+        std::int32_t costTable = 0;
+        std::int32_t costValue = 0;
+        std::int32_t param1 = 0;
+        std::int32_t param1Value = 0;
+        std::int32_t usesPerDay = 255;
+        bool useable = true;
+    };
+    std::vector<Property> properties;
+};
+
+// One UTC ItemList (carried) or Equip_ItemList (worn) entry.
+struct CreatureItem {
+    std::string resref;
+    bool droppable = true;
+    std::int32_t slot = -1; // INVENTORY_SLOT_* for worn items, -1 for carried
 };
 
 struct StoreTemplate {
@@ -693,6 +735,10 @@ struct EncounterTemplate {
     std::int32_t respawns = 0;
     std::int32_t spawnOption = 0;
     std::int32_t difficulty = 0;
+    std::int32_t difficultyIndex = -1; // encdifficulty.2da row
+    std::int32_t faction = 0;
+    bool playerOnly = false;
+    bool reset = false;
     bool active = true;
     std::vector<EncounterCreature> creatures;
 };
@@ -738,6 +784,9 @@ struct CollisionFacet {
     std::uint32_t surface = 0;
     Vec3 normal;
     bool floor = false;
+    std::uint32_t room = 0;  // Index into Scene::rooms.
+    bool walkable = true;    // surfacemat.2da "walk" for this surface.
+    bool blocksSight = true; // surfacemat.2da "lineofsight" for this surface.
 };
 
 // One active Force/spell effect. The stack is shared by the player sheet and
@@ -752,6 +801,45 @@ struct ActiveEffect {
     std::int32_t shield = 0;
     bool force = false;
     bool dispellable = true;
+};
+
+// UTC sheet fields that script queries read (GetRacialType, GetGender,
+// GetAbilityScore, GetLevelByPosition, GetSkillRank, ...). `parsed` is false for
+// entities that did not come from a UTC.
+struct CreatureStats {
+    bool parsed = false;
+    std::int32_t race = 0;
+    std::int32_t subRace = 0;
+    std::int32_t gender = 0;
+    float challengeRating = 0.0f;
+    float perceptionRange = 11.0f;
+    std::int32_t naturalAC = 0;
+    std::int32_t goodEvil = 50;
+    std::array<std::int32_t, 6> abilities{10, 10, 10, 10, 10, 10}; // Str Dex Con Int Wis Cha
+    std::vector<std::pair<std::int32_t, std::int32_t>> classes;    // ClassList: class, level
+    std::vector<std::int32_t> skills;                              // SkillList ranks, row order
+    std::vector<std::int32_t> feats;                               // FeatList
+    std::vector<std::int32_t> powers;                              // ClassList[].KnownList0
+    std::int32_t forcePoints = 0;                                  // CurrentForce
+    std::int32_t maxForcePoints = 0;                               // ForcePoints
+    // Filled by Rules::deriveCreatureCombat from the fields above and the items.
+    bool combatDerived = false;
+    std::int32_t baseAttack = 0;
+    struct Weapon {
+        bool present = false;
+        std::int32_t baseItem = -1;
+        std::int32_t dice = 1;
+        std::int32_t die = 2;
+        std::int32_t flatDamage = 0;
+        std::int32_t critThreat = 1;
+        std::int32_t critMult = 2;
+        std::int32_t attackBonus = 0; // Everything but the d20, including penalties.
+        std::int32_t maxDamage = 2;
+        bool ranged = false;
+        bool keen = false;
+    };
+    Weapon mainHand;
+    Weapon offHand;
 };
 
 enum class EntityKind { Door, Placeable, Creature, Waypoint, Trigger, Encounter, Sound, Store, Unknown };
@@ -789,6 +877,7 @@ struct Entity {
     std::int32_t damageMin = 1;
     std::int32_t damageMax = 4;
     float walkRate = 1.0f;
+    std::int32_t walkRateRow = 7; // UTC WalkRate: creaturespeed.2da row; 7 = from appearance.
     bool ranged = false;
     float attackRange = 2.4f;
     std::string weaponModel;
@@ -806,12 +895,40 @@ struct Entity {
     bool useable = false;
     bool open = false;
     bool locked = false;
+    // UTD/UTP/UTC gameplay flags. Data only here; the world-state family gives
+    // them effect.
+    bool lockable = false;
+    bool keyRequired = false;
+    std::string keyName;
+    std::int32_t openLockDC = 0;
+    std::int32_t closeLockDC = 0;
+    bool autoRemoveKey = false;
+    bool plot = false;
+    bool min1Hp = false;
+    bool trapFlag = false;
+    bool trapDetectable = false;
+    bool trapDisarmable = false;
+    bool trapOneShot = false;
+    std::int32_t trapDetectDC = 0;
+    std::int32_t trapDisarmDC = 0;
+    std::int32_t trapType = 0;
+    bool hasInventory = false;
+    bool isStatic = false;
+    std::int32_t hardness = 0;
+    // UTT Type: 0 generic, 1 area transition, 2 trap. Trap state is runtime.
+    std::int32_t triggerType = 0;
+    bool trapDetected = false;
+    bool trapDisarmed = false;
+    bool trapSprung = false;
     // Merchant template data for Store entities.
     std::int32_t storeMarkUp = 100;
     std::int32_t storeMarkDown = 40;
     std::int32_t storeBuySell = 3;
     std::vector<std::pair<std::string, bool>> storeItems;
     std::vector<std::string> lootItems;
+    // UTC ItemList and Equip_ItemList (creatures only).
+    std::vector<CreatureItem> creatureItems;
+    CreatureStats stats;
     // Hook name (ScriptSpawn, OnOpen, ...) to script resref. Template values
     // are loaded first; non-empty GIT instance values override them.
     std::map<std::string, std::string> scripts;

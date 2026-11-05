@@ -1,4 +1,5 @@
 #include "game/GameSession.h"
+#include "game/Pathfinding.h"
 
 #include "core/Log.h"
 #include "kotor/SaveGame.h"
@@ -11,6 +12,7 @@
 #include <deque>
 #include <cstdlib>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <utility>
 
@@ -206,7 +208,7 @@ bool floorHeight(const kotor::Scene& scene, float x, float y, float maxZ, float&
     bool found = false;
     float best = -1.0e30f;
     for (const kotor::CollisionFacet& facet : scene.collision) {
-        if (!facet.floor) {
+        if (!facet.walkable) {
             continue;
         }
         const kotor::Vec3& a = scene.collisionVertices[facet.a];
@@ -293,13 +295,19 @@ bool wallBlocked(const kotor::Scene& scene, kotor::Vec3 from, kotor::Vec3 to, fl
     const float nx = len > 1.0e-6f ? -dy / len : 0.0f;
     const float ny = len > 1.0e-6f ? dx / len : 0.0f;
     const kotor::Vec3 offsets[2] = {{nx * radius, ny * radius, 0.0f}, {-nx * radius, -ny * radius, 0.0f}};
+    const float zLow = std::min(from.z, to.z);
+    const float zHigh = std::max(from.z, to.z);
     for (const kotor::CollisionFacet& facet : scene.collision) {
-        if (facet.floor) {
+        if (facet.floor || !facet.blocksSight) {
             continue;
         }
         const kotor::Vec3& a = scene.collisionVertices[facet.a];
         const kotor::Vec3& b = scene.collisionVertices[facet.b];
         const kotor::Vec3& c = scene.collisionVertices[facet.c];
+        // A wall on another storey is no wall here.
+        if (std::max({a.z, b.z, c.z}) < zLow || std::min({a.z, b.z, c.z}) > zHigh) {
+            continue;
+        }
         for (const kotor::Vec3& offset : offsets) {
             const kotor::Vec3 p0{from.x + offset.x, from.y + offset.y, from.z};
             const kotor::Vec3 p1{to.x + offset.x, to.y + offset.y, to.z};
@@ -320,6 +328,23 @@ bool pointInTriangle2D(float x, float y, const kotor::Vec3& a, const kotor::Vec3
     const bool hasNegative = d1 < 0.0f || d2 < 0.0f || d3 < 0.0f;
     const bool hasPositive = d1 > 0.0f || d2 > 0.0f || d3 > 0.0f;
     return !(hasNegative && hasPositive);
+}
+
+// nwscript OBJECT_TYPE_* for an entity kind.
+std::int64_t objectTypeForKind(kotor::EntityKind kind)
+{
+    switch (kind) {
+    case kotor::EntityKind::Creature: return 1;
+    case kotor::EntityKind::Trigger: return 4;
+    case kotor::EntityKind::Door: return 8;
+    case kotor::EntityKind::Waypoint: return 32;
+    case kotor::EntityKind::Placeable: return 64;
+    case kotor::EntityKind::Store: return 128;
+    case kotor::EntityKind::Encounter: return 256;
+    case kotor::EntityKind::Sound: return 512;
+    case kotor::EntityKind::Unknown: break;
+    }
+    return 0;
 }
 
 std::vector<script::Value> intCells(std::int64_t value)
@@ -557,6 +582,7 @@ GameSession::GameSession(std::string installPath, std::string module, int langua
     , rules_(install_)
 {
     traceActions_ = traceActions;
+    sim_ = std::make_unique<WorldSim>();
     localization_ = std::make_unique<kotor::Localization>(
         std::filesystem::path(installPath_));
     std::string localizationError;
@@ -633,12 +659,51 @@ void GameSession::clearTraces()
     transitions_.clear();
 }
 
+void GameSession::placeAtLink(const std::string& linkedTo)
+{
+    const std::string wanted = lower(linkedTo);
+    // A door is entered from its front; anything else (LinkedToFlags 2, or a
+    // StartNewModule waypoint) places the player exactly on the object.
+    for (const kotor::Entity& entity : scene_.entities) {
+        if (entity.kind == kotor::EntityKind::Door && lower(entity.tag) == wanted) {
+            position_ = entity.position;
+            position_.x += std::cos(entity.bearing) * 0.9f;
+            position_.y += std::sin(entity.bearing) * 0.9f;
+            yaw_ = entity.bearing + kPi;
+            return;
+        }
+    }
+    for (const kotor::Entity& entity : scene_.entities) {
+        if (lower(entity.tag) == wanted) {
+            position_ = entity.position;
+            yaw_ = entity.bearing;
+            return;
+        }
+    }
+    logWarn(concat("module link target ", linkedTo, " not found in ", module_));
+}
+
 bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn, const std::string& linkedDoor)
 {
     const std::string previousModule = module_;
+    // Leave hooks and the snapshot run first: loading the next module rebinds
+    // the install, after which the old module's scripts can no longer be found.
+    if (runtime_ != nullptr && !sim_->restoringSave && !previousModule.empty()) {
+        leaveModule();
+    }
     kotor::Scene loaded = kotor::loadModule(install_, module);
     module_ = module;
     scene_ = std::move(loaded);
+    if (nav_) {
+        nav_->mesh.reset();
+        nav_->actors.clear();
+    }
+    moveOutcome_ = MoveOutcome::None;
+    moveBlockingDoor_ = static_cast<std::size_t>(-1);
+    // Script resrefs resolve per module, so nothing cached survives the change.
+    ncsCache_.clear();
+    missingScripts_.clear();
+    sim_->decoded.clear();
     playerEntity_ = static_cast<std::size_t>(-1);
     if (traceActions_ && !previousModule.empty() && previousModule != module_) {
         transitions_.push_back({previousModule, module_});
@@ -652,15 +717,7 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
         yaw_ = std::atan2(scene_.entryDirection.y, scene_.entryDirection.x);
     }
     if (!linkedDoor.empty()) {
-        for (const kotor::Entity& entity : scene_.entities) {
-            if (entity.kind == kotor::EntityKind::Door && entity.tag == linkedDoor) {
-                position_ = entity.position;
-                position_.x += std::cos(entity.bearing) * 0.9f;
-                position_.y += std::sin(entity.bearing) * 0.9f;
-                yaw_ = entity.bearing + kPi;
-                break;
-            }
-        }
+        placeAtLink(linkedDoor);
     }
     float ground = 0.0f;
     if (floorHeight(scene_, position_.x, position_.y, position_.z + 2.0f, ground)) {
@@ -670,9 +727,9 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
     grounded_ = true;
     activeDialogue_.reset();
     dialogueView_ = {};
+    sim_->dialoguePaused = false;
+    ++dialogueGeneration_;
     combatTarget_ = UINT32_MAX;
-    playerAttackTimer_ = 0.0f;
-    npcAttackTimers_.assign(scene_.entities.size(), 0.0f);
     triggerInside_.assign(scene_.triggers.size(), false);
     if (playerHp_ <= 0) {
         playerHp_ = playerMaxHp_;
@@ -696,6 +753,16 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
     }
     for (const CompanionState& companion : companions_) {
         ensureCompanionEntity(companion);
+    }
+    placePartyAtEntry();
+    // Arriving on top of a transition trigger must not bounce straight back: it
+    // fires again only after the player has walked out of it.
+    for (std::size_t i = 0; i < scene_.triggers.size() && i < triggerInside_.size(); ++i) {
+        const std::size_t entity = scene_.triggers[i].entity;
+        if (entity < scene_.entities.size() && !scene_.entities[entity].linkedModule.empty()
+            && pointInTrigger(scene_.triggers[i], position_.x, position_.y)) {
+            triggerInside_[i] = true;
+        }
     }
     initAnimations();
     return true;
@@ -767,6 +834,10 @@ std::string GameSession::scriptSource(const std::string& resref)
     if (resref.empty()) {
         return {};
     }
+    if (const auto injected = sim_->injectedScripts.find(resref);
+        injected != sim_->injectedScripts.end()) {
+        return std::string(injected->second.begin(), injected->second.end());
+    }
     const auto cached = ncsCache_.find(resref);
     if (cached != ncsCache_.end()) {
         return std::string(cached->second.begin(), cached->second.end());
@@ -780,6 +851,33 @@ std::string GameSession::scriptSource(const std::string& resref)
     }
     ncsCache_.emplace(resref, *data);
     return std::string(data->begin(), data->end());
+}
+
+void GameSession::addScriptForTest(const std::string& resref, std::vector<std::uint8_t> bytes)
+{
+    sim_->injectedScripts[resref] = std::move(bytes);
+    sim_->decoded.erase(resref);
+}
+
+std::shared_ptr<const std::vector<script::Instruction>> GameSession::decodedScript(
+    const std::string& resref)
+{
+    if (const auto found = sim_->decoded.find(resref); found != sim_->decoded.end()) {
+        return found->second;
+    }
+    const std::string bytes = scriptSource(resref);
+    if (bytes.empty()) {
+        return nullptr;
+    }
+    try {
+        auto decoded = std::make_shared<const std::vector<script::Instruction>>(script::decodeNcs(
+            reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size()));
+        sim_->decoded[resref] = decoded;
+        return decoded;
+    } catch (const script::NcsError& error) {
+        scriptLog_.push_back("decode " + resref + ": " + error.what());
+        return nullptr;
+    }
 }
 
 bool GameSession::runScriptNcsForTest(const std::string& label,
@@ -796,14 +894,19 @@ bool GameSession::runScriptNcsForTest(const std::string& label,
         scriptLog_.push_back("decode " + label + ": " + error.what());
         return false;
     }
-    runtime_->setContextObject("self", self == 0 ? scriptWorld_.pc : self);
+    const std::uint32_t actualSelf = self == 0 ? scriptWorld_.pc : self;
+    const ScriptContext saved = runtime_->contextSnapshot();
+    runtime_->setContextObject("self", actualSelf);
     runtime_->setContextObject("entering", scriptWorld_.pc);
     runtime_->setContextObject("exiting", scriptWorld_.pc);
     runtime_->setContextObject("caller", scriptWorld_.pc);
     runtime_->setContextObject("trigger", scriptWorld_.pc);
-    runtime_->setContextObject("speaker", self == 0 ? scriptWorld_.pc : self);
+    runtime_->setContextObject("speaker", actualSelf);
     script::Vm vm(std::move(instructions), runtime_.get(), 200000);
+    vm.setScriptName(label);
+    vm.setLiveObjectConstants(actualSelf);
     const script::VmResult result = vm.run();
+    runtime_->setContext(saved);
     scriptLog_.push_back("script " + label + " status=" + script::statusName(result.status)
                          + " steps=" + std::to_string(result.steps));
     return result.status == script::VmStatus::Returned
@@ -815,14 +918,23 @@ bool GameSession::runFunctor(const script::Functor& functor, std::uint32_t targe
     if (runtime_ == nullptr) {
         return false;
     }
-    runtime_->setContext(functor.context);
+    const ScriptContext saved = runtime_->contextSnapshot();
+    ScriptContext context = functor.context;
     if (target != 0 && target != script::kObjectInvalid) {
-        runtime_->setContextObject("self", target);
-        runtime_->setContextObject("speaker", target);
+        context["self"] = target;
+        context["speaker"] = target;
     }
+    const auto selfEntry = context.find("self");
+    const std::uint32_t self = selfEntry != context.end() ? selfEntry->second : scriptWorld_.pc;
+    runtime_->setContext(context);
+    ++sim_->scriptDepth;
     script::Vm vm(functor.instructions, runtime_.get(), 200000);
     vm.setEntry(functor.ip, functor.stack, functor.bp);
+    vm.setScriptName(functor.script);
+    vm.setLiveObjectConstants(self);
     const script::VmResult result = vm.run();
+    --sim_->scriptDepth;
+    runtime_->setContext(saved);
     scriptLog_.push_back("functor " + functor.source + " status="
                          + script::statusName(result.status)
                          + " steps=" + std::to_string(result.steps));
@@ -847,17 +959,28 @@ void GameSession::updateTimers(float dt)
         }
         const std::shared_ptr<script::Functor> functor = scriptWorld_.functor(timer.functor);
         if (functor != nullptr) {
-            runFunctor(*functor, timer.target);
+            // A closure whose owner has been destroyed never runs.
+            std::uint32_t owner = timer.target;
+            if (owner == 0 || owner == script::kObjectInvalid) {
+                const auto self = functor->context.find("self");
+                owner = self != functor->context.end() ? self->second : scriptWorld_.pc;
+            }
+            const script::GameObject* object = scriptWorld_.get(owner);
+            if (object != nullptr && !object->attrs.contains("destroyed")) {
+                runFunctor(*functor, timer.target);
+            }
         }
         scriptWorld_.functors.erase(timer.functor);
     }
-    std::deque<script::QueuedAction> remaining;
+    // The world-level queue only ever held closures this tick can run. Action*
+    // now queue per object (ScriptActions.cpp); an Action* no family implements
+    // yet still lands here through ActionRuntime::generic and is discarded, where
+    // it used to accumulate for the life of the module.
     std::size_t executed = 0;
-    while (!scriptWorld_.actionQueue.empty()) {
+    while (!scriptWorld_.actionQueue.empty() && executed < 32) {
         script::QueuedAction action = std::move(scriptWorld_.actionQueue.front());
         scriptWorld_.actionQueue.pop_front();
-        if (action.functor < 0 || executed >= 32) {
-            remaining.push_back(std::move(action));
+        if (action.functor < 0) {
             continue;
         }
         const std::shared_ptr<script::Functor> functor = scriptWorld_.functor(action.functor);
@@ -867,7 +990,6 @@ void GameSession::updateTimers(float dt)
         }
         scriptWorld_.functors.erase(action.functor);
     }
-    scriptWorld_.actionQueue.swap(remaining);
 }
 
 std::optional<script::Value> GameSession::runScript(const std::string& resref,
@@ -876,35 +998,52 @@ std::optional<script::Value> GameSession::runScript(const std::string& resref,
                                                     std::uint32_t caller,
                                                     std::uint32_t trigger)
 {
+    ScriptContext context;
+    context["entering"] = entering;
+    context["exiting"] = entering;
+    context["caller"] = caller;
+    context["trigger"] = trigger;
+    return runScriptWith(resref, self, context);
+}
+
+std::optional<script::Value> GameSession::runScriptWith(const std::string& resref,
+                                                        std::uint32_t self,
+                                                        const ScriptContext& context)
+{
+    constexpr int kMaxScriptDepth = 32;
     if (runtime_ == nullptr || resref.empty()) {
         return std::nullopt;
     }
-    const std::string bytes = scriptSource(resref);
-    if (bytes.empty()) {
+    if (sim_->scriptDepth >= kMaxScriptDepth) {
+        scriptLog_.push_back("script " + resref + " refused: nested too deep");
         return std::nullopt;
     }
-    std::vector<script::Instruction> instructions;
-    try {
-        instructions = script::decodeNcs(
-            reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size());
-    } catch (const script::NcsError& error) {
-        scriptLog_.push_back("decode " + resref + ": " + error.what());
+    const auto instructions = decodedScript(resref);
+    if (instructions == nullptr) {
         return std::nullopt;
     }
-    runtime_->setContextObject("self", self);
-    runtime_->setContextObject("entering", entering);
-    runtime_->setContextObject("exiting", entering);
-    runtime_->setContextObject("caller", caller);
-    runtime_->setContextObject("trigger", trigger);
-    runtime_->setContextObject("speaker", self);
-    runtime_->setContextObject("lastSpeaker", self);
-    runtime_->setContextObject("lastUsedBy", caller);
-    runtime_->setContextObject("lastOpenedBy", caller);
-    runtime_->setContextObject("lastAttacker", trigger);
-    runtime_->setContextObject("lastDamager", trigger);
-    runtime_->setContextObject("lastKiller", trigger);
-    script::Vm vm(std::move(instructions), runtime_.get(), 200000);
+    const std::uint32_t actualSelf = self == 0 ? scriptWorld_.pc : self;
+    const ScriptContext saved = runtime_->contextSnapshot();
+    // GetLast* are fields of the object in retail, so what an earlier event left
+    // on this object stays readable; this event's own values go on top.
+    ActorState& actor = sim_->actors[actualSelf];
+    ScriptContext merged = actor.last;
+    for (const auto& [name, value] : context) {
+        merged[name] = value;
+        if (name.rfind("last", 0) == 0) {
+            actor.last[name] = value;
+        }
+    }
+    merged["self"] = actualSelf;
+    merged["speaker"] = actualSelf;
+    runtime_->setContext(merged);
+    ++sim_->scriptDepth;
+    script::Vm vm(*instructions, runtime_.get(), 200000);
+    vm.setScriptName(resref);
+    vm.setLiveObjectConstants(actualSelf);
     const script::VmResult result = vm.run();
+    --sim_->scriptDepth;
+    runtime_->setContext(saved);
     std::ostringstream line;
     line << "script " << resref << " status=" << script::statusName(result.status)
          << " steps=" << result.steps << " actions=";
@@ -1127,6 +1266,9 @@ void GameSession::syncEntityToScriptWorld(std::size_t index)
     object->hp = entity.hitPoints;
     object->valid = !entity.dead;
     object->tag = entity.tag.empty() ? object->tag : entity.tag;
+    if (!object->attrs.contains("object_type")) {
+        object->attrs["object_type"] = objectTypeForKind(entity.kind);
+    }
 }
 
 void GameSession::syncScriptWorld()
@@ -1175,11 +1317,8 @@ void GameSession::initMerchants()
             }
             merchant.stock.push_back(std::move(stock));
         }
-        std::int64_t stockValue = 0;
-        for (const MerchantStockItem& stock : merchant.stock) {
-            stockValue += static_cast<std::int64_t>(stock.item.cost) * std::max(1, stock.item.stack);
-        }
-        merchant.gold = static_cast<std::int32_t>(std::max<std::int64_t>(1000, stockValue / 2));
+        // UTM carries no gold and the K1 action table has no store-gold call, so a
+        // store has no purse: the old 'max(1000, stock/2)' pool was invented.
         merchants_.push_back(std::move(merchant));
     }
 }
@@ -1193,6 +1332,8 @@ bool GameSession::openStore(std::size_t entityIndex)
     for (std::size_t i = 0; i < merchants_.size(); ++i) {
         if (merchants_[i].entity == entityIndex) {
             activeMerchant_ = static_cast<int>(i);
+            storeBonusMarkUp_ = 0;
+            storeBonusMarkDown_ = 0;
             runHook("OnOpenStore", entityIndex, scriptWorld_.pc);
             logEvent("store " + merchants_[i].resref + " opened");
             return true;
@@ -1207,6 +1348,19 @@ bool GameSession::openStoreByTag(const std::string& tag)
     return index != static_cast<std::size_t>(-1) && openStore(index);
 }
 
+// Store arithmetic: the item's cost (scaled by ChangeItemCost for its base type)
+// times the mark percentage, at least 1.
+std::int32_t GameSession::scaledPrice(std::int32_t baseItem, std::int32_t cost,
+                                      std::int32_t percent) const
+{
+    std::int64_t scaled = cost;
+    if (const auto it = itemCostScale_.find(baseItem); it != itemCostScale_.end()) {
+        scaled = static_cast<std::int64_t>(static_cast<float>(cost) * it->second);
+    }
+    return static_cast<std::int32_t>(
+        std::max<std::int64_t>(1, scaled * std::max<std::int32_t>(0, percent) / 100));
+}
+
 std::int32_t GameSession::buyPrice(std::size_t stockIndex) const
 {
     if (activeMerchant_ < 0 || static_cast<std::size_t>(activeMerchant_) >= merchants_.size()) {
@@ -1216,8 +1370,8 @@ std::int32_t GameSession::buyPrice(std::size_t stockIndex) const
     if (stockIndex >= merchant.stock.size()) {
         return 0;
     }
-    return std::max<std::int32_t>(1, merchant.stock[stockIndex].item.cost
-                                        * std::max<std::int32_t>(1, merchant.markUp) / 100);
+    return scaledPrice(merchant.stock[stockIndex].item.baseItem, merchant.stock[stockIndex].item.cost,
+                       merchant.markUp + storeBonusMarkUp_);
 }
 
 std::int32_t GameSession::sellPrice(std::size_t inventoryIndex) const
@@ -1227,8 +1381,9 @@ std::int32_t GameSession::sellPrice(std::size_t inventoryIndex) const
         return 0;
     }
     const MerchantState& merchant = merchants_[static_cast<std::size_t>(activeMerchant_)];
-    return std::max<std::int32_t>(1, character_.inventory[inventoryIndex].cost
-                                        * std::max<std::int32_t>(1, merchant.markDown) / 100);
+    return scaledPrice(character_.inventory[inventoryIndex].baseItem,
+                       character_.inventory[inventoryIndex].cost,
+                       merchant.markDown + storeBonusMarkDown_);
 }
 
 bool GameSession::buyMerchantItem(std::size_t stockIndex)
@@ -1253,7 +1408,6 @@ bool GameSession::buyMerchantItem(std::size_t stockIndex)
         return false;
     }
     gold_ -= price;
-    merchant.gold += price;
     if (!stock.infinite) {
         --stock.remaining;
     }
@@ -1271,15 +1425,18 @@ bool GameSession::sellInventoryItem(std::size_t inventoryIndex)
         return false;
     }
     InventoryItem item = character_.inventory[inventoryIndex];
-    const std::int32_t price = sellPrice(inventoryIndex);
-    if (merchant.gold < price) {
+    // A plot item is never sold (Plot flag semantics; not traced in the store panel).
+    if (const script::GameObject* held = scriptWorld_.get(item.object);
+        held != nullptr && held->valid && held->attrs.contains("item_plot")
+        && std::holds_alternative<std::int64_t>(held->attrs.at("item_plot"))
+        && std::get<std::int64_t>(held->attrs.at("item_plot")) != 0) {
         return false;
     }
+    const std::int32_t price = sellPrice(inventoryIndex);
     if (!removeInventoryItem(item.resref, item.stack)) {
         return false;
     }
     gold_ += price;
-    merchant.gold -= price;
     logEvent("sell " + item.resref + " for " + std::to_string(price));
     return true;
 }
@@ -1293,76 +1450,10 @@ bool GameSession::identifyInventoryItem(std::size_t inventoryIndex)
     if (item.identified) {
         return false;
     }
-    const std::int32_t price = std::max<std::int32_t>(1, item.cost / 2);
-    if (gold_ < price) {
-        return false;
-    }
-    gold_ -= price;
+    // Nothing in the K1 action table or the store data prices identification: it
+    // is free here (the old half-cost charge was invented).
     item.identified = true;
-    logEvent("identify " + item.resref + " for " + std::to_string(price));
-    return true;
-}
-
-bool GameSession::openLoot(std::size_t entityIndex)
-{
-    if (entityIndex >= scene_.entities.size()
-        || scene_.entities[entityIndex].kind != kotor::EntityKind::Placeable
-        || scene_.entities[entityIndex].lootItems.empty()) {
-        return false;
-    }
-    lootItems_.clear();
-    lootEntity_ = static_cast<int>(entityIndex);
-    for (const std::string& resref : scene_.entities[entityIndex].lootItems) {
-        InventoryItem item;
-        item.resref = resref;
-        auto cached = itemTemplates_.find(resref);
-        if (cached == itemTemplates_.end()) {
-            if (auto templ = kotor::loadItemTemplate(install_, resref); templ.has_value()) {
-                cached = itemTemplates_.emplace(resref, *templ).first;
-            }
-        }
-        if (cached != itemTemplates_.end()) {
-            item.name = cached->second.name;
-            item.baseItem = cached->second.baseItem;
-            item.cost = cached->second.cost;
-            item.stack = cached->second.stackSize;
-            item.identified = cached->second.identified;
-        }
-        lootItems_.push_back(std::move(item));
-    }
-    if (lootItems_.empty()) {
-        lootEntity_ = -1;
-        return false;
-    }
-    setUiPanel(UiPanel::Loot);
-    logEvent("loot " + scene_.entities[entityIndex].tag + " x"
-             + std::to_string(lootItems_.size()));
-    return true;
-}
-
-bool GameSession::takeLootItem(std::size_t index)
-{
-    if (lootEntity_ < 0 || index >= lootItems_.size()
-        || static_cast<std::size_t>(lootEntity_) >= scene_.entities.size()) {
-        return false;
-    }
-    const InventoryItem item = lootItems_[index];
-    if (!addInventoryItem(item.resref, item.baseItem, item.stack, item.cost)) {
-        return false;
-    }
-    kotor::Entity& entity = scene_.entities[static_cast<std::size_t>(lootEntity_)];
-    for (auto it = entity.lootItems.begin(); it != entity.lootItems.end(); ++it) {
-        if (lower(*it) == lower(item.resref)) {
-            entity.lootItems.erase(it);
-            break;
-        }
-    }
-    lootItems_.erase(lootItems_.begin() + static_cast<std::ptrdiff_t>(index));
-    logEvent("take " + item.resref);
-    if (lootItems_.empty()) {
-        lootEntity_ = -1;
-        setUiPanel(UiPanel::None);
-    }
+    logEvent("identify " + item.resref);
     return true;
 }
 
@@ -1375,6 +1466,8 @@ void GameSession::takeAllLoot()
     }
 }
 
+// Encounter state is set up at module load; creatures appear when the player
+// enters a volume (updateEncounterVolumes in ScriptWorldState.cpp).
 void GameSession::spawnEncounters()
 {
     encounterStates_.assign(scene_.encounters.size(), EncounterState{});
@@ -1386,174 +1479,17 @@ void GameSession::spawnEncounters()
             ? -1
             : volume.templateData.respawns;
         state.resetTime = static_cast<float>(std::max(0, volume.templateData.resetTime));
-        const std::int32_t spawned = spawnEncounterCreatures(encounterIndex);
-        if (spawned > 0) {
-            runHook("OnEntered", volume.entity, scriptWorld_.pc);
-            logEvent("encounter " + volume.templateData.resref + " spawned "
-                     + std::to_string(spawned));
-        }
     }
 }
 
 std::int32_t GameSession::spawnEncounterCreatures(std::size_t encounterIndex)
 {
-    if (encounterIndex >= scene_.encounters.size()
-        || encounterIndex >= encounterStates_.size()) {
-        return 0;
-    }
-    const kotor::EncounterVolume& volume = scene_.encounters[encounterIndex];
-    const kotor::EncounterTemplate& encounter = volume.templateData;
-    EncounterState& state = encounterStates_[encounterIndex];
-    if (!encounter.active || encounter.creatures.empty() || volume.spawnPoints.empty()) {
-        return 0;
-    }
-    std::int32_t count = encounter.recCreatures > 0 ? encounter.recCreatures
-                                                    : encounter.maxCreatures;
-    if (count <= 0) {
-        count = static_cast<std::int32_t>(encounter.creatures.size());
-    }
-    if (encounter.maxCreatures > 0) {
-        count = std::min(count, encounter.maxCreatures);
-    }
-    std::set<std::string> singleSpawnUsed;
-    std::int32_t spawnedCount = 0;
-    for (std::int32_t i = 0; i < count; ++i) {
-        const kotor::EncounterCreature& creature =
-            encounter.creatures[static_cast<std::size_t>(i) % encounter.creatures.size()];
-        if (creature.singleSpawn && singleSpawnUsed.contains(creature.resref)) {
-            continue;
-        }
-        const kotor::EncounterSpawnPoint& point =
-            volume.spawnPoints[static_cast<std::size_t>(i) % volume.spawnPoints.size()];
-        const std::size_t entityIndex = kotor::spawnCreature(
-            scene_, install_, creature.resref, point.position, point.bearing);
-        if (entityIndex == static_cast<std::size_t>(-1)) {
-            continue;
-        }
-        const kotor::Entity& spawned = scene_.entities[entityIndex];
-        scene_.entities[entityIndex].hostile = true;
-        scene_.entities[entityIndex].hostileOverride = true;
-        script::GameObject& object =
-            scriptWorld_.addObject(spawned.tag, 100, 0, true);
-        object.position = {spawned.position.x, spawned.position.y, spawned.position.z};
-        object.hp = spawned.hitPoints;
-        object.attrs["ac"] = static_cast<std::int64_t>(spawned.defense);
-        object.attrs["fortitude"] = static_cast<std::int64_t>(0);
-        object.attrs["will"] = static_cast<std::int64_t>(0);
-        object.attrs["reflex"] = static_cast<std::int64_t>(0);
-        object.attrs["challenge_rating"] =
-            static_cast<std::int64_t>(creature.challengeRating);
-        object.attrs["movement_rate"] = static_cast<std::int64_t>(1);
-        object.attrs["good_evil"] = static_cast<std::int64_t>(50);
-        object.attrs["level"] = static_cast<std::int64_t>(
-            std::max(1, static_cast<int>(creature.challengeRating)));
-        object.attrs["class_id"] = static_cast<std::int64_t>(0);
-        object.attrs["xp"] = static_cast<std::int64_t>(0);
-        object.attrs["faction"] = static_cast<std::int64_t>(spawned.faction);
-        entityObjects_.push_back(object.id);
-        if (creature.singleSpawn) {
-            singleSpawnUsed.insert(creature.resref);
-        }
-        state.entities.push_back(entityIndex);
-        ++spawnedCount;
-        runHook("ScriptSpawn", entityIndex, scriptWorld_.pc);
-    }
-    state.spawnedCount += spawnedCount;
-    state.spawned = state.spawnedCount > 0;
-    state.resetTimer = 0.0f;
-    if (spawnedCount > 0) {
-        state.exhausted = false;
-    }
-    return spawnedCount;
+    return spawnEncounterWave(encounterIndex);
 }
 
 void GameSession::updateEncounters(float dt)
 {
-    for (std::size_t i = 0; i < encounterStates_.size(); ++i) {
-        EncounterState& state = encounterStates_[i];
-        if (!state.spawned || state.exhausted || state.resetTime <= 0.0f
-            || state.respawnsRemaining == 0) {
-            continue;
-        }
-        bool anyAlive = false;
-        for (const std::size_t entity : state.entities) {
-            if (entity < scene_.entities.size() && !scene_.entities[entity].dead) {
-                anyAlive = true;
-                break;
-            }
-        }
-        if (anyAlive) {
-            state.resetTimer = 0.0f;
-            continue;
-        }
-        state.resetTimer += dt;
-        if (state.resetTimer < state.resetTime) {
-            continue;
-        }
-        if (state.respawnsRemaining > 0) {
-            --state.respawnsRemaining;
-        }
-        const std::int32_t spawned = spawnEncounterCreatures(i);
-        if (spawned == 0) {
-            state.exhausted = true;
-        } else {
-            runHook("OnEntered", scene_.encounters[i].entity, scriptWorld_.pc);
-            logEvent("encounter " + scene_.encounters[i].templateData.resref
-                     + " respawned " + std::to_string(spawned));
-        }
-    }
-}
-
-std::size_t GameSession::ensureCompanionEntity(const CompanionState& companion)
-{
-    const std::size_t existing = findEntity(companion.tag);
-    if (existing != static_cast<std::size_t>(-1)) {
-        return existing;
-    }
-    const std::string tag = lower(companion.tag);
-    static const std::pair<const char*, const char*> templates[] = {
-        {"carth", "p_carth"}, {"bastila", "p_bastilla"}, {"mission", "p_mission"},
-        {"zaalbar", "p_zaalbar"}, {"canderous", "p_cand"}, {"cand", "p_cand"},
-        {"jolee", "p_jolee"}, {"juhani", "p_juhani"}, {"hk-47", "p_hk47"},
-        {"hk47", "p_hk47"}, {"t3-m4", "p_t3m4"}, {"t3m4", "p_t3m4"},
-    };
-    std::string utc;
-    for (const auto& [name, resref] : templates) {
-        if (tag == name) {
-            utc = resref;
-            break;
-        }
-    }
-    if (utc.empty()) {
-        return static_cast<std::size_t>(-1);
-    }
-    const std::size_t slot = companions_.size();
-    const kotor::Vec3 forward{std::cos(yaw_), std::sin(yaw_), 0.0f};
-    const kotor::Vec3 right{-forward.y, forward.x, 0.0f};
-    const float side = (slot % 2 == 0) ? -1.2f : 1.2f;
-    const float row = static_cast<float>(slot / 2);
-    const kotor::Vec3 spawn = position_ - forward * (2.0f + row * 1.1f) + right * side;
-    const std::size_t index = kotor::spawnCreature(scene_, install_, utc, spawn, yaw_);
-    if (index == static_cast<std::size_t>(-1)) {
-        return index;
-    }
-    kotor::Entity& entity = scene_.entities[index];
-    entity.tag = companion.tag;
-    entity.partyAvatar = true;
-    entity.hostile = false;
-    entity.faction = 0;
-    while (entityObjects_.size() < scene_.entities.size()) {
-        entityObjects_.push_back(0);
-    }
-    script::GameObject& object = scriptWorld_.addObject(companion.tag, 100, 0, true);
-    object.position = {entity.position.x, entity.position.y, entity.position.z};
-    object.hp = entity.hitPoints;
-    entityObjects_[index] = object.id;
-    std::erase(scriptWorld_.party, object.id);
-    scriptWorld_.party.push_back(object.id);
-    syncEntityToScriptWorld(index);
-    logEvent("party avatar spawn " + companion.tag + " utc=" + utc);
-    return index;
+    updateEncounterVolumes(dt);
 }
 
 void GameSession::updateParty(float dt)
@@ -1570,8 +1506,6 @@ void GameSession::updateParty(float dt)
             anchorYaw = scene_.entities[leader].bearing;
         }
     }
-    const kotor::Vec3 forward{std::cos(anchorYaw), std::sin(anchorYaw), 0.0f};
-    const kotor::Vec3 right{-forward.y, forward.x, 0.0f};
     int slot = 0;
     for (CompanionState& companion : companions_) {
         const std::size_t index = findEntity(companion.tag);
@@ -1581,127 +1515,122 @@ void GameSession::updateParty(float dt)
         if (companion.tag == leaderTag_) {
             continue;
         }
-        kotor::Entity& entity = scene_.entities[index];
-        companion.attackTimer = std::max(0.0f, companion.attackTimer - dt);
-        const bool hasTarget = combatTarget_ != UINT32_MAX
-            && combatTarget_ < scene_.entities.size()
-            && scene_.entities[combatTarget_].hostile && !scene_.entities[combatTarget_].dead;
-        if (hasTarget) {
-            kotor::Entity& target = scene_.entities[combatTarget_];
-            const float tdx = target.position.x - entity.position.x;
-            const float tdy = target.position.y - entity.position.y;
-            const float targetDistance = std::sqrt(tdx * tdx + tdy * tdy);
-            if (targetDistance > 2.2f) {
-                const float step = std::min(targetDistance - 2.0f, 3.2f * dt);
-                kotor::Vec3 next{entity.position.x + tdx / targetDistance * step,
-                                 entity.position.y + tdy / targetDistance * step,
-                                 entity.position.z};
-                if (!wallBlocked(scene_, entity.position, next, 0.25f)) {
-                    entity.position.x = next.x;
-                    entity.position.y = next.y;
-                    entity.bearing = std::atan2(tdy, tdx);
-                    float ground = entity.position.z;
-                    if (floorHeight(scene_, entity.position.x, entity.position.y,
-                                    entity.position.z + 2.0f, ground)) {
-                        entity.position.z = ground;
-                    }
-                    syncEntityToScriptWorld(index);
-                }
-            } else if (companion.attackTimer <= 0.0f) {
-                const AttackResult result = rules_.resolveAttack(
-                    companion.sheet, target.defense, rng_, 1, 8,
-                    rules_.damageBonus(companion.sheet));
-                companion.attackTimer = 2.0f;
-                if (result.hit) {
-                    target.hitPoints -= result.damage;
-                    logEvent(companion.tag + " hits "
-                             + (target.name.empty() ? target.tag : target.name)
-                             + " for " + std::to_string(result.damage));
-                    if (target.hitPoints <= 0) {
-                        target.dead = true;
-                        logEvent(companion.tag + " defeats "
-                                 + (target.name.empty() ? target.tag : target.name));
-                        combatTarget_ = UINT32_MAX;
-                    }
-                }
-            }
-            ++slot;
-            continue;
-        }
-        const float row = static_cast<float>(slot / 2);
-        const float side = (slot % 2 == 0) ? -1.2f : 1.2f;
-        const kotor::Vec3 target = anchor - forward * (1.6f + row * 1.1f) + right * side;
-        const float dx = target.x - entity.position.x;
-        const float dy = target.y - entity.position.y;
-        const float distance = std::sqrt(dx * dx + dy * dy);
-        if (distance > 0.35f) {
-            const float step = std::min(distance, 3.2f * dt);
-            kotor::Vec3 next{entity.position.x + dx / distance * step,
-                             entity.position.y + dy / distance * step, entity.position.z};
-            if (!wallBlocked(scene_, entity.position, next, 0.25f)) {
-                entity.position.x = next.x;
-                entity.position.y = next.y;
-                entity.bearing = std::atan2(dy, dx);
-                float ground = entity.position.z;
-                if (floorHeight(scene_, entity.position.x, entity.position.y,
-                                entity.position.z + 2.0f, ground)) {
-                    entity.position.z = ground;
-                }
-                syncEntityToScriptWorld(index);
+        // A companion fights through its queue and the shipped AI; following is for
+        // when it has nothing to do.
+        {
+            const ActorState& actor = ScriptApi{*this}.actor(objectForEntity(index));
+            if (!actor.queue.empty() || actor.combat.inCombat) {
+                ++slot;
+                continue;
             }
         }
+        followLeader(index, anchor, formationSlot(anchor, anchorYaw, slot, 1.6f), dt);
         ++slot;
     }
 }
 
 void GameSession::initScriptWorld()
 {
+    for (kotor::Entity& entity : scene_.entities) {
+        rules_.deriveCreatureCombat(entity);
+    }
     scriptWorld_.clearObjects();
     scriptWorld_.attrs["module"] = module_;
     scriptWorld_.attrs["difficulty"] = static_cast<std::int64_t>(1);
-    entityObjects_.assign(scene_.entities.size(), 0);
     spawnRan_.clear();
-    for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
-        const kotor::Entity& entity = scene_.entities[i];
-        std::string tag = entity.tag;
-        if (tag.empty()) {
-            tag = "entity_" + std::to_string(i);
+    sim_->heartbeatDue.clear();
+    sim_->events.clear();
+    sim_->baseEntityCount = scene_.entities.size();
+    restoreCarried();
+    const auto found = sim_->snapshots.find(module_);
+    const bool returning = found != sim_->snapshots.end();
+    if (returning) {
+        applyModuleSnapshot(found->second);
+    } else {
+        entityObjects_.assign(scene_.entities.size(), 0);
+        for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+            const kotor::Entity& entity = scene_.entities[i];
+            std::string tag = entity.tag;
+            if (tag.empty()) {
+                tag = "entity_" + std::to_string(i);
+            }
+            script::GameObject& object = scriptWorld_.addObject(tag, 100, 0, !entity.dead);
+            object.position = {entity.position.x, entity.position.y, entity.position.z};
+            object.hp = entity.hitPoints;
+            object.attrs["ac"] = static_cast<std::int64_t>(
+                entity.defense > 0 ? entity.defense : 10);
+            object.attrs["fortitude"] = static_cast<std::int64_t>(0);
+            object.attrs["will"] = static_cast<std::int64_t>(0);
+            object.attrs["reflex"] = static_cast<std::int64_t>(0);
+            object.attrs["challenge_rating"] = static_cast<std::int64_t>(
+                std::max(1, entity.maxHitPoints / 4));
+            object.attrs["movement_rate"] = static_cast<std::int64_t>(1);
+            object.attrs["good_evil"] = static_cast<std::int64_t>(50);
+            object.attrs["level"] = static_cast<std::int64_t>(1);
+            object.attrs["class_id"] = static_cast<std::int64_t>(0);
+            object.attrs["xp"] = static_cast<std::int64_t>(0);
+            object.attrs["faction"] = static_cast<std::int64_t>(entity.faction);
+            entityObjects_[i] = object.id;
         }
-        script::GameObject& object = scriptWorld_.addObject(tag, 100, 0, !entity.dead);
-        object.position = {entity.position.x, entity.position.y, entity.position.z};
-        object.hp = entity.hitPoints;
-        object.attrs["ac"] = static_cast<std::int64_t>(
-            entity.defense > 0 ? entity.defense : 10);
-        object.attrs["fortitude"] = static_cast<std::int64_t>(0);
-        object.attrs["will"] = static_cast<std::int64_t>(0);
-        object.attrs["reflex"] = static_cast<std::int64_t>(0);
-        object.attrs["challenge_rating"] = static_cast<std::int64_t>(
-            std::max(1, entity.maxHitPoints / 4));
-        object.attrs["movement_rate"] = static_cast<std::int64_t>(1);
-        object.attrs["good_evil"] = static_cast<std::int64_t>(50);
-        object.attrs["level"] = static_cast<std::int64_t>(1);
-        object.attrs["class_id"] = static_cast<std::int64_t>(0);
-        object.attrs["xp"] = static_cast<std::int64_t>(0);
-        object.attrs["faction"] = static_cast<std::int64_t>(entity.faction);
-        entityObjects_[i] = object.id;
+        // The area and module are objects scripts can hold and signal. They sit
+        // outside the iterated area (area -1) and get ids like anything else.
+        script::GameObject& area = scriptWorld_.addObject(module_, -1, 0, true);
+        sim_->areaObject = area.id;
+        script::GameObject& moduleObject = scriptWorld_.addObject("MODULE", -1, 0, true);
+        sim_->moduleObject = moduleObject.id;
     }
-    scriptWorld_.party.clear();
-    scriptWorld_.party.push_back(scriptWorld_.pc);
-    for (const std::string& tag : partyTags_) {
-        const std::uint32_t id = scriptWorld_.byTag(tag, 0);
-        if (id != script::kObjectInvalid) {
-            std::erase(scriptWorld_.party, id);
-            scriptWorld_.party.push_back(id);
+    // A party member native to this module uses the object it already carries.
+    for (std::size_t i = 0; i < entityObjects_.size() && i < scene_.entities.size(); ++i) {
+        const std::uint32_t carried = scriptWorld_.byTag(scene_.entities[i].tag, 0);
+        if (carried != entityObjects_[i] && sim_->carried.contains(carried)
+            && !scene_.entities[i].tag.empty()) {
+            std::erase(scriptWorld_.tags[scene_.entities[i].tag], entityObjects_[i]);
+            scriptWorld_.objects.erase(entityObjects_[i]);
+            entityObjects_[i] = carried;
         }
     }
+    sim_->carried.clear();
+    syncPartyViews();
     syncScriptWorld();
+    if (returning) {
+        refreshHostility();
+        if (!sim_->restoringSave) {
+            runReturnScripts();
+        }
+        return;
+    }
     initMerchants();
     runSpawnAndEnterScripts();
     spawnEncounters();
 }
 
+ScriptContext GameSession::hookContext(const std::string& hook, std::uint32_t entering) const
+{
+    const std::uint32_t pc = scriptWorld_.pc;
+    const std::uint32_t source = entering == 0 ? pc : entering;
+    ScriptContext context;
+    context["entering"] = source;
+    context["exiting"] = source;
+    context["caller"] = pc;
+    context["trigger"] = pc;
+    if (hook == "OnUsed") {
+        context["lastUsedBy"] = source;
+    } else if (hook == "OnOpen") {
+        context["lastOpenedBy"] = source;
+    } else if (hook == "OnClosed") {
+        context["lastClosedBy"] = source;
+    } else if (hook == "OnClick") {
+        context["clicking"] = source;
+    } else if (hook == "ScriptDialogue") {
+        context["lastSpeaker"] = source;
+    } else if (hook == "ScriptDeath" || hook == "OnDeath") {
+        context["lastKiller"] = source;
+    }
+    return context;
+}
+
 void GameSession::runHook(const std::string& hook, std::size_t entityIndex,
-                          std::uint32_t entering)
+                          std::uint32_t entering, const ScriptContext* extra)
 {
     if (entityIndex >= scene_.entities.size()) {
         return;
@@ -1712,17 +1641,35 @@ void GameSession::runHook(const std::string& hook, std::size_t entityIndex,
         return;
     }
     scriptLog_.push_back("hook " + hook + " " + entity.tag + " -> " + it->second);
-    runScript(it->second, objectForEntity(entityIndex), entering, scriptWorld_.pc,
-              scriptWorld_.pc);
+    ScriptContext context = hookContext(hook, entering);
+    if (extra != nullptr) {
+        for (const auto& [name, value] : *extra) {
+            context[name] = value;
+        }
+    }
+    const std::string script = it->second;
+    runScriptWith(script, objectForEntity(entityIndex), context);
 }
 
-void GameSession::runSceneHook(const std::string& hook, std::uint32_t entering)
+bool GameSession::runSceneHook(const std::string& hook, std::uint32_t entering,
+                               const ScriptContext* extra)
 {
     const auto it = scene_.scripts.find(hook);
     if (it == scene_.scripts.end() || it->second.empty()) {
-        return;
+        return false;
     }
-    runScript(it->second, scriptWorld_.pc, entering, scriptWorld_.pc, scriptWorld_.pc);
+    // Module hooks run on the module object and area hooks on the area object.
+    const std::uint32_t self = hook.rfind("Mod_", 0) == 0 ? sim_->moduleObject : sim_->areaObject;
+    ScriptContext context = hookContext(hook, entering);
+    if (extra != nullptr) {
+        for (const auto& [name, value] : *extra) {
+            context[name] = value;
+        }
+    }
+    const std::string script = it->second;
+    scriptLog_.push_back("hook " + hook + " -> " + script);
+    runScriptWith(script, self, context);
+    return true;
 }
 
 void GameSession::runSpawnAndEnterScripts()
@@ -1739,25 +1686,35 @@ void GameSession::runSpawnAndEnterScripts()
             }
         }
     }
+    runSceneHook("Mod_OnClientEntr", scriptWorld_.pc);
     runSceneHook("OnEnter", scriptWorld_.pc);
+}
+
+// Coming back to a module: objects are already spawned and started, so only the
+// load and entry notifications fire.
+void GameSession::runReturnScripts()
+{
+    runSceneHook("Mod_OnModLoad", scriptWorld_.pc);
+    runSceneHook("Mod_OnClientEntr", scriptWorld_.pc);
+    runSceneHook("OnEnter", scriptWorld_.pc);
+}
+
+void GameSession::flushScriptEvents()
+{
+    tickEvents(ScriptApi{*this});
 }
 
 void GameSession::updateScripts(float dt)
 {
     heartbeatTimer_ += dt;
-    if (heartbeatTimer_ < 6.0) {
-        return;
+    if (heartbeatTimer_ >= 6.0) {
+        heartbeatTimer_ = 0.0;
+        runSceneHook("Mod_OnHeartbeat", scriptWorld_.pc);
+        runSceneHook("OnHeartbeat", scriptWorld_.pc);
     }
-    heartbeatTimer_ = 0.0;
-    runSceneHook("Mod_OnHeartbeat", scriptWorld_.pc);
-    runSceneHook("OnHeartbeat", scriptWorld_.pc);
-    for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
-        if (scene_.entities[i].dead) {
-            continue;
-        }
-        runHook("ScriptHeartbeat", i, scriptWorld_.pc);
-        runHook("OnHeartbeat", i, scriptWorld_.pc);
-    }
+    ScriptApi api{*this};
+    tickHeartbeats(api, dt);
+    tickPerception(api, dt);
 }
 
 void GameSession::logEvent(std::string line)
@@ -2049,16 +2006,19 @@ void GameSession::update(float dt, const InputState& input)
 
     float forwardAxis = 0.0f;
     float rightAxis = 0.0f;
-    if (!playerDead_ && !dialogueView_.active) {
+    // A non-commandable player does not respond to input; a commandable one
+    // drops whatever was queued as soon as they steer.
+    ActorState& pcActor = sim_->actors[scriptWorld_.pc];
+    if (!playerDead_ && !dialogueView_.active && pcActor.commandable && !controlLocked()) {
         if (input.forward) forwardAxis += 1.0f;
         if (input.back) forwardAxis -= 1.0f;
         if (input.right) rightAxis += 1.0f;
         if (input.left) rightAxis -= 1.0f;
+        if ((forwardAxis != 0.0f || rightAxis != 0.0f) && !pcActor.queue.empty()) {
+            ScriptApi{*this}.clearQueue(scriptWorld_.pc);
+        }
     }
-    float speed = input.run ? 7.5f : 3.8f;
-    if (hasEffect("SPEED")) {
-        speed *= 1.5f;
-    }
+    const float speed = creatureMoveRate(scriptWorld_.pc, input.run);
     const float cosYaw = std::cos(yaw_);
     const float sinYaw = std::sin(yaw_);
     kotor::Vec3 desired{cosYaw * forwardAxis + sinYaw * rightAxis,
@@ -2070,18 +2030,10 @@ void GameSession::update(float dt, const InputState& input)
     const kotor::Vec3 delta = desired * (speed * dt);
 
     const kotor::Vec3 start = position_;
-    kotor::Vec3 candidate{position_.x + delta.x, position_.y + delta.y, position_.z};
-    if (wallBlocked(scene_, start, candidate, kPlayerRadius)) {
-        kotor::Vec3 xOnly{start.x + delta.x, start.y, start.z};
-        kotor::Vec3 yOnly{start.x, start.y + delta.y, start.z};
-        if (!wallBlocked(scene_, start, xOnly, kPlayerRadius)) {
-            candidate = xOnly;
-        } else if (!wallBlocked(scene_, start, yOnly, kPlayerRadius)) {
-            candidate = yOnly;
-        } else {
-            candidate = start;
-        }
-    }
+    bool steered = false;
+    const kotor::Vec3 candidate = magnitude > 1.0e-5f
+        ? slidePlayer(start, {position_.x + delta.x, position_.y + delta.y, position_.z}, steered)
+        : start;
     position_.x = candidate.x;
     position_.y = candidate.y;
 
@@ -2108,7 +2060,11 @@ void GameSession::update(float dt, const InputState& input)
     if (magnitude > 1.0e-5f) {
         playerBearing_ = std::atan2(desired.y, desired.x);
     }
-    updatePlayerAvatar(dt, magnitude > 1.0e-5f);
+    const bool queueWalked = nav_ && nav_->playerStepped;
+    if (nav_) {
+        nav_->playerStepped = false;
+    }
+    updatePlayerAvatar(dt, magnitude > 1.0e-5f || queueWalked);
 
     if (audio_) {
         if (magnitude > 1.0e-5f && grounded_) {
@@ -2126,10 +2082,21 @@ void GameSession::update(float dt, const InputState& input)
         }
     }
     syncPlayerToScriptWorld();
+    if (quietWorldForTest_) {
+        updateParty(dt);
+        tickParty(dt);
+        tickActors(ScriptApi{*this}, dt);
+        syncPlayerToScriptWorld();
+        return;
+    }
     updateTriggers();
     updateCombat(dt);
     updateParty(dt);
+    tickParty(dt);
     updateTimers(dt);
+    tickEvents(ScriptApi{*this});
+    tickActors(ScriptApi{*this}, dt);
+    tickWorldState(ScriptApi{*this}, dt);
     updateScripts(dt);
     updateEncounters(dt);
     syncPlayerToScriptWorld();
@@ -2138,9 +2105,47 @@ void GameSession::update(float dt, const InputState& input)
     }
     if (!pendingModule_.empty()) {
         const std::string next = pendingModule_;
+        const std::string linkedTo = sim_->pendingLinkedTo;
         pendingModule_.clear();
-        loadModule(next, nullptr, {});
+        sim_->pendingLinkedTo.clear();
+        try {
+            loadModule(next, nullptr, linkedTo);
+        } catch (const std::exception& exception) {
+            logEvent("module transition failed: " + next + ": " + exception.what());
+        }
+        const std::vector<std::string> movies = std::move(sim_->pendingMovies);
+        sim_->pendingMovies.clear();
+        for (const std::string& movie : movies) {
+            queueMovie(movie, false);
+        }
+        if (!movies.empty()) {
+            playMovieQueue();
+        }
     }
+}
+
+bool GameSession::lineOfSight(kotor::Vec3 from, kotor::Vec3 to) const
+{
+    from.z += 1.2f;
+    to.z += 1.2f;
+    return !wallBlocked(scene_, from, to, 0.15f);
+}
+
+kotor::Vec3 GameSession::actorPosition(std::uint32_t object)
+{
+    return ScriptApi{*this}.position(object);
+}
+
+std::size_t GameSession::actorQueueSize(std::uint32_t object) const
+{
+    const auto it = sim_->actors.find(object);
+    return it != sim_->actors.end() ? it->second.queue.size() : 0;
+}
+
+const ModuleSnapshot* GameSession::moduleSnapshot(const std::string& module) const
+{
+    const auto it = sim_->snapshots.find(module);
+    return it != sim_->snapshots.end() ? &it->second : nullptr;
 }
 
 SceneCamera GameSession::camera() const
@@ -2416,23 +2421,36 @@ bool GameSession::interact()
         chooseDialogueOption(0);
         return true;
     }
+    if (controlLocked()) {
+        return false;
+    }
     if (const kotor::Entity* talk = nearestConversation(3.0f); talk != nullptr) {
-        return startDialogue(static_cast<std::size_t>(talk - scene_.entities.data()));
+        const std::size_t index = static_cast<std::size_t>(talk - scene_.entities.data());
+        // Retail routes a click through the creature's OnDialogue handler, which
+        // decides whether to BeginConversation. Only a creature with no handler
+        // goes straight to its conversation.
+        const auto hook = talk->scripts.find("ScriptDialogue");
+        if (hook != talk->scripts.end() && !hook->second.empty()) {
+            const ScriptContext context{{"lastSpeaker", scriptWorld_.pc},
+                                        {"listenPattern", static_cast<std::uint32_t>(-1)}};
+            runHook("ScriptDialogue", index, scriptWorld_.pc, &context);
+            return true;
+        }
+        return startDialogue(index);
+    }
+    if (controlLocked()) {
+        return false;
     }
     const kotor::Entity* door = nearestDoor(2.8f);
     if (door != nullptr) {
+        // Retail rules (ScriptWorldState.cpp): locked doors refuse, transitions
+        // only cross an unlocked door.
         const std::size_t index = static_cast<std::size_t>(door - scene_.entities.data());
-        const auto open = door->scripts.find("OnOpen");
-        if (open != door->scripts.end() && !open->second.empty()) {
-            runHook("OnOpen", index, scriptWorld_.pc);
-        } else {
-            runHook("OnClick", index, scriptWorld_.pc);
+        const UseOutcome outcome = useObject(index);
+        if (outcome != UseOutcome::OutOfRange && outcome != UseOutcome::Invalid
+            && outcome != UseOutcome::Refused) {
+            return true;
         }
-        if (!door->linkedModule.empty()) {
-            return loadModule(door->linkedModule, nullptr, door->linkedTo);
-        }
-        logEvent("door " + door->tag + ": no transition");
-        return true;
     }
     for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
         const kotor::Entity& entity = scene_.entities[i];
@@ -2458,20 +2476,74 @@ bool GameSession::interact()
 
 bool GameSession::usePlaceable(std::size_t entityIndex)
 {
+    if (entityIndex >= scene_.entities.size()
+        || scene_.entities[entityIndex].kind != kotor::EntityKind::Placeable) {
+        return false;
+    }
+    const UseOutcome outcome = useObject(entityIndex);
+    return outcome == UseOutcome::Used || outcome == UseOutcome::Looted;
+}
+
+// Length of the straight walkmesh walk from the player to an entity, stopping
+// within `stop` of it. Each step is the same wall/floor test the player and
+// scripted actors move with, so a target behind a wall or off the walkmesh is
+// unreachable (negative), unlike a bare distance check.
+float GameSession::pathDistanceTo(std::size_t entityIndex) const
+{
+    if (entityIndex >= scene_.entities.size()) {
+        return -1.0f;
+    }
+    const kotor::Vec3 target = scene_.entities[entityIndex].position;
+    kotor::Vec3 at = position_;
+    float travelled = 0.0f;
+    for (int step = 0; step < 600; ++step) {
+        const float dx = target.x - at.x;
+        const float dy = target.y - at.y;
+        const float remaining = std::sqrt(dx * dx + dy * dy);
+        if (remaining <= 0.5f) {
+            return travelled;
+        }
+        const float stride = std::min(0.4f, remaining - 0.5f);
+        const float ux = dx / remaining;
+        const float uy = dy / remaining;
+        const kotor::Vec3 candidates[3] = {
+            {at.x + ux * stride, at.y + uy * stride, at.z},
+            {at.x + ux * stride, at.y, at.z},
+            {at.x, at.y + uy * stride, at.z},
+        };
+        bool moved = false;
+        for (kotor::Vec3 candidate : candidates) {
+            float ground = candidate.z;
+            if (wallBlocked(scene_, at, candidate, kPlayerRadius)
+                || !floorHeight(scene_, candidate.x, candidate.y, candidate.z + 2.0f, ground)) {
+                continue;
+            }
+            candidate.z = ground;
+            const float length = std::hypot(candidate.x - at.x, candidate.y - at.y);
+            if (length > 1.0e-4f) {
+                travelled += length;
+                at = candidate;
+                moved = true;
+                break;
+            }
+        }
+        if (!moved) {
+            return -1.0f;
+        }
+    }
+    return -1.0f;
+}
+
+bool GameSession::inReach(std::size_t entityIndex, float range) const
+{
     if (entityIndex >= scene_.entities.size()) {
         return false;
     }
-    kotor::Entity& entity = scene_.entities[entityIndex];
-    if (entity.kind != kotor::EntityKind::Placeable || !entity.useable || entity.dead) {
+    if (distance2D(position_, scene_.entities[entityIndex].position) > range) {
         return false;
     }
-    if (distance2D(position_, entity.position) > 2.5f) {
-        return false;
-    }
-    logEvent("use " + entity.tag);
-    runHook("OnUsed", entityIndex, scriptWorld_.pc);
-    openLoot(entityIndex);
-    return true;
+    const float path = pathDistanceTo(entityIndex);
+    return path >= 0.0f && path <= range + 0.5f;
 }
 
 bool GameSession::testTransition(std::string& from, std::string& to)
@@ -2533,16 +2605,25 @@ bool GameSession::findClearView(kotor::Vec3 target, float radius, kotor::Vec3& o
 
 bool GameSession::walkTo(kotor::Vec3 target, float maxSeconds)
 {
-    const int steps = std::max(1, static_cast<int>(maxSeconds * 60.0f));
-    for (int i = 0; i < steps; ++i) {
+    int steps = std::max(1, static_cast<int>(maxSeconds * 60.0f));
+    // Each closed door on the way costs one stop, as it does a player.
+    for (int leg = 0; leg < 8; ++leg) {
         if (distance2D(position_, target) < 0.6f) {
             return true;
         }
-        yaw_ = std::atan2(target.y - position_.y, target.x - position_.x);
-        InputState input;
-        input.forward = true;
-        input.run = distance2D(position_, target) > 4.0f;
-        update(1.0f / 60.0f, input);
+        if (!moveTo(target, 0.6f, distance2D(position_, target) > 4.0f)) {
+            return false;
+        }
+        while (steps-- > 0 && movePending()) {
+            if (dialogueView_.active) {
+                return false;
+            }
+            update(1.0f / 60.0f, InputState{});
+        }
+        if (moveOutcome_ != MoveOutcome::DoorBlocked
+            || !openDoorAsPlayer(moveBlockingDoor_)) {
+            break;
+        }
     }
     return distance2D(position_, target) < 1.2f;
 }
@@ -2570,49 +2651,79 @@ bool GameSession::startDialogue(std::size_t entityIndex)
     if (entityIndex >= scene_.entities.size()) {
         return false;
     }
-    kotor::Entity& entity = scene_.entities[entityIndex];
-    if (entity.conversation.empty()) {
-        logEvent((entity.name.empty() ? entity.tag : entity.name) + " has nothing to say");
+    return startConversation(objectForEntity(entityIndex), {});
+}
+
+bool GameSession::startConversation(std::uint32_t owner, const std::string& resrefOverride)
+{
+    sim_->noStartLink = false;
+    ScriptApi api{*this};
+    const std::size_t entityIndex = api.entityFor(owner);
+    std::string resref = resrefOverride;
+    std::string ownerTag;
+    std::string ownerName;
+    if (entityIndex != static_cast<std::size_t>(-1)) {
+        const kotor::Entity& entity = scene_.entities[entityIndex];
+        ownerTag = entity.tag;
+        ownerName = entity.name.empty() ? entity.tag : entity.name;
+        if (resref.empty()) {
+            resref = entity.conversation;
+        }
+    } else if (const script::GameObject* object = scriptWorld_.get(owner); object != nullptr) {
+        ownerTag = object->tag;
+        ownerName = object->tag;
+    }
+    if (resref.empty()) {
+        logEvent((ownerName.empty() ? std::string("object") : ownerName) + " has nothing to say");
         return false;
     }
     kotor::Dlg dlg;
-    if (!loadDialogue(entity.conversation, dlg)) {
-        logEvent("missing dialogue " + entity.conversation);
+    if (!loadDialogue(resref, dlg)) {
+        logEvent("missing dialogue " + resref);
         return false;
     }
+    if (activeDialogue_.has_value()) {
+        finishDialogue(true);
+    }
+    ++dialogueGeneration_;
     ActiveDialogue active;
-    active.npcTag = entity.tag;
-    active.speaker = entity.name.empty() ? entity.tag : entity.name;
-    active.resref = entity.conversation;
-    active.npcObject = objectForEntity(entityIndex);
+    active.npcTag = ownerTag;
+    active.speaker = ownerName;
+    active.resref = resref;
+    active.npcObject = owner;
     active.dlg = std::move(dlg);
     activeDialogue_ = std::move(active);
-    if (audio_) {
+    sim_->dialoguePaused = false;
+    if (audio_ && entityIndex != static_cast<std::size_t>(-1)) {
         audio_->playCreatureSound(static_cast<std::uint32_t>(entityIndex), 6); // select
     }
     loadDialogueCameraModel(activeDialogue_->dlg.cameraModel);
     dialogueCameraClip_.clear();
     dialogueCameraTime_ = 0.0f;
     dialogueCameraDuration_ = 0.0f;
+    const std::uint32_t generation = dialogueGeneration_;
+    const std::vector<std::uint32_t> starting = activeDialogue_->dlg.starting;
+    const std::vector<std::string> startingActive = activeDialogue_->dlg.startingActive;
+    const std::size_t entryCount = activeDialogue_->dlg.entries.size();
     std::uint32_t entry = UINT32_MAX;
-    // KotOR 1 carries conditions on StartingList.Active. Run them in order and
-    // take the first truthy one; an empty Active is unconditional.
-    for (std::size_t i = 0; i < activeDialogue_->dlg.starting.size(); ++i) {
-        const std::uint32_t candidate = activeDialogue_->dlg.starting[i];
-        if (candidate >= activeDialogue_->dlg.entries.size()) {
+    // StartingList.Active: first truthy link wins, an empty Active is
+    // unconditional, and no passing link means no conversation at all.
+    for (std::size_t i = 0; i < starting.size(); ++i) {
+        const std::uint32_t candidate = starting[i];
+        if (candidate >= entryCount) {
             continue;
         }
-        const std::string activeScript = i < activeDialogue_->dlg.startingActive.size()
-            ? activeDialogue_->dlg.startingActive[i]
-            : std::string{};
+        const std::string activeScript =
+            i < startingActive.size() ? startingActive[i] : std::string{};
         bool condition = true;
         if (!activeScript.empty()) {
-            condition = scriptValueTruthy(runScript(activeScript, activeDialogue_->npcObject,
-                                                    scriptWorld_.pc, scriptWorld_.pc,
-                                                    scriptWorld_.pc));
+            condition = scriptValueTruthy(runScriptWith(activeScript, owner, dialogueContext()));
             scriptLog_.push_back("dialogue condition " + activeScript + " entry="
                                  + std::to_string(candidate) + " = "
                                  + (condition ? "1" : "0"));
+            if (!activeDialogue_.has_value() || dialogueGeneration_ != generation) {
+                return false;
+            }
         }
         if (!condition) {
             continue;
@@ -2620,11 +2731,9 @@ bool GameSession::startDialogue(std::size_t entityIndex)
         entry = candidate;
         break;
     }
-    if (entry == UINT32_MAX && !activeDialogue_->dlg.entries.empty()) {
-        entry = 0;
-    }
     if (entry == UINT32_MAX) {
-        endDialogue();
+        sim_->noStartLink = true;
+        clearDialogueState();
         return false;
     }
     scriptLog_.push_back("dialogue start " + activeDialogue_->resref + " entry="
@@ -2654,47 +2763,178 @@ void GameSession::setDialogueForTest(kotor::Dlg dlg, std::string resref,
     active.dlg = std::move(dlg);
     activeDialogue_ = std::move(active);
     dialogueView_ = {};
+    sim_->dialoguePaused = false;
+    ++dialogueGeneration_;
     showDialogueEntry(0);
+}
+
+ScriptContext GameSession::dialogueContext() const
+{
+    const std::uint32_t pc = scriptWorld_.pc;
+    return {{"entering", pc}, {"exiting", pc}, {"caller", pc}, {"trigger", pc},
+            {"lastSpeaker", pc}};
+}
+
+// A link condition lives on the link (RepliesList/EntriesList .Active). Shipped
+// nodes carry no node-level Active; a hand-built one has to pass as well.
+bool GameSession::dialogueLinkPasses(const std::string& linkActive, const std::string& nodeActive)
+{
+    const std::uint32_t owner = activeDialogue_->npcObject;
+    if (!linkActive.empty()
+        && !scriptValueTruthy(runScriptWith(linkActive, owner, dialogueContext()))) {
+        return false;
+    }
+    return nodeActive.empty()
+        || scriptValueTruthy(runScriptWith(nodeActive, owner, dialogueContext()));
+}
+
+std::vector<std::uint32_t> GameSession::passingReplies(const kotor::DlgEntry& entry)
+{
+    std::vector<std::uint32_t> passing;
+    const std::uint32_t generation = dialogueGeneration_;
+    for (std::size_t i = 0; i < entry.replies.size(); ++i) {
+        const std::uint32_t reply = entry.replies[i];
+        if (!activeDialogue_.has_value() || dialogueGeneration_ != generation
+            || reply >= activeDialogue_->dlg.replies.size()) {
+            continue;
+        }
+        const std::string link = i < entry.repliesActive.size() ? entry.repliesActive[i]
+                                                                : std::string{};
+        const std::string node = activeDialogue_->dlg.replies[reply].active;
+        if (dialogueLinkPasses(link, node)) {
+            passing.push_back(reply);
+        }
+    }
+    return passing;
+}
+
+std::uint32_t GameSession::firstPassingEntry(const kotor::DlgReply& reply)
+{
+    const std::uint32_t generation = dialogueGeneration_;
+    for (std::size_t i = 0; i < reply.entries.size(); ++i) {
+        const std::uint32_t entry = reply.entries[i];
+        if (!activeDialogue_.has_value() || dialogueGeneration_ != generation) {
+            return UINT32_MAX;
+        }
+        if (entry >= activeDialogue_->dlg.entries.size()) {
+            continue;
+        }
+        const std::string link = i < reply.entriesActive.size() ? reply.entriesActive[i]
+                                                                : std::string{};
+        const std::string node = activeDialogue_->dlg.entries[entry].active;
+        if (dialogueLinkPasses(link, node)) {
+            return entry;
+        }
+    }
+    return UINT32_MAX;
+}
+
+// One node reached: its script every time (retail keeps no "already fired" set),
+// then the journal, then plot XP. Node scripts run on the conversation owner.
+// Whether retail switches OBJECT_SELF to the Speaker object for a node script
+// was not established; the owner matches what shipped k_* node scripts expect.
+// Returns false when the script ended or replaced the conversation.
+template <typename Node>
+bool GameSession::applyDialogueNode(const Node& node, std::uint32_t generation)
+{
+    if (!node.script.empty()) {
+        runScriptWith(node.script, activeDialogue_->npcObject, dialogueContext());
+        logEvent("dialog script " + node.script);
+        if (!activeDialogue_.has_value() || dialogueGeneration_ != generation) {
+            return false;
+        }
+    }
+    if (!node.quest.empty()) {
+        logEvent("dialog quest " + node.quest);
+        // A node advances the journal under AddJournalQuestEntry's rule (005483f0).
+        if (node.hasQuestEntry) {
+            addJournalQuest(node.quest, node.questEntry, false);
+        }
+    }
+    if (node.plotIndex >= 0) {
+        giveXp(plotXpForIndex(node.plotIndex, node.plotXpPercentage));
+    }
+    return true;
 }
 
 void GameSession::showDialogueEntry(std::uint32_t entryIndex)
 {
     if (!activeDialogue_.has_value() || entryIndex >= activeDialogue_->dlg.entries.size()) {
-        endDialogue();
+        finishDialogue(false);
         return;
     }
-    // Control entries carry scripts but no spoken text and exactly one
-    // continuation. Run them, then show the first real line (the shipped
-    // conversation starts on such an entry).
-    for (int guard = 0; guard < 8; ++guard) {
-        const kotor::DlgEntry& control = activeDialogue_->dlg.entries[entryIndex];
-        if (!control.text.empty() || control.replies.size() != 1) {
+    const std::uint32_t generation = dialogueGeneration_;
+    const auto alive = [&]() {
+        return activeDialogue_.has_value() && dialogueGeneration_ == generation;
+    };
+    dialogueView_.active = true;
+    dialogueView_.npcTag = activeDialogue_->npcTag;
+    dialogueView_.speaker = activeDialogue_->speaker;
+    std::vector<std::uint32_t> replies;
+    // Control entries carry scripts but no spoken line, and a single textless
+    // link. They run and pass straight through (the shipped conversation starts
+    // on such an entry).
+    for (int guard = 0; guard < 32; ++guard) {
+        // Copies: a node script can replace the conversation these live in.
+        const kotor::DlgEntry entry = activeDialogue_->dlg.entries[entryIndex];
+        if (!applyDialogueNode(entry, generation)) {
+            return;
+        }
+        replies = passingReplies(entry);
+        if (!alive()) {
+            return;
+        }
+        if (!entry.text.empty()) {
             break;
         }
-        if (!control.script.empty() && activeDialogue_->firedEntries.insert(entryIndex).second) {
-            runScript(control.script, activeDialogue_->npcObject, scriptWorld_.pc,
-                      scriptWorld_.pc, scriptWorld_.pc);
+        if (replies.empty()) {
+            finishDialogue(false);
+            return;
         }
-        const std::uint32_t replyIndex = control.replies.front();
-        if (replyIndex >= activeDialogue_->dlg.replies.size()) {
+        if (replies.size() != 1) {
             break;
         }
-        const kotor::DlgReply& reply = activeDialogue_->dlg.replies[replyIndex];
-        if (!reply.script.empty()) {
-            runScript(reply.script, activeDialogue_->npcObject, scriptWorld_.pc,
-                      scriptWorld_.pc, scriptWorld_.pc);
-        }
-        if (reply.entries.empty() || reply.entries.front() == entryIndex
-            || reply.entries.front() >= activeDialogue_->dlg.entries.size()) {
+        const kotor::DlgReply reply = activeDialogue_->dlg.replies[replies.front()];
+        if (!reply.text.empty()) {
             break;
         }
-        entryIndex = reply.entries.front();
+        if (!applyDialogueNode(reply, generation)) {
+            return;
+        }
+        const std::uint32_t next = firstPassingEntry(reply);
+        if (!alive()) {
+            return;
+        }
+        if (next == UINT32_MAX) {
+            finishDialogue(false);
+            return;
+        }
+        entryIndex = next;
     }
     const kotor::DlgEntry& entry = activeDialogue_->dlg.entries[entryIndex];
     dialogueView_.active = true;
     dialogueView_.npcTag = activeDialogue_->npcTag;
     dialogueView_.speaker = activeDialogue_->speaker;
-    dialogueView_.text = entry.text.empty() ? "(No text)" : entry.text;
+    dialogueView_.speakerObject = activeDialogue_->npcObject;
+    dialogueView_.listenerObject = scriptWorld_.pc;
+    dialogueView_.delay = entry.delay;
+    dialogueView_.waitFlags = entry.waitFlags;
+    // Speaker and Listener name objects by tag; empty means owner and PC.
+    if (!entry.speaker.empty()) {
+        const std::size_t speaker = findEntity(entry.speaker);
+        if (speaker != static_cast<std::size_t>(-1)) {
+            dialogueView_.speakerObject = objectForEntity(speaker);
+            const kotor::Entity& entity = scene_.entities[speaker];
+            dialogueView_.speaker = entity.name.empty() ? entity.tag : entity.name;
+        }
+    }
+    if (!entry.listener.empty()) {
+        const std::size_t listener = findEntity(entry.listener);
+        if (listener != static_cast<std::size_t>(-1)) {
+            dialogueView_.listenerObject = objectForEntity(listener);
+        }
+    }
+    dialogueView_.text = entry.text.empty() ? "(No text)" : substituteTokens(entry.text);
     dialogueView_.entry = entryIndex;
     dialogueView_.cameraId = entry.cameraId;
     dialogueView_.cameraAngle = entry.cameraAngle;
@@ -2724,23 +2964,10 @@ void GameSession::showDialogueEntry(std::uint32_t entryIndex)
         }
     }
     dialogueView_.options.clear();
-    if (!entry.script.empty() && activeDialogue_->firedEntries.insert(entryIndex).second) {
-        runScript(entry.script, activeDialogue_->npcObject, scriptWorld_.pc,
-                  scriptWorld_.pc, scriptWorld_.pc);
-    }
-    for (const std::uint32_t replyIndex : entry.replies) {
-        if (replyIndex >= activeDialogue_->dlg.replies.size()) {
-            continue;
-        }
+    for (const std::uint32_t replyIndex : replies) {
         const kotor::DlgReply& reply = activeDialogue_->dlg.replies[replyIndex];
-        if (!reply.active.empty()
-            && !scriptValueTruthy(runScript(reply.active, activeDialogue_->npcObject,
-                                            scriptWorld_.pc, scriptWorld_.pc,
-                                            scriptWorld_.pc))) {
-            continue;
-        }
         DialogueOption option;
-        option.text = reply.text.empty() ? "(Continue)" : reply.text;
+        option.text = reply.text.empty() ? "(Continue)" : substituteTokens(reply.text);
         option.reply = replyIndex;
         dialogueView_.options.push_back(std::move(option));
     }
@@ -2755,6 +2982,9 @@ void GameSession::chooseDialogueOption(std::size_t optionIndex)
     if (!activeDialogue_.has_value() || optionIndex >= dialogueView_.options.size()) {
         return;
     }
+    if (sim_->dialoguePaused) {
+        return;
+    }
     if (traceActions_) {
         dialogueChoices_.push_back({module_, activeDialogue_->resref,
                                     dialogueView_.entry, optionIndex,
@@ -2762,23 +2992,10 @@ void GameSession::chooseDialogueOption(std::size_t optionIndex)
     }
     const std::uint32_t replyIndex = dialogueView_.options[optionIndex].reply;
     if (replyIndex == UINT32_MAX || replyIndex >= activeDialogue_->dlg.replies.size()) {
-        endDialogue();
+        finishDialogue(false);
         return;
     }
-    const kotor::DlgReply& reply = activeDialogue_->dlg.replies[replyIndex];
-    if (!reply.script.empty()) {
-        runScript(reply.script, activeDialogue_->npcObject, scriptWorld_.pc,
-                  scriptWorld_.pc, scriptWorld_.pc);
-        logEvent("dialog script " + reply.script);
-    }
-    if (!reply.quest.empty()) {
-        logEvent("dialog quest " + reply.quest);
-    }
-    const bool startsCombat = lower(reply.quest) == "end_attack"
-        || lower(reply.script).find("attack") != std::string::npos;
-    if (startsCombat) {
-        logEvent("dialogue triggers combat");
-    }
+    const kotor::DlgReply reply = activeDialogue_->dlg.replies[replyIndex];
     if (reply.cameraId >= 0) {
         dialogueView_.cameraId = reply.cameraId;
     }
@@ -2800,26 +3017,58 @@ void GameSession::chooseDialogueOption(std::size_t optionIndex)
     if (audio_ && !reply.sound.empty()) {
         audio_->playVoice(reply.sound);
     }
-    if (!reply.entries.empty() && reply.entries.front() < activeDialogue_->dlg.entries.size()) {
-        showDialogueEntry(reply.entries.front());
-    } else {
-        endDialogue();
+    const std::uint32_t generation = dialogueGeneration_;
+    if (!applyDialogueNode(reply, generation)) {
+        return;
     }
-    if (startsCombat) {
-        attackNearestHostile();
+    // After a reply the first linked entry whose Active passes wins; none ends it.
+    const std::uint32_t next = firstPassingEntry(reply);
+    if (!activeDialogue_.has_value() || dialogueGeneration_ != generation) {
+        return;
+    }
+    if (next == UINT32_MAX) {
+        finishDialogue(false);
+    } else {
+        showDialogueEntry(next);
     }
 }
 
-void GameSession::endDialogue()
+void GameSession::clearDialogueState()
 {
     activeDialogue_.reset();
     dialogueView_ = {};
+    sim_->dialoguePaused = false;
+    ++dialogueGeneration_;
     dialogueCameraModel_.reset();
     dialogueCameraClip_.clear();
     dialogueCameraTime_ = 0.0f;
     dialogueCameraDuration_ = 0.0f;
     activeLip_.reset();
     lipTime_ = 0.0f;
+}
+
+// State is cleared before the end scripts run, since they commonly start the
+// next conversation or a module transition.
+void GameSession::finishDialogue(bool aborted)
+{
+    if (!activeDialogue_.has_value()) {
+        clearDialogueState();
+        return;
+    }
+    const std::uint32_t owner = activeDialogue_->npcObject;
+    const std::string script = aborted ? activeDialogue_->dlg.endConversationAbort
+                                       : activeDialogue_->dlg.endConversation;
+    const ScriptContext context = dialogueContext();
+    clearDialogueState();
+    if (!script.empty()) {
+        runScriptWith(script, owner, context);
+    }
+    ScriptApi{*this}.dispatchHook(owner, "ScriptEndDialogu", context);
+}
+
+void GameSession::endDialogue()
+{
+    finishDialogue(true);
 }
 
 void GameSession::attackNearestHostile()
@@ -2829,7 +3078,8 @@ void GameSession::attackNearestHostile()
     float bestDistance = 20.0f;
     for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
         const kotor::Entity& entity = scene_.entities[i];
-        if (!entity.hostile || entity.dead) {
+        if (entity.kind != kotor::EntityKind::Creature || entity.dead
+            || !isEnemy(ScriptApi{*this}, scriptWorld_.pc, objectForEntity(i))) {
             continue;
         }
         const float distance = distance2D(position_, entity.position);
@@ -2843,6 +3093,19 @@ void GameSession::attackNearestHostile()
         return;
     }
     combatTarget_ = static_cast<std::uint32_t>(best);
+    // The attack command: an Attack action the player can cancel by steering. It
+    // walks to range and runs rounds until the target falls (ScriptCombat.cpp).
+    {
+        ScriptApi api{*this};
+        std::erase_if(api.actor(scriptWorld_.pc).queue, [](const ActorAction& action) {
+            return action.kind == ActorActionKind::Attack;
+        });
+        ActorAction attack;
+        attack.kind = ActorActionKind::Attack;
+        attack.object = objectForEntity(best);
+        attack.userIssued = true;
+        api.enqueue(scriptWorld_.pc, std::move(attack));
+    }
     logEvent("combat target " + combatTargetName());
     if (audio_) {
         audio_->playCreatureSound(static_cast<std::uint32_t>(best), 0); // battle cry
@@ -2872,255 +3135,78 @@ std::string GameSession::combatTargetName() const
     return entity.name.empty() ? entity.tag : entity.name;
 }
 
-void GameSession::playerAttack(std::size_t target)
+void GameSession::damageEntity(std::size_t index, std::int32_t amount, std::uint32_t attacker)
 {
-    kotor::Entity& entity = scene_.entities[target];
-    std::int32_t dice = 1;
-    std::int32_t die = 8;
-    std::int32_t bonus = 0;
-    rules_.weaponDamage(character_, dice, die, bonus);
-    bonus += forceDamageBonus() + forceJumpBonus_;
-    std::int32_t attackModifier = forceAttackBonus() + forceJumpBonus_;
-    forceJumpBonus_ = 0;
-    std::int32_t criticalThreat = 20;
-    switch (combatMode_) {
-    case CombatMode::PowerAttack:
-        attackModifier -= 3;
-        bonus += combatModeRank_ == 1 ? 5 : combatModeRank_ == 2 ? 8 : 10;
-        break;
-    case CombatMode::Flurry:
-        attackModifier -= combatModeRank_ == 1 ? 4 : combatModeRank_ == 2 ? 2 : 0;
-        break;
-    case CombatMode::CriticalStrike:
-        attackModifier -= 2;
-        criticalThreat = combatModeRank_ == 1 ? 19 : combatModeRank_ == 2 ? 18 : 17;
-        break;
-    case CombatMode::Whirlwind:
-        attackModifier -= 4;
-        break;
-    case CombatMode::Normal:
-        break;
-    }
-    const AttackResult result = rules_.resolveAttack(character_, entity.defense, rng_, dice, die,
-                                                     bonus, criticalThreat, attackModifier);
-    if (!result.hit) {
-        logEvent("player misses " + (entity.name.empty() ? entity.tag : entity.name)
-                 + " (" + std::to_string(result.total) + " vs " + std::to_string(entity.defense) + ")");
-        return;
-    }
-    std::int32_t sneakDamage = 0;
-    const std::int32_t sneakDice = rules_.sneakAttackDice(character_);
-    if (sneakDice > 0 && (entity.stunTimer > 0.0f || entity.fearTimer > 0.0f)) {
-        for (std::int32_t roll = 0; roll < sneakDice; ++roll) {
-            sneakDamage += 1 + static_cast<std::int32_t>(random() % 6u);
-        }
-    }
-    entity.hitPoints -= result.damage + sneakDamage;
-    const std::size_t index = &entity - scene_.entities.data();
-    logEvent("player hits " + (entity.name.empty() ? entity.tag : entity.name)
-             + " for " + std::to_string(result.damage + sneakDamage)
-             + (sneakDamage > 0 ? " (sneak)" : "")
-             + (result.critical ? " (critical)" : "") + " ("
-             + std::to_string(std::max(0, entity.hitPoints)) + "/" + std::to_string(entity.maxHitPoints) + ")");
-    if (audio_) {
-        audio_->playCreatureSound(static_cast<std::uint32_t>(index),
-                                  result.critical ? 16 : 12); // critical/pain
-    }
-    if (entity.hitPoints <= 0) {
-        entity.dead = true;
-        logEvent("player defeats " + (entity.name.empty() ? entity.tag : entity.name));
-        if (audio_) {
-            audio_->playCreatureSound(static_cast<std::uint32_t>(index), 15); // death
-        }
-        const std::int32_t reward = std::max<std::int32_t>(1, entity.maxHitPoints / 2);
-        combatTarget_ = UINT32_MAX;
-        giveXp(reward);
-        runHook("ScriptDeath", index, scriptWorld_.pc);
+    if (index < scene_.entities.size() && !scene_.entities[index].dead) {
+        applyScriptDamage(ScriptApi{*this}, objectForEntity(index), amount, 8, attacker);
     }
 }
 
-void GameSession::npcAttack(std::size_t attacker)
+// The one way a creature dies. retail 004fb1e0 awards XP from the death itself,
+// whoever struck the blow: never for the PC or a party member, and only when the
+// dead creature's faction stands at enemy (<= 10) against the player's. The value
+// is xptable by leader level and challenge rating (004f19e0), and giveXp splits it
+// across the party with each member's npc.2da share (005653a0, 004ef930).
+void GameSession::onCreatureKilled(std::size_t index, std::uint32_t killer)
 {
-    kotor::Entity& entity = scene_.entities[attacker];
-    if (entity.stunTimer > 0.0f || entity.fearTimer > 0.0f) {
+    if (index >= scene_.entities.size() || scene_.entities[index].dead) {
         return;
     }
-    if (audio_) {
-        audio_->playCreatureSound(static_cast<std::uint32_t>(attacker), 9); // attack
+    kotor::Entity& entity = scene_.entities[index];
+    entity.dead = true;
+    if (combatTarget_ == index) {
+        combatTarget_ = UINT32_MAX;
     }
-    const std::int32_t roll = 1 + static_cast<std::int32_t>(random() % 20u);
-    const std::int32_t targetAc = rules_.armorClass(character_) + forceArmorBonus();
-    const std::int32_t total = roll + entity.attackBonus;
-    if (roll != 20 && (roll == 1 || total < targetAc)) {
-        logEvent((entity.name.empty() ? entity.tag : entity.name) + " misses player ("
-                 + std::to_string(total) + " vs " + std::to_string(targetAc) + ")");
-        return;
-    }
-    const std::int32_t span = std::max(1, entity.damageMax - entity.damageMin + 1);
-    std::int32_t damage = entity.damageMin
-        + static_cast<std::int32_t>(random() % static_cast<std::uint32_t>(span));
-    if (roll == 20) {
-        damage *= 2;
-    }
-    if (entity.ranged) {
-        const std::int32_t deflection = 1 + static_cast<std::int32_t>(random() % 20u);
-        if (rules_.jediDeflects(character_, total, deflection)) {
-            logEvent("player deflects " + entity.tag);
-            if (deflection + rules_.jediDefenseBonus(character_) >= total + 10) {
-                entity.hitPoints -= damage;
-                logEvent("deflected bolt hits " + entity.tag + " for "
-                         + std::to_string(damage));
-                if (entity.hitPoints <= 0) {
-                    entity.dead = true;
-                    logEvent("deflected bolt defeats " + entity.tag);
-                }
-            }
-            return;
+    const std::uint32_t object = objectForEntity(index);
+    ScriptApi api{*this};
+    api.clearQueue(object);
+    syncEntityToScriptWorld(index);
+    if (!entity.partyAvatar && entity.kind == kotor::EntityKind::Creature
+        && reputationBetween(api, scriptWorld_.pc, object) <= 10) {
+        const std::int32_t award = rules_.killXp(
+            rules_.levelForXp(character_.xp), entity.stats.challengeRating,
+            static_cast<std::int32_t>(scriptWorld_.party.size()) + 1);
+        if (award > 0) {
+            giveXp(award);
         }
     }
-    for (kotor::ActiveEffect& effect : character_.effects) {
-        if (effect.remaining <= 0.0f || effect.shield <= 0) {
-            continue;
-        }
-        const std::int32_t absorbed = std::min(effect.shield, damage);
-        damage -= absorbed;
-        effect.shield -= absorbed;
-        if (damage <= 0) {
-            break;
-        }
-    }
-    damage = std::max(0, damage - rules_.damageReduction(character_));
-    playerHp_ -= damage;
-    logEvent((entity.name.empty() ? entity.tag : entity.name) + " hits player for "
-             + std::to_string(damage) + (roll == 20 ? " (critical)" : "") + " ("
-             + std::to_string(std::max(0, playerHp_)) + "/"
-             + std::to_string(playerMaxHp_) + ")");
-    if (playerHp_ <= 0) {
-        playerHp_ = 0;
-        playerDead_ = true;
-        logEvent("player defeated");
-        runSceneHook("Mod_OnPlrDying", scriptWorld_.pc);
-        runSceneHook("Mod_OnPlrDeath", scriptWorld_.pc);
-    }
+    api.raiseHook(object, "Death", {{"lastKiller", killer}});
 }
 
 void GameSession::updateCombat(float dt)
 {
-    if (playerDead_ || dialogueView_.active) {
-        return;
+    // New creatures, whichever path spawned them, get their sheet derived once.
+    for (kotor::Entity& entity : scene_.entities) {
+        if (entity.stats.parsed && !entity.stats.combatDerived) {
+            rules_.deriveCreatureCombat(entity);
+        }
     }
-    if (stealthActive_) {
-        combatTarget_ = UINT32_MAX;
-        return;
-    }
-    if (npcAttackTimers_.size() != scene_.entities.size()) {
-        npcAttackTimers_.resize(scene_.entities.size(), 0.0f);
-    }
+    tickScriptEffects(ScriptApi{*this}, dt);
     if (combatModeTimer_ > 0.0f) {
         combatModeTimer_ -= dt;
         if (combatModeTimer_ <= 0.0f) {
             combatMode_ = CombatMode::Normal;
         }
     }
-    if (combatTarget_ != UINT32_MAX
-        && (combatTarget_ >= scene_.entities.size() || scene_.entities[combatTarget_].dead)) {
-        combatTarget_ = UINT32_MAX;
+    ScriptApi api{*this};
+    ActorState& pc = api.actor(scriptWorld_.pc);
+    if (stealthActive_) {
+        std::erase_if(pc.queue, [](const ActorAction& action) {
+            return action.kind == ActorActionKind::Attack;
+        });
     }
-    if (combatTarget_ == UINT32_MAX) {
-        std::size_t best = static_cast<std::size_t>(-1);
-        float bestDistance = 14.0f;
-        for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
-            const kotor::Entity& entity = scene_.entities[i];
-            if (!entity.hostile || entity.dead) {
-                continue;
-            }
-            const float distance = distance2D(position_, entity.position);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                best = i;
-            }
-        }
-        if (best != static_cast<std::size_t>(-1)) {
-            combatTarget_ = static_cast<std::uint32_t>(best);
-            combatRoundTimer_ = 0.0f;
-            combatRound_ = 0;
-            logEvent("combat started: " + combatTargetName());
-        }
-    }
-
-    for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
-        kotor::Entity& entity = scene_.entities[i];
-        if (!entity.hostile || entity.dead || entity.stunTimer > 0.0f
-            || entity.fearTimer > 0.0f) {
-            continue;
-        }
-        const float distance = distance2D(position_, entity.position);
-        const float stopRange = entity.ranged ? entity.attackRange : 1.4f;
-        const float chaseLimit = entity.ranged ? entity.attackRange : 14.0f;
-        if (distance <= chaseLimit && distance > stopRange && distance > 0.01f) {
-            const float step = std::min(2.5f * dt, distance - stopRange);
-            const float dx = (position_.x - entity.position.x) / distance;
-            const float dy = (position_.y - entity.position.y) / distance;
-            entity.position.x += dx * step;
-            entity.position.y += dy * step;
-            entity.bearing = std::atan2(dy, dx);
-            syncEntityToScriptWorld(i);
-        }
-    }
-
-    combatRoundTimer_ = std::max(0.0f, combatRoundTimer_ - dt);
-    if (combatTarget_ == UINT32_MAX || combatRoundTimer_ > 0.0f) {
-        return;
-    }
-    combatRoundTimer_ = 6.0f;
-    ++combatRound_;
-
-    struct Actor {
-        int initiative;
-        std::size_t index;
-        bool player;
-    };
-    std::vector<Actor> order;
-    order.push_back({1 + static_cast<int>(random() % 20u) + rules_.initiativeBonus(character_),
-                     0, true});
-    for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
-        const kotor::Entity& entity = scene_.entities[i];
-        if (!entity.hostile || entity.dead || entity.stunTimer > 0.0f
-            || entity.fearTimer > 0.0f) {
-            continue;
-        }
-        if (distance2D(position_, entity.position) <= (entity.ranged ? entity.attackRange : 2.4f)) {
-            order.push_back({1 + static_cast<int>(random() % 20u), i, false});
-        }
-    }
-    std::sort(order.begin(), order.end(), [](const Actor& a, const Actor& b) {
-        return a.initiative > b.initiative;
+    // combatTarget_ is the UI's view of the player's attack command.
+    const auto attacking = std::find_if(pc.queue.begin(), pc.queue.end(), [](const ActorAction& action) {
+        return action.kind == ActorActionKind::Attack;
     });
-    logEvent("round " + std::to_string(combatRound_) + ": " + std::to_string(order.size())
-             + " actors");
-    for (const Actor& actor : order) {
-        if (playerDead_ || dialogueView_.active) {
-            break;
-        }
-        if (actor.player) {
-            if (combatMode_ == CombatMode::Whirlwind) {
-                for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
-                    if (scene_.entities[i].hostile && !scene_.entities[i].dead
-                        && distance2D(position_, scene_.entities[i].position) <= 2.4f) {
-                        playerAttack(i);
-                    }
-                }
-            } else if (combatTarget_ != UINT32_MAX
-                       && distance2D(position_, scene_.entities[combatTarget_].position) <= 2.4f) {
-                playerAttack(combatTarget_);
-                if (combatMode_ == CombatMode::Flurry && combatTarget_ != UINT32_MAX) {
-                    playerAttack(combatTarget_);
-                }
-            }
-        } else if (actor.index < scene_.entities.size()
-                   && !scene_.entities[actor.index].dead) {
-            npcAttack(actor.index);
-        }
+    if (attacking == pc.queue.end()) {
+        combatTarget_ = UINT32_MAX;
+    } else if (const std::size_t index = api.entityFor(attacking->object);
+               index != static_cast<std::size_t>(-1)) {
+        combatTarget_ = static_cast<std::uint32_t>(index);
+    }
+    if (!dialogueView_.active) {
+        tickCombat(api, dt);
     }
 }
 
@@ -3151,17 +3237,44 @@ void GameSession::updateTriggers()
         if (trigger.entity >= scene_.entities.size()) {
             continue;
         }
-        const kotor::Entity& entity = scene_.entities[trigger.entity];
+        if (scene_.entities[trigger.entity].dead) {
+            continue;
+        }
         const bool inside = pointInTrigger(trigger, position_.x, position_.y);
         if (inside == triggerInside_[i]) {
             continue;
         }
         triggerInside_[i] = inside;
+        // Hooks can spawn entities, so nothing keeps a reference across them.
+        const std::size_t index = trigger.entity;
         if (inside) {
-            runHook("ScriptOnEnter", trigger.entity, scriptWorld_.pc);
+            runHook("ScriptOnEnter", index, scriptWorld_.pc);
+            const kotor::Entity& entity = scene_.entities[index];
             logEvent("trigger " + entity.tag + ": enter " + entity.scriptOnEnter);
+            // A trap trigger springs on the walk-in edge unless disarmed.
+            if (entity.trapFlag) {
+                springTrap(index, scriptWorld_.pc);
+            }
+            // Honour LinkedToModule on the walk-in edge; the swap happens at the
+            // end of the tick, never with this loop mid-flight. A KeyName that is
+            // required must be held (and is consumed with AutoRemoveKey), and an
+            // unescapable area cannot be left this way.
+            if (index < scene_.entities.size()) {
+                const kotor::Entity& transition = scene_.entities[index];
+                const bool wantsLeave = !transition.linkedModule.empty()
+                    && transition.linkedFlags != 0 && pendingModule_.empty();
+                if (wantsLeave && !sim_->areaUnescapable
+                    && (!transition.keyRequired || transition.keyName.empty()
+                        || keyUnlock(index) || playerHasKey(transition.keyName))) {
+                    pendingModule_ = transition.linkedModule;
+                    sim_->pendingLinkedTo = transition.linkedTo;
+                } else if (wantsLeave) {
+                    logEvent("trigger " + transition.tag + ": transition refused");
+                }
+            }
         } else {
-            runHook("ScriptOnExit", trigger.entity, scriptWorld_.pc);
+            runHook("ScriptOnExit", index, scriptWorld_.pc);
+            const kotor::Entity& entity = scene_.entities[index];
             logEvent("trigger " + entity.tag + ": exit " + entity.scriptOnExit);
         }
     }
@@ -3170,7 +3283,197 @@ void GameSession::updateTriggers()
 std::int32_t GameSession::journalState(const std::string& plotId) const
 {
     const auto it = journal_.find(plotId);
-    return it == journal_.end() ? 0 : it->second;
+    if (it != journal_.end()) {
+        return it->second;
+    }
+    const std::string wanted = lower(plotId);
+    for (const auto& [plot, state] : journal_) {
+        if (lower(plot) == wanted) {
+            return state;
+        }
+    }
+    return 0;
+}
+
+// global.jrl: Categories[]{Tag, PlotIndex, XP, EntryList[]{ID, End, Text,
+// XP_Percentage}}, read the way 005c5a40 reads it.
+void GameSession::loadJournalData()
+{
+    if (sim_->journalLoaded) {
+        return;
+    }
+    sim_->journalLoaded = true;
+    auto data = install_.find("global", 2056);
+    if (!data.has_value()) {
+        logEvent("journal: global.jrl not found");
+        return;
+    }
+    try {
+        kotor::Gff gff = kotor::Gff::parse(std::move(*data), "global.jrl");
+        const kotor::GffField* categories = gff.field(gff.rootIndex(), "Categories");
+        if (categories == nullptr) {
+            return;
+        }
+        for (const std::uint32_t structure : gff.list(*categories)) {
+            JournalCategory category;
+            if (const kotor::GffField* f = gff.field(structure, "Tag"); f != nullptr) {
+                category.tag = gff.text(*f);
+            }
+            if (const kotor::GffField* f = gff.field(structure, "PlotIndex"); f != nullptr) {
+                category.plotIndex = gff.integer(*f);
+            }
+            if (const kotor::GffField* f = gff.field(structure, "XP"); f != nullptr) {
+                category.xp = gff.integer(*f);
+            }
+            if (const kotor::GffField* f = gff.field(structure, "EntryList"); f != nullptr) {
+                for (const std::uint32_t item : gff.list(*f)) {
+                    JournalEntryRecord entry;
+                    std::int32_t id = 0;
+                    if (const kotor::GffField* v = gff.field(item, "ID"); v != nullptr) {
+                        id = gff.integer(*v);
+                    }
+                    if (const kotor::GffField* v = gff.field(item, "End"); v != nullptr) {
+                        entry.end = gff.integer(*v) != 0;
+                    }
+                    if (const kotor::GffField* v = gff.field(item, "XP_Percentage"); v != nullptr) {
+                        entry.xpPercentage = gff.number(*v);
+                    }
+                    if (const kotor::GffField* v = gff.field(item, "Text");
+                        v != nullptr && v->type == kotor::GffType::LocString) {
+                        entry.textStrref = gff.locStringStrref(*v);
+                    }
+                    category.entries[id] = entry;
+                }
+            }
+            sim_->journal[lower(category.tag)] = std::move(category);
+        }
+    } catch (const kotor::FormatError& error) {
+        logEvent(std::string("journal: ") + error.what());
+    }
+}
+
+void GameSession::loadPlotTable()
+{
+    if (sim_->plotLoaded) {
+        return;
+    }
+    sim_->plotLoaded = true;
+    auto data = install_.find("plot", 2017);
+    if (!data.has_value()) {
+        logEvent("plot.2da not found");
+        return;
+    }
+    try {
+        sim_->plot = kotor::TwoDa::parse(std::move(*data), "plot.2da");
+    } catch (const kotor::FormatError& error) {
+        logEvent(std::string("plot.2da: ") + error.what());
+    }
+}
+
+const JournalCategory* GameSession::journalCategory(const std::string& plotId)
+{
+    loadJournalData();
+    const auto it = sim_->journal.find(lower(plotId));
+    return it != sim_->journal.end() ? &it->second : nullptr;
+}
+
+std::int32_t GameSession::plotXp(std::int32_t row, double fraction)
+{
+    loadPlotTable();
+    if (!sim_->plot.has_value() || row < 0
+        || static_cast<std::size_t>(row) >= sim_->plot->rowCount()) {
+        return 0;
+    }
+    const int column = sim_->plot->columnIndex("xp");
+    if (column < 0) {
+        return 0;
+    }
+    const std::string cell =
+        sim_->plot->cell(static_cast<std::size_t>(row), static_cast<std::size_t>(column));
+    if (cell.empty() || cell == "****") {
+        return 0;
+    }
+    return static_cast<std::int32_t>(std::atof(cell.c_str()) * fraction);
+}
+
+// 00566600 looks the row up by its label. plot.2da names its rows; the `label`
+// column holds the same names, so accept either.
+std::int32_t GameSession::plotXpByLabel(const std::string& label, double fraction)
+{
+    loadPlotTable();
+    if (!sim_->plot.has_value()) {
+        return 0;
+    }
+    const std::string wanted = lower(label);
+    const int column = sim_->plot->columnIndex("label");
+    for (std::size_t row = 0; row < sim_->plot->rowCount(); ++row) {
+        if (lower(sim_->plot->rowLabel(row)) == wanted
+            || (column >= 0
+                && lower(sim_->plot->cell(row, static_cast<std::size_t>(column))) == wanted)) {
+            return plotXp(static_cast<std::int32_t>(row), fraction);
+        }
+    }
+    return 0;
+}
+
+std::int32_t GameSession::plotXpForIndex(std::int32_t plotIndex, float fraction)
+{
+    return plotXp(plotIndex, static_cast<double>(fraction));
+}
+
+void GameSession::givePlotXp(const std::string& plotLabel, std::int32_t percent)
+{
+    giveXp(plotXpByLabel(plotLabel, static_cast<double>(percent) * 0.01));
+}
+
+std::int32_t GameSession::journalQuestExperience(const std::string& plotId)
+{
+    const JournalCategory* category = journalCategory(plotId);
+    return category != nullptr ? category->xp : 0;
+}
+
+std::string GameSession::journalEntryText(const std::string& plotId, std::int32_t state)
+{
+    const JournalCategory* category = journalCategory(plotId);
+    if (category == nullptr || !tlk_.has_value()) {
+        return {};
+    }
+    const auto entry = category->entries.find(state);
+    if (entry == category->entries.end() || entry->second.textStrref == UINT32_MAX) {
+        return {};
+    }
+    return substituteTokens(tlk_->text(entry->second.textStrref));
+}
+
+// ACT_367 005483f0: the state is taken absolute; unless override is set a state
+// that does not advance is ignored; a state that does awards the entry's plot XP
+// (trunc(plot.2da[Category.PlotIndex].xp * Entry.XP_Percentage), 005c5a40).
+bool GameSession::addJournalQuest(const std::string& plotId, std::int32_t state,
+                                  bool allowOverrideHigher)
+{
+    if (plotId.empty()) {
+        return false;
+    }
+    state = std::abs(state);
+    if (!allowOverrideHigher && state <= journalState(plotId)) {
+        return false;
+    }
+    std::string key = plotId;
+    const std::string wanted = lower(plotId);
+    for (const auto& [plot, current] : journal_) {
+        if (lower(plot) == wanted) {
+            key = plot;
+            break;
+        }
+    }
+    addJournalEntry(key, state);
+    if (const JournalCategory* category = journalCategory(plotId); category != nullptr) {
+        const auto entry = category->entries.find(state);
+        if (entry != category->entries.end()) {
+            giveXp(plotXp(category->plotIndex, entry->second.xpPercentage));
+        }
+    }
+    return true;
 }
 
 bool GameSession::addJournalEntry(const std::string& plotId, std::int32_t state)
@@ -3186,167 +3489,6 @@ bool GameSession::addJournalEntry(const std::string& plotId, std::int32_t state)
 bool GameSession::removeJournalEntry(const std::string& plotId)
 {
     return journal_.erase(plotId) != 0;
-}
-
-bool GameSession::addInventoryItem(const std::string& resref, std::int32_t baseItem,
-                                   std::int32_t stack, std::int32_t cost)
-{
-    if (resref.empty() || stack <= 0) {
-        return false;
-    }
-    InventoryItem item = rules_.loaded() ? rules_.makeItem(resref, baseItem) : InventoryItem{};
-    item.resref = resref;
-    item.baseItem = baseItem;
-    item.stack = stack;
-    auto cached = itemTemplates_.find(resref);
-    if (cached == itemTemplates_.end()) {
-        if (auto templ = kotor::loadItemTemplate(install_, resref); templ.has_value()) {
-            cached = itemTemplates_.emplace(resref, *templ).first;
-        }
-    }
-    if (cached != itemTemplates_.end()) {
-        item.name = cached->second.name;
-        item.identified = cached->second.identified;
-        if (item.baseItem == 0) {
-            item.baseItem = cached->second.baseItem;
-        }
-        if (item.cost <= 0) {
-            item.cost = cached->second.cost;
-        }
-    }
-    if (cost > 0) {
-        item.cost = cost;
-    }
-    character_.inventory.push_back(item);
-    script::GameObject& object = scriptWorld_.addObject(resref, 100, baseItem, true);
-    object.attrs["item_value"] = static_cast<std::int64_t>(item.cost);
-    script::GameObject* pc = scriptWorld_.get(scriptWorld_.pc);
-    if (pc != nullptr) {
-        pc->inventory.push_back(object.id);
-    }
-    logEvent("item " + resref + " x" + std::to_string(stack));
-    return true;
-}
-
-bool GameSession::removeInventoryItem(const std::string& resref, std::int32_t stack)
-{
-    for (auto it = character_.inventory.begin(); it != character_.inventory.end(); ++it) {
-        if (lower(it->resref) != lower(resref)) {
-            continue;
-        }
-        if (stack > 0 && it->stack > stack) {
-            it->stack -= stack;
-        } else {
-            character_.inventory.erase(it);
-        }
-        script::GameObject* pc = scriptWorld_.get(scriptWorld_.pc);
-        if (pc != nullptr) {
-            for (auto id = pc->inventory.begin(); id != pc->inventory.end(); ++id) {
-                const script::GameObject* item = scriptWorld_.get(*id);
-                if (item != nullptr && lower(item->tag) == lower(resref)) {
-                    auto* mutableItem = scriptWorld_.get(*id);
-                    mutableItem->valid = false;
-                    pc->inventory.erase(id);
-                    break;
-                }
-            }
-        }
-        return true;
-    }
-    return false;
-}
-
-bool GameSession::equipItem(const std::string& resref)
-{
-    for (InventoryItem& item : character_.inventory) {
-        if (lower(item.resref) != lower(resref)) {
-            continue;
-        }
-        if (rules_.loaded() && !rules_.canEquip(character_, item)) {
-            return false;
-        }
-        for (InventoryItem& other : character_.inventory) {
-            if (other.equipped && other.slot == item.slot) {
-                other.equipped = false;
-            }
-        }
-        item.equipped = true;
-        item.slot = rules_.loaded() ? rules_.equipSlotFor(item.baseItem) : item.slot;
-        logEvent("equip " + resref + " slot " + std::to_string(item.slot));
-        return true;
-    }
-    return false;
-}
-
-bool GameSession::addPartyMember(const std::string& tag)
-{
-    if (tag.empty()) {
-        return false;
-    }
-    for (const std::string& existing : partyTags_) {
-        if (lower(existing) == lower(tag)) {
-            return false;
-        }
-    }
-    partyTags_.push_back(tag);
-    CompanionState companion;
-    companion.tag = tag;
-    if (rules_.loaded()) {
-        companion.sheet = rules_.createCharacter(0, std::max<std::int32_t>(1, character_.level),
-                                                 character_.xp);
-    }
-    companion.sheet.name = tag;
-    const std::size_t entityIndex = ensureCompanionEntity(companion);
-    if (entityIndex != static_cast<std::size_t>(-1)) {
-        const kotor::Entity& entity = scene_.entities[entityIndex];
-        if (!entity.name.empty()) {
-            companion.sheet.name = entity.name;
-        }
-        companion.sheet.maxHp = std::max<std::int32_t>(1, entity.maxHitPoints);
-        companion.sheet.hp = std::max<std::int32_t>(1, entity.hitPoints);
-    }
-    companions_.push_back(std::move(companion));
-    if (selectedCompanion_ < 0) {
-        selectedCompanion_ = 0;
-    }
-    const std::uint32_t object = objectForTag(tag);
-    if (object != script::kObjectInvalid) {
-        std::erase(scriptWorld_.party, object);
-        scriptWorld_.party.push_back(object);
-    }
-    logEvent("party join " + tag);
-    return true;
-}
-
-bool GameSession::removePartyMember(const std::string& tag)
-{
-    const auto old = partyTags_.size();
-    std::erase_if(partyTags_, [&](const std::string& existing) {
-        return lower(existing) == lower(tag);
-    });
-    std::erase_if(companions_, [&](const CompanionState& companion) {
-        return lower(companion.tag) == lower(tag);
-    });
-    if (companions_.empty()) {
-        selectedCompanion_ = -1;
-    } else if (selectedCompanion_ >= static_cast<int>(companions_.size())) {
-        selectedCompanion_ = 0;
-    }
-    const std::uint32_t object = objectForTag(tag);
-    if (object != script::kObjectInvalid) {
-        std::erase(scriptWorld_.party, object);
-    }
-    const std::size_t index = findEntity(tag);
-    if (index != static_cast<std::size_t>(-1) && scene_.entities[index].partyAvatar) {
-        scene_.entities[index].dead = true;
-        for (kotor::EntityMesh& mesh : scene_.entityMeshes) {
-            if (mesh.entity == index) {
-                mesh.visible = false;
-            }
-        }
-        ++animationRevision_;
-    }
-    return partyTags_.size() != old;
 }
 
 bool GameSession::learnFeat(std::int32_t featId)
@@ -3450,20 +3592,10 @@ void GameSession::giveXp(std::int32_t amount){
         playerMaxHp_ = character_.maxHp;
         playerHp_ = playerMaxHp_;
         logEvent("level up " + std::to_string(level));
+        ScriptApi{*this}.raiseHook(sim_->moduleObject, "Mod_OnPlrLvlUp",
+                                   {{"pcLevellingUp", scriptWorld_.pc}});
     }
-    for (CompanionState& companion : companions_) {
-        const std::int32_t share = amount * 80 / 100;
-        companion.sheet.xp += share;
-        if (rules_.loaded()) {
-            const std::int32_t companionLevel = rules_.levelForXp(companion.sheet.xp);
-            if (companionLevel > companion.sheet.level) {
-                companion.sheet.level = companionLevel;
-                companion.sheet.maxHp = rules_.maxHitPoints(companion.sheet.classId,
-                                                            companionLevel, companion.sheet.con);
-                companion.sheet.hp = companion.sheet.maxHp;
-            }
-        }
-    }
+    awardPartyXp(amount);
     logEvent("xp +" + std::to_string(amount) + " = " + std::to_string(character_.xp));
 }
 
@@ -3583,6 +3715,13 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
         : saveType == 1 ? scene_.entities[targetIndex].willSave
                         : scene_.entities[targetIndex].refSave;
     const bool saved = !selfTarget && roll() + saveBonus >= dc;
+    if (!selfTarget) {
+        ScriptApi{*this}.raiseHook(objectForEntity(targetIndex), "SpellAt",
+                                   {{"lastSpellCaster", scriptWorld_.pc},
+                                    {"lastSpell", static_cast<std::uint32_t>(powerId)},
+                                    {"lastSpellHarmful",
+                                     contains("HEAL") || contains("CURE") ? 0u : 1u}});
+    }
 
     if (contains("HEAL") || contains("CURE")) {
         const std::int32_t heal = 8 + character_.level * 2
@@ -3614,7 +3753,7 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
             if (info->alignment == 'E') {
                 damage += 2;
             }
-            entity.hitPoints -= damage;
+            const bool killed = entity.hitPoints <= damage;
             if (contains("STUN") || contains("STASIS") || contains("SLOW")
                 || contains("DROID_DISABLE")) {
                 const bool blocked = selfTarget
@@ -3629,12 +3768,10 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
                     entity.fearTimer = 6.0f;
                 }
             }
-            if (entity.hitPoints <= 0) {
-                entity.dead = true;
+            if (killed) {
                 logEvent("force power defeats " + entity.tag);
-                combatTarget_ = UINT32_MAX;
-                runHook("ScriptDeath", targetIndex, scriptWorld_.pc);
             }
+            damageEntity(targetIndex, damage, scriptWorld_.pc);
             logEvent("force " + info->label + " damage=" + std::to_string(damage)
                      + (saved ? " saved" : ""));
         }
@@ -3856,7 +3993,12 @@ std::optional<std::vector<script::Value>> GameSession::action(
     std::uint16_t actionId, const std::vector<std::vector<script::Value>>& args,
     script::World& world, script::Vm& vm)
 {
-    (void)vm;
+    if (const ActionHandler handler = sim_->handlers.get(actionId); handler != nullptr) {
+        ActionCall call{*this, world, vm, args, actionId};
+        if (auto handled = handler(call); handled.has_value()) {
+            return handled;
+        }
+    }
     const auto arg = [&](std::size_t index, script::ParamKind kind) -> script::Value {
         (void)kind;
         return index < args.size() && !args[index].empty()
@@ -3948,138 +4090,36 @@ std::optional<std::vector<script::Value>> GameSession::action(
     case 367: // AddJournalQuestEntry
         scriptLog_.push_back("journal action " + stringArg(0) + " = "
                              + std::to_string(intArg(1)));
-        addJournalEntry(stringArg(0), static_cast<std::int32_t>(intArg(1)));
+        addJournalQuest(stringArg(0), static_cast<std::int32_t>(intArg(1)), intArg(2) != 0);
+        return std::vector<script::Value>{};
+    case 384: // GetJournalQuestExperience (0053a680)
+        return intCells(journalQuestExperience(stringArg(0)));
+    case 714: // GivePlotXP (00545e20 -> 00566600)
+        givePlotXp(stringArg(0), static_cast<std::int32_t>(intArg(1)));
         return std::vector<script::Value>{};
     case 368: // RemoveJournalQuestEntry
         removeJournalEntry(stringArg(0));
         return std::vector<script::Value>{};
     case 369: // GetJournalEntry
         return intCells(journalState(stringArg(0)));
-    case 322: // GiveGoldToCreature
-        gold_ += static_cast<std::int32_t>(intArg(1));
-        return std::vector<script::Value>{};
-    case 444: // TakeGoldFromCreature
-        gold_ = std::max<std::int32_t>(0, gold_ - static_cast<std::int32_t>(intArg(0)));
-        return std::vector<script::Value>{};
-    case 31: { // CreateItemOnObject
-        const std::string resref = stringArg(0);
-        const std::uint32_t target = objectArg(1);
-        const std::int32_t stack = std::max<std::int32_t>(1, static_cast<std::int32_t>(intArg(2)));
-        if (!addInventoryItem(resref, 0, stack)) {
-            return objectCells(script::kObjectInvalid);
-        }
-        const auto created = scriptWorld_.byTag(resref, 0);
-        script::GameObject* receiver = world.get(target == script::kObjectInvalid ? world.pc : target);
-        script::GameObject* item = world.get(created);
-        if (receiver != nullptr && item != nullptr) {
-            if (receiver != world.get(world.pc)) {
-                script::GameObject* pc = world.get(world.pc);
-                if (pc != nullptr) {
-                    std::erase(pc->inventory, created);
-                }
-            }
-            receiver->inventory.push_back(created);
-        }
-        return objectCells(created);
-    }
-    case 135: // ActionGiveItem
-    case 271: { // GiveItem
-        const std::uint32_t item = objectArg(0);
-        const std::uint32_t target = objectArg(1);
-        script::GameObject* receiver = world.get(target == script::kObjectInvalid ? world.pc : target);
-        if (receiver != nullptr && world.get(item) != nullptr) {
-            receiver->inventory.push_back(item);
-        }
-        return std::vector<script::Value>{};
-    }
-    case 136: { // ActionTakeItem
-        script::GameObject* holder = world.get(objectArg(1));
-        if (holder != nullptr) {
-            std::erase(holder->inventory, objectArg(0));
-        }
-        return std::vector<script::Value>{};
-    }
-    case 574: { // AddPartyMember
-        const std::uint32_t creature = objectArg(1);
-        const script::GameObject* object = world.get(creature);
-        if (object != nullptr) {
-            addPartyMember(object->tag);
-        }
+    // 572-577 and 126 (party membership, count and index) are table handlers in
+    // ScriptParty.cpp; the old stubs here treated RemovePartyMember as a no-op.
+    case 255: { // BeginConversation: the caller's conversation, or the given one.
+        startConversation(runtime_ != nullptr ? runtime_->contextObject("self") : world.pc,
+                          stringArg(0));
         return intCells(1);
     }
-    case 575: // RemovePartyMember
-        return intCells(1);
-    case 572: { // AddToParty
-        const script::GameObject* leader = world.get(objectArg(1));
-        if (leader != nullptr) {
-            addPartyMember(leader->tag);
-        }
-        return std::vector<script::Value>{};
-    }
-    case 573: { // RemoveFromParty
-        const script::GameObject* pc = world.get(objectArg(0));
-        if (pc != nullptr) {
-            removePartyMember(pc->tag);
-        }
-        return std::vector<script::Value>{};
-    }
-    case 576: { // IsObjectPartyMember
-        const std::uint32_t who = objectArg(0);
-        if (who == world.pc) {
-            return intCells(1);
-        }
-        if (who == script::kObjectInvalid) {
-            return intCells(0);
-        }
-        const script::GameObject* object = world.get(who);
-        if (object == nullptr) {
-            return intCells(0);
-        }
-        for (const std::string& tag : partyTags_) {
-            if (lower(tag) == lower(object->tag)) {
-                return intCells(1);
-            }
-        }
-        return intCells(0);
-    }
-    case 126: // GetPartyMemberCount
-        return intCells(static_cast<std::int64_t>(partyTags_.size() + 1));
-    case 577: { // GetPartyMemberByIndex
-        const std::int64_t index = intArg(0);
-        if (index <= 0) {
-            return objectCells(world.pc);
-        }
-        const std::size_t slot = static_cast<std::size_t>(index - 1);
-        if (slot < partyTags_.size()) {
-            return objectCells(objectForTag(partyTags_[slot]));
-        }
-        return objectCells(script::kObjectInvalid);
-    }
-    case 255: { // BeginConversation
-        const std::string resref = stringArg(0);
-        const std::uint32_t target = objectArg(1);
-        if (target != script::kObjectInvalid) {
-            const script::GameObject* object = world.get(target);
-            if (object != nullptr) {
-                startDialogue(object->tag);
-            }
-        } else if (!resref.empty()) {
-            startDialogue(resref);
-        }
-        return intCells(1);
-    }
-    case 204: { // ActionStartConversation
-        const std::uint32_t target = objectArg(0);
-        const script::GameObject* object = world.get(target);
-        if (object != nullptr) {
-            startDialogue(object->tag);
-        }
-        return std::vector<script::Value>{};
-    }
-    case 509: { // StartNewModule
+    case 509: { // StartNewModule(module, waypoint, up to six movies; 00544390)
         const std::string next = stringArg(0);
         if (!next.empty()) {
             pendingModule_ = next;
+            sim_->pendingLinkedTo = stringArg(1);
+            sim_->pendingMovies.clear();
+            for (std::size_t i = 2; i < 8; ++i) {
+                if (!stringArg(i).empty()) {
+                    sim_->pendingMovies.push_back(stringArg(i));
+                }
+            }
         }
         return std::vector<script::Value>{};
     }
@@ -4087,6 +4127,7 @@ std::optional<std::vector<script::Value>> GameSession::action(
         script::GameObject* object = world.get(objectArg(0));
         if (object != nullptr) {
             object->valid = false;
+            object->attrs["destroyed"] = static_cast<std::int64_t>(1);
             for (std::size_t i = 0; i < entityObjects_.size(); ++i) {
                 if (entityObjects_[i] == object->id && i < scene_.entities.size()) {
                     scene_.entities[i].dead = true;
@@ -4118,9 +4159,6 @@ std::optional<std::vector<script::Value>> GameSession::action(
                                                : script::kObjectInvalid);
     case 26: // GetExitingObject
         return objectCells(runtime_ != nullptr ? runtime_->contextObject("exiting")
-                                               : script::kObjectInvalid);
-    case 36: // GetLastAttacker
-        return objectCells(runtime_ != nullptr ? runtime_->contextObject("lastAttacker")
                                                : script::kObjectInvalid);
     case 47: // GetSpellTargetObject
         return objectCells(runtime_ != nullptr ? runtime_->contextObject("spellTarget")
@@ -4172,9 +4210,6 @@ std::optional<std::vector<script::Value>> GameSession::action(
     case 442: // GetItemActivatedTarget
         return objectCells(runtime_ != nullptr ? runtime_->contextObject("itemTarget")
                                                : script::kObjectInvalid);
-    case 378: // OpenStore
-        scriptLog_.push_back("store " + stringArg(0));
-        return std::vector<script::Value>{};
     case 46: // PlaySound
         if (audio_) {
             audio_->playEffect(stringArg(0));
@@ -4299,7 +4334,6 @@ std::optional<std::vector<script::Value>> GameSession::action(
         }
         return std::vector<script::Value>{};
     }
-    case 40: // ActionPlayAnimation
     case 300: { // PlayAnimation
         const std::int32_t animationId = static_cast<std::int32_t>(intArg(0));
         const std::string name = rules_.animationName(animationId);
@@ -4383,7 +4417,9 @@ bool GameSession::save(const std::filesystem::path& path) const
     if (!file) {
         return false;
     }
-    file << "schema=kotor.engine.player/3\n";
+    // Enough digits that a saved position reads back the position it was.
+    file << std::setprecision(9);
+    file << "schema=kotor.engine.player/4\n";
     file << "module=" << module_ << "\n";
     file << "x=" << position_.x << "\ny=" << position_.y << "\nz=" << position_.z << "\n";
     file << "yaw=" << yaw_ << "\npitch=" << pitch_ << "\n";
@@ -4422,16 +4458,7 @@ bool GameSession::save(const std::filesystem::path& path) const
     for (const auto& [plot, state] : journal_) {
         file << "journal=" << plot << ":" << state << "\n";
     }
-    for (const std::string& tag : partyTags_) {
-        file << "party=" << tag << "\n";
-    }
-    for (const CompanionState& companion : companions_) {
-        file << "companion=" << companion.tag << "|" << companion.sheet.name << "|"
-             << companion.sheet.classId << "|" << companion.sheet.level << "|"
-             << companion.sheet.xp << "|" << companion.sheet.hp << "|"
-             << companion.sheet.maxHp << "\n";
-    }
-    file << "leader=" << leaderTag_ << "\n";
+    writePartyState(file);
     for (const MerchantState& merchant : merchants_) {
         file << "merchant_gold=" << merchant.resref << "|" << merchant.gold << "\n";
         for (std::size_t i = 0; i < merchant.stock.size(); ++i) {
@@ -4445,7 +4472,7 @@ bool GameSession::save(const std::filesystem::path& path) const
     for (const InventoryItem& item : character_.inventory) {
         file << "item=" << item.resref << "|" << item.baseItem << "|" << item.cost << "|"
              << item.stack << "|" << item.slot << "|" << (item.equipped ? 1 : 0)
-             << "|" << (item.identified ? 1 : 0) << "\n";
+             << "|" << (item.identified ? 1 : 0) << "|" << item.object << "\n";
     }
     for (const auto& [name, value] : scriptWorld_.globals) {
         if (value.type == script::ValueType::Int) {
@@ -4472,6 +4499,7 @@ bool GameSession::save(const std::filesystem::path& path) const
                  << "\n";
         }
     }
+    writeWorldState(file);
     return static_cast<bool>(file);
 }
 
@@ -4519,6 +4547,9 @@ bool GameSession::load(const std::filesystem::path& path)
     };
     std::vector<LocalRecord> locals;
     bool schema2 = false;
+    bool schema4 = false;
+    LoadedWorldState worldState;
+    PartyLoad partyLoad;
     while (std::getline(file, line)) {
         const std::size_t eq = line.find('=');
         if (eq == std::string::npos) {
@@ -4528,7 +4559,9 @@ bool GameSession::load(const std::filesystem::path& path)
         const std::string value = line.substr(eq + 1);
         try {
             if (key == "schema") {
-                schema2 = value == "kotor.engine.player/2" || value == "kotor.engine.player/3";
+                schema4 = value == "kotor.engine.player/4";
+                schema2 = schema4 || value == "kotor.engine.player/2"
+                    || value == "kotor.engine.player/3";
             } else if (key == "module") {
                 module = value;
             } else if (key == "x") {
@@ -4670,6 +4703,9 @@ bool GameSession::load(const std::filesystem::path& path)
                     item.slot = std::stoi(parts[4]);
                     item.equipped = std::stoi(parts[5]) != 0;
                     item.identified = parts.size() < 7 || std::stoi(parts[6]) != 0;
+                    item.object = parts.size() >= 8
+                        ? static_cast<std::uint32_t>(std::stoul(parts[7]))
+                        : 0;
                     inventory.push_back(std::move(item));
                 }
             } else if (key == "global_int") {
@@ -4700,14 +4736,32 @@ bool GameSession::load(const std::filesystem::path& path)
                 if (parts.size() >= 4) {
                     locals.push_back({parts[0], parts[1], parts[2][0], parts[3]});
                 }
+            } else if (!parsePartyLine(key, value, partyLoad)) {
+                parseWorldStateLine(key, value, worldState);
             }
         } catch (const std::exception&) {
             return false;
         }
     }
-    if (module != module_) {
-        if (!loadModule(module, &position, {})) {
+    // The saved party replaces the live one; the module load below sees an empty table.
+    party_ = PartyTable{};
+    companions_.clear();
+    partyTags_.clear();
+    if (schema4) {
+        // The saved snapshots hold every object, so the world is rebuilt from them
+        // even when the module is the one already loaded.
+        scriptWorld_.globals.clear();
+        locals.clear();
+        if (!restoreWorldFromSave(std::move(worldState), module, position)) {
             return false;
+        }
+    } else {
+        // An older save has no world state; nothing captured this session applies.
+        sim_->snapshots.clear();
+        if (module != module_) {
+            if (!loadModule(module, &position, {})) {
+                return false;
+            }
         }
     }
     position_ = position;
@@ -4726,9 +4780,12 @@ bool GameSession::load(const std::filesystem::path& path)
         playerHp_ = std::min(playerHp_, playerMaxHp_);
         gold_ = gold;
         journal_ = std::move(journal);
-        partyTags_.clear();
-        companions_.clear();
         selectedCompanion_ = -1;
+        if (partyLoad.present) {
+            restorePartyTable(std::move(partyLoad));
+            party.clear();
+            companionSaves.clear();
+        }
         for (const std::string& tag : party) {
             addPartyMember(tag);
         }
@@ -4745,16 +4802,10 @@ bool GameSession::load(const std::filesystem::path& path)
                 companion.sheet.maxHp = saved.maxHp;
             }
         }
-        setPartyLeader(leaderTag);
-        scriptWorld_.party.clear();
-        scriptWorld_.party.push_back(scriptWorld_.pc);
-        for (const std::string& tag : partyTags_) {
-            const std::uint32_t id = scriptWorld_.byTag(tag, 0);
-            if (id != script::kObjectInvalid) {
-                std::erase(scriptWorld_.party, id);
-                scriptWorld_.party.push_back(id);
-            }
+        if (!partyLoad.present && leaderTag != "PC") {
+            setPartyLeader(leaderTag);
         }
+        syncPartyViews();
         for (const MerchantDelta& delta : merchantDeltas) {
             for (MerchantState& merchant : merchants_) {
                 if (lower(merchant.resref) != lower(delta.store)) {
@@ -4828,14 +4879,24 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder)
         logEvent("original save has no module");
         return false;
     }
+    // SAVEGAME.sav mapping for per-object state is a later wave; what this
+    // session captured does not describe the saved game.
+    sim_->snapshots.clear();
+    party_ = PartyTable{};
+    companions_.clear();
+    partyTags_.clear();
+    sim_->restoringSave = true;
     try {
         if (!loadModule(saved.module, nullptr, {})) {
+            sim_->restoringSave = false;
             return false;
         }
     } catch (const std::exception& exception) {
+        sim_->restoringSave = false;
         logEvent(std::string("original save module failed: ") + exception.what());
         return false;
     }
+    sim_->restoringSave = false;
     if (!saved.area.empty() && lower(saved.area) != lower(scene_.area)) {
         logEvent("original save area differs from module entry: " + saved.area);
     }
@@ -4902,31 +4963,8 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder)
         }
     }
 
-    partyTags_.clear();
-    companions_.clear();
     selectedCompanion_ = -1;
-    leaderTag_ = "PC";
-    for (const std::string& tag : saved.partyTags) {
-        if (tag != "PC") {
-            addPartyMember(tag);
-        }
-    }
-    for (const auto& [memberId, leader] : saved.party) {
-        if (leader && memberId != 0) {
-            const std::string tag = memberId == 1 ? "Carth"
-                : memberId == 2 ? "Bastila"
-                : memberId == 3 ? "Zaalbar"
-                : memberId == 4 ? "Mission"
-                : memberId == 5 ? "Canderous"
-                : memberId == 6 ? "Jolee"
-                : memberId == 7 ? "Juhani"
-                : memberId == 8 ? "HK-47"
-                : memberId == 9 ? "T3-M4" : "";
-            if (!tag.empty()) {
-                setPartyLeader(tag);
-            }
-        }
-    }
+    readPartyFromOriginalSave(saved);
 
     std::vector<bool> objectUsed(scene_.entities.size(), false);
     for (const kotor::SavedObjectState& state : saved.objects) {
@@ -5057,22 +5095,7 @@ bool GameSession::saveOriginalSave(const std::filesystem::path& folder,
         copy.identified = item.identified;
         save.inventory.push_back(std::move(copy));
     }
-    save.party.emplace_back(0, leaderTag_ == "PC");
-    for (const CompanionState& companion : companions_) {
-        const std::int32_t id = companion.tag == "Carth" ? 1
-            : companion.tag == "Bastila" ? 2
-            : companion.tag == "Zaalbar" ? 3
-            : companion.tag == "Mission" ? 4
-            : companion.tag == "Canderous" ? 5
-            : companion.tag == "Jolee" ? 6
-            : companion.tag == "Juhani" ? 7
-            : companion.tag == "HK-47" ? 8
-            : companion.tag == "T3-M4" ? 9 : -1;
-        if (id >= 0) {
-            save.party.emplace_back(id, leaderTag_ == companion.tag);
-            save.partyTags.push_back(companion.tag);
-        }
-    }
+    writePartyToOriginalSave(save);
     save.journal = journal_;
     for (const auto& [name, value] : scriptWorld_.globals) {
         kotor::SavedGlobal global;

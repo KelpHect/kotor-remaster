@@ -19,6 +19,7 @@ struct Options {
     bool walkTest = false;
     bool doorTest = false;
     bool dialogueTest = false;
+    bool worldSimTest = false;
     bool combatTest = false;
     bool playthrough = false;
     bool landmarkTest = false;
@@ -60,6 +61,8 @@ struct Options {
     bool cameraNoClip = false;
     std::string startMinigame;
     int playerAppearance = 92;
+    std::string familyTest; // --family-test <name>: a Wave 2 family gate
+
     std::string playerName = "Player";
     std::string engineTrace;
     std::string saveFixture;

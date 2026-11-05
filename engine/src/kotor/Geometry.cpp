@@ -103,9 +103,10 @@ Wok parseWok(std::vector<std::uint8_t> bytes, const std::string& name)
     for (std::uint32_t i = 0; i < fc; ++i) {
         const std::size_t o = fo + static_cast<std::size_t>(i) * 12u;
         WokFace face;
-        face.a = readU16(bytes.data(), bytes.size(), o, "WOK face a");
-        face.b = readU16(bytes.data(), bytes.size(), o + 2u, "WOK face b");
-        face.c = readU16(bytes.data(), bytes.size(), o + 4u, "WOK face c");
+        // Three u32 indices per face (stride 12; tools/formats/bwm.py).
+        face.a = readU32(bytes.data(), bytes.size(), o, "WOK face a");
+        face.b = readU32(bytes.data(), bytes.size(), o + 4u, "WOK face b");
+        face.c = readU32(bytes.data(), bytes.size(), o + 8u, "WOK face c");
         if (face.a >= vc || face.b >= vc || face.c >= vc) {
             throw FormatError(name + ": WOK face index out of range");
         }

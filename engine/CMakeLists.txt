@@ -145,6 +145,17 @@ add_executable(kotor_engine
     src/game/GuiSystem.cpp
     src/game/Minigames.cpp
     src/game/Rules.cpp
+    src/game/Pathfinding.cpp
+    src/game/ScriptActions.cpp
+    src/game/ScriptCombat.cpp
+    src/game/ScriptEffects.cpp
+    src/game/ScriptEvents.cpp
+    src/game/ScriptHost.cpp
+    src/game/ScriptItems.cpp
+    src/game/ScriptObjects.cpp
+    src/game/ScriptParty.cpp
+    src/game/ScriptWorldState.cpp
+    src/game/WorldPersistence.cpp
     src/render/BackendFactory.cpp
     src/render/Bmp.cpp
     src/render/NullBackend.cpp
@@ -232,6 +243,22 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                  COMMAND kotor_engine --module end_m01aa --walk-test --null --headless)
         add_test(NAME kotor_dialogue
                  COMMAND kotor_engine --module end_m01aa --dialogue-test --null --headless)
+        add_test(NAME kotor_family_pathfinding
+                 COMMAND kotor_engine --module end_m01aa --family-test pathfinding --null --headless)
+        add_test(NAME kotor_family_worldstate
+                 COMMAND kotor_engine --module end_m01aa --family-test worldstate --null --headless)
+        set_tests_properties(kotor_family_worldstate PROPERTIES TIMEOUT 900)
+        add_test(NAME kotor_family_items
+                 COMMAND kotor_engine --module end_m01aa --family-test items --null --headless)
+        add_test(NAME kotor_family_party
+                 COMMAND kotor_engine --module end_m01aa --family-test party --null --headless)
+        add_test(NAME kotor_family_combat
+                 COMMAND kotor_engine --module end_m01aa --family-test combat --null --headless)
+        set_tests_properties(kotor_family_combat PROPERTIES TIMEOUT 900)
+        add_test(NAME kotor_family_objects
+                 COMMAND kotor_engine --module end_m01aa --family-test objects --null --headless)
+        add_test(NAME kotor_world_sim
+                 COMMAND kotor_engine --module end_m01aa --world-sim-test --null --headless)
         add_test(NAME kotor_combat
                  COMMAND kotor_engine --module end_m01aa --combat-test --null --headless)
         add_test(NAME kotor_script
@@ -369,9 +396,9 @@ if(KOTOR_ENGINE_BUILD_TESTS)
             set_tests_properties(kotor_world_k2 PROPERTIES TIMEOUT 300)
         endif()
         set_tests_properties(kotor_scene_stats kotor_scene_assert kotor_door_transition
-                             kotor_taris_transition kotor_walk_collision kotor_dialogue
+                             kotor_taris_transition kotor_walk_collision kotor_dialogue kotor_world_sim
                              kotor_combat kotor_script kotor_rules kotor_systems
-                             kotor_merchant kotor_encounter kotor_encounter_reset kotor_party kotor_ui kotor_loot
+                             kotor_family_items kotor_family_party kotor_family_objects kotor_family_combat kotor_merchant kotor_encounter kotor_encounter_reset kotor_party kotor_ui kotor_loot
                              kotor_delayed_functors kotor_combat_force kotor_animation kotor_audio kotor_media kotor_gui kotor_minigame kotor_localization kotor_vfs kotor_faction
                              kotor_playthrough kotor_landmark kotor_save_load kotor_original_save_create kotor_profile_k1
             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
