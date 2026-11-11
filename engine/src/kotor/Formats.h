@@ -653,6 +653,10 @@ public:
     std::vector<MdlAnimEvent> animationEvents(const std::string& name) const;
     std::vector<MdlMeshTriangle> posedTrianglesLayered(const std::vector<MdlAnimLayer>& layers,
                                                        bool renderableOnly) const;
+    // The posed faces a line-of-sight cast also tests but the renderer does not draw: mesh nodes
+    // with the render flag off (AABB hit nodes such as hitbullet), skinned ones excepted (00440ff0
+    // skips a part whose vfunc +0x50 is non-zero, 00641db0).
+    std::vector<MdlMeshTriangle> posedHiddenTrianglesLayered(const std::vector<MdlAnimLayer>& layers) const;
     std::optional<Pose> nodePoseLayered(const std::string& node,
                                         const std::vector<MdlAnimLayer>& layers) const;
     // Faces of one mesh node in model space at the bind pose (AABB hit nodes).
@@ -1527,6 +1531,9 @@ struct EntityMesh {
     // place and the frame time before it refreshes the mesh; without it the blade draws still.
     std::vector<SaberTrail> saberTrails;
     bool trailPlaced = false;
+    // A world-placed model's non-render faces in world space (bakeWorldEntityMesh), for the flare's
+    // line-of-sight cast, which tests them as it tests the drawn ones.
+    std::vector<std::array<Vec3, 3>> hiddenFaces;
     Vec3 trailPosition;
     float trailBearing = 0.0f;
     float trailDt = 0.0f;
