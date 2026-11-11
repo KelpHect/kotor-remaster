@@ -1523,7 +1523,9 @@ nav::NavMesh* GameSession::navMesh()
 
 void GameSession::loadMovementTables()
 {
-    navMesh();
+    if (!nav_) {
+        nav_ = std::make_unique<nav::Runtime>();
+    }
     if (nav_->tablesLoaded) {
         return;
     }
@@ -1594,11 +1596,9 @@ bool GameSession::computeSafeLocation(kotor::Vec3 point, float reach, std::uint3
                                       std::size_t before, kotor::Vec3& out)
 {
     loadMovementTables();
-    nav::NavMesh* mesh = navMesh();
     out = point;
-    if (mesh == nullptr || mesh->empty()) {
-        return false;
-    }
+    // The walkmesh is only built when the search has to leave the point (most creatures stand on a safe spot).
+    nav::NavMesh* mesh = nullptr;
     const auto space = [&](const std::map<std::uint32_t, float>& table, std::uint32_t id, float fallback) {
         const auto found = table.find(id);
         return found != table.end() ? found->second : fallback;
@@ -1610,6 +1610,7 @@ bool GameSession::computeSafeLocation(kotor::Vec3 point, float reach, std::uint3
     // Non-walkable faces that can matter: the search never leaves a box of `reach` around the point.
     struct Wall {
         kotor::Vec3 v[3];
+        float lowX = 0.0f, highX = 0.0f, lowY = 0.0f, highY = 0.0f, lowZ = 0.0f, highZ = 0.0f;
     };
     std::vector<Wall> walls;
     const float box = reach + radius + 1.0f;
@@ -1625,6 +1626,12 @@ bool GameSession::computeSafeLocation(kotor::Vec3 point, float reach, std::uint3
         if (highX < point.x - box || lowX > point.x + box || highY < point.y - box || lowY > point.y + box) {
             continue;
         }
+        wall.lowX = lowX;
+        wall.highX = highX;
+        wall.lowY = lowY;
+        wall.highY = highY;
+        wall.lowZ = std::min({wall.v[0].z, wall.v[1].z, wall.v[2].z});
+        wall.highZ = std::max({wall.v[0].z, wall.v[1].z, wall.v[2].z});
         walls.push_back(wall);
     }
     // The 2D distance from (x, y) to a triangle's plan-view shadow.
@@ -1652,15 +1659,22 @@ bool GameSession::computeSafeLocation(kotor::Vec3 point, float reach, std::uint3
         return best;
     };
     const auto pointSafe = [&](kotor::Vec3& p) {
-        const int tri = mesh->locate({p.x, p.y, point.z});
-        if (tri < 0) {
-            return false;
+        if (mesh == nullptr) {
+            float floorZ = 0.0f;
+            if (!floorBelow(p.x, p.y, point.z + 2.0f, floorZ)) {
+                return false;
+            }
+            p.z = floorZ;
+        } else {
+            const int tri = mesh->locate({p.x, p.y, point.z});
+            if (tri < 0) {
+                return false;
+            }
+            p.z = mesh->height(tri, p.x, p.y);
         }
-        p.z = mesh->height(tri, p.x, p.y);
         for (const Wall& wall : walls) {
-            const float low = std::min({wall.v[0].z, wall.v[1].z, wall.v[2].z});
-            const float high = std::max({wall.v[0].z, wall.v[1].z, wall.v[2].z});
-            if (high < p.z - 0.1f || low > p.z + height) {
+            if (wall.highZ < p.z - 0.1f || wall.lowZ > p.z + height || p.x < wall.lowX - radius || p.x > wall.highX + radius
+                || p.y < wall.lowY - radius || p.y > wall.highY + radius) {
                 continue;
             }
             if (distanceToTriangle(wall, p.x, p.y) < radius) {
@@ -1693,6 +1707,10 @@ bool GameSession::computeSafeLocation(kotor::Vec3 point, float reach, std::uint3
     if (pointSafe(candidate)) {
         out = candidate;
         return true;
+    }
+    mesh = navMesh();
+    if (mesh == nullptr || mesh->empty()) {
+        return false;
     }
     for (float r = 1.0f; r < reach; r += step) {
         const float x0 = point.x - r;
@@ -2021,8 +2039,12 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
         const Vec3 last = points.back();
         const float gapX = last.x - from.x;
         const float gapY = last.y - from.y;
-        if (gapX * gapX + gapY * gapY <= stopDistance * stopDistance && lineOfSight(from, last)) {
-            return finish(ActorStep::Arrived, MoveOutcome::Arrived, kNoDoor);
+        if (gapX * gapX + gapY * gapY <= stopDistance * stopDistance) {
+            // The line to the point is clear and walkable (the walkmesh ray, closed doors stop it), not a sight test.
+            const int fromTri = mesh->locate(from);
+            if (fromTri >= 0 && mesh->ray(from, fromTri, last, nav_->closed).clear) {
+                return finish(ActorStep::Arrived, MoveOutcome::Arrived, kNoDoor);
+            }
         }
     }
     // Within range but not routed: what is wanted may stand behind the closed door
@@ -2131,7 +2153,14 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
                 return false; // Walking up to something standing on the target.
             }
             const float there = length2D(point, other);
-            return there < combined && there < length2D(from, other) - 1.0e-4f;
+            const float here = length2D(from, other);
+            // A walker that already stands inside the other's space (a companion that took the controls on top of the
+            // PC) is let out: with the speed ramp its first strides are a few millimetres and would only ever
+            // look like a step toward the other body.
+            if (here < combined) {
+                return false;
+            }
+            return there < combined && there < here - 1.0e-4f;
         };
         if (object != scriptWorld_.pc && against(position_, kPlayerPersonalSpace)) {
             found.hit = true;
