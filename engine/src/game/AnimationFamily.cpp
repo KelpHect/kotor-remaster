@@ -280,9 +280,8 @@ void GameSession::updateCreatureStances(float dt)
         // changed within the last moments, so a frame without a step does not flick to idle.
         if (speed > 0.05f && speed < 30.0f) {
             body->stanceStill = 0.0f;
-            const float walkRate = creatureMoveRate(object, false);
-            const float runRate = creatureMoveRate(object, true);
-            body->stanceRunning = speed >= (runRate > walkRate ? (walkRate + runRate) * 0.5f : 2.6f);
+            body->stanceSpeed = speed;
+            locomotionOf(object, entity.appearance, speed, body->stanceRunning, body->stanceStride);
         } else {
             body->stanceStill += dt;
         }
@@ -305,6 +304,12 @@ void GameSession::updateCreatureStances(float dt)
         body->stanceClip = want;
         if (!want.empty() && want != current) {
             playAnimation(i, want, true);
+        }
+        // Retail 00615960: the walk or run clip plays at speed / (distance per cycle / clip length), so the feet keep
+        // pace with the ground (DRIVEANIMWALK / DRIVEANIMRUN are the distance one cycle of the clip covers).
+        if (motion != StanceMotion::Still && !want.empty() && want == body->animation && body->stanceStride > 0.0f) {
+            const float length = body->model->animationDuration(want);
+            body->animationRate = std::clamp(body->stanceSpeed * length / body->stanceStride, 0.0f, 4.0f);
         }
     }
     for (kotor::EntityMesh& mesh : scene_.entityMeshes) {

@@ -193,6 +193,25 @@ struct Runtime {
     std::map<std::uint32_t, int> appearanceRateRow;
     std::map<std::uint32_t, float> personalSpace; // appearance.2da PERSPACE.
     std::map<std::uint32_t, float> creatureSpace; // appearance.2da CREPERSPACE.
+    std::map<std::uint32_t, float> bodyHeight;    // appearance.2da HEIGHT.
+    // appearance.2da DRIVEACCL / DRIVEMAXSPEED / DRIVEANIMWALK / DRIVEANIMRUN: the keyboard-driven body's acceleration and
+    // top speed, and the walk/run speeds its clips are cut for (client appearance record +0x58/+0x5c/+0x60/+0x64).
+    struct DriveRow {
+        float accel = 50.0f;
+        float maxSpeed = 5.4f;
+        float walk = 1.7f;
+        float run = 5.4f;
+    };
+    std::map<std::uint32_t, DriveRow> drive;
+    // The velocity (x, y) the drive controller carries for a controlled creature (CSWPlayerControlCamRelative).
+    std::map<std::uint32_t, std::array<float, 2>> driveVelocity;
+    // WalkUpdateLocation_QuickWalk's speed factor (creature +0xb8) of a creature walking an action's path.
+    struct WalkFactor {
+        float factor = 0.0f;
+        float scale = 1.0f; // (factor + last factor) / 2 of the last step: measured speed over the table speed.
+        float lastStep = -100.0f; // Session clock of the last step: a walk that starts after a pause starts the ramp over.
+    };
+    std::map<std::uint32_t, WalkFactor> walkFactor;
 };
 
 } // namespace nav

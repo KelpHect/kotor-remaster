@@ -377,19 +377,33 @@ void GameSession::stepControlledCompanion(float dt, const InputState& input)
     kotor::Vec3 desired{cosYaw * forwardAxis + sinYaw * rightAxis,
                         sinYaw * forwardAxis - cosYaw * rightAxis, 0.0f};
     const float magnitude = std::sqrt(desired.x * desired.x + desired.y * desired.y);
-    if (magnitude <= 1.0e-5f) {
+    if (magnitude > 1.0e-5f) {
+        desired = desired * (1.0f / magnitude);
+    }
+    // The same drive controller as the PC's (CSWPlayerControlCamRelative, 00679940).
+    const bool held = controlledDead() || dialogueView_.active || !actor.commandable || controlLocked();
+    if (held) {
+        driveStop(self);
+    }
+    const kotor::Vec3 delta = held ? kotor::Vec3{0.0f, 0.0f, 0.0f}
+                                   : driveStep(self, desired.x, desired.y,
+                                               magnitude > 1.0e-5f ? (input.run ? 1.0f : 0.5f) : 0.0f, dt);
+    if (delta.x * delta.x + delta.y * delta.y <= 1.0e-12f) {
         return;
     }
-    desired = desired * (1.0f / magnitude);
-    const float speed = creatureMoveRate(self, input.run);
     kotor::Entity& body = scene_.entities[index];
     const kotor::Vec3 start = body.position;
     bool steered = false;
-    const kotor::Vec3 end = slidePlayer(
-        start, {start.x + desired.x * speed * dt, start.y + desired.y * speed * dt, start.z},
-        steered, creatureRadius(self));
+    const kotor::Vec3 end = slidePlayer(start, {start.x + delta.x, start.y + delta.y, start.z}, steered,
+                                        creatureRadius(self));
+    if (dt > 0.0f
+        && (std::fabs(end.x - (start.x + delta.x)) > 1.0e-4f || std::fabs(end.y - (start.y + delta.y)) > 1.0e-4f)) {
+        driveSetVelocity(self, (end.x - start.x) / dt, (end.y - start.y) / dt);
+    }
     body.position = end;
-    body.bearing = std::atan2(desired.y, desired.x);
+    if (magnitude > 1.0e-5f) {
+        body.bearing = std::atan2(desired.y, desired.x);
+    }
     syncEntityToScriptWorld(index);
 }
 

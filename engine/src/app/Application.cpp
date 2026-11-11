@@ -11655,7 +11655,8 @@ int runApplication(const Options& options)
                 input.right = keys[SDL_SCANCODE_C] != 0;
                 const float keyTurn = static_cast<float>(keys[SDL_SCANCODE_D] != 0) - static_cast<float>(keys[SDL_SCANCODE_A] != 0);
                 mouseDx += keyTurn * static_cast<float>(deltaMs) * 0.5f;
-                input.run = keys[SDL_SCANCODE_LSHIFT] != 0 || keys[SDL_SCANCODE_RSHIFT] != 0;
+                // Retail runs by default; Shift holds the controller in its walk mode (half speed, 00679b7b).
+                input.run = keys[SDL_SCANCODE_LSHIFT] == 0 && keys[SDL_SCANCODE_RSHIFT] == 0;
                 input.jump = false; // Space is the pause key (retail has no jump key)
                 input.mouseDx = mouseDx;
                 input.mouseDy = mouseDy;
