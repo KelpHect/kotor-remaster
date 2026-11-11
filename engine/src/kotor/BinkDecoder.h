@@ -53,6 +53,8 @@ public:
     double framesPerSecond() const;
     bool hasAudio() const;
     const BinkAudioTrack& audio() const;
+    // Hands the decoded samples over; audio() has none afterwards.
+    std::vector<float> takeAudioSamples();
     double audioDurationSeconds() const;
 
     // Decode one frame by index. Sequential playback should ask for

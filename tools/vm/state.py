@@ -152,13 +152,15 @@ class World:
             obj.locals[name or ""] = value
 
     def get_global(self, name: str, typ: str = "int") -> Value:
-        v = self.globals.get(name or "")
+        v = self.globals.get((name or "").lower())
         if v is None or v.typ != typ:
             return default_cells(typ)[0]
         return v
 
     def set_global(self, name: str, value: Value) -> None:
-        self.globals[name or ""] = value
+        # retail 00529030: names hash lower-cased (00528e50) and compare with
+        # __stricmp (005e58c0), so two spellings are one global.
+        self.globals[(name or "").lower()] = value
 
     # ---- cursors ------------------------------------------------------
     def cursor(self, key: tuple) -> int:

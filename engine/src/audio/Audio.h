@@ -26,6 +26,10 @@ bool decodeMp3(const std::vector<std::uint8_t>& bytes, const std::string& name,
 bool decodeAudio(const std::vector<std::uint8_t>& bytes, const std::string& name,
                  SoundData& out, std::string& error);
 bool resample(SoundData& data, int sampleRate, int channels);
+// Test hook only: while on, IMA ADPCM decodes with the pre-fix bugs (stereo stride of 8 bytes
+// per channel, out-of-range step-index lookup for negative nibbles, block header sample
+// dropped). The audioquality gate flips it to prove it fails on that decoder.
+void setLegacyImaDecodeForTest(bool on);
 
 enum class Bus { Music = 0, Ambient = 1, Effects = 2, Voice = 3, Movie = 4 };
 
@@ -50,6 +54,20 @@ public:
     void setListener(kotor::Vec3 position, float yaw);
     void setBusVolume(Bus bus, float volume);
     float busVolume(Bus bus) const;
+    // A mute is a flag beside the stored volume: setBusMuted(bus, true) silences the
+    // bus (and its reverb send) without touching busVolume(), so unmuting restores
+    // the exact level.
+    void setBusMuted(Bus bus, bool muted);
+    bool busMuted(Bus bus) const;
+    // A pause freezes every voice of the bus where it is (cursor, fades and all) and silences it;
+    // clearing the flag continues from the same sample. Retail pauses sounds this way while a movie
+    // plays (005d8560 mode 3 into 005d82c0 pauses every stream and sample, 005d83f0 resumes them).
+    void setBusPaused(Bus bus, bool paused);
+    bool busPaused(Bus bus) const;
+    // Peak and RMS of one bus in the last mix() call, after its volume and mute, before
+    // the master gain and the reverb (a meter for tests and tools).
+    float busPeak(Bus bus) const;
+    float busRms(Bus bus) const;
     // Environment reverb. PARAMETER-FAITHFUL, NOT BIT-EXACT MILES/EAX: see
     // audio/Reverb.h. Changes are queued and applied at the start of the next
     // mix() call, so they are safe to request from the game thread.
@@ -80,6 +98,29 @@ public:
     void stopAll();
     void setVoiceVolume(int voice, float volume);
     void setVoicePosition(int voice, kotor::Vec3 position);
+    // A positional stream (retail CExoStreamingSoundSourceInternal::Update3DStream 005dc560) is not
+    // posed by Miles: its own gain is pow(level * setting * f, 0.6) with f = (max - d) / (max - min)
+    // beyond min, times 1 + 0.125 * dot behind the listener, times 1 - obstruction. The voice volume
+    // then carries pow(level, 0.6) * setting^-0.4 (AudioSystem::voiceLevel).
+    void setVoiceStream3D(int voice, bool on);
+    // The share of the line to the listener that walls hide, 0 .. 1 (GetObstructionFactor 0050ccf0).
+    void setVoiceObstruction(int voice, float obstruction);
+    struct StreamProbe {
+        int voice = 0;
+        kotor::Vec3 position;
+    };
+    std::vector<StreamProbe> stream3DProbes() const;
+    kotor::Vec3 listenerPosition() const;
+    void setVoicePitch(int voice, float pitch);
+    bool voiceActive(int voice) const;
+    float voiceVolume(int voice) const;
+    // Linear ramp of a per-voice multiplier (1.0 on a new voice) to `target` over
+    // `seconds`, sample accurate inside mix(). `stopAtEnd` retires the voice once a
+    // target of 0 is reached. seconds <= 0 jumps.
+    void fadeVoice(int voice, float target, float seconds, bool stopAtEnd);
+    float voiceFade(int voice) const;
+    // Starts a voice with its fade multiplier at 0 (use with fadeVoice to fade in).
+    void setVoiceFade(int voice, float multiplier);
     void setVoiceCursor(int voice, double seconds);
     double voiceCursor(int voice) const;
     void mix(float* interleavedStereo, int frames);
@@ -89,6 +130,14 @@ public:
     float lastRms() const;
     float voiceGain(int voice) const;
     float voicePan(int voice) const;
+
+    // Diagnostics: while capturing, every mix() call also appends each bus (after its volume
+    // and mute, before the master gain), the reverb return and the final output to
+    // <prefix>_music|ambient|effects|voice|movie|reverb|final.wav (16-bit stereo). No audio
+    // device is involved, so a session run with --no-audio can be captured and played back.
+    bool startCapture(const std::string& prefix);
+    void stopCapture();
+    bool capturing() const;
 
 private:
     struct Impl;

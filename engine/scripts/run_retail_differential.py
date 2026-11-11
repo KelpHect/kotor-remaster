@@ -35,7 +35,14 @@ def main(argv=None) -> int:
     parser.add_argument("--module-usage", required=True)
     parser.add_argument("--action-table", required=True)
     parser.add_argument("--out-dir", required=True)
+    parser.add_argument("--saves-dir", help="passed to every engine run, so none touches the user's saves")
+    parser.add_argument("--settings-file", help="passed to every engine run, so none touches the user's settings")
     args = parser.parse_args(argv)
+    profile: list[str] = []
+    if args.saves_dir:
+        profile += ["--saves-dir", args.saves_dir]
+    if args.settings_file:
+        profile += ["--settings-file", args.settings_file]
 
     root = Path(args.repo_root)
     out = Path(args.out_dir)
@@ -46,7 +53,7 @@ def main(argv=None) -> int:
 
     vm_actions = out / "vm-actions.jsonl"
     code = run([args.engine, "--vm-corpus", args.corpus, "--vm-out", str(vm_actions),
-                "--vm-functional", "--vm-drain", "--null", "--headless"])
+                "--vm-functional", "--vm-drain", "--null", "--headless"] + profile)
     if code != 0:
         return code
 
@@ -55,7 +62,7 @@ def main(argv=None) -> int:
         trace = out / f"engine-semantic-{name}.jsonl"
         cmd = [args.engine, "--module", spec.get("start_module", "end_m01aa"),
                "--retail-differential-test", "--engine-trace", str(trace),
-               "--install", args.install, "--null", "--headless"]
+               "--install", args.install, "--null", "--headless"] + profile
         if spec.get("save"):
             cmd += ["--save-fixture", str(resolve(root, spec["save"]))]
         elif spec.get("module_trace"):
@@ -84,8 +91,6 @@ def main(argv=None) -> int:
         reports.append({"id": trace["id"], "engine": engine,
                         "retail": trace["retail"], "report": str(report),
                         "pass": code == 0})
-        if code != 0:
-            break
 
     aggregate = {
         "schema": "kotor.retail-differential-set/1",

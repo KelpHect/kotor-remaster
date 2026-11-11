@@ -5,6 +5,7 @@
 #include "script/World.h"
 
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -83,6 +84,13 @@ public:
     void setContextObject(const std::string& name, std::uint32_t id) { context_[name] = id; }
     std::uint32_t contextObject(const std::string& name) const;
     void setContext(const std::map<std::string, std::uint32_t>& context) { context_ = context; }
+    void setContext(std::map<std::string, std::uint32_t>&& context) { context_ = std::move(context); }
+    // Installs a new context and hands back the one it replaces.
+    std::map<std::string, std::uint32_t> swapContext(std::map<std::string, std::uint32_t> context)
+    {
+        context_.swap(context);
+        return context;
+    }
     const std::map<std::string, std::uint32_t>& contextSnapshot() const { return context_; }
     // Live engine scripts resolve object id 0 to OBJECT_SELF. The pinned VM
     // corpus keeps the original oracle behaviour unless this is enabled.
@@ -91,11 +99,26 @@ public:
     void setContinuations(bool enabled) { continuations_ = enabled; }
     bool continuations() const { return continuations_; }
     std::int64_t registerFunctor(Functor functor) override;
+    bool engineEquals(const Value& a, const Value& b) override
+    {
+        return engineEquals_ ? engineEquals_(a, b) : a.integer == b.integer;
+    }
+    void setEngineEquals(std::function<bool(const Value&, const Value&)> compare) { engineEquals_ = std::move(compare); }
+    // The shipped catalogue of globals. Empty (the corpus runs): any name, at full width.
+    void setGlobalCatalog(std::map<std::string, GlobalKind, NoCaseLess> catalog) { globalCatalog_ = std::move(catalog); }
+    // Whether a global of this name and kind exists in the catalogue (00529030 and the
+    // kind checks in 00529240, 00529680); anything else reads as empty and drops writes.
+    bool globalDeclared(const std::string& name, GlobalKind kind) const;
+    // A gate's own read-out global: not in the shipped catalog, full width, never shipped data.
+    void declareGlobalForTest(const std::string& name) { testGlobals_[name] = GlobalKind::Number; }
     // What this runtime does for an action when the host declines it, for
     // --action-coverage. Runs the handler with no arguments: use a scratch instance.
     std::string fallbackKind(std::uint16_t actionId, Vm& vm);
 
 private:
+    std::function<bool(const Value&, const Value&)> engineEquals_;
+    std::map<std::string, GlobalKind, NoCaseLess> globalCatalog_;
+    std::map<std::string, GlobalKind, NoCaseLess> testGlobals_;
     Value cell(const Args& args, std::size_t index, ParamKind kind = ParamKind::Int) const;
     std::int64_t argInt(const Args& args, std::size_t index) const;
     double argFloat(const Args& args, std::size_t index) const;

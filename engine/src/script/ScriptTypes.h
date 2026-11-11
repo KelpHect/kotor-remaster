@@ -6,8 +6,12 @@
 // storage to reproduce the oracle's integer/float behavior without silent
 // narrowing; object ids stay 32-bit.
 
+#include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <ostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace ke::script {
@@ -16,11 +20,44 @@ constexpr std::uint32_t kObjectInvalid = 0x7F000000u;
 
 enum class ValueType : std::uint8_t { Int, Float, String, Object, Engine, Functor };
 
+// The text of a string cell: immutable and shared. Stack cells are copied constantly (each
+// STORESTATE snapshots the whole stack) and nearly all of them hold numbers, so a copy must
+// not touch a std::string. An empty text holds nothing at all.
+class ValueText {
+public:
+    ValueText() = default;
+    ValueText(std::string text)
+    {
+        if (!text.empty()) {
+            text_ = std::make_shared<const std::string>(std::move(text));
+        }
+    }
+    ValueText(const char* text) : ValueText(std::string(text)) {}
+
+    const std::string& str() const
+    {
+        static const std::string none;
+        return text_ != nullptr ? *text_ : none;
+    }
+    operator const std::string&() const { return str(); }
+    bool empty() const { return text_ == nullptr; }
+    std::size_t size() const { return str().size(); }
+    const char* c_str() const { return str().c_str(); }
+
+    friend bool operator==(const ValueText& a, const ValueText& b) { return a.str() == b.str(); }
+    friend bool operator==(const ValueText& a, const std::string& b) { return a.str() == b; }
+    friend bool operator==(const ValueText& a, const char* b) { return a.str() == b; }
+    friend std::ostream& operator<<(std::ostream& out, const ValueText& text) { return out << text.str(); }
+
+private:
+    std::shared_ptr<const std::string> text_;
+};
+
 struct Value {
     ValueType type = ValueType::Int;
     std::int64_t integer = 0;
     double real = 0.0;
-    std::string text;
+    ValueText text;
 
     static Value makeInt(std::int64_t value) { Value v; v.type = ValueType::Int; v.integer = value; return v; }
     static Value makeFloat(double value) { Value v; v.type = ValueType::Float; v.real = value; return v; }
@@ -54,7 +91,7 @@ struct Value {
     const std::string& asString() const
     {
         static const std::string empty;
-        return type == ValueType::String ? text : empty;
+        return type == ValueType::String ? text.str() : empty;
     }
 
     bool truthy() const

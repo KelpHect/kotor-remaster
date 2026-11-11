@@ -203,6 +203,9 @@ class ActionRuntime:
         obj = self.world.get(self._o(args, 0))
         return [Value("object", obj.area if obj else OBJECT_INVALID)]
 
+    def h_ShipBuild(self, args, vm):
+        return [Value("int", 1)]  # retail 00543840 pushes 1, always.
+
     def h_GetFirstPC(self, args, vm):
         return [Value("object", self.world.pc.id)]
 
@@ -290,23 +293,41 @@ class ActionRuntime:
     def _local_key(self, args, index):
         return str(self._i(args, index))
 
+    # Retail CSWVarTable (engine World::localBoolean): 96 booleans and 8 number bytes, apart.
+    # SetLocalNumber drops a value outside -128..127 or an index outside 0..7 and reads back the
+    # byte zero-extended; GetLocalBoolean gives the raw bit (index 5 reads 32).
     def h_GetLocalNumber(self, args, vm):
         oid = self._o(args, 0)
-        return [self.world.get_local(oid, self._local_key(args, 1), "int")]
+        index = self._i(args, 1)
+        if index < 0 or index > 7:
+            return [Value("int", 0)]
+        value = self.world.get_local(oid, str(index), "int")
+        return [Value("int", value.value & 0xFF if isinstance(value.value, int) else 0)]
 
     def h_SetLocalNumber(self, args, vm):
         oid = self._o(args, 0)
-        self.world.set_local(oid, self._local_key(args, 1), Value("int", self._i(args, 2)))
+        index = self._i(args, 1)
+        value = self._i(args, 2)
+        if -128 <= value <= 127 and 0 <= index <= 7:
+            self.world.set_local(oid, str(index), Value("int", value & 0xFF))
         return []
 
     def h_GetLocalBoolean(self, args, vm):
         oid = self._o(args, 0)
-        return [self.world.get_local(oid, self._local_key(args, 1), "int")]
+        index = self._i(args, 1)
+        if index < 0 or index > 95:
+            return [Value("int", 0)]
+        value = self.world.get_local(oid, "b" + str(index), "int")
+        if not value.value:
+            return [Value("int", 0)]
+        bit = 1 << (index % 32)
+        return [Value("int", bit - (1 << 32) if bit >= (1 << 31) else bit)]
 
     def h_SetLocalBoolean(self, args, vm):
         oid = self._o(args, 0)
-        self.world.set_local(oid, self._local_key(args, 1),
-                             Value("int", 1 if self._i(args, 2) else 0))
+        index = self._i(args, 1)
+        if 0 <= index <= 95:
+            self.world.set_local(oid, "b" + str(index), Value("int", 1 if self._i(args, 2) else 0))
         return []
 
     # ---- math / strings / vectors --------------------------------------
@@ -549,11 +570,13 @@ class ActionRuntime:
         return [Value("string", str(self._i(args, 0)))]
 
     def h_FloatToString(self, args, vm):
-        decimals = self._i(args, 2)
+        # retail 00536000: width clamped 0..18, decimals 0..9, format "%<w>.<d>f\n".
+        width = min(max(self._i(args, 1), 0), 18)
+        decimals = min(max(self._i(args, 2), 0), 9)
         try:
-            return [Value("string", f"{self._f(args, 0):.{max(0, decimals)}f}")]
+            return [Value("string", f"{self._f(args, 0):{width}.{decimals}f}\n")]
         except (ValueError, TypeError):
-            return [Value("string", "0")]
+            return [Value("string", "0\n")]
 
     def h_Vector(self, args, vm):
         return [Value("float", self._f(args, 0)),

@@ -6,6 +6,7 @@
 #include "game/ScriptHost.h"
 
 #include "core/Log.h"
+#include "game/Ambience.h"
 #include "game/GameSession.h"
 
 #include <algorithm>
@@ -409,6 +410,20 @@ Cells getSkillRank(ActionCall& call)
             }
         }
     }
+    // 005aa570: the rank adds GetTotalEffectBonus case 5, the skill effects (types 54 and 55, argument 0
+    // the skill, 1 the amount), each side capped at 30 (0x1e) before the subtraction.
+    std::int32_t gain = 0;
+    std::int32_t loss = 0;
+    for (const AppliedEffect& held : api.actor(target).effects) {
+        if (held.type != 54 && held.type != 55) {
+            continue;
+        }
+        const EffectData* data = api.sim().engine.get<EffectData>(held.effect);
+        if (data != nullptr && data->args.size() > 1 && data->args[0].asInt() == skill) {
+            (held.type == 54 ? gain : loss) += static_cast<std::int32_t>(data->args[1].asInt());
+        }
+    }
+    total += std::min(gain, 30) - std::min(loss, 30);
     return ActionCall::retInt(total);
 }
 
@@ -1360,6 +1375,14 @@ bool insideShape(std::int64_t shape, float size, kotor::Vec3 centre, kotor::Vec3
     }
 }
 
+// retail ACT_128 and ACT_129 share 0054a260. The area keeps its objects sorted by x with
+// one cursor (+0x190, +0x194, +0x19c). First binary-searches the low edge of the shape's
+// x range (00506f20), Next starts after the cursor, the walk ends past the high edge, and
+// only a match moves the cursor (0054ab7d). A nested iteration therefore shares it, and
+// the outer one carries on from where the inner one stopped. The shipped boss AI nests
+// them, and it would not terminate with a cursor per query. Shape 0's range here is the
+// box around its ends, where retail takes the rectangle's corners: an evidence-backed
+// simplification, as it only widens where a walk may stop.
 Cells nextInShape(ActionCall& call, bool first)
 {
     ScriptApi api = call.api();
@@ -1371,20 +1394,37 @@ Cells nextInShape(ActionCall& call, bool first)
         return ActionCall::retObject(script::kObjectInvalid);
     }
     const kotor::Vec3 origin = call.vectorArg(5);
-    std::vector<std::uint32_t> members;
+    const kotor::Vec3 centre = location->position;
+    struct Sorted {
+        float x = 0.0f;
+        AreaEntry entry;
+        kotor::Vec3 at;
+    };
+    std::vector<Sorted> sorted;
     for (const AreaEntry& entry : scanArea(api)) {
-        if (!entry.destroyed && (entry.type & mask) != 0
-            && insideShape(shape, size, location->position, origin, api.position(entry.id))) {
-            members.push_back(entry.id);
+        const kotor::Vec3 at = api.position(entry.id);
+        sorted.push_back({at.x, entry, at});
+    }
+    std::stable_sort(sorted.begin(), sorted.end(), [](const Sorted& a, const Sorted& b) { return a.x < b.x; });
+    const bool spansOrigin = shape == 0 || shape == 1 || shape == 3;
+    const float low = (spansOrigin ? std::min(centre.x, origin.x) : centre.x) - size;
+    const float high = (spansOrigin ? std::max(centre.x, origin.x) : centre.x) + size;
+    std::size_t index = 0;
+    if (first) {
+        index = static_cast<std::size_t>(
+            std::lower_bound(sorted.begin(), sorted.end(), low, [](const Sorted& a, float x) { return a.x < x; })
+            - sorted.begin());
+    } else {
+        index = static_cast<std::size_t>(std::max<std::int64_t>(0, call.world.cursor(kShapeCursor) + 1));
+    }
+    for (; index < sorted.size() && sorted[index].x <= high; ++index) {
+        const Sorted& row = sorted[index];
+        if (!row.entry.destroyed && (row.entry.type & mask) != 0 && insideShape(shape, size, centre, origin, row.at)) {
+            call.world.setCursor(kShapeCursor, static_cast<std::int64_t>(index));
+            return ActionCall::retObject(row.entry.id);
         }
     }
-    const std::int64_t position = first ? 0 : call.world.cursor(kShapeCursor);
-    if (position < 0 || position >= static_cast<std::int64_t>(members.size())) {
-        call.world.setCursor(kShapeCursor, static_cast<std::int64_t>(members.size()));
-        return ActionCall::retObject(script::kObjectInvalid);
-    }
-    call.world.setCursor(kShapeCursor, position + 1);
-    return ActionCall::retObject(members[static_cast<std::size_t>(position)]);
+    return ActionCall::retObject(script::kObjectInvalid);
 }
 
 Cells firstObjectInShape(ActionCall& call)
@@ -1813,6 +1853,17 @@ Cells duplicateHeadAppearance(ActionCall& call)
 
 } // namespace
 
+// The audio director's view of the game clock (game/Ambience.h): the same state the
+// GetIsDay family reads, and the game hour.
+std::int32_t gameDayState(GameSession& session, std::int32_t& hour)
+{
+    ScriptApi api{session};
+    const ClockParts parts = clockParts(api);
+    hour = parts.hour;
+    const WorldSim& sim = api.sim();
+    return dayState(parts.hour, sim.clockDawnHour, sim.clockDuskHour);
+}
+
 std::int32_t creatureTotalLevel(ScriptApi api, std::uint32_t object)
 {
     const std::optional<Sheet> sheet = sheetOf(api, object);
@@ -2092,6 +2143,8 @@ int runObjectsFamilyTest(GameSession& game)
         return out.empty() ? std::string{"<none>"} : out.front().asString();
     };
 
+    game.declareGlobalForTest("objects_out_i");
+    game.declareGlobalForTest("objects_out_s");
     // Runs a script with the given self and reads one result back from a global.
     const auto vmInt = [&](std::uint32_t self, const std::function<void(MiniNcs&)>& build) {
         MiniNcs script;

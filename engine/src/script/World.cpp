@@ -1,6 +1,7 @@
 #include "script/World.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace ke::script {
 
@@ -160,11 +161,33 @@ bool World::valid(std::uint32_t id) const
 
 std::uint32_t World::byTag(const std::string& tag, std::int64_t nth) const
 {
-    const auto it = tags.find(tag);
-    if (it == tags.end() || nth < 0 || nth >= static_cast<std::int64_t>(it->second.size())) {
+    if (nth < 0) {
         return kObjectInvalid;
     }
-    return it->second[static_cast<std::size_t>(nth)];
+    // ACT_200 lowers the tag it is given (005e6080) before its table search, so any case finds
+    // it: k_ptar_attack asks for "Droid1", whose template's tag is "droid1".
+    const auto lowered = [](std::string text) {
+        for (char& c : text) {
+            if (c >= 'A' && c <= 'Z') {
+                c = static_cast<char>(c + ('a' - 'A'));
+            }
+        }
+        return text;
+    };
+    const std::string wanted = lowered(tag);
+    std::vector<std::uint32_t> found;
+    std::size_t keys = 0;
+    for (const auto& [key, ids] : tags) {
+        if (key.size() == wanted.size() && lowered(key) == wanted) {
+            found.insert(found.end(), ids.begin(), ids.end());
+            ++keys;
+        }
+    }
+    if (keys > 1) {
+        std::sort(found.begin(), found.end());
+    }
+    return nth < static_cast<std::int64_t>(found.size()) ? found[static_cast<std::size_t>(nth)]
+                                                         : kObjectInvalid;
 }
 
 std::vector<std::uint32_t> World::byArea(std::int64_t area) const
@@ -197,6 +220,38 @@ void World::setLocal(std::uint32_t id, const std::string& name, Value value)
     if (object != nullptr) {
         object->locals[name] = std::move(value);
     }
+}
+
+std::int32_t World::localBoolean(std::uint32_t id, std::int64_t index) const
+{
+    if (index < 0 || index > 95 || getLocal(id, localBooleanKey(index), ValueType::Int).asInt() == 0) {
+        return 0;
+    }
+    return static_cast<std::int32_t>(std::uint32_t{1} << static_cast<unsigned>(index % 32));
+}
+
+void World::setLocalBoolean(std::uint32_t id, std::int64_t index, bool value)
+{
+    if (index < 0 || index > 95) {
+        return;
+    }
+    setLocal(id, localBooleanKey(index), Value::makeInt(value ? 1 : 0));
+}
+
+std::int32_t World::localNumber(std::uint32_t id, std::int64_t index) const
+{
+    if (index < 0 || index > 7) {
+        return 0;
+    }
+    return static_cast<std::int32_t>(getLocal(id, std::to_string(index), ValueType::Int).asInt() & 0xFF);
+}
+
+void World::setLocalNumber(std::uint32_t id, std::int64_t index, std::int64_t value)
+{
+    if (value < -128 || value > 127 || index < 0 || index > 7) {
+        return;
+    }
+    setLocal(id, std::to_string(index), Value::makeInt(value & 0xFF));
 }
 
 Value World::getGlobal(const std::string& name, ValueType type) const
@@ -235,11 +290,40 @@ void World::queueAction(std::int64_t actionId, std::vector<std::vector<Value>> a
     actionQueue.push_back(std::move(action));
 }
 
+// Retail DelayCommand (ACT_7 0052fe30) and AssignCommand (ACT_6 0052e720) post an event
+// through CServerAIMaster::AddEventDeltaTime 004b08d0: the delay becomes whole milliseconds
+// (float seconds times 1000.0f at 0073d6fc, truncated by _ftol 006fae8c) added to the world
+// time, which is itself whole milliseconds (CWorldTimer::GetWorldTime 004ade40). A delay
+// whose milliseconds read as unsigned are not below one day fails AddWorldTimes 004adf50
+// and the event is freed, so a negative delay never runs. NaN converts to 0 ms.
+std::optional<double> World::dueAfter(double delay) const
+{
+    const float scaled = static_cast<float>(delay) * 1000.0f;
+    std::int64_t wide = 0;
+    if (std::isfinite(scaled) && std::fabs(scaled) < 9.2e18f) {
+        wide = static_cast<std::int64_t>(scaled);
+    }
+    const std::int32_t ms = static_cast<std::int32_t>(static_cast<std::uint32_t>(static_cast<std::uint64_t>(wide)));
+    if (ms < 0) {
+        return std::nullopt;
+    }
+    return static_cast<double>(nowMs() + ms) / 1000.0;
+}
+
+std::int64_t World::nowMs() const
+{
+    return static_cast<std::int64_t>(std::floor(time * 1000.0 + 1e-6));
+}
+
 void World::schedule(double delay, std::int64_t actionId,
                      std::vector<std::vector<Value>> args, const std::string& source)
 {
+    const std::optional<double> due = dueAfter(delay);
+    if (!due.has_value()) {
+        return;
+    }
     Timer timer;
-    timer.due = time + delay;
+    timer.due = *due;
     timer.actionId = actionId;
     timer.args = std::move(args);
     timer.source = source;
@@ -273,27 +357,58 @@ void World::queueFunctor(std::int64_t id, std::uint32_t target, const std::strin
 void World::scheduleFunctor(double delay, std::int64_t id, std::uint32_t target,
                             const std::string& source)
 {
+    const std::optional<double> due = dueAfter(delay);
+    if (!due.has_value()) {
+        functors.erase(id);
+        return;
+    }
     Timer timer;
-    timer.due = time + delay;
+    timer.due = *due;
     timer.functor = id;
     timer.target = target;
     timer.source = source;
     timers.push_back(std::move(timer));
 }
 
+bool World::timerDue(const Timer& timer) const
+{
+    return static_cast<std::int64_t>(std::llround(timer.due * 1000.0)) <= nowMs();
+}
+
+// CServerAIMaster::AddEventAbsoluteTime 004afdb0 keeps the queue sorted by time and puts a new
+// event after every event of the same time; UpdateState 004b0b70 reads the world time once
+// and runs the head while it is due, so events come out in time order, first posted first
+// among equal times, and an event posted with no delay while the queue runs (an
+// AssignCommand inside a delayed command) runs in the same pass.
 std::vector<Timer> World::advance(double seconds)
 {
-    time += seconds;
+    advanceClock(seconds);
     std::vector<Timer> due;
-    for (const Timer& timer : timers) {
-        if (timer.due <= time) {
-            due.push_back(timer);
-        }
-    }
-    if (!due.empty()) {
-        std::erase_if(timers, [this](const Timer& timer) { return timer.due <= time; });
+    while (std::optional<Timer> timer = popDue()) {
+        due.push_back(std::move(*timer));
     }
     return due;
+}
+
+void World::advanceClock(double seconds)
+{
+    time += seconds;
+}
+
+std::optional<Timer> World::popDue()
+{
+    auto earliest = timers.end();
+    for (auto it = timers.begin(); it != timers.end(); ++it) {
+        if (timerDue(*it) && (earliest == timers.end() || it->due < earliest->due)) {
+            earliest = it;
+        }
+    }
+    if (earliest == timers.end()) {
+        return std::nullopt;
+    }
+    Timer timer = std::move(*earliest);
+    timers.erase(earliest);
+    return timer;
 }
 
 std::int64_t World::attrInt(const std::string& name, std::int64_t fallback) const

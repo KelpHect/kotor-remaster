@@ -25,6 +25,33 @@ struct BikMovie {
 BikMovie parseBik(const std::vector<std::uint8_t>& bytes, const std::string& name,
                   std::uint64_t fileSize);
 
+// Where a movie frame lands in a window: scaled by the smaller axis ratio and centred, so
+// the picture keeps its own aspect and the rest of the window is black (letterbox for the
+// 640x272 cinema frames, pillarbox for the 640x480 logos on a wide window).
+struct MovieRect {
+    float x = 0.0f;
+    float y = 0.0f;
+    float w = 0.0f;
+    float h = 0.0f;
+};
+
+inline MovieRect fitMovie(int frameWidth, int frameHeight, float displayWidth,
+                          float displayHeight)
+{
+    MovieRect rect;
+    if (frameWidth <= 0 || frameHeight <= 0 || displayWidth <= 0.0f || displayHeight <= 0.0f) {
+        return rect;
+    }
+    const float scaleX = displayWidth / static_cast<float>(frameWidth);
+    const float scaleY = displayHeight / static_cast<float>(frameHeight);
+    const float scale = scaleX < scaleY ? scaleX : scaleY;
+    rect.w = static_cast<float>(frameWidth) * scale;
+    rect.h = static_cast<float>(frameHeight) * scale;
+    rect.x = (displayWidth - rect.w) * 0.5f;
+    rect.y = (displayHeight - rect.h) * 0.5f;
+    return rect;
+}
+
 struct LipFrame {
     float time = 0.0f;
     std::uint8_t viseme = 0;

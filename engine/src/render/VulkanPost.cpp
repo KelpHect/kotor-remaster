@@ -226,8 +226,9 @@ bool VulkanPost::initialize(VkDevice device, VkPhysicalDevice physicalDevice,
     queue_ = queue;
     colorFormat_ = colorFormat;
 
-    VkDescriptorSetLayoutBinding bindings[2]{};
-    for (std::uint32_t i = 0; i < 2; ++i) {
+    // 0: the frame copy, 1: scan noise, 2: the last frame of the speed blur.
+    VkDescriptorSetLayoutBinding bindings[3]{};
+    for (std::uint32_t i = 0; i < 3; ++i) {
         bindings[i].binding = i;
         bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         bindings[i].descriptorCount = 1;
@@ -235,7 +236,7 @@ bool VulkanPost::initialize(VkDevice device, VkPhysicalDevice physicalDevice,
     }
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 2;
+    layoutInfo.bindingCount = 3;
     layoutInfo.pBindings = bindings;
     if (vkCreateDescriptorSetLayout(device_, &layoutInfo, nullptr, &setLayout_) != VK_SUCCESS) {
         error = "vkCreateDescriptorSetLayout failed for the video effect pass";
@@ -275,7 +276,7 @@ bool VulkanPost::initialize(VkDevice device, VkPhysicalDevice physicalDevice,
         return false;
     }
 
-    VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2};
+    VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3};
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.maxSets = 1;
@@ -384,14 +385,15 @@ bool VulkanPost::initialize(VkDevice device, VkPhysicalDevice physicalDevice,
 void VulkanPost::updateDescriptor()
 {
     if (descriptor_ == VK_NULL_HANDLE || copy_.view == VK_NULL_HANDLE
-        || noise_.view == VK_NULL_HANDLE) {
+        || noise_.view == VK_NULL_HANDLE || accum_.view == VK_NULL_HANDLE) {
         return;
     }
-    VkDescriptorImageInfo images[2]{};
+    VkDescriptorImageInfo images[3]{};
     images[0] = {clampSampler_, copy_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
     images[1] = {repeatSampler_, noise_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-    VkWriteDescriptorSet writes[2]{};
-    for (std::uint32_t i = 0; i < 2; ++i) {
+    images[2] = {clampSampler_, accum_.view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+    VkWriteDescriptorSet writes[3]{};
+    for (std::uint32_t i = 0; i < 3; ++i) {
         writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[i].dstSet = descriptor_;
         writes[i].dstBinding = i;
@@ -399,7 +401,49 @@ void VulkanPost::updateDescriptor()
         writes[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         writes[i].pImageInfo = &images[i];
     }
-    vkUpdateDescriptorSets(device_, 2, writes, 0, nullptr);
+    vkUpdateDescriptorSets(device_, 3, writes, 0, nullptr);
+}
+
+bool VulkanPost::prepareAccum(std::string& error)
+{
+    // The shader reads binding 2 on every draw, so it must be readable before the first blur frame.
+    VkCommandBufferAllocateInfo commandInfo{};
+    commandInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    commandInfo.commandPool = commandPool_;
+    commandInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    commandInfo.commandBufferCount = 1;
+    VkCommandBuffer command = VK_NULL_HANDLE;
+    if (vkAllocateCommandBuffers(device_, &commandInfo, &command) != VK_SUCCESS) {
+        error = "vkAllocateCommandBuffers failed for the speed blur image";
+        return false;
+    }
+    VkCommandBufferBeginInfo begin{};
+    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(command, &begin);
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = accum_.image;
+    barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    vkCmdPipelineBarrier(command, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0,
+                         nullptr, 0, nullptr, 1, &barrier);
+    vkEndCommandBuffer(command);
+    VkSubmitInfo submit{};
+    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers = &command;
+    const bool ok = vkQueueSubmit(queue_, 1, &submit, VK_NULL_HANDLE) == VK_SUCCESS;
+    vkQueueWaitIdle(queue_);
+    vkFreeCommandBuffers(device_, commandPool_, 1, &command);
+    if (!ok) {
+        error = "speed blur image transition failed";
+    }
+    return ok;
 }
 
 bool VulkanPost::resize(VkExtent2D extent, std::string& error)
@@ -409,12 +453,17 @@ bool VulkanPost::resize(VkExtent2D extent, std::string& error)
     }
     vkDeviceWaitIdle(device_);
     destroyImage(copy_);
+    destroyImage(accum_);
+    blurPrimed_ = false;
     extent_ = extent;
     if (extent.width == 0 || extent.height == 0) {
         return true;
     }
     if (!createImage(copy_, extent.width, extent.height, colorFormat_,
-                     VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, error)) {
+                     VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, error)
+        || !createImage(accum_, extent.width, extent.height, colorFormat_,
+                        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, error)
+        || !prepareAccum(error)) {
         return false;
     }
     updateDescriptor();
@@ -489,6 +538,63 @@ void VulkanPost::recordDraw(VkCommandBuffer commandBuffer)
     vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 }
 
+void VulkanPost::recordBlur(VkCommandBuffer commandBuffer)
+{
+    // RenderAccumulationBlur 00433da0 / 00433970: blending off, register combiners 0x128 (004299c0).
+    PushConstants push;
+    push.flags[2] = 1.0f;
+    push.flags[3] = effect_.speedBlurRatio;
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout_, 0, 1,
+                            &descriptor_, 0, nullptr);
+    vkCmdPushConstants(commandBuffer, pipelineLayout_, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push),
+                       &push);
+    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+}
+
+void VulkanPost::recordAccumulate(VkCommandBuffer commandBuffer, VkImage swapchainImage)
+{
+    // RenderFrameToTexture: the (blurred) frame becomes the last frame, 007a698d = 1.
+    VkImageMemoryBarrier barriers[2]{};
+    for (VkImageMemoryBarrier& barrier : barriers) {
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    }
+    barriers[0].image = swapchainImage;
+    barriers[0].oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    barriers[0].newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barriers[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    barriers[0].dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    barriers[1].image = accum_.image;
+    barriers[1].oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    barriers[1].newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barriers[1].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    barriers[1].dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    vkCmdPipelineBarrier(commandBuffer,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, nullptr, 0, nullptr, 2, barriers);
+    VkImageCopy region{};
+    region.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    region.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    region.extent = {extent_.width, extent_.height, 1};
+    vkCmdCopyImage(commandBuffer, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, accum_.image,
+                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    barriers[0].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barriers[0].newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    barriers[0].srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    barriers[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+    barriers[1].oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barriers[1].newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barriers[1].srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barriers[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                         0, 0, nullptr, 0, nullptr, 2, barriers);
+    blurPrimed_ = true;
+}
+
 void VulkanPost::shutdown()
 {
     if (device_ == VK_NULL_HANDLE) {
@@ -496,6 +602,7 @@ void VulkanPost::shutdown()
     }
     vkDeviceWaitIdle(device_);
     destroyImage(copy_);
+    destroyImage(accum_);
     destroyImage(noise_);
     if (pipeline_ != VK_NULL_HANDLE) {
         vkDestroyPipeline(device_, pipeline_, nullptr);

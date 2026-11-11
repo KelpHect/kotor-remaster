@@ -1,6 +1,7 @@
 // Walkmesh navigation. See Pathfinding.h for how this relates to retail.
 #include "game/Pathfinding.h"
 
+#include "core/Log.h"
 #include "game/GameSession.h"
 #include "game/ScriptHost.h"
 
@@ -12,6 +13,7 @@
 #include <exception>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <queue>
 #include <set>
 #include <tuple>
@@ -68,10 +70,9 @@ inline Vec3 closestOnSegment2D(Vec3 point, Vec3 a, Vec3 b)
 
 namespace {
 
-
-// Room seams in the shipped walkmeshes share exact vertices (measured on the
-// shipped modules: every BWM perimeter edge with a room transition matches its
-// neighbour at 1 mm), so this only absorbs float noise from door cuts.
+// Most room seams in the shipped walkmeshes share exact vertices, and this only absorbs
+// float noise from door cuts. Not all do: korr_m39aa's rooms meet with a chamfer on one
+// side (m39aa_02 against m39aa_05), so buildLinks joins those by overlap.
 constexpr float kWeld = 0.01f;
 constexpr float kOnLine = 0.002f;
 constexpr float kMinArea = 1.0e-5f;
@@ -140,8 +141,9 @@ bool closedAny(const Link& link, const std::vector<char>& closed)
 
 } // namespace
 
-NavMesh::NavMesh(const kotor::Scene& scene, std::vector<DoorLine> doors)
+NavMesh::NavMesh(const kotor::Scene& scene, std::vector<DoorLine> doors, std::vector<DoorLine> walls)
     : doors_(std::move(doors))
+    , walls_(std::move(walls))
 {
     tris_.reserve(scene.collision.size());
     for (const kotor::CollisionFacet& facet : scene.collision) {
@@ -153,12 +155,16 @@ NavMesh::NavMesh(const kotor::Scene& scene, std::vector<DoorLine> doors)
         tri.v[1] = scene.collisionVertices[facet.b];
         tri.v[2] = scene.collisionVertices[facet.c];
         tri.room = static_cast<int>(facet.room);
+        tri.seamEdges = facet.seamEdges;
         const float area = triCross(tri.v[0], tri.v[1], tri.v[2]);
         if (std::fabs(area) < kMinArea) {
             continue; // Vertical in plan view: nothing can stand on it.
         }
         if (area < 0.0f) {
             std::swap(tri.v[1], tri.v[2]);
+            // Edges 0 and 2 trade places: 0-1 became 0-2 and 2-0 became 1-0.
+            const std::uint8_t seam = tri.seamEdges;
+            tri.seamEdges = static_cast<std::uint8_t>((seam & 2u) | ((seam & 1u) << 2) | ((seam & 4u) >> 2));
         }
         tris_.push_back(tri);
     }
@@ -335,8 +341,10 @@ void NavMesh::buildLinks()
             }
         }
     }
-    // T-junctions from a door cut against an uncut neighbour: edges that overlap
-    // along a line but do not share both end points.
+    // T-junctions: edges that overlap along a line but do not share both end points. A door
+    // cut against an uncut neighbour makes them, and so do room seams whose two sides are
+    // subdivided differently. Only edges the walkmesh marks as leading to another room
+    // count there, so two rooms that merely touch back to back stay apart.
     for (std::size_t i = 0; i < open.size(); ++i) {
         const Tri& a = tris_[open[i].tri];
         const Vec3 a0 = a.v[open[i].edge];
@@ -347,7 +355,9 @@ void NavMesh::buildLinks()
         }
         for (std::size_t j = i + 1; j < open.size(); ++j) {
             const Tri& b = tris_[open[j].tri];
-            if (!a.fromCut && !b.fromCut) {
+            const bool roomSeam = a.room != b.room && ((a.seamEdges >> open[i].edge) & 1u) != 0
+                && ((b.seamEdges >> open[j].edge) & 1u) != 0;
+            if (!a.fromCut && !b.fromCut && !roomSeam) {
                 continue;
             }
             const Vec3 b0 = b.v[open[j].edge];
@@ -660,6 +670,122 @@ RayResult NavMesh::ray(Vec3 from, int fromTri, Vec3 to, const std::vector<char>&
     return result;
 }
 
+namespace {
+
+// Distance in plan from a point to a segment.
+float distanceToSegment(Vec3 point, Vec3 a, Vec3 b)
+{
+    return length2D(point, closestOnSegment2D(point, a, b));
+}
+
+// The first parameter t in [0, 1] along from -> to at which a body of `radius` touches the wall
+// segment, or 2 when it does not. A body already inside the radius may only move parallel or away.
+float wallTouch(Vec3 from, Vec3 to, Vec3 a, Vec3 b, float radius)
+{
+    const float span = length2D(a, b);
+    if (span < 1.0e-4f) {
+        return 2.0f;
+    }
+    const float startDistance = distanceToSegment(from, a, b);
+    if (startDistance < radius) {
+        return distanceToSegment(to, a, b) >= startDistance - 1.0e-4f ? 2.0f : 0.0f;
+    }
+    const float dx = to.x - from.x;
+    const float dy = to.y - from.y;
+    float best = 2.0f;
+    // The two lines offset by the radius, over the wall's length.
+    const float ux = (b.x - a.x) / span;
+    const float uy = (b.y - a.y) / span;
+    const float nx = -uy;
+    const float ny = ux;
+    const float side0 = nx * (from.x - a.x) + ny * (from.y - a.y);
+    const float sideStep = nx * dx + ny * dy;
+    if (std::fabs(sideStep) > 1.0e-9f) {
+        for (const float offset : {radius, -radius}) {
+            const float t = (offset - side0) / sideStep;
+            if (t < 0.0f || t > 1.0f) {
+                continue;
+            }
+            const float along = ux * (from.x + dx * t - a.x) + uy * (from.y + dy * t - a.y);
+            if (along >= 0.0f && along <= span) {
+                best = std::min(best, t);
+            }
+        }
+    }
+    // The two end caps.
+    for (const Vec3& centre : {a, b}) {
+        const float fx = from.x - centre.x;
+        const float fy = from.y - centre.y;
+        const float qa = dx * dx + dy * dy;
+        const float qb = 2.0f * (fx * dx + fy * dy);
+        const float qc = fx * fx + fy * fy - radius * radius;
+        const float disc = qb * qb - 4.0f * qa * qc;
+        if (qa < 1.0e-12f || disc < 0.0f) {
+            continue;
+        }
+        const float t = (-qb - std::sqrt(disc)) / (2.0f * qa);
+        if (t >= 0.0f && t <= 1.0f) {
+            best = std::min(best, t);
+        }
+    }
+    return best;
+}
+
+} // namespace
+
+RayResult NavMesh::stepAgainstWalls(Vec3 from, int fromTri, Vec3 to, float radius,
+                                    const std::vector<char>& closed, bool slide) const
+{
+    RayResult result = ray(from, fromTri, to, closed);
+    if (walls_.empty() || result.endTri < 0) {
+        return result;
+    }
+    const Vec3 end = result.end;
+    const float length = length2D(from, end);
+    if (length < 1.0e-6f) {
+        return result;
+    }
+    float stop = 2.0f;
+    const DoorLine* hit = nullptr;
+    for (const DoorLine& wall : walls_) {
+        if (from.z < wall.zMin - 0.5f || from.z > wall.zMax + 0.1f) {
+            continue; // Another floor, or a face above the head.
+        }
+        const float t = wallTouch(from, end, wall.a, wall.b, radius);
+        if (t <= 1.0f && t < stop) {
+            stop = t;
+            hit = &wall;
+        }
+    }
+    if (hit == nullptr) {
+        return result;
+    }
+    // Stop a hair short, so the next step starts outside the radius.
+    const float t = std::max(0.0f, stop - 1.0e-3f / length);
+    Vec3 stopped{from.x + (end.x - from.x) * t, from.y + (end.y - from.y) * t, 0.0f};
+    const int stoppedTri = locate({stopped.x, stopped.y, from.z});
+    stopped.z = stoppedTri >= 0 ? height(stoppedTri, stopped.x, stopped.y) : from.z;
+    const float wallSpan = std::max(length2D(hit->a, hit->b), 1.0e-5f);
+    const Vec3 along{(hit->b.x - hit->a.x) / wallSpan, (hit->b.y - hit->a.y) / wallSpan, 0.0f};
+    RayResult blocked;
+    blocked.clear = false;
+    blocked.end = stoppedTri >= 0 ? stopped : from;
+    blocked.endTri = stoppedTri >= 0 ? stoppedTri : fromTri;
+    blocked.edge = along;
+    if (slide && stoppedTri >= 0) {
+        const float rest = length2D(from, to) - length2D(from, stopped);
+        const float carry = ((to.x - from.x) * along.x + (to.y - from.y) * along.y)
+            / std::max(length2D(from, to), 1.0e-5f);
+        if (rest > 1.0e-4f && std::fabs(carry) > 1.0e-3f) {
+            const Vec3 slid{stopped.x + along.x * carry * rest, stopped.y + along.y * carry * rest, stopped.z};
+            const RayResult second = stepAgainstWalls(blocked.end, blocked.endTri, slid, radius, closed, false);
+            blocked.end = second.end;
+            blocked.endTri = second.endTri;
+        }
+    }
+    return blocked;
+}
+
 bool NavMesh::search(int start, int goal, Vec3 from, Vec3 to, float radius,
                      const std::vector<char>* closed, std::vector<int>& corridor,
                      std::vector<int>& viaLink, std::vector<char>* reached) const
@@ -918,6 +1044,145 @@ PathResult NavMesh::findPath(Vec3 from, Vec3 to, float radius,
     return result;
 }
 
+
+// ---- the detour hexagon (retail 005cf1f0, 005cfc70, 005d0160, 005cfae0, 005cf7a0, 005cf650) ------------------
+
+Hexagon makeHexagon(Vec3 centre, float walkerFacing, float apothem)
+{
+    // 005cf1f0 takes the walker's facing vector negated, normalised and scaled by apothem / 0.866 (0074c454),
+    // then turns it by -60 degrees (0xbf860a92) for each vertex after the first.
+    const float reach = apothem / 0.8660254f;
+    const float baseX = -std::cos(walkerFacing);
+    const float baseY = -std::sin(walkerFacing);
+    Hexagon hex;
+    for (std::size_t i = 0; i < hex.vertex.size(); ++i) {
+        const float turn = -static_cast<float>(i) * 1.04719755f;
+        const float c = std::cos(turn);
+        const float s = std::sin(turn);
+        hex.vertex[i] = {centre.x + (baseX * c - baseY * s) * reach, centre.y + (baseX * s + baseY * c) * reach,
+                         centre.z};
+    }
+    return hex;
+}
+
+namespace {
+
+// The edge's normal into the hexagon (vertices run clockwise, so the inside lies to the right).
+inline void edgeNormal(const Hexagon& hex, std::size_t edge, float& nx, float& ny)
+{
+    const Vec3 a = hex.vertex[edge];
+    const Vec3 b = hex.vertex[(edge + 1) % 6];
+    const float ex = b.x - a.x;
+    const float ey = b.y - a.y;
+    const float length = std::hypot(ex, ey);
+    nx = length > 0.0f ? ey / length : 0.0f;
+    ny = length > 0.0f ? -ex / length : 0.0f;
+}
+
+} // namespace
+
+bool Hexagon::contains(Vec3 point) const
+{
+    for (std::size_t i = 0; i < 6; ++i) {
+        float nx = 0.0f;
+        float ny = 0.0f;
+        edgeNormal(*this, i, nx, ny);
+        if (nx * (point.x - vertex[i].x) + ny * (point.y - vertex[i].y) < 0.0f) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::vector<HexCrossing> Hexagon::crossings(const std::vector<Vec3>& polyline) const
+{
+    std::vector<HexCrossing> found;
+    for (std::size_t k = 1; k < polyline.size(); ++k) {
+        const Vec3 a = polyline[k - 1];
+        const float dx = polyline[k].x - a.x;
+        const float dy = polyline[k].y - a.y;
+        float enter = 0.0f;
+        float leave = 1.0f;
+        int enterEdge = -1;
+        int leaveEdge = -1;
+        bool missed = false;
+        for (std::size_t e = 0; e < 6 && !missed; ++e) {
+            float nx = 0.0f;
+            float ny = 0.0f;
+            edgeNormal(*this, e, nx, ny);
+            const float inside = nx * (a.x - vertex[e].x) + ny * (a.y - vertex[e].y);
+            const float rate = nx * dx + ny * dy;
+            if (std::fabs(rate) < 1.0e-9f) {
+                missed = inside < 0.0f;
+                continue;
+            }
+            const float t = -inside / rate;
+            if (rate > 0.0f) {
+                if (t > enter) {
+                    enter = t;
+                    enterEdge = static_cast<int>(e);
+                }
+            } else if (t < leave) {
+                leave = t;
+                leaveEdge = static_cast<int>(e);
+            }
+            missed = enter > leave;
+        }
+        if (missed) {
+            continue;
+        }
+        if (enterEdge >= 0 && enter > 1.0e-6f) {
+            found.push_back({k, enterEdge, {a.x + dx * enter, a.y + dy * enter, a.z}});
+        }
+        if (leaveEdge >= 0 && leave < 1.0f - 1.0e-6f) {
+            found.push_back({k, leaveEdge, {a.x + dx * leave, a.y + dy * leave, a.z}});
+        }
+    }
+    return found;
+}
+
+int Hexagon::nearestVertex(Vec3 point) const
+{
+    int best = 0;
+    float bestDistance = std::numeric_limits<float>::max();
+    for (std::size_t i = 0; i < 6; ++i) {
+        const float d = (vertex[i].x - point.x) * (vertex[i].x - point.x)
+            + (vertex[i].y - point.y) * (vertex[i].y - point.y);
+        if (d < bestDistance) {
+            bestDistance = d;
+            best = static_cast<int>(i);
+        }
+    }
+    return best;
+}
+
+std::vector<Vec3> Hexagon::arc(const HexCrossing& entry, const HexCrossing& exit, bool forward) const
+{
+    std::vector<Vec3> points;
+    points.push_back(entry.point);
+    if (entry.edge == exit.edge) {
+        points.push_back(exit.point);
+        return points;
+    }
+    if (forward) {
+        int e = (entry.edge + 1) % 6;
+        points.push_back(vertex[static_cast<std::size_t>(e)]);
+        while (e != exit.edge) {
+            e = (e + 1) % 6;
+            points.push_back(vertex[static_cast<std::size_t>(e)]);
+        }
+    } else {
+        int e = entry.edge;
+        points.push_back(vertex[static_cast<std::size_t>(e)]);
+        while (e != (exit.edge + 1) % 6) {
+            e = (e + 5) % 6;
+            points.push_back(vertex[static_cast<std::size_t>(e)]);
+        }
+    }
+    points.push_back(exit.point);
+    return points;
+}
+
 } // namespace ke::nav
 
 // ---- GameSession: actors on the mesh ------------------------------------------
@@ -934,8 +1199,11 @@ constexpr float kPi = 3.14159265358979323846f;
 constexpr float kDefaultPersonalSpace = 0.6f;
 // The PC without an avatar has no appearance row here. Human rows all hold this.
 constexpr float kPlayerPersonalSpace = 0.35f;
-constexpr float kContactBeforeGhost = 1.0f;
-constexpr float kGhostSeconds = 2.0f;
+// Retail 00516630: the sixth bump ends a walk; a second bump on the same creature within 1e-5 (0074 7504) of
+// where it stood stops it too. 005d0840 adds 0.2 (007a2274) to the two bodies' radii for the hexagon.
+constexpr int kMaxBumps = 6;
+constexpr float kSameSpot = 9.99999747e-06f;
+constexpr float kDetourMargin = 0.2f;
 constexpr float kRouteDriftLimit = 1.0f;
 constexpr float kRepathTargetMove = 0.25f;
 constexpr float kFormationArrive = 0.35f;
@@ -1042,6 +1310,120 @@ std::vector<nav::DoorLine> buildDoorLines(const kotor::Scene& scene, kotor::Inst
     return lines;
 }
 
+// The non-walkable faces of every placeable's walkmesh (<model>.pwk, resource 2053), as wall lines in
+// world space. Retail 00506650 NoNonWalkPolysDetailed tests a creature's step (a segment with the
+// creature's radius) against the non-walk polygons of the area's static objects; a placeable's own
+// collision mesh is built from its PWK by 00585350 NoNonWalkPolys. Walkable PWK faces (surfacemat
+// walk = 1, a seat or a step) do not block. A face's edges that are not vertical are the wall lines
+// on the ground; vertical edges project to a point and are skipped.
+std::vector<nav::DoorLine> buildPlaceableWalls(const kotor::Scene& scene, kotor::Install& install)
+{
+    std::vector<nav::DoorLine> walls;
+    std::vector<char> surfaceWalk;
+    if (auto table = install.find("surfacemat", 2017); table.has_value()) {
+        const kotor::TwoDa surfaces = kotor::TwoDa::parse(std::move(*table), "surfacemat.2da");
+        const int walk = surfaces.columnIndex("walk");
+        for (std::size_t row = 0; row < surfaces.rowCount() && walk >= 0; ++row) {
+            surfaceWalk.push_back(surfaces.cell(row, static_cast<std::size_t>(walk)) == "1" ? 1 : 0);
+        }
+    }
+    std::unordered_map<std::string, std::shared_ptr<const kotor::Wok>> cache;
+    std::set<std::tuple<int, int, int, int, int>> seen;
+    for (std::size_t i = 0; i < scene.entities.size(); ++i) {
+        const kotor::Entity& placeable = scene.entities[i];
+        if (placeable.kind != kotor::EntityKind::Placeable || placeable.dead || placeable.model.empty()) {
+            continue;
+        }
+        std::string model = placeable.model;
+        for (char& ch : model) {
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        }
+        auto found = cache.find(model);
+        if (found == cache.end()) {
+            std::shared_ptr<const kotor::Wok> parsed;
+            if (auto data = install.find(model, 2053); data.has_value()) {
+                try {
+                    parsed = std::make_shared<const kotor::Wok>(kotor::parseWok(std::move(*data), model + ".pwk"));
+                } catch (const kotor::FormatError&) {
+                }
+            }
+            found = cache.emplace(model, std::move(parsed)).first;
+        }
+        if (!found->second) {
+            continue;
+        }
+        const kotor::Wok& pwk = *found->second;
+        const float c = std::cos(placeable.bearing);
+        const float s = std::sin(placeable.bearing);
+        const auto world = [&](const Vec3& v) {
+            return Vec3{placeable.position.x + c * v.x - s * v.y, placeable.position.y + s * v.x + c * v.y,
+                        placeable.position.z + v.z};
+        };
+        float zLo = std::numeric_limits<float>::max();
+        float zHi = std::numeric_limits<float>::lowest();
+        for (const Vec3& v : pwk.vertices) {
+            zLo = std::min(zLo, v.z);
+            zHi = std::max(zHi, v.z);
+        }
+        for (const kotor::WokFace& face : pwk.faces) {
+            if (face.surface < surfaceWalk.size() ? surfaceWalk[face.surface] != 0 : face.floor) {
+                continue;
+            }
+            const std::uint32_t index[3] = {face.a, face.b, face.c};
+            for (int e = 0; e < 3; ++e) {
+                const std::uint32_t ia = index[e];
+                const std::uint32_t ib = index[(e + 1) % 3];
+                if (ia >= pwk.vertices.size() || ib >= pwk.vertices.size()) {
+                    continue;
+                }
+                const Vec3 a = world(pwk.vertices[ia]);
+                const Vec3 b = world(pwk.vertices[ib]);
+                if (nav::length2D(a, b) < 0.05f) {
+                    continue;
+                }
+                const auto key = [](const Vec3& v) {
+                    return std::pair<int, int>{static_cast<int>(std::lround(v.x * 100.0f)),
+                                               static_cast<int>(std::lround(v.y * 100.0f))};
+                };
+                auto ka = key(a);
+                auto kb = key(b);
+                if (kb < ka) {
+                    std::swap(ka, kb);
+                }
+                if (!seen.emplace(ka.first, ka.second, kb.first, kb.second, static_cast<int>(i)).second) {
+                    continue;
+                }
+                nav::DoorLine line;
+                line.entity = i;
+                line.a = a;
+                line.b = b;
+                line.zMin = placeable.position.z + zLo - 0.3f;
+                line.zMax = placeable.position.z + zHi + 0.3f;
+                line.fromDwk = true;
+                walls.push_back(line);
+            }
+        }
+    }
+    return walls;
+}
+
+// A door ordered open whose opening clip has not finished. Its open state is committed when the clip reports
+// done (client event handler 00683f00 -> CSWSDoor::MoveToNextOpenState 00589680 copies the target state at
+// +0x2cd to the live one at +0x2cc), so until then it blocks the way as a closed door does.
+bool doorStillOpening(const kotor::Scene& scene, std::size_t index)
+{
+    if (index >= scene.entities.size() || !scene.entities[index].open) {
+        return false;
+    }
+    for (const kotor::EntityMesh& mesh : scene.entityMeshes) {
+        if (mesh.entity == index && !mesh.fx && mesh.model && !mesh.animationLoop
+            && mesh.animation.rfind("opening", 0) == 0) {
+            return mesh.animationTime < mesh.model->animationDuration(mesh.animation);
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 nav::NavMesh* GameSession::navMesh()
@@ -1052,7 +1434,8 @@ nav::NavMesh* GameSession::navMesh()
     if (!nav_->mesh) {
         std::shared_ptr<nav::NavMesh>& cached = nav_->cache[module_];
         if (!cached) {
-            cached = std::make_shared<nav::NavMesh>(scene_, buildDoorLines(scene_, install_));
+            cached = std::make_shared<nav::NavMesh>(scene_, buildDoorLines(scene_, install_),
+                                                     buildPlaceableWalls(scene_, install_));
         }
         nav_->mesh = cached;
         nav_->closed.assign(nav_->mesh->doors().size(), 0);
@@ -1061,9 +1444,15 @@ nav::NavMesh* GameSession::navMesh()
     const std::vector<nav::DoorLine>& doors = nav_->mesh->doors();
     for (std::size_t d = 0; d < doors.size(); ++d) {
         const std::size_t index = doors[d].entity;
-        const bool closed = index < scene_.entities.size() && !scene_.entities[index].open
+        const bool opening = doorStillOpening(scene_, index);
+        const bool closed = index < scene_.entities.size() && (!scene_.entities[index].open || opening)
             && !scene_.entities[index].dead;
         if ((nav_->closed[d] != 0) != closed) {
+            if (index < scene_.entities.size() && scene_.entities[index].open) {
+                // The open state commits when the opening clip is done: the times a walker waits on.
+                logInfo(concat("door ", scene_.entities[index].tag, closed ? ": opening clip runs, blocks at "
+                                                                          : ": open state committed at ", elapsed_));
+            }
             nav_->closed[d] = closed ? 1 : 0;
             ++nav_->doorVersion;
         }
@@ -1210,6 +1599,12 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
     nav::NavMesh* mesh = navMesh();
 
     const auto finish = [&](ActorStep step, MoveOutcome outcome, std::size_t door) {
+        if (outcome == MoveOutcome::Arrived) {
+            if (const auto walking = nav_->actors.find(object); walking != nav_->actors.end()) {
+                walking->second.bumps = 0;
+                walking->second.hasLastBump = false;
+            }
+        }
         // The outcome of the player's click walk belongs to the steered creature.
         if (object == controlledObject()) {
             moveOutcome_ = outcome;
@@ -1244,7 +1639,7 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
         const float stride = std::min(speed * dt, straight - std::max(stopDistance, 0.0f));
         const Vec3 next{from.x + (target.x - from.x) / straight * stride,
                         from.y + (target.y - from.y) / straight * stride, from.z};
-        api.setPosition(object, next, std::atan2(target.y - from.y, target.x - from.x));
+        api.setPosition(object, next, std::atan2(target.y - from.y, target.x - from.x), false);
         return ActorStep::Moving;
     }
 
@@ -1265,9 +1660,11 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
     }
 
     nav::ActorPath& route = nav_->actors[object];
-    route.ghost = std::max(0.0f, route.ghost - dt);
+    route.abortLogLeft = std::max(0.0f, route.abortLogLeft - dt);
+    route.waitLeft = std::max(0.0f, route.waitLeft - dt);
     const float radius = creatureRadius(object);
-    bool replan = !route.valid || route.doorVersion != nav_->doorVersion
+    // A walker standing out a door asks again only when its wait is over, not on the frame the door commits.
+    bool replan = !route.valid || (route.doorVersion != nav_->doorVersion && route.waitLeft <= 0.0f)
         || length2D(route.target, target) > kRepathTargetMove;
     if (!replan && route.next < route.path.points.size()) {
         // Pushed or jumped off the route.
@@ -1276,6 +1673,16 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
         replan = length2D(near, from) > kRouteDriftLimit;
     }
     if (replan) {
+        // A new walk starts with a clean count of bumps.
+        if (route.path.points.empty() || length2D(route.target, target) > kRepathTargetMove) {
+            route.bumps = 0;
+            route.hasLastBump = false;
+        }
+        if (route.valid && route.doorVersion != nav_->doorVersion && object != controlledObject()) {
+            const std::size_t who = api.entityFor(object);
+            logInfo(concat("actor ", who < scene_.entities.size() ? scene_.entities[who].tag : std::string("?"),
+                           " re-plans after a door change at ", elapsed_));
+        }
         route.path = mesh->findPath(from, target, radius, nav_->closed);
         route.next = 1;
         route.target = target;
@@ -1308,6 +1715,22 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
         return finish(ActorStep::Arrived, MoveOutcome::Arrived, kNoDoor);
     }
     if (!reachable && remaining <= 0.02f) {
+        // At a door that is opening the walker waits for the clip to finish and then goes on (retail 0098: Trask
+        // stands until the door is open); it is not blocked, so no Blocked hook and no walk failure.
+        // Retail 004eb5a0 CSWSCreature::AddPathfindingWaitActionToFront queues a wait action of 0.3 s (0x3e99999a;
+        // 0.1 s, 0x3dcccccd, for an object the server has a client for, i.e. the player) in front of the walk, so
+        // the walker asks again at the end of each wait, not when the door commits (row 32: Trask stopped at the
+        // closed door, ran 251 ms after the commit). The walk step that bumps a door is 00516630.
+        if (path.status == nav::PathStatus::DoorBlocked
+            && (route.waitLeft > 0.0f || doorStillOpening(scene_, blockingEntity))) {
+            if (route.waitLeft <= 0.0f) {
+                route.waitLeft = object == controlledObject() ? 0.1f : 0.3f;
+                const std::size_t who = api.entityFor(object);
+                logInfo(concat("actor ", who < scene_.entities.size() ? scene_.entities[who].tag : std::string("PC"),
+                               " waits at a door that is not open at ", elapsed_));
+            }
+            return finish(ActorStep::Moving, MoveOutcome::Moving, kNoDoor);
+        }
         return path.status == nav::PathStatus::DoorBlocked
             ? finish(ActorStep::Blocked, MoveOutcome::DoorBlocked, blockingEntity)
             : finish(ActorStep::Blocked, MoveOutcome::Unreachable, kNoDoor);
@@ -1339,7 +1762,7 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
         if (gap > 1.0e-3f) {
             const float t = std::min(1.0f, speed * dt / gap);
             api.setPosition(object, nav::lerp(from, onto, t),
-                            std::atan2(onto.y - from.y, onto.x - from.x));
+                            std::atan2(onto.y - from.y, onto.x - from.x), false);
             if (object == scriptWorld_.pc) {
                 nav_->playerStepped = true;
             }
@@ -1347,16 +1770,22 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
         }
     }
 
-    // Other creatures. Retail 004bdb00 detours around whatever stands on an edge,
-    // at both bodies' personal space; here it is a local steer around them. After
-    // a second of contact the actor stops yielding for two, so scripted moves
-    // always finish. Those two times are this engine's, not retail's.
+    // Other creatures: retail 00516630 tests each step against them (00512fd0). A hit counts a bump (path data
+    // +0x268); six bumps, or a second bump on the same creature at the same spot, end the walk; otherwise 005d0840
+    // plans a detour round a hexagon about the blocker and splices it into the route.
     const std::size_t selfEntity = object == scriptWorld_.pc ? playerEntity_ : api.entityFor(object);
-    std::size_t bumped = kNoDoor;
-    const auto blockedAt = [&](Vec3 point) {
-        if (route.ghost > 0.0f) {
-            return false;
-        }
+    struct Blocker {
+        bool hit = false;
+        Vec3 position;
+        float space = 0.0f;
+        std::uint32_t object = 0;
+    };
+    const auto spaceOf = [&](const kotor::Entity& other) {
+        const auto space = nav_->personalSpace.find(other.appearance);
+        return space != nav_->personalSpace.end() ? space->second : kDefaultPersonalSpace;
+    };
+    const auto blockerAt = [&](Vec3 point) {
+        Blocker found;
         const auto against = [&](Vec3 other, float otherRadius) {
             const float combined = radius + otherRadius;
             if (length2D(target, other) < combined) {
@@ -1366,7 +1795,11 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
             return there < combined && there < length2D(from, other) - 1.0e-4f;
         };
         if (object != scriptWorld_.pc && against(position_, kPlayerPersonalSpace)) {
-            return true;
+            found.hit = true;
+            found.position = position_;
+            found.space = kPlayerPersonalSpace;
+            found.object = scriptWorld_.pc;
+            return found;
         }
         for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
             const kotor::Entity& other = scene_.entities[i];
@@ -1374,68 +1807,169 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
                 || i == playerEntity_) {
                 continue;
             }
-            const auto space = nav_->personalSpace.find(other.appearance);
-            if (against(other.position,
-                        space != nav_->personalSpace.end() ? space->second : kDefaultPersonalSpace)) {
-                bumped = i;
-                return true;
+            if (against(other.position, spaceOf(other))) {
+                found.hit = true;
+                found.position = other.position;
+                found.space = spaceOf(other);
+                found.object = objectForEntity(i);
+                return found;
             }
         }
-        return false;
+        return found;
     };
-    bool detoured = false;
-    if (blockedAt(desired)) {
-        const float heading = std::atan2(desired.y - from.y, desired.x - from.x);
-        const float reach = length2D(from, desired);
-        bool found = false;
-        for (const float turn : {1.0f, -1.0f, 1.8f, -1.8f}) {
-            const Vec3 aside{from.x + std::cos(heading + turn) * reach,
-                             from.y + std::sin(heading + turn) * reach, from.z};
-            if (blockedAt(aside)) {
-                continue;
-            }
-            const nav::RayResult probe = mesh->ray(from, startTri, aside, nav_->closed);
-            if (probe.clear) {
-                desired = probe.end;
-                found = true;
-                detoured = true;
-                break;
+    const auto nameOfWalker = [&]() {
+        const std::size_t who = api.entityFor(object);
+        return who < scene_.entities.size() ? scene_.entities[who].tag : std::string("PC");
+    };
+    const auto abortWalk = [&](const char* why, const Blocker& by, bool announce) {
+        if (announce && route.abortLogLeft <= 0.0f) {
+            route.abortLogLeft = 2.0f;
+            logInfo(concat("actor ", nameOfWalker(), " aborted walking, ", why, " at ", elapsed_));
+        }
+        route.valid = false;
+        route.bumps = 0;
+        route.hasLastBump = false;
+        // GetBlockingCreature 00546e00. When retail fills it was not traced; the creature a walk was aborted
+        // against is this engine's moment.
+        if (by.hit && by.object != 0) {
+            api.actor(object).blockingCreature = by.object;
+            if (object != controlledObject() && announce) {
+                api.raiseHook(object, "Blocked");
             }
         }
-        route.contact += dt;
-        if (route.contact >= kContactBeforeGhost) {
-            // GetBlockingCreature 00546e00. When retail fills it was not traced; a second
-            // of contact is this engine's moment.
-            if (bumped != kNoDoor) {
-                api.actor(object).blockingCreature = objectForEntity(bumped);
-                if (object != controlledObject()) {
-                    api.raiseHook(object, "Blocked");
+        return finish(ActorStep::Aborted, MoveOutcome::Unreachable, kNoDoor);
+    };
+    // 005d0840: 0 totally blocked, -2 the goal lies inside the blocker's hexagon, 1 a detour was spliced in.
+    const auto detourAround = [&](const Blocker& by) -> int {
+        route.hasLastBump = true;
+        route.lastBump = by.object;
+        route.lastBumpPosition = by.position;
+        std::vector<Vec3> q;
+        q.push_back(from);
+        for (std::size_t i = route.next; i < route.path.points.size(); ++i) {
+            q.push_back(route.path.points[i]);
+        }
+        if (q.size() < 2) {
+            return 0;
+        }
+        const nav::Hexagon hex = nav::makeHexagon(by.position, api.facing(object),
+                                                  radius + by.space + kDetourMargin);
+        if (hex.contains(q.back())) {
+            return -2;
+        }
+        const std::vector<nav::HexCrossing> crossings = hex.crossings(q);
+        if (crossings.empty()) {
+            return 0;
+        }
+        const nav::HexCrossing exitAt = crossings.back();
+        nav::HexCrossing entryAt;
+        if (crossings.size() >= 2) {
+            entryAt = crossings[crossings.size() - 2];
+        } else {
+            // 005d0160: one crossing only, the walker stands inside; the way round starts at the hexagon's
+            // vertex nearest to where it is (005cfae0).
+            const int nearest = hex.nearestVertex(q.front());
+            entryAt.segment = 1;
+            entryAt.edge = nearest;
+            entryAt.point = hex.vertex[static_cast<std::size_t>(nearest)];
+        }
+        // 005cf7a0 goes forward round the hexagon, 005cf650 backward; the toggle (path data +0x244) picks which
+        // is built first and flips for the second.
+        const bool firstForward = !route.detourToggle;
+        const std::array<std::vector<Vec3>, 2> arcs{hex.arc(entryAt, exitAt, firstForward),
+                                                    hex.arc(entryAt, exitAt, !firstForward)};
+        route.detourToggle = !route.detourToggle;
+        // 005d0770: every leg of the arc must be walkable; a leg a creature stands on ranks below a clear one
+        // and above a wall.
+        std::array<int, 2> rank{0, 0};
+        for (std::size_t a = 0; a < arcs.size(); ++a) {
+            int result = 2;
+            for (std::size_t i = 1; i < arcs[a].size() && result > 0; ++i) {
+                const Vec3 legFrom = arcs[a][i - 1];
+                const Vec3 legTo = arcs[a][i];
+                const int tri = mesh->locate(legFrom);
+                if (tri < 0 || !mesh->stepAgainstWalls(legFrom, tri, legTo, radius, nav_->closed, true).clear) {
+                    result = 0;
+                    break;
+                }
+                for (std::size_t c = 0; c < scene_.entities.size(); ++c) {
+                    const kotor::Entity& other = scene_.entities[c];
+                    if (other.kind != kotor::EntityKind::Creature || other.dead || c == selfEntity
+                        || c == playerEntity_ || objectForEntity(c) == by.object) {
+                        continue;
+                    }
+                    const Vec3 closest = nav::closestOnSegment2D(other.position, legFrom, legTo);
+                    if (length2D(closest, other.position) < radius + spaceOf(other)) {
+                        result = 1;
+                    }
                 }
             }
-            route.ghost = kGhostSeconds;
-            route.contact = 0.0f;
+            rank[a] = result;
         }
-        if (!found) {
-            return finish(ActorStep::Moving, MoveOutcome::Moving, kNoDoor);
+        const std::size_t chosen = rank[0] < rank[1] ? 1 : 0;
+        if (rank[chosen] == 0) {
+            return 0;
         }
-    } else {
-        route.contact = std::max(0.0f, route.contact - dt);
+        // 005cecc0: the route up to the crossing, the arc, then the rest of the route. Retail skips the end of the
+        // segment when the walk enters and leaves on one segment; here the rest starts at that end, or the goal
+        // would be lost.
+        std::vector<Vec3> spliced;
+        for (std::size_t i = 0; i < entryAt.segment && i < q.size(); ++i) {
+            spliced.push_back(q[i]);
+        }
+        for (Vec3 point : arcs[chosen]) {
+            point.z = from.z;
+            spliced.push_back(point);
+        }
+        for (std::size_t i = exitAt.segment; i < q.size(); ++i) {
+            spliced.push_back(q[i]);
+        }
+        route.path.points = std::move(spliced);
+        route.next = 1;
+        // After the walker's own pick, the blocker is told to go round the other way when both face alike
+        // (00423c20 taken as the dot product of the two facings).
+        if (by.object != scriptWorld_.pc) {
+            const float mine = api.facing(object);
+            const float theirs = api.facing(by.object);
+            const bool facingAlike = std::cos(mine) * std::cos(theirs) + std::sin(mine) * std::sin(theirs) >= 0.0f;
+            nav_->actors[by.object].detourToggle = facingAlike ? !route.detourToggle : route.detourToggle;
+        }
+        return 1;
+    };
+    if (const Blocker hit = blockerAt(desired); hit.hit) {
+        ++route.bumps;
+        if (route.bumps >= kMaxBumps) {
+            return abortWalk("Maximum number of bumps happened", hit, true);
+        }
+        const bool sameSpot = route.hasLastBump && route.lastBump == hit.object
+            && length2D(route.lastBumpPosition, hit.position) <= kSameSpot;
+        if (sameSpot) {
+            return abortWalk("Bumped into this creature at this position already.", hit, true);
+        }
+        const int outcome = detourAround(hit);
+        if (outcome == 0) {
+            if (object == scriptWorld_.pc) {
+                raiseCombatMessage(47859);
+            }
+            return abortWalk("we are totaly blocked. can't get around this creature at all.", hit, true);
+        }
+        if (outcome < 0) {
+            return abortWalk("the goal lies inside the creature's space.", hit, false);
+        }
+        return finish(ActorStep::Moving, MoveOutcome::Moving, kNoDoor);
     }
 
-    const nav::RayResult walked = mesh->ray(from, startTri, desired, nav_->closed);
+    const nav::RayResult walked = mesh->stepAgainstWalls(from, startTri, desired, radius, nav_->closed, true);
     const float moved = length2D(from, walked.end);
     if (!walked.clear) {
         route.valid = false;
-    }
-    if (detoured) {
-        route.valid = false;
-    } else if (walked.clear) {
+    } else {
         route.next = nextIndex;
     }
     if (moved < 1.0e-4f) {
         return finish(ActorStep::Blocked, MoveOutcome::Moving, kNoDoor);
     }
-    api.setPosition(object, walked.end, std::atan2(walked.end.y - from.y, walked.end.x - from.x));
+    api.setPosition(object, walked.end, std::atan2(walked.end.y - from.y, walked.end.x - from.x), false);
     if (object == scriptWorld_.pc) {
         nav_->playerStepped = true;
     }
@@ -1479,7 +2013,7 @@ kotor::Vec3 GameSession::slidePlayer(kotor::Vec3 from, kotor::Vec3 to, bool& mov
         const int endAt = mesh->locate(end);
         end.z = endAt >= 0 ? mesh->height(endAt, end.x, end.y) : from.z;
     } else {
-        first = mesh->ray(from, tri, to, nav_->closed);
+        first = mesh->stepAgainstWalls(from, tri, to, radius, nav_->closed, false);
         if (first.clear) {
             moved = true;
             return first.end;
@@ -1492,7 +2026,7 @@ kotor::Vec3 GameSession::slidePlayer(kotor::Vec3 from, kotor::Vec3 to, bool& mov
     const Vec3 slid{end.x + first.edge.x * along * rest, end.y + first.edge.y * along * rest, end.z};
     const int endTri = mesh->locate(end);
     if (endTri >= 0 && rest > 1.0e-5f) {
-        const nav::RayResult second = mesh->ray(end, endTri, slid, nav_->closed);
+        const nav::RayResult second = mesh->stepAgainstWalls(end, endTri, slid, radius, nav_->closed, false);
         end = second.end;
     }
     moved = length2D(from, end) > 1.0e-4f;
@@ -1755,6 +2289,7 @@ int runPathfindingFamilyTest(GameSession& game)
         }
         check(ccw, tag + ".triangles_ccw");
         bool symmetric = true;
+        int badLinks = 0;
         int seamLinks = 0;
         for (std::size_t t = 0; t < mesh->tris().size(); ++t) {
             const nav::Tri& tri = mesh->tris()[t];
@@ -1769,7 +2304,15 @@ int runPathfindingFamilyTest(GameSession& game)
                 }
                 symmetric = symmetric && back;
                 // The neighbour really is on the side the funnel assumes.
-                symmetric = symmetric && nav::triCross(link.p, link.q, nav::centroid(tri)) > 0.0f;
+                const bool oriented = nav::triCross(link.p, link.q, nav::centroid(tri)) > 0.0f;
+                symmetric = symmetric && oriented;
+                if ((!back || !oriented) && badLinks++ < 4) {
+                    info(tag + " bad link tri " + std::to_string(t) + " back=" + std::to_string(back ? 1 : 0)
+                         + " oriented=" + std::to_string(oriented ? 1 : 0) + " area2=" + std::to_string(nav::triCross(tri.v[0], tri.v[1], tri.v[2]))
+                         + " cross=" + std::to_string(nav::triCross(link.p, link.q, nav::centroid(tri)))
+                         + " p=" + std::to_string(link.p.x) + "," + std::to_string(link.p.y) + " q=" + std::to_string(link.q.x) + "," + std::to_string(link.q.y)
+                         + " to=" + std::to_string(link.to));
+                }
                 seamLinks += tri.room != other.room ? 1 : 0;
             }
         }
@@ -1898,7 +2441,8 @@ int runPathfindingFamilyTest(GameSession& game)
         // choice (a tenth of a 60 Hz frame), not a retail figure.
         {
             const auto built0 = Clock::now();
-            const nav::NavMesh rebuilt(game.scene_, buildDoorLines(game.scene_, game.install_));
+            const nav::NavMesh rebuilt(game.scene_, buildDoorLines(game.scene_, game.install_),
+                                       buildPlaceableWalls(game.scene_, game.install_));
             const double buildMs = std::chrono::duration<double, std::milli>(Clock::now() - built0).count();
             double worst = 0.0;
             double total = 0.0;
@@ -1938,6 +2482,8 @@ int runPathfindingFamilyTest(GameSession& game)
                       tag.c_str(), walk.frames, walk.frames * kFrame, expected, walk.travelled,
                       longest.length, walk.maxStep, run * kFrame, walk.rooms.size(), finalGap);
         info(line);
+        info(tag + " walk ended at " + std::to_string(game.position().x) + "," + std::to_string(game.position().y)
+             + " target " + std::to_string(pth[endB].point.x) + "," + std::to_string(pth[endB].point.y));
         check(game.moveOutcome() == GameSession::MoveOutcome::Arrived, tag + ".walk_arrived");
         check(finalGap <= 0.5f, tag + ".walk_reached_target");
         check(walk.jumps == 0, tag + ".walk_no_teleport(" + std::to_string(walk.jumps) + ")");
@@ -1989,6 +2535,133 @@ int runPathfindingFamilyTest(GameSession& game)
         info(tag + " door lines from DWK=" + std::to_string(fromDwk) + "/" + std::to_string(mesh->doors().size())
              + ", sealing a walkable gap=" + std::to_string(linkedDoorLines));
         check(fromDwk == static_cast<int>(mesh->doors().size()), tag + ".all_doors_have_dwk");
+        // Placeable walkmeshes (W046, 00506650): the non-walk faces stop a step. A body walking at a face
+        // from either side stops short of it, by about its radius, and does not get through.
+        {
+            constexpr float kBody = 0.35f;
+            int tested = 0;
+            int crossed = 0;
+            int stoppedShort = 0;
+            int skipped = 0;
+            int offFloor = 0;
+            int noHit = 0;
+            int crowded = 0;
+            for (const nav::DoorLine& wall : mesh->walls()) {
+                const float wallSpan = length2D(wall.a, wall.b);
+                if (wallSpan < 0.3f || tested >= 40) {
+                    continue;
+                }
+                const Vec3 wallMid = nav::lerp(wall.a, wall.b, 0.5f);
+                const Vec3 wallNormal{-(wall.b.y - wall.a.y) / wallSpan, (wall.b.x - wall.a.x) / wallSpan, 0.0f};
+                // Candidate starts: on floor, clear of every face by more than a body (a crate's faces sit
+                // closer than that to each other), from the face's normal and from either side of it.
+                bool onFloor = false;
+                bool anyHit = false;
+                bool done = false;
+                for (const float turn : {0.0f, 0.5f, -0.5f, 1.0f, -1.0f, 1.4f, -1.4f}) {
+                    const float cs = std::cos(turn);
+                    const float sn = std::sin(turn);
+                    const Vec3 dir{wallNormal.x * cs - wallNormal.y * sn, wallNormal.x * sn + wallNormal.y * cs, 0.0f};
+                    for (const float sign : {1.0f, -1.0f}) {
+                        for (const float back : {0.9f, 1.4f, 2.0f, 2.8f}) {
+                            if (done) {
+                                break;
+                            }
+                            const Vec3 sideP = wallMid + dir * (sign * back);
+                            const int triP = mesh->locate(sideP);
+                            if (triP < 0 || std::fabs(mesh->height(triP, sideP.x, sideP.y) - wallMid.z) > 0.6f) {
+                                continue;
+                            }
+                            onFloor = true;
+                            bool clear = true;
+                            for (const nav::DoorLine& other : mesh->walls()) {
+                                if (length2D(sideP, nav::closestOnSegment2D(sideP, other.a, other.b)) <= kBody + 0.05f) {
+                                    clear = false;
+                                    break;
+                                }
+                            }
+                            if (!clear) {
+                                continue;
+                            }
+                            // The far end may lie inside a crate, where there is no floor: only the start needs it.
+                            const Vec3 sideQ = wallMid - dir * (sign * 0.9f);
+                            // The first face the line from P to Q meets (any placeable face): the step must stop
+                            // before that one.
+                            const nav::DoorLine* hit = nullptr;
+                            float hitT = 2.0f;
+                            for (const nav::DoorLine& other : mesh->walls()) {
+                                if (!crossesSegment(sideP, sideQ, other.a, other.b)) {
+                                    continue;
+                                }
+                                const float dP = nav::triCross(other.a, other.b, sideP);
+                                const float dQ = nav::triCross(other.a, other.b, sideQ);
+                                const float t = dP / (dP - dQ);
+                                if (t < hitT) {
+                                    hitT = t;
+                                    hit = &other;
+                                }
+                            }
+                            if (hit == nullptr) {
+                                continue;
+                            }
+                            anyHit = true;
+                            // Every sample of the run up to the stop point stays more than a body from every other
+                            // face; faces that crowd the run would stop the step first, and that is their own test.
+                            const float hitSpan = length2D(hit->a, hit->b);
+                            if (hitSpan <= 0.01f) {
+                                continue;
+                            }
+                            const Vec3 hitPoint = nav::lerp(sideP, sideQ, hitT);
+                            // The run ends where the body stops, a body radius before the face.
+                            const float runLength = length2D(sideP, hitPoint);
+                            const float runEnd = runLength > kBody ? (runLength - kBody) / runLength : 0.0f;
+                            bool free = true;
+                            for (int k = 0; k <= 12 && free; ++k) {
+                                const Vec3 sample = nav::lerp(sideP, hitPoint, runEnd * static_cast<float>(k) / 12.0f);
+                                for (const nav::DoorLine& other : mesh->walls()) {
+                                    // The same face again (a box side is several triangles' edges on one line).
+                                    const bool sameLine = std::fabs(nav::triCross(hit->a, hit->b, other.a)) / hitSpan <= 0.02f
+                                        && std::fabs(nav::triCross(hit->a, hit->b, other.b)) / hitSpan <= 0.02f;
+                                    if (&other == hit || sameLine) {
+                                        continue;
+                                    }
+                                    if (length2D(sample, nav::closestOnSegment2D(sample, other.a, other.b)) <= kBody + 0.02f) {
+                                        free = false;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!free) {
+                                continue;
+                            }
+                            done = true;
+                            ++tested;
+                            const nav::RayResult step = mesh->stepAgainstWalls(sideP, triP, sideQ, kBody, allOpen, false);
+                            const float sideStart = nav::triCross(hit->a, hit->b, sideP);
+                            const float sideEnd = nav::triCross(hit->a, hit->b, step.end);
+                            if (step.clear || sideStart * sideEnd < 0.0f) {
+                                ++crossed;
+                            }
+                            const float gap = std::fabs(sideEnd) / hitSpan;
+                            if (!step.clear && gap > 0.0f && gap <= kBody + 0.01f) {
+                                ++stoppedShort;
+                            }
+                        }
+                    }
+                }
+                if (!done) {
+                    ++skipped;
+                    ++(onFloor ? (anyHit ? crowded : noHit) : offFloor);
+                }
+            }
+            info(tag + " placeable walls=" + std::to_string(mesh->walls().size()) + " tested=" + std::to_string(tested)
+                 + " skipped=" + std::to_string(skipped) + " (off floor " + std::to_string(offFloor) + ", no hit "
+                 + std::to_string(noHit) + ", crowded " + std::to_string(crowded) + ") crossed=" + std::to_string(crossed)
+                 + " stopped_short=" + std::to_string(stoppedShort));
+            check(crossed == 0, tag + ".placeable_walls_stop_a_step");
+            check(tested >= 1, tag + ".placeable_walls_tested_not_vacuous");
+            check(tested == 0 || stoppedShort * 10 >= tested * 9, tag + ".placeable_walls_stop_a_body_by_its_radius");
+        }
         check(doorIndex >= 0, tag + ".found_interior_door");
         if (doorIndex >= 0) {
             const nav::DoorLine door = mesh->doors()[static_cast<std::size_t>(doorIndex)];
@@ -2039,6 +2712,16 @@ int runPathfindingFamilyTest(GameSession& game)
                 game.scene_.entities[door.entity].locked = false;
                 check(game.openDoorAsPlayer(door.entity) && game.scene_.entities[door.entity].open,
                       tag + ".door_opens");
+                // The open state counts once the opening clip is done (retail 00683f00 -> 00589680): a door still
+                // opening blocks like a closed one, so the path exists only after the clip has run.
+                game.position_ = sideA;
+                const bool blockedWhileOpening = !doorStillOpening(game.scene_, door.entity)
+                    || !game.pathExists(sideA, sideB);
+                check(blockedWhileOpening, tag + ".opening_door_still_blocks");
+                for (int i = 0; i < 600 && doorStillOpening(game.scene_, door.entity); ++i) {
+                    game.update(kFrame, InputState{});
+                }
+                check(!doorStillOpening(game.scene_, door.entity), tag + ".opening_clip_finishes");
                 game.navMesh();
                 check(game.pathExists(sideA, sideB), tag + ".open_door_has_path");
                 game.position_ = sideA;
@@ -2153,7 +2836,7 @@ int runPathfindingFamilyTest(GameSession& game)
             walkPast.run = true;
             api.enqueue(mover, std::move(walkPast));
             const float rate = game.creatureMoveRate(mover, true);
-            const float allowed = legLength / rate + kContactBeforeGhost + kGhostSeconds + 5.0f;
+            const float allowed = legLength / rate + 8.0f;
             int frames = 0;
             while (frames < static_cast<int>(allowed / kFrame) && game.actorQueueSize(mover) > 0) {
                 game.update(kFrame, InputState{});

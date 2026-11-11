@@ -1,8 +1,11 @@
+#include "app/FramePacer.h"
+#include "game/DialogueShots.h"
 #include "kotor/Formats.h"
 #include "script/ActionTable.h"
 #include "script/Ncs.h"
 #include "script/Random.h"
 #include "script/Vm.h"
+#include "script/World.h"
 
 #include <cmath>
 #include <cstdint>
@@ -23,6 +26,55 @@ void expect(bool condition, const char* what)
     } else {
         std::cout << "ok: " << what << '\n';
     }
+}
+
+// Retail, logged at 005a13d0 and 006bd260 on end_trask01: index 9, step 1, forward; lines get
+// 2, 2, 3 and the spoken reply on the third line's list gets 2. A constant 2 fails on the 3.
+void testDialogueShots()
+{
+    ke::DialogueShots shots("end_trask01");
+    expect(shots.enterEntry(52, 0) == 2, "first line is angle 2");
+    shots.beginReplies();
+    expect(shots.offerReply(1, 0) == 2, "first reply list is angle 2");
+    expect(shots.enterEntry(53, 0) == 2, "index 11 is angle 2");
+    shots.beginReplies();
+    expect(shots.offerReply(2, 0) == 1, "index 12 is angle 1");
+    expect(shots.enterEntry(54, 0) == 3, "index 13 is angle 3");
+    shots.beginReplies();
+    expect(shots.offerReply(3, 0) == 2, "index 14 is angle 2");
+    expect(shots.offerReply(4, 0) == 2, "one list shares one step");
+    expect(shots.enterEntry(55, 6) == 6, "an authored angle is kept");
+    expect(shots.enterEntry(53, 0) == 2, "a revisited line keeps its angle");
+    ke::DialogueShots other("a");
+    expect(other.enterEntry(0, 0) == 2, "first line is angle 2 on any seed");
+}
+
+// ACT_200 lowers the tag (005e6080): k_ptar_attack finds tag "droid1" as "Droid1".
+// A creature's bearing is the way it faces and its model faces +Y; a door turns by Bearing itself.
+void testCreatureDrawBearing()
+{
+    ke::kotor::Entity creature;
+    creature.kind = ke::kotor::EntityKind::Creature;
+    creature.bearing = 1.0f;
+    const float yaw = creature.drawBearing();
+    // Model +Y under a turn of yaw.
+    const float fx = -std::sin(yaw);
+    const float fy = std::cos(yaw);
+    expect(std::fabs(fx - std::cos(1.0f)) < 1e-5f, "creature model faces its bearing, x");
+    expect(std::fabs(fy - std::sin(1.0f)) < 1e-5f, "creature model faces its bearing, y");
+    ke::kotor::Entity door;
+    door.kind = ke::kotor::EntityKind::Door;
+    door.bearing = 1.0f;
+    expect(door.drawBearing() == 1.0f, "door turns by its bearing");
+}
+
+void testTagLookupIgnoresCase()
+{
+    ke::script::World world;
+    world.tags["droid1"].push_back(77);
+    expect(world.byTag("Droid1", 0) == 77, "tag lookup ignores case");
+    expect(world.byTag("droid1", 0) == 77, "tag lookup exact");
+    expect(world.byTag("Droid1", 1) == ke::script::kObjectInvalid, "tag lookup nth past the end");
 }
 
 void testSha()
@@ -213,10 +265,37 @@ void testPythonRandom()
 
 } // namespace
 
+void testFramePacing()
+{
+    using ke::nextFrameDeadline;
+    using ke::pacedFps;
+    // Interactive: the default cap, whatever vsync does, and the background rate when not in front.
+    expect(pacedFps(-1, 15, false, false) == ke::kDefaultMaxFps, "frame pacing");
+    expect(pacedFps(-1, 15, false, true) == 15.0, "frame pacing");
+    expect(pacedFps(120, 15, false, false) == 120.0, "frame pacing");
+    expect(pacedFps(0, 15, false, false) == 0.0, "frame pacing");
+    expect(pacedFps(0, 15, false, true) == 15.0, "frame pacing");
+    expect(pacedFps(-1, 0, false, true) == ke::kDefaultMaxFps, "frame pacing");
+    expect(pacedFps(10, 15, false, true) == 10.0, "frame pacing");
+    // A run with its own budget stays as fast as it was unless a cap was asked for.
+    expect(pacedFps(-1, 15, true, false) == 0.0, "frame pacing");
+    expect(pacedFps(-1, 15, true, true) == 0.0, "frame pacing");
+    expect(pacedFps(30, 15, true, false) == 30.0, "frame pacing");
+    // Deadlines advance by whole periods; a long stall restarts instead of rushing.
+    expect(nextFrameDeadline(0, 1000, 100) == 1100, "frame pacing");
+    expect(nextFrameDeadline(1100, 1090, 100) == 1200, "frame pacing");
+    expect(nextFrameDeadline(1100, 1150, 100) == 1200, "frame pacing");
+    expect(nextFrameDeadline(1100, 1500, 100) == 1600, "frame pacing");
+}
+
 int main()
 {
+    testFramePacing();
     testSha();
     testResref();
+    testDialogueShots();
+    testCreatureDrawBearing();
+    testTagLookupIgnoresCase();
     testLyt();
     testWok();
     testTwoDa();

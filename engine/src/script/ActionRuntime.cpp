@@ -1,6 +1,7 @@
 #include "script/ActionRuntime.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <array>
 #include <cctype>
 #include <cmath>
@@ -212,6 +213,71 @@ std::uint32_t ActionRuntime::argObject(const Args& args, std::size_t index) cons
     return selfAware_ && id == 0 ? contextObject("self") : id;
 }
 
+namespace {
+
+// atol and atof as the shipped CRT reads them (see hStringToInt and hStringToFloat).
+std::int32_t retailAtol(const std::string& text)
+{
+    std::size_t i = 0;
+    while (i < text.size() && (text[i] == ' ' || (text[i] >= '\t' && text[i] <= '\r'))) {
+        ++i;
+    }
+    bool negative = false;
+    if (i < text.size() && (text[i] == '-' || text[i] == '+')) {
+        negative = text[i] == '-';
+        ++i;
+    }
+    std::uint32_t total = 0;
+    while (i < text.size() && text[i] >= '0' && text[i] <= '9') {
+        total = total * 10u + static_cast<std::uint32_t>(text[i] - '0');
+        ++i;
+    }
+    return static_cast<std::int32_t>(negative ? 0u - total : total);
+}
+
+float retailAtof(const std::string& text)
+{
+    std::size_t i = 0;
+    while (i < text.size() && (text[i] == ' ' || (text[i] >= '\t' && text[i] <= '\r'))) {
+        ++i;
+    }
+    const std::size_t start = i;
+    if (i < text.size() && (text[i] == '-' || text[i] == '+')) {
+        ++i;
+    }
+    std::size_t digits = 0;
+    while (i < text.size() && text[i] >= '0' && text[i] <= '9') {
+        ++i;
+        ++digits;
+    }
+    if (i < text.size() && text[i] == '.') {
+        ++i;
+        while (i < text.size() && text[i] >= '0' && text[i] <= '9') {
+            ++i;
+            ++digits;
+        }
+    }
+    if (digits == 0) {
+        return 0.0f;
+    }
+    if (i < text.size() && (text[i] == 'e' || text[i] == 'E')) {
+        std::size_t j = i + 1;
+        if (j < text.size() && (text[j] == '-' || text[j] == '+')) {
+            ++j;
+        }
+        if (j < text.size() && text[j] >= '0' && text[j] <= '9') {
+            while (j < text.size() && text[j] >= '0' && text[j] <= '9') {
+                ++j;
+            }
+            i = j;
+        }
+    }
+    const std::string number = text.substr(start, i - start);
+    return static_cast<float>(std::strtod(number.c_str(), nullptr));
+}
+
+} // namespace
+
 std::vector<Value> ActionRuntime::argVector(const Args& args, std::size_t index) const
 {
     if (index < args.size() && args[index].size() >= 3) {
@@ -321,6 +387,7 @@ std::optional<std::vector<Value>> ActionRuntime::specific(const std::string& nam
                                                           Vm& vm, std::uint16_t actionId)
 {
     (void)actionId;
+    if (name == "ShipBuild") return std::vector<Value>{Value::makeInt(1)}; // retail 00543840 pushes 1, always.
     if (name == "GetTag") return hGetTag(args);
     if (name == "GetObjectByTag") return hGetObjectByTag(args);
     if (name == "GetWaypointByTag") return hGetWaypointByTag(args);
@@ -529,6 +596,13 @@ std::vector<Value> ActionRuntime::hGetTag(const Args& args)
 
 std::vector<Value> ActionRuntime::hGetObjectByTag(const Args& args)
 {
+    // Retail CSWSModule::FindObjectByTagOrdinal (004c5fe0) looks an empty tag up like any other,
+    // and the player creature's tag is empty: k_pend_traskdl40's ActionMoveToObject(
+    // GetObjectByTag("")) walks Trask up to the PC in the paired walk. Placed objects with no tag
+    // carry generated tags here, so the PC is the one object an empty tag finds.
+    if (argString(args, 0).empty() && world_->pc != 0) {
+        return {Value::makeObject(argInt(args, 1) == 0 ? world_->pc : kObjectInvalid)};
+    }
     return {Value::makeObject(world_->byTag(argString(args, 0), argInt(args, 1)))};
 }
 
@@ -620,35 +694,67 @@ std::vector<Value> ActionRuntime::hGetGold(const Args&)
     return {Value::makeInt(0)};
 }
 
+bool ActionRuntime::globalDeclared(const std::string& name, GlobalKind kind) const
+{
+    if (globalCatalog_.empty() || testGlobals_.contains(name)) {
+        return true;
+    }
+    const auto found = globalCatalog_.find(name);
+    return found != globalCatalog_.end() && found->second == kind;
+}
+
 std::vector<Value> ActionRuntime::hGetGlobalNumber(const Args& args)
 {
+    if (!globalDeclared(argString(args, 0), GlobalKind::Number)) {
+        return {Value::makeInt(0)};
+    }
     return {world_->getGlobal(argString(args, 0), ValueType::Int)};
 }
 
+// retail 00529680 keeps one byte and the read sign-extends it (00538dc0), so a number is
+// -128 to 127. The corpus runs have no catalogue and keep the oracle's full width.
 std::vector<Value> ActionRuntime::hSetGlobalNumber(const Args& args)
 {
-    world_->setGlobal(argString(args, 0), Value::makeInt(argInt(args, 1)));
+    if (!globalDeclared(argString(args, 0), GlobalKind::Number)) {
+        return {};
+    }
+    const std::int64_t value = argInt(args, 1);
+    world_->setGlobal(argString(args, 0),
+                      Value::makeInt(globalCatalog_.empty() || testGlobals_.contains(argString(args, 0)) ? value
+                                                                                       : static_cast<std::int8_t>(value)));
     return {};
 }
 
 std::vector<Value> ActionRuntime::hGetGlobalBoolean(const Args& args)
 {
+    if (!globalDeclared(argString(args, 0), GlobalKind::Boolean)) {
+        return {Value::makeInt(0)};
+    }
     return {world_->getGlobal(argString(args, 0), ValueType::Int)};
 }
 
 std::vector<Value> ActionRuntime::hSetGlobalBoolean(const Args& args)
 {
+    if (!globalDeclared(argString(args, 0), GlobalKind::Boolean)) {
+        return {};
+    }
     world_->setGlobal(argString(args, 0), Value::makeInt(argInt(args, 1) ? 1 : 0));
     return {};
 }
 
 std::vector<Value> ActionRuntime::hGetGlobalString(const Args& args)
 {
+    if (!globalDeclared(argString(args, 0), GlobalKind::String)) {
+        return {Value::makeString("")};
+    }
     return {world_->getGlobal(argString(args, 0), ValueType::String)};
 }
 
 std::vector<Value> ActionRuntime::hSetGlobalString(const Args& args)
 {
+    if (!globalDeclared(argString(args, 0), GlobalKind::String)) {
+        return {};
+    }
     world_->setGlobal(argString(args, 0), Value::makeString(argString(args, 1)));
     return {};
 }
@@ -663,25 +769,26 @@ std::vector<Value> ActionRuntime::hSetGlobalLocation(const Args&)
     return {};
 }
 
+// Booleans and numbers live apart, with retail's ranges and read-back (World::localBoolean).
 std::vector<Value> ActionRuntime::hGetLocalNumber(const Args& args)
 {
-    return {world_->getLocal(argObject(args, 0), localKey(args, 1), ValueType::Int)};
+    return {Value::makeInt(world_->localNumber(argObject(args, 0), argInt(args, 1)))};
 }
 
 std::vector<Value> ActionRuntime::hSetLocalNumber(const Args& args)
 {
-    world_->setLocal(argObject(args, 0), localKey(args, 1), Value::makeInt(argInt(args, 2)));
+    world_->setLocalNumber(argObject(args, 0), argInt(args, 1), argInt(args, 2));
     return {};
 }
 
 std::vector<Value> ActionRuntime::hGetLocalBoolean(const Args& args)
 {
-    return {world_->getLocal(argObject(args, 0), localKey(args, 1), ValueType::Int)};
+    return {Value::makeInt(world_->localBoolean(argObject(args, 0), argInt(args, 1)))};
 }
 
 std::vector<Value> ActionRuntime::hSetLocalBoolean(const Args& args)
 {
-    world_->setLocal(argObject(args, 0), localKey(args, 1), Value::makeInt(argInt(args, 2) ? 1 : 0));
+    world_->setLocalBoolean(argObject(args, 0), argInt(args, 1), argInt(args, 2) != 0);
     return {};
 }
 
@@ -822,18 +929,12 @@ std::vector<Value> ActionRuntime::hInsertString(const Args& args)
     return {Value::makeString(destination.substr(0, position) + text + destination.substr(position))};
 }
 
+// ACT_233 shares 00544710 with StringToInt and pushes (float)atof(text): leading white
+// space, then the longest decimal number at the front, and 0 when there is none. The CRT of
+// the time reads no hex, "inf" or "nan", so this takes only the decimal prefix.
 std::vector<Value> ActionRuntime::hStringToFloat(const Args& args)
 {
-    const std::string text = argString(args, 0);
-    if (text.empty()) {
-        return {Value::makeFloat(0.0)};
-    }
-    char* end = nullptr;
-    const double value = std::strtod(text.c_str(), &end);
-    if (end == text.c_str() || *end != '\0') {
-        return {Value::makeFloat(0.0)};
-    }
-    return {Value::makeFloat(value)};
+    return {Value::makeFloat(static_cast<double>(retailAtof(argString(args, 0))))};
 }
 
 std::vector<Value> ActionRuntime::hIntToHexString(const Args& args)
@@ -966,23 +1067,24 @@ std::vector<Value> ActionRuntime::hFindSubString(const Args& args)
         argString(args, 0).find(argString(args, 1))))};
 }
 
+// ACT_232 StringToInt 00544710 pushes atol(text): leading white space, a sign, then the
+// digits at the front, stopping at the first other character ("12abc" is 12, "abc" is 0).
 std::vector<Value> ActionRuntime::hStringToInt(const Args& args)
 {
-    const std::string text = argString(args, 0);
-    if (text.empty()) {
-        return {Value::makeInt(0)};
-    }
-    char* end = nullptr;
-    const long value = std::strtol(text.c_str(), &end, 10);
-    if (end == text.c_str() || *end != '\0') {
-        return {Value::makeInt(0)};
-    }
-    return {Value::makeInt(value)};
+    return {Value::makeInt(retailAtol(argString(args, 0)))};
 }
 
+// ACT_231 FloatToInt 00535fb0 converts with _ftol 006fae8c, which truncates toward zero to
+// 64 bits and pushes the low 32; NaN, infinity and values past the 64-bit range give the
+// x87 integer indefinite, whose low 32 bits are 0.
 std::vector<Value> ActionRuntime::hFloatToInt(const Args& args)
 {
-    return {Value::makeInt(static_cast<std::int64_t>(argFloat(args, 0)))};
+    const float value = static_cast<float>(argFloat(args, 0));
+    if (!std::isfinite(value) || std::fabs(value) >= 9.2233720368547758e18f) {
+        return {Value::makeInt(0)};
+    }
+    const auto wide = static_cast<std::int64_t>(value);
+    return {Value::makeInt(static_cast<std::int32_t>(static_cast<std::uint32_t>(static_cast<std::uint64_t>(wide))))};
 }
 
 std::vector<Value> ActionRuntime::hIntToFloat(const Args& args)
@@ -995,14 +1097,18 @@ std::vector<Value> ActionRuntime::hIntToString(const Args& args)
     return {Value::makeString(std::to_string(argInt(args, 0)))};
 }
 
+// Retail 00536000 clamps the width to 0..18 and the decimals to 0..9, builds the format
+// "%<width>.<decimals>f\n" and prints the float with it: the text is right-aligned in the
+// width and always ends with a newline.
 std::vector<Value> ActionRuntime::hFloatToString(const Args& args)
 {
-    const std::int64_t decimals = std::max<std::int64_t>(0, argInt(args, 2));
-    std::ostringstream stream;
-    stream.setf(std::ios::fixed);
-    stream.precision(static_cast<std::streamsize>(decimals));
-    stream << argFloat(args, 0);
-    return {Value::makeString(stream.str())};
+    const int width = static_cast<int>(std::clamp<std::int64_t>(argInt(args, 1), 0, 18));
+    const int decimals = static_cast<int>(std::clamp<std::int64_t>(argInt(args, 2), 0, 9));
+    char buffer[128];
+    const int written = std::snprintf(buffer, sizeof(buffer), "%*.*f\n", width, decimals,
+                                      static_cast<double>(argFloat(args, 0)));
+    return {Value::makeString(written > 0 ? std::string(buffer, static_cast<std::size_t>(std::min<int>(written, sizeof(buffer) - 1)))
+                                          : std::string("\n"))};
 }
 
 std::vector<Value> ActionRuntime::hVector(const Args& args)

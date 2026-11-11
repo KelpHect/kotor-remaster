@@ -29,6 +29,9 @@ struct CorpusRun {
     std::uint64_t totalActionCalls = 0;
     std::size_t decodeErrors = 0;
     std::size_t vmErrors = 0;
+    // Runs retail's interpreter itself stops (005d2bd0: -0x69 and -100). check_vm_corpus.py holds
+    // each one to the oracle, file by file; anything else counts in vmErrors and fails the run.
+    std::size_t retailRunErrors = 0;
     std::size_t blocked = 0;
     std::size_t budget = 0;
     std::size_t returned = 0;

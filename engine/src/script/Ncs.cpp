@@ -112,6 +112,17 @@ std::int32_t Instruction::branchTarget() const
     }
 }
 
+ProgramPtr makeProgram(std::vector<Instruction> code)
+{
+    auto program = std::make_shared<Program>();
+    program->code = std::move(code);
+    program->byOffset.reserve(program->code.size() * 2);
+    for (std::size_t i = 0; i < program->code.size(); ++i) {
+        program->byOffset.emplace(program->code[i].offset, i);
+    }
+    return program;
+}
+
 std::vector<Instruction> decodeNcs(const std::vector<std::uint8_t>& data)
 {
     return decodeNcs(data.data(), data.size());
@@ -129,9 +140,8 @@ std::vector<Instruction> decodeNcs(const std::uint8_t* data, std::size_t size)
     if (data[8] != kScriptSizeOp) {
         throw NcsError("missing 0x42 script-size op");
     }
-    if (be32(data, size, 9, "declared size") != size) {
-        throw NcsError("declared size mismatch");
-    }
+    // Retail reads the file's own length and never looks at this field (005d2260).
+    (void)be32(data, size, 9, "declared size");
 
     std::vector<Instruction> out;
     out.reserve(size / 4);

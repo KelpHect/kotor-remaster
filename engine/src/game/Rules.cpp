@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <limits>
+#include <sstream>
 
 namespace ke {
 
@@ -62,12 +63,16 @@ Rules::Rules(kotor::Install& install)
     baseitems_ = loadTable("baseitems");
     featgain_ = loadTable("featgain");
     spells_ = loadTable("spells");
+    classPowerGain_ = loadTable("classpowergain");
     animations_ = loadTable("animations");
+    combatAnimations_ = loadTable("combatanimations");
+    dialogAnimations_ = loadTable("dialoganimations");
     xptable_ = loadTable("xptable");
     npc_ = loadTable("npc");
     ranges_ = loadTable("ranges");
     acbonus_ = loadTable("acbonus");
     difficultyopt_ = loadTable("difficultyopt");
+    forceadjust_ = loadTable("forceadjust");
     costTables_ = loadTable("iprp_costtable");
     install_ = &install;
     if (!classes_ || !exptable_ || !baseitems_) {
@@ -396,12 +401,97 @@ std::string Rules::animationName(std::int32_t animationId) const
     return animations_->cell(row, "name");
 }
 
+std::int32_t Rules::attackImpactMs(const std::string& clip, int subAttack) const
+{
+    if (!animations_ || !combatAnimations_ || clip.empty()) {
+        return -1;
+    }
+    const int nameColumn = animations_->columnIndex("name");
+    if (nameColumn < 0) {
+        return -1;
+    }
+    for (std::size_t row = 0; row < animations_->rowCount(); ++row) {
+        const std::string name = animations_->cell(row, static_cast<std::size_t>(nameColumn));
+        if (name.size() != clip.size()
+            || !std::equal(name.begin(), name.end(), clip.begin(), [](char x, char y) {
+                   return std::tolower(static_cast<unsigned char>(x)) == std::tolower(static_cast<unsigned char>(y));
+               })) {
+            continue;
+        }
+        const std::string label = animations_->rowLabel(row);
+        // 005b4f30 starts the result at 0 and keeps it when the row or the cell is missing: a clip
+        // without a hit time (the blaster rows b5a1.., hits 0) strikes as its attack starts.
+        if (combatAnimations_->rowIndex(label) < 0) {
+            return 0;
+        }
+        // 00414260 reads column subAttack+1 by index (hits, hit1, hit2, hit3, parry0, ...); a
+        // column past the table or an empty cell leaves 0.
+        const std::size_t column = static_cast<std::size_t>(std::max(0, subAttack) + 1);
+        if (column >= combatAnimations_->columnCount()) {
+            return 0;
+        }
+        const std::string hit = combatAnimations_->cell(static_cast<std::size_t>(combatAnimations_->rowIndex(label)), column);
+        return hit.empty() || hit == "****" ? 0 : std::atoi(hit.c_str());
+    }
+    return -1;
+}
+
 bool Rules::animationLooping(std::int32_t animationId) const
 {
     if (!animations_) {
         return false;
     }
     return cellInt(*animations_, std::to_string(animationId), "looping", 0) != 0;
+}
+
+namespace {
+std::int32_t dialogAnimationRow(std::int32_t animationId)
+{
+    if (animationId >= 10000) {
+        return animationId - 10000;
+    }
+    return animationId >= 0 && animationId < 1200 ? animationId : -1;
+}
+} // namespace
+
+std::string Rules::dialogAnimationName(std::int32_t animationId) const
+{
+    const std::int32_t rowId = dialogAnimationRow(animationId);
+    if (!dialogAnimations_ || rowId < 0) {
+        return {};
+    }
+    const std::string row = std::to_string(rowId);
+    if (dialogAnimations_->rowIndex(row) < 0) {
+        return {};
+    }
+    std::string label = dialogAnimations_->cell(row, "name");
+    std::string lowered;
+    for (const char c : label) {
+        if (c != '_') {
+            lowered.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+        }
+    }
+    static const std::pair<const char*, const char*> kModelNames[] = {
+        {"talknormal", "tlknorm"},     {"talkpleading", "tlkplead"},
+        {"talkforceful", "tlkforce"},  {"talklaughing", "tlklaugh"},
+        {"talksad", "tlksad"},         {"talkinjured", "talkinj"},
+        {"listeninjured", "listeninj"}, {"usecomputerlp", "usecomplp"},
+        {"usecomputer", "usecomp"},    {"kneeltalkangry", "kdtlkangry"},
+        {"kneeltalksad", "kdtlksad"},
+    };
+    for (const auto& [from, to] : kModelNames) {
+        if (lowered == from) {
+            return to;
+        }
+    }
+    return lowered;
+}
+
+bool Rules::dialogAnimationLooping(std::int32_t animationId) const
+{
+    const std::int32_t rowId = dialogAnimationRow(animationId);
+    return dialogAnimations_ && rowId >= 0
+        && cellInt(*dialogAnimations_, std::to_string(rowId), "looping", 0) != 0;
 }
 
 bool Rules::animationStationary(std::int32_t animationId) const
@@ -456,6 +546,56 @@ std::optional<ForcePowerInfo> Rules::forcePower(std::int32_t powerId) const
     return info;
 }
 
+std::int32_t Rules::adjustedForceCost(std::int32_t powerId, std::int32_t goodEvil,
+                                      bool partyMember) const
+{
+    if (!spells_) {
+        return 0;
+    }
+    const std::string row = std::to_string(powerId);
+    if (spells_->rowIndex(row) < 0) {
+        return 0;
+    }
+    // The loader keeps forcepoints in a byte (+0x14e).
+    const std::int32_t base = cellInt(*spells_, row, "forcepoints", 0) & 0xff;
+    if (!partyMember) {
+        return base;
+    }
+    const std::string alignment = spells_->cell(row, "goodevil");
+    const char side = alignment.empty() ? '-' : alignment.front();
+    float multiplier = 1.0f;
+    if ((side == 'G' || side == 'E') && forceadjust_) {
+        // Unsigned divide of the signed short alignment (0059b8a0 mul 0xcccccccd).
+        const std::uint32_t adjustRow = static_cast<std::uint32_t>(goodEvil) / 10u;
+        const std::string text = forceadjust_->cell(std::to_string(adjustRow),
+                                                    side == 'G' ? "goodcost" : "evilcost");
+        try {
+            if (!text.empty() && text != "****") {
+                multiplier = std::stof(text);
+            }
+        } catch (const std::exception&) {
+            multiplier = 1.0f;
+        }
+    }
+    return static_cast<std::int32_t>(static_cast<float>(base) * multiplier);
+}
+
+Rules::SpellTimes Rules::spellTimes(std::int32_t powerId) const
+{
+    SpellTimes times;
+    if (!spells_) {
+        return times;
+    }
+    const std::string row = std::to_string(powerId);
+    if (spells_->rowIndex(row) < 0) {
+        return times;
+    }
+    times.conjure = std::max<std::int32_t>(0, cellInt(*spells_, row, "conjtime", 0));
+    times.cast = std::max<std::int32_t>(0, cellInt(*spells_, row, "casttime", 0));
+    times.catchTime = std::max<std::int32_t>(0, cellInt(*spells_, row, "catchtime", 0));
+    return times;
+}
+
 std::int32_t Rules::maxForcePoints(std::int32_t classId, std::int32_t level,
                                    std::int32_t wisdom, std::int32_t charisma) const
 {
@@ -481,8 +621,12 @@ std::int32_t Rules::forcePowerSaveDC(const CharacterSheet& sheet) const
     } else if (hasFeatLabel(sheet, "FORCE_FOCUS")) {
         focus = 1;
     }
-    return 10 + sheet.level / 2
-        + static_cast<std::int32_t>(abilityModifier(sheet.wis)) + focus;
+    // Retail 004ef6e0 CSWSCreature::CalculateSpellSaveDC: total class level (005a5fd0
+    // GetLevel(1), minus level loss) + WIS modifier (stats +0xf2) + CHA modifier
+    // (stats +0xf4) + 5, then Force Focus feats 0x5a/0x59/0x58 add 4/2/1.
+    const std::int32_t levels = sheet.level + (sheet.secondClassId >= 0 ? sheet.secondClassLevel : 0);
+    return levels + static_cast<std::int32_t>(abilityModifier(sheet.wis))
+        + static_cast<std::int32_t>(abilityModifier(sheet.cha)) + 5 + focus;
 }
 
 bool Rules::hasFeatLabel(const CharacterSheet& sheet, const std::string& needle) const
@@ -770,30 +914,150 @@ bool Rules::canEquip(const CharacterSheet& sheet, const InventoryItem& item) con
 
 std::int32_t Rules::armorClass(const CharacterSheet& sheet) const
 {
-    std::int32_t ac = 10 + static_cast<std::int32_t>(abilityModifier(sheet.dex))
-        + classArmorBonus(sheet.classId, sheet.level); // retail 005be770
+    // retail 004ed1d0: 10, each class's ACBonus entry at its level (005be770 reads the 21-entry
+    // table that 005bde80 fills from acbonus.2da rows 0..20, indexed by the level itself), the
+    // Dexterity modifier (005a5330: capped by the worn armour's dexbonus), the armour and effect
+    // terms, and Dueling (005a9f50: +1/+2/+3 for feats 113/114/115 with one right-hand weapon of
+    // weaponwield 2 or 4 and nothing in the left hand). Scoundrel's Luck and Jedi Sense are no
+    // separate terms: they are the class columns of acbonus.2da (scd, jdg, jdc, jds).
+    std::int32_t ac = 10 + classArmorBonus(sheet.classId, sheet.level);
+    if (sheet.secondClassId >= 0 && sheet.secondClassLevel > 0) {
+        ac += classArmorBonus(sheet.secondClassId, sheet.secondClassLevel);
+    }
+    std::int32_t dex = static_cast<std::int32_t>(abilityModifier(sheet.dex));
+    const InventoryItem* right = nullptr;
+    const InventoryItem* left = nullptr;
     for (const InventoryItem& item : sheet.inventory) {
         if (!item.equipped || !baseitems_) {
             continue;
         }
+        right = item.slot == 4 ? &item : right;
+        left = item.slot == 5 ? &item : left;
         const std::string row = std::to_string(item.baseItem);
-        ac += cellInt(*baseitems_, row, "baseac", 0);
+        const std::int32_t baseAc = cellInt(*baseitems_, row, "baseac", 0);
+        ac += baseAc;
+        if (item.slot == 1 && baseAc > 0) {
+            const std::string cap = baseitems_->cell(row, "dexbonus");
+            if (!cap.empty() && cap != "****") {
+                dex = std::min(dex, static_cast<std::int32_t>(std::atoi(cap.c_str())));
+            }
+        }
     }
-    if (hasFeatLabel(sheet, "MASTER_SCOUNDRELS_LUCK")) {
-        ac += 6;
-    } else if (hasFeatLabel(sheet, "IMPROVED_SCOUNDRELS_LUCK")) {
-        ac += 4;
-    } else if (hasFeatLabel(sheet, "SCOUNDRELS_LUCK")) {
-        ac += 2;
-    }
-    if (hasFeatLabel(sheet, "MASTER_SENSE")) {
-        ac += 6;
-    } else if (hasFeatLabel(sheet, "KNIGHT_SENSE")) {
-        ac += 4;
-    } else if (hasFeatLabel(sheet, "JEDI_SENSE")) {
-        ac += 2;
+    ac += dex;
+    if (right != nullptr && left == nullptr) {
+        const std::int32_t wield = baseItemInt(right->baseItem, "weaponwield", 0);
+        if (wield == 2 || wield == 4) {
+            ac += sheet.feats.contains(115) ? 3 : sheet.feats.contains(114) ? 2 : sheet.feats.contains(113) ? 1 : 0;
+        }
     }
     return ac;
+}
+
+std::int32_t Rules::handAttackBonus(const CharacterSheet& sheet, bool offhand, bool doubleWeapon) const
+{
+    const InventoryItem* right = nullptr;
+    const InventoryItem* left = nullptr;
+    for (const InventoryItem& item : sheet.inventory) {
+        right = item.equipped && item.slot == 4 ? &item : right;
+        left = item.equipped && item.slot == 5 ? &item : left;
+    }
+    // 005a7770: the off hand's weapon is the left slot (0x20), the right (0x10) for a double weapon.
+    const InventoryItem* weapon = offhand && !doubleWeapon ? left : right;
+    // 005a7770 reads the other hand from slot 0x20, or 0x10 for a double weapon (param_5): the same
+    // weapon is its own off-hand end.
+    const InventoryItem* other = doubleWeapon ? right : left;
+    const bool ranged = weapon != nullptr && baseItemInt(weapon->baseItem, "rangedweapon", 0) != 0;
+    const std::int32_t str = static_cast<std::int32_t>(abilityModifier(sheet.str));
+    const std::int32_t dex = static_cast<std::int32_t>(abilityModifier(sheet.dex));
+    // 005a60d0: the attack bonus table of each class at its level.
+    std::int32_t total = baseAttackBonus(sheet.classId, sheet.level);
+    if (sheet.secondClassId >= 0 && sheet.secondClassLevel > 0) {
+        total += baseAttackBonus(sheet.secondClassId, sheet.secondClassLevel);
+    }
+    if (ranged) {
+        total += dex; // 005a7b60
+    } else {
+        // 005a7770 / 005a54f0: base items 8, 9 and 10 (00555690) take Dexterity when it is higher.
+        const bool finesse = weapon != nullptr
+            && (weapon->baseItem == 8 || weapon->baseItem == 9 || weapon->baseItem == 10);
+        total += finesse && dex > str ? dex : str;
+    }
+    // Weapon Focus: the weapon's own focfeat (+0xb2); bare hands have none.
+    if (weapon != nullptr) {
+        const std::int32_t focus = baseItemInt(weapon->baseItem, "focfeat", 0);
+        if (focus != 0 && sheet.feats.contains(focus)) {
+            total += 1;
+        }
+    }
+    // 004f3fe0: the weapon's own item properties (Enhancement, Attack Bonus) are effects on the attack.
+    if (weapon != nullptr) {
+        std::int32_t propertyAttack = 0;
+        std::int32_t propertyDamage = 0;
+        weaponPropertyBonus(*weapon, propertyAttack, propertyDamage);
+        total += propertyAttack;
+    }
+    // Two weapons. Off hand: -10, -6 with Two-Weapon Fighting (3), -4 Advanced (9), -2 Mastery
+    // (85). Main hand, when the off hand holds a weapon: -6, -4 when that weapon is light
+    // (004ed190: its weaponsize against the creature's, medium here) or double (weaponwield 3),
+    // then +2 for feat 9 or +4 for feat 85.
+    // A double weapon (param 5) takes both: 006b9970 passes param 4 = 0 (retail equip screen: a
+    // Double-Bladed Sword reads -2 left and 0 right with Two-Weapon Fighting only).
+    if (offhand) {
+        if (weapon != nullptr) {
+            total += sheet.feats.contains(85) ? -2 : sheet.feats.contains(9) ? -4 : sheet.feats.contains(3) ? -6 : -10;
+        }
+    } else if (other != nullptr && baseItemInt(other->baseItem, "weapontype", 0) != 0) {
+        const std::int32_t relative = baseItemInt(other->baseItem, "weaponsize", 0) - 3;
+        const bool light = relative < 0 || relative > 1;
+        std::int32_t penalty = light || baseItemInt(other->baseItem, "weaponwield", 0) == 3 ? -4 : -6;
+        penalty += sheet.feats.contains(85) ? 4 : sheet.feats.contains(9) ? 2 : 0;
+        total += penalty;
+    }
+    if (right != nullptr && left == nullptr) {
+        const std::int32_t wield = baseItemInt(right->baseItem, "weaponwield", 0);
+        if (wield == 2 || wield == 4) {
+            total += sheet.feats.contains(115) ? 3 : sheet.feats.contains(114) ? 2 : sheet.feats.contains(113) ? 1 : 0;
+        }
+    }
+    return total;
+}
+
+void Rules::handDamageRange(const CharacterSheet& sheet, bool offhand, std::int32_t& low, std::int32_t& high,
+                            bool doubleWeapon) const
+{
+    const InventoryItem* weapon = nullptr;
+    for (const InventoryItem& item : sheet.inventory) {
+        weapon = item.equipped && item.slot == (offhand && !doubleWeapon ? 5 : 4) ? &item : weapon;
+    }
+    const std::int32_t str = static_cast<std::int32_t>(abilityModifier(sheet.str));
+    if (weapon == nullptr) {
+        // 005a9e10 bare hands: 1 to 1 for a medium creature (1 to 2 when small), plus Strength.
+        low = 1 + str;
+        high = 1 + str;
+    } else {
+        const std::int32_t dice = baseItemInt(weapon->baseItem, "numdice", 1);
+        const std::int32_t die = baseItemInt(weapon->baseItem, "dietoroll", 1);
+        low = dice;
+        high = dice * die;
+        if (baseItemInt(weapon->baseItem, "rangedweapon", 0) == 0) {
+            low += str;
+            high += str;
+        }
+        // Weapon Specialization: the weapon's specfeat (+0xb0, 005a67d0) adds 2.
+        const std::int32_t spec = baseItemInt(weapon->baseItem, "specfeat", 0);
+        if (spec != 0 && sheet.feats.contains(spec)) {
+            low += 2;
+            high += 2;
+        }
+        // 005a9e10 with the effect flag: 004f3fe0 adds the item properties' damage.
+        std::int32_t propertyAttack = 0;
+        std::int32_t propertyDamage = 0;
+        weaponPropertyBonus(*weapon, propertyAttack, propertyDamage);
+        low += propertyDamage;
+        high += propertyDamage;
+    }
+    low = std::max<std::int32_t>(1, low);
+    high = std::max<std::int32_t>(1, high);
 }
 
 std::int32_t Rules::twoWeaponPenalty(const CharacterSheet& sheet) const
@@ -828,10 +1092,7 @@ std::int32_t Rules::twoWeaponPenalty(const CharacterSheet& sheet) const
 
 std::int32_t Rules::attackBonus(const CharacterSheet& sheet) const
 {
-    return baseAttackBonus(sheet.classId, sheet.level)
-        + static_cast<std::int32_t>(abilityModifier(sheet.str))
-        + featAttackBonus(sheet)
-        + twoWeaponPenalty(sheet);
+    return handAttackBonus(sheet, false);
 }
 
 std::int32_t Rules::damageBonus(const CharacterSheet& sheet) const
@@ -906,8 +1167,96 @@ std::int32_t Rules::classArmorBonus(std::int32_t classId, std::int32_t level) co
     if (column.empty() || column == "****") {
         return 0;
     }
-    // One row per level, read as is. retail 005be770.
-    return cellInt(*acbonus_, std::to_string(std::clamp(level, 1, 20) - 1), column, 0);
+    // 005be770 indexes the table by the level itself: row 1 at level 1 (row 0 is never read).
+    return cellInt(*acbonus_, std::to_string(std::clamp(level, 0, 20)), column, 0);
+}
+
+// Item property cost value: the row's `value` column, else its numeric label.
+const kotor::TwoDa* Rules::propertyCostTable(const kotor::ItemTemplate::Property& property) const
+{
+    if (!costTables_ || install_ == nullptr) {
+        return nullptr;
+    }
+    const std::string name = lower(costTables_->cell(std::to_string(property.costTable), "name"));
+    if (name.empty() || name == "****") {
+        return nullptr;
+    }
+    auto [slot, added] = propertyTables_.try_emplace(name);
+    if (added) {
+        if (auto data = install_->find(name, 2017); data.has_value()) {
+            try {
+                slot->second = kotor::TwoDa::parse(std::move(*data), name);
+            } catch (const kotor::FormatError&) {
+                slot->second.reset();
+            }
+        }
+    }
+    return slot->second.has_value() ? &*slot->second : nullptr;
+}
+
+std::int32_t Rules::propertyCostValue(const kotor::ItemTemplate::Property& property) const
+{
+    const kotor::TwoDa* table = propertyCostTable(property);
+    if (table == nullptr) {
+        return 0;
+    }
+    const std::string row = std::to_string(property.costValue);
+    const std::int32_t value = cellInt(*table, row, "value", INT32_MIN);
+    return value != INT32_MIN ? value : cellInt(*table, row, "label", 0);
+}
+
+// What an equipped weapon's item properties add to its own to-hit and damage (the effects
+// 004f3fe0 GetTotalEffectBonus sums for the attack): Enhancement (5), Attack Bonus (38), Attack
+// Penalty (8, 41), Damage (11, flat or dice average), Damage Penalty (15). A property tied to an
+// upgrade slot counts only when that upgrade is installed.
+void Rules::weaponPropertyBonus(const InventoryItem& item, std::int32_t& attack, std::int32_t& damage) const
+{
+    attack = 0;
+    damage = 0;
+    if (install_ == nullptr || item.resref.empty()) {
+        return;
+    }
+    auto [cached, added] = itemTemplates_.try_emplace(item.resref);
+    if (added) {
+        cached->second = kotor::loadItemTemplate(*install_, item.resref);
+    }
+    if (!cached->second.has_value()) {
+        return;
+    }
+    for (const kotor::ItemTemplate::Property& property : cached->second->properties) {
+        if (property.upgradeType != 255
+            && (property.upgradeType >= 32 || ((item.upgrades >> property.upgradeType) & 1u) == 0)) {
+            continue;
+        }
+        switch (property.name) {
+        case 5:
+            attack += propertyCostValue(property);
+            damage += propertyCostValue(property);
+            break;
+        case 38:
+            attack += propertyCostValue(property);
+            break;
+        case 8:
+        case 41:
+            attack -= std::abs(propertyCostValue(property));
+            break;
+        case 11: {
+            const kotor::TwoDa* table = propertyCostTable(property);
+            if (table != nullptr) {
+                const std::string cost = std::to_string(property.costValue);
+                const std::int32_t dice = cellInt(*table, cost, "numdice", 0);
+                const std::int32_t die = cellInt(*table, cost, "die", 0);
+                damage += dice > 0 && die > 0 ? dice * (die + 1) / 2 : cellInt(*table, cost, "label", 0);
+            }
+            break;
+        }
+        case 15:
+            damage -= std::abs(propertyCostValue(property));
+            break;
+        default:
+            break;
+        }
+    }
 }
 
 void Rules::deriveCreatureCombat(kotor::Entity& entity) const
@@ -936,35 +1285,11 @@ void Rules::deriveCreatureCombat(kotor::Entity& entity) const
         reflex += savingThrow(classId, level, 1);
         will += savingThrow(classId, level, 2);
     }
-    // Item property cost value: the row's `value` column, else its numeric label.
-    const auto costValue = [&](const kotor::ItemTemplate::Property& property) -> const kotor::TwoDa* {
-        if (!costTables_ || install_ == nullptr) {
-            return nullptr;
-        }
-        const std::string name = lower(costTables_->cell(std::to_string(property.costTable), "name"));
-        if (name.empty() || name == "****") {
-            return nullptr;
-        }
-        auto [slot, added] = propertyTables_.try_emplace(name);
-        if (added) {
-            if (auto data = install_->find(name, 2017); data.has_value()) {
-                try {
-                    slot->second = kotor::TwoDa::parse(std::move(*data), name);
-                } catch (const kotor::FormatError&) {
-                    slot->second.reset();
-                }
-            }
-        }
-        return slot->second.has_value() ? &*slot->second : nullptr;
+    const auto costValue = [&](const kotor::ItemTemplate::Property& property) {
+        return propertyCostTable(property);
     };
     const auto propertyValue = [&](const kotor::ItemTemplate::Property& property) {
-        const kotor::TwoDa* table = costValue(property);
-        if (table == nullptr) {
-            return 0;
-        }
-        const std::string row = std::to_string(property.costValue);
-        const std::int32_t value = cellInt(*table, row, "value", INT32_MIN);
-        return value != INT32_MIN ? value : cellInt(*table, row, "label", 0);
+        return propertyCostValue(property);
     };
     std::int32_t armorAc = 0;
     std::int32_t dexCap = 100;
@@ -1326,6 +1651,143 @@ std::int32_t Rules::maxSkillRank(std::int32_t classId, std::int32_t skillIndex,
     return skillIsClassSkill(classId, skillIndex) ? cap : cap / 2;
 }
 
+std::array<std::int32_t, 6> Rules::recommendedAbilities(std::int32_t classId) const
+{
+    std::array<std::int32_t, 6> result{{8, 8, 8, 8, 8, 8}};
+    if (!classes_ || classId < 0 || classId >= static_cast<std::int32_t>(classes_->rowCount())) {
+        return result;
+    }
+    const std::string row = std::to_string(classId);
+    static const char* const columns[6] = {"str", "dex", "con", "int", "wis", "cha"};
+    for (std::size_t i = 0; i < 6; ++i) {
+        result[i] = cellInt(*classes_, row, columns[i], 8);
+    }
+    return result;
+}
+
+std::int32_t Rules::skillRecommendRank(std::int32_t classId, std::int32_t skillIndex) const
+{
+    const std::string prefix = classColumnPrefix(classId);
+    if (!skills_ || prefix.empty() || skillIndex < 0 || skillIndex >= static_cast<std::int32_t>(skills_->rowCount())) {
+        return 0;
+    }
+    return cellInt(*skills_, skills_->rowLabel(static_cast<std::size_t>(skillIndex)), prefix + "_reco", 0);
+}
+
+std::int32_t Rules::featRecommendRank(std::int32_t classId, std::int32_t featId) const
+{
+    const std::string prefix = classColumnPrefix(classId);
+    if (!feat_ || prefix.empty() || featId < 0 || featId >= static_cast<std::int32_t>(feat_->rowCount())) {
+        return 0;
+    }
+    return cellInt(*feat_, feat_->rowLabel(static_cast<std::size_t>(featId)), prefix + "_recom", 0);
+}
+
+namespace {
+
+// Retail's three lookups walk one table: an exact rank wins, otherwise the walk has counted the rows
+// with no rank and the (rank+1)th of them stands in (the last one when there are fewer).
+template <typename RankOf>
+std::int32_t rowForRecommendRank(std::int32_t rows, std::int32_t rank, RankOf rankOf)
+{
+    std::int32_t fallback = -1;
+    std::int32_t unranked = -1;
+    for (std::int32_t row = 0; row < rows; ++row) {
+        const std::int32_t value = rankOf(row);
+        if (value == rank) {
+            return row;
+        }
+        if (value == 0 && unranked != rank) {
+            fallback = row;
+            ++unranked;
+        }
+    }
+    return fallback;
+}
+
+} // namespace
+
+std::int32_t Rules::skillForRecommendRank(std::int32_t classId, std::int32_t rank) const
+{
+    return rowForRecommendRank(skills_ ? static_cast<std::int32_t>(skills_->rowCount()) : 0, rank,
+                               [&](std::int32_t row) { return skillRecommendRank(classId, row); });
+}
+
+std::int32_t Rules::featForRecommendRank(std::int32_t classId, std::int32_t rank) const
+{
+    // Inferred: the class's feat table holds the feats its _list column offers; its loader was not read.
+    return rowForRecommendRank(feat_ ? static_cast<std::int32_t>(feat_->rowCount()) : 0, rank, [&](std::int32_t row) {
+        if (!featIsAvailable(classId, row)) {
+            return -1;
+        }
+        return featRecommendRank(classId, row);
+    });
+}
+
+std::int32_t Rules::powerForRecommendRank(bool darkSide, std::int32_t rank) const
+{
+    // 005be6d0 walks only rows of user type 1 or 5, the offset by the alignment argument.
+    return rowForRecommendRank(spells_ ? static_cast<std::int32_t>(spells_->rowCount()) : 0, rank, [&](std::int32_t row) {
+        const std::string label = spells_->rowLabel(static_cast<std::size_t>(row));
+        const std::int32_t userType = cellInt(*spells_, label, "usertype", 0);
+        if (userType != 1 && userType != 5) {
+            return -1;
+        }
+        return cellInt(*spells_, label, darkSide ? "dark_recom" : "light_recom", 0);
+    });
+}
+
+std::int32_t Rules::primaryAbility(std::int32_t classId) const
+{
+    if (!classes_ || classId < 0 || classId >= static_cast<std::int32_t>(classes_->rowCount())) {
+        return -1;
+    }
+    const std::string value = lower(classes_->cell(std::to_string(classId), "primaryabil"));
+    static const char* const names[6] = {"str", "dex", "con", "int", "wis", "cha"};
+    for (std::int32_t i = 0; i < 6; ++i) {
+        if (value == names[i]) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+std::int32_t Rules::powersForLevel(std::int32_t classId, std::int32_t level) const
+{
+    const std::string prefix = classColumnPrefix(classId);
+    if (prefix != "jcn" && prefix != "jsn" && prefix != "jgd") {
+        return 0;
+    }
+    return classPowerGain_ && level >= 1 && level <= static_cast<std::int32_t>(classPowerGain_->rowCount())
+        ? cellInt(*classPowerGain_, classPowerGain_->rowLabel(static_cast<std::size_t>(level - 1)), prefix, 0)
+        : 0;
+}
+
+bool Rules::canLearnPowerAtLevelUp(const CharacterSheet& sheet, std::int32_t powerId) const
+{
+    if (!spells_) {
+        return false;
+    }
+    const std::string row = std::to_string(powerId);
+    if (spells_->rowIndex(row) < 0) {
+        return false;
+    }
+    const std::int32_t userType = cellInt(*spells_, row, "usertype", 0);
+    if ((userType != 1 && userType != 5) || sheet.powers.contains(powerId)) {
+        return false;
+    }
+    std::stringstream prerequisites(spells_->cell(row, "prerequisites"));
+    std::string one;
+    while (std::getline(prerequisites, one, '_')) {
+        if (!one.empty() && one != "****" && !sheet.powers.contains(std::atoi(one.c_str()))) {
+            return false;
+        }
+    }
+    const std::string prefix = classColumnPrefix(sheet.classId);
+    const char* column = prefix == "jgd" ? "guardian" : prefix == "jcn" ? "consular" : prefix == "jsn" ? "sentinel" : nullptr;
+    return column != nullptr && sheet.level >= cellInt(*spells_, row, column, 0);
+}
+
 bool Rules::featIsAvailable(std::int32_t classId, std::int32_t featId) const
 {
     const std::string prefix = classColumnPrefix(classId);
@@ -1334,11 +1796,13 @@ bool Rules::featIsAvailable(std::int32_t classId, std::int32_t featId) const
         return false;
     }
     const std::string row = feat_->rowLabel(static_cast<std::size_t>(featId));
-    // <prefix>_list: 1 = selectable, 3 = granted (selectable only when it carries a
-    // recommendation rank), 0 and 4 = not offered to the class. Inferred from the
-    // table shape; the retail reader was not located.
-    const std::int32_t list = cellInt(*feat_, row, prefix + "_list", 0);
-    if (list == 1) {
+    // <prefix>_list, RETAIL-PROVEN by its reader 005bd0f0 (the class's feat table): 4 leaves the feat out
+    // of the class entirely, 0, 1 and 2 put it in the class's list (types 1, 3 and 2), 3 is the granted
+    // type 0. So the general feats (sol_list 0: Caution, Empathy, Gearhead, Conditioning, Implant, Iron
+    // Will, Lightning Reflexes) are offered too (paired frame levelup_feats shows them). A granted feat stays
+    // selectable only when it carries a recommendation rank (inferred).
+    const std::int32_t list = cellInt(*feat_, row, prefix + "_list", 4);
+    if (list == 0 || list == 1 || list == 2) {
         return true;
     }
     if (list == 3) {

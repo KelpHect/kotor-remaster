@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -51,7 +52,7 @@ const std::vector<std::string>& scriptHookLabels()
         "OnUserDefined", "OnClick", "OnFailToOpen", "OnUsed", "OnInvDisturbed",
         "ScriptOnEnter", "ScriptOnExit", "ScriptUserDefine",
         "OnOpenStore", "OnOpen", "OnClose",
-        "OnEntered", "OnExhausted",
+        "OnEntered", "OnExhausted", "OnEndDialogue", "OnDialog",
         // Area (ARE)
         "OnEnter", "OnExit", "OnUserDefined",
         // Module (IFO)
@@ -103,6 +104,11 @@ void applyGameplayFields(Entity& entity, const Gff& gff, std::uint32_t root)
     entity.hasInventory = intField(gff, root, "HasInventory") != 0;
     entity.isStatic = intField(gff, root, "Static") != 0;
     entity.hardness = intField(gff, root, "Hardness");
+    // retail 0058a1f0 (door OpenState), 00585670 (placeable Open, then AnimationState).
+    entity.openState = intField(gff, root, "OpenState");
+    entity.animationState = intField(gff, root, "AnimationState");
+    entity.open = entity.open || entity.openState == 1 || entity.openState == 2
+        || intField(gff, root, "Open") != 0;
 }
 
 // UTC sheet fields behind GetRacialType, GetGender, GetAbilityScore, the class and
@@ -171,111 +177,26 @@ std::string locField(const Gff& gff, std::uint32_t structure, const char* label,
     return gff.locString(*field);
 }
 
-std::optional<Tlk> loadTlk(Install& install)
-{
-    const std::filesystem::path path = install.root() / "dialog.tlk";
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file) {
-        return std::nullopt;
-    }
-    const std::streamoff size = file.tellg();
-    file.seekg(0, std::ios::beg);
-    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
-    if (!bytes.empty() && !file.read(reinterpret_cast<char*>(bytes.data()), size)) {
-        return std::nullopt;
-    }
-    try {
-        return Tlk::parse(std::move(bytes), "dialog.tlk");
-    } catch (const FormatError&) {
-        return std::nullopt;
-    }
-}
-
-std::optional<TwoDa> loadTable(Install& install, const char* name)
-{
-    auto data = install.find(name, resType(ResType::TwoDa));
-    if (!data.has_value()) {
-        return std::nullopt;
-    }
-    try {
-        return TwoDa::parse(std::move(*data), name);
-    } catch (const FormatError&) {
-        return std::nullopt;
-    }
-}
-
-std::uint32_t ensureTexture(Scene& scene, Install& install, const std::string& rawName)
-{
-    const std::string name = lower(rawName);
-    if (name.empty()) {
-        return 0;
-    }
-    for (std::size_t i = 0; i < scene.textures.size(); ++i) {
-        if (lower(scene.textures[i].name) == name) {
-            return static_cast<std::uint32_t>(i);
-        }
-    }
-    std::uint32_t type = 0;
-    if (name.rfind("__fx_", 0) == 0 && name.size() >= 11) {
-        int r = 255, g = 255, b = 255, a = 255;
-        try {
-            r = std::stoi(name.substr(5, 2), nullptr, 16);
-            g = std::stoi(name.substr(7, 2), nullptr, 16);
-            b = std::stoi(name.substr(9, 2), nullptr, 16);
-            if (name.size() >= 13) {
-                a = std::stoi(name.substr(11, 2), nullptr, 16);
-            }
-        } catch (const std::exception&) {
-        }
-        const float baseAlpha = static_cast<float>(a) / 255.0f;
-        Image image;
-        image.width = 8;
-        image.height = 8;
-        image.rgba.resize(8 * 8 * 4);
-        for (int y = 0; y < 8; ++y) {
-            for (int x = 0; x < 8; ++x) {
-                const float dx = (x - 3.5f) / 3.5f;
-                const float dy = (y - 3.5f) / 3.5f;
-                const float alpha = std::clamp(1.0f - std::sqrt(dx * dx + dy * dy), 0.0f, 1.0f);
-                const std::size_t o = static_cast<std::size_t>((y * 8 + x) * 4);
-                image.rgba[o] = static_cast<std::uint8_t>(r);
-                image.rgba[o + 1] = static_cast<std::uint8_t>(g);
-                image.rgba[o + 2] = static_cast<std::uint8_t>(b);
-                image.rgba[o + 3] = static_cast<std::uint8_t>(alpha * baseAlpha * 255.0f);
-            }
-        }
-        Texture texture;
-        texture.name = name;
-        texture.image = std::move(image);
-        scene.textures.push_back(std::move(texture));
-        return static_cast<std::uint32_t>(scene.textures.size() - 1);
-    }
-    auto data = install.findTexture(name, &type);
-    if (!data.has_value()) {
-        return 0;
-    }
-    try {
-        Texture texture;
-        texture.name = name;
-        texture.image = decodeTexture(*data, type, name);
-        scene.textures.push_back(std::move(texture));
-        return static_cast<std::uint32_t>(scene.textures.size() - 1);
-    } catch (const FormatError&) {
-        return 0;
-    }
-}
-
 std::shared_ptr<Mdl> loadModel(Install& install, const std::string& modelName, std::string& error)
 {
     if (modelName.empty()) {
         error = "empty model name";
         return nullptr;
     }
+    const std::string cacheKey = lower(modelName);
+    if (const auto cached = install.modelCache().find(cacheKey); cached != install.modelCache().end()) {
+        error = cached->second.error;
+        return cached->second.model;
+    }
+    const auto remember = [&](std::shared_ptr<Mdl> result) {
+        install.modelCache().insert_or_assign(cacheKey, Install::CachedModel{result, error});
+        return result;
+    };
     auto mdl = install.find(modelName, resType(ResType::Mdl));
     auto mdx = install.find(modelName, resType(ResType::Mdx));
     if (!mdl.has_value() || !mdx.has_value()) {
         error = "missing MDL/MDX for " + modelName;
-        return nullptr;
+        return remember(nullptr);
     }
     try {
         auto model = std::make_shared<Mdl>(Mdl::parse(std::move(*mdl), std::move(*mdx),
@@ -288,44 +209,165 @@ std::shared_ptr<Mdl> loadModel(Install& install, const std::string& modelName, s
             if (key.empty() || key == "null" || !seen.insert(key).second) {
                 break;
             }
-            auto parentMdl = install.find(supermodel, resType(ResType::Mdl));
-            auto parentMdx = install.find(supermodel, resType(ResType::Mdx));
-            if (!parentMdl.has_value() || !parentMdx.has_value()) {
-                break;
+            std::shared_ptr<const Mdl>& parent = install.supermodelCache()[key];
+            if (parent == nullptr) {
+                auto parentMdl = install.find(supermodel, resType(ResType::Mdl));
+                auto parentMdx = install.find(supermodel, resType(ResType::Mdx));
+                if (!parentMdl.has_value() || !parentMdx.has_value()) {
+                    break;
+                }
+                try {
+                    parent = std::make_shared<const Mdl>(
+                        Mdl::parse(std::move(*parentMdl), std::move(*parentMdx), key + ".mdl"));
+                } catch (const FormatError&) {
+                    break;
+                }
             }
-            try {
-                Mdl parent = Mdl::parse(std::move(*parentMdl), std::move(*parentMdx),
-                                        key + ".mdl");
-                supermodel = parent.supermodel();
-                model->mergeAnimations(parent);
-            } catch (const FormatError&) {
-                break;
-            }
+            supermodel = parent->supermodel();
+            model->mergeAnimations(*parent);
         }
-        return model;
+        return remember(std::move(model));
     } catch (const FormatError& exception) {
         error = exception.what();
-        return nullptr;
+        return remember(nullptr);
     }
 }
 
 void refreshEntityMeshImpl(EntityMesh& mesh);
-void buildFxMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
-                 const std::shared_ptr<Mdl>& model);
 
-void appendHeadTriangles(const std::shared_ptr<Mdl>& body,
-                         const std::shared_ptr<Mdl>& head,
-                         const std::string& headNode,
-                         const std::string& animation, float time,
-                         std::map<std::string, std::vector<MdlMeshTriangle>>& byTexture)
+using TriangleGroups = std::map<std::string, std::vector<MdlMeshTriangle>>;
+
+// Groups triangles by material. A node's triangles arrive together and share one texture and
+// material, and the key depends on nothing else, so a run reuses it instead of rebuilding it.
+void groupByMaterial(std::vector<MdlMeshTriangle>& triangles, TriangleGroups& groups)
 {
-    if (!head) {
-        return;
+    std::string previousTexture;
+    const MdlNodeMaterial* previousMaterial = nullptr;
+    std::vector<MdlMeshTriangle>* group = nullptr;
+    for (MdlMeshTriangle& triangle : triangles) {
+        if (group == nullptr || triangle.material != previousMaterial || triangle.texture != previousTexture) {
+            previousTexture = triangle.texture;
+            previousMaterial = triangle.material;
+            group = &groups[materialKey(triangle)];
+        }
+        group->push_back(std::move(triangle));
     }
-    const std::optional<Mdl::Pose> pose = body
-        ? body->nodePose(headNode, animation, time) : std::nullopt;
-    for (MdlMeshTriangle& triangle : head->posedTriangles({}, 0.0f)) {
-        if (pose.has_value()) {
+}
+
+using VertexGroups = std::map<std::string, std::vector<SceneVertex>>;
+
+// A pose refresh only rewrites vertices: same groups and order as buildMesh, no triangle copies.
+void groupVertices(const std::vector<MdlMeshTriangle>& triangles, VertexGroups& groups)
+{
+    for (std::size_t first = 0; first < triangles.size();) {
+        const MdlMeshTriangle& lead = triangles[first];
+        std::size_t end = first + 1;
+        while (end < triangles.size() && triangles[end].material == lead.material
+               && triangles[end].texture == lead.texture) {
+            ++end;
+        }
+        std::vector<SceneVertex>& group = groups[materialKey(lead)];
+        group.reserve(group.size() + (end - first) * 3);
+        for (std::size_t index = first; index < end; ++index) {
+            const MdlMeshTriangle& triangle = triangles[index];
+            for (int i = 0; i < 3; ++i) {
+                group.push_back(toSceneVertex(triangle.v[i], triangle));
+            }
+        }
+        first = end;
+    }
+}
+
+void flattenVertices(const VertexGroups& groups, EntityMesh& mesh)
+{
+    std::size_t total = 0;
+    for (const auto& [name, list] : groups) {
+        total += list.size();
+    }
+    mesh.vertices.clear();
+    mesh.vertices.reserve(total);
+    for (const auto& [name, list] : groups) {
+        mesh.vertices.insert(mesh.vertices.end(), list.begin(), list.end());
+    }
+}
+
+// The clip a mesh's model is showing, with its blend and lip track.
+MdlPoseRequest bodyPoseRequest(const EntityMesh& mesh)
+{
+    MdlPoseRequest request;
+    request.animation = mesh.animation;
+    request.time = mesh.animationTime;
+    request.danglyTime = mesh.danglyTime;
+    if (mesh.blendRemaining > 0.0f && !mesh.previousAnimation.empty() && mesh.blendDuration > 0.0f) {
+        request.previous = mesh.previousAnimation;
+        request.previousTime = mesh.previousAnimationTime;
+        request.blend = 1.0f - mesh.blendRemaining / mesh.blendDuration;
+    }
+    request.face = mesh.face.weight > 0.0f ? &mesh.face : nullptr;
+    request.headTurn = mesh.headYaw != 0.0f || mesh.headPitch != 0.0f ? &mesh.headTurn : nullptr;
+    return request;
+}
+
+Mat3 multiplyRotations(const Mat3& a, const Mat3& b)
+{
+    Mat3 out;
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            out.m[i][j] = a.m[i][0] * b.m[0][j] + a.m[i][1] * b.m[1][j] + a.m[i][2] * b.m[2][j];
+        }
+    }
+    return out;
+}
+
+// retail 006993b0 plays a clip on the body and the same name on the head; the head's own clips
+// (its pause1 holds the blink) and the lip track (006994a0) pose it. The head hangs on the body's
+// hook as the body is posed this frame. Keeping a head's clips to its head root is inferred: the
+// model header names that root, and the clips otherwise also turn the head's unused torso.
+// The head's pose request and the body hook it hangs on, as posedHeadTriangles poses it.
+// `headFrameTurn` holds the turn the request may point at.
+void headPoseRequest(const EntityMesh& mesh, MdlPoseRequest& head, Mat3& headFrameTurn,
+                     std::optional<Mdl::Pose>& pose)
+{
+    const MdlPoseRequest body = bodyPoseRequest(mesh);
+    pose = mesh.model ? mesh.model->nodePoseFor(mesh.headNode, body) : std::nullopt;
+    head = body;
+    head.headRootOnly = true;
+    head.danglyTime = -1.0f;
+    // A body with no hturn_g of its own (the player's): the head model's turns instead. It hangs
+    // on the hook, so the turn is put in the hook's frame.
+    if (body.headTurn != nullptr) {
+        if (mesh.model && mesh.model->hasNode("hturn_g")) {
+            head.headTurn = nullptr;
+        } else if (pose.has_value()) {
+            // hook^-1 * turn * hook; a rotation's inverse is its transpose.
+            Mat3 inverse;
+            for (int c = 0; c < 3; ++c) {
+                for (int r = 0; r < 3; ++r) {
+                    inverse.m[c][r] = pose->rotation.m[r][c];
+                }
+            }
+            headFrameTurn = multiplyRotations(inverse, multiplyRotations(mesh.headTurn, pose->rotation));
+            head.headTurn = &headFrameTurn;
+        }
+    }
+    const float own = mesh.headModel->animationDuration(mesh.animation);
+    if (mesh.animationLoop && own > 0.0f) {
+        head.time = std::fmod(mesh.animationTime, own);
+    }
+}
+
+std::vector<MdlMeshTriangle> posedHeadTriangles(const EntityMesh& mesh)
+{
+    if (!mesh.headModel) {
+        return {};
+    }
+    MdlPoseRequest head;
+    Mat3 headFrameTurn;
+    std::optional<Mdl::Pose> pose;
+    headPoseRequest(mesh, head, headFrameTurn, pose);
+    std::vector<MdlMeshTriangle> triangles = mesh.headModel->posedTrianglesFor(head);
+    if (pose.has_value()) {
+        for (MdlMeshTriangle& triangle : triangles) {
             for (MdlMeshVertex& vertex : triangle.v) {
                 const Vec3 rotated = rotate(pose->rotation, vertex.position);
                 vertex.position = {pose->translation.x + rotated.x,
@@ -334,11 +376,49 @@ void appendHeadTriangles(const std::shared_ptr<Mdl>& body,
                 vertex.normal = normalized(rotate(pose->rotation, vertex.normal));
             }
         }
-        std::string texture = lower(triangle.texture);
-        if (texture.empty()) {
-            texture = "__default";
+    }
+    return triangles;
+}
+
+// Retail 00697610 builds "%s%02d" from the row's tex<letter> and the armour's TextureVar (a variation
+// below 1 reads as 1, 0069768c), falling back to 01 when no TGA or TPC has that name; its caller
+// (006984a3 -> 0063c0a0) hands that one name to the whole body model. What retail binds per node
+// (paired/retail/raw/texnames_summary.tsv): a model-type B row draws the rebuilt map on every body
+// node whatever the model names (N_CommM as appearance 345 draws n_commmd01, N_TwilekM as 269
+// n_twilekmb01); a racetex row draws its racetex on every node (c_khounda02, c_ithorian03 on the eyes
+// too); any other whole-body row keeps the maps its model names (appearance 28 N_SithSoldier03, the
+// Rodian's Hair N_Rodian01). The head is its own model and keeps its own map.
+void applyBodyTexture(Install& install, const Entity& entity, std::string& texture)
+{
+    if (entity.texture.empty()) {
+        return;
+    }
+    const auto shipped = [&](const std::string& name) {
+        return install.find(name, 3).has_value() || install.find(name, 3007).has_value();
+    };
+    std::string modelType;
+    std::string raceTexture;
+    if (const std::shared_ptr<const TwoDa> appearances = install.table("appearance"); appearances != nullptr) {
+        const std::string row = std::to_string(entity.appearance);
+        if (appearances->rowIndex(row) >= 0) {
+            modelType = appearances->cell(row, "modeltype");
+            raceTexture = appearances->cell(row, "racetex");
         }
-        byTexture[texture].push_back(std::move(triangle));
+    }
+    if (modelType != "B") {
+        if (!raceTexture.empty() && raceTexture != "****" && shipped(entity.texture)) {
+            texture = entity.texture;
+        }
+        return;
+    }
+    char suffix[8];
+    std::snprintf(suffix, sizeof(suffix), "%02d", std::max(1, static_cast<int>(entity.bodyVariant.texture)));
+    std::string wanted = entity.texture + suffix;
+    if (!shipped(wanted)) {
+        wanted = entity.texture + "01";
+    }
+    if (shipped(wanted)) {
+        texture = wanted;
     }
 }
 
@@ -354,31 +434,43 @@ void buildMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
     }
     std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
     for (MdlMeshTriangle& triangle : model->posedTriangles({}, 0.0f)) {
-        std::string texture = lower(triangle.texture);
-        if (texture.empty()) {
-            texture = "__default";
-        }
-        byTexture[texture].push_back(std::move(triangle));
+        byTexture[materialKey(triangle)].push_back(std::move(triangle));
     }
-    appendHeadTriangles(model, headModel, headNode, {}, 0.0f, byTexture);
     EntityMesh mesh;
     mesh.entity = entityIndex;
     mesh.model = model;
     mesh.headModel = headModel;
     mesh.headNode = headNode;
-    for (const auto& [textureName, list] : byTexture) {
-        const std::uint32_t texture = ensureTexture(scene, install, textureName);
-        TextureBatch batch;
-        batch.texture = texture;
+    std::vector<MdlMeshTriangle> headTriangles = posedHeadTriangles(mesh);
+    // Read before groupByMaterial moves the triangles out.
+    std::set<std::string> headMaps;
+    for (const MdlMeshTriangle& triangle : headTriangles) {
+        headMaps.insert(normalizeResref(triangle.texture));
+    }
+    groupByMaterial(headTriangles, byTexture);
+    for (const auto& [materialName, list] : byTexture) {
+        (void)materialName;
+        MdlMeshTriangle look = list.front();
+        // A held item is its own model under attachModel and keeps its own maps (RETAIL texnames, tar_m02aa:
+        // C_DrdWar's w_RptnBlstr_001 node RptBlstr draws w_RptnBlstr_001, not the body's C_DrdWar01).
+        if (entityIndex < scene.entities.size() && !attachModel && headMaps.count(normalizeResref(look.texture)) == 0u) {
+            applyBodyTexture(install, scene.entities[entityIndex], look.texture);
+        }
+        // A placed object's parts have their owner set: 00449cc0 builds the part tree with 00449200, which writes
+        // part +0x40 = the gob on every part. Rigid and skinned parts both draw through 00473900 (the skin vtable
+        // 0x740e70 holds 00473900 next to its skinning step 0048d6c0 at 0x740e74), so they take the mesh's own
+        // ambient and diffuse, never the forced white of StaticPartNeedsMat 0046f410.
+        TextureBatch batch = makeMaterialBatch(scene, install, look, true);
+        // Skinned draws: 0048d6c0 takes the vertex-program route 0048a520 when 0045fbd0 reports vertex programs, and
+        // that route reaches 0046ff70's one-pass 0x14, program 830248: lerp(texel alpha, texel x primary, environment),
+        // the reflection unlit. Retail never took it in the captures: 0045fbd0 returned 0 and every skinned draw went
+        // through the CPU route 0048a0d0 and 0046ff70's lit two-pass (RETAIL row 28, armour_state_end.json), so the
+        // reflection is lit like any other: the Endar soldier is matte black, not bronze. See ENGINE_CHOICES item 1.
+        batch.envReflectionUnlit = false;
         batch.firstIndex = static_cast<std::uint32_t>(mesh.indices.size());
         for (const MdlMeshTriangle& triangle : list) {
-            mesh.triangles.push_back(triangle);
             for (int i = 0; i < 3; ++i) {
-                SceneVertex vertex;
-                vertex.position = triangle.v[i].position;
-                vertex.normal = triangle.v[i].normal;
-                vertex.uv = triangle.v[i].uv;
-                mesh.vertices.push_back(vertex);
+                mesh.vertices.push_back(toSceneVertex(triangle.v[i], triangle));
                 mesh.indices.push_back(static_cast<std::uint32_t>(mesh.vertices.size() - 1));
             }
         }
@@ -391,56 +483,68 @@ void buildMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
         if (attachModel) {
             mesh.attachModel = attachModel;
             mesh.attachNode = attachNode;
+            if (!attachModel->hasNode(attachNode) && attachModel->hasNode(attachNode + "_g")) {
+                mesh.attachNode = attachNode + "_g"; // A body without the hook: its hand bone.
+            }
+            // retail 00610f40: the hand item is scaled by the creature's appearance row.
+            if (entityIndex < scene.entities.size()) {
+                if (const std::shared_ptr<const TwoDa> looks = install.table("appearance")) {
+                    const std::string row = std::to_string(scene.entities[entityIndex].appearance);
+                    const std::string scale = looks->rowIndex(row) >= 0 ? looks->cell(row, "weaponscale") : std::string{};
+                    if (!scale.empty() && scale != "****") {
+                        mesh.attachScale = std::strtof(scale.c_str(), nullptr);
+                    }
+                }
+            }
+            // A powered item rests unlit (retail 00647130).
+            if (model->animationIndex("off") >= 0) {
+                mesh.animation = "off";
+                mesh.animationLoop = false;
+            }
             refreshEntityMeshImpl(mesh);
         }
         scene.entityMeshes.push_back(std::move(mesh));
-        if (!attachModel && model->hasFxNodes()) {
-            buildFxMesh(scene, install, entityIndex, model);
-        }
+    }
+    // Outside the test above: a model of emitters alone has no vertices (galaxy.mdl).
+    if (!attachModel) {
+        const Mat3 identity{{{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}};
+        addModelEmitters(scene, install, model, entityIndex, {}, identity);
     }
 }
 
-void buildFxMesh(Scene& scene, Install& install, std::uint32_t entityIndex,
-                 const std::shared_ptr<Mdl>& model)
+void refreshEntityMeshImpl(EntityMesh& mesh);
+
+// Retail 006964c0 (CSWCCreatureAppearance::CreateHead) attaches the head slot item's model to the
+// head model's "GoggleHook". Our head rides the body's headhook, so the item is posed through it:
+// headhook, then the head's turn and clip, then GoggleHook (refreshEntityMeshImpl).
+void attachHeadItem(Scene& scene, Install& install, std::uint32_t entityIndex,
+                    const std::shared_ptr<Mdl>& body, const std::shared_ptr<Mdl>& head)
 {
-    std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
-    for (MdlMeshTriangle& triangle : model->fxTriangles({}, 0.0f)) {
-        std::string texture = lower(triangle.texture);
-        if (texture.empty()) {
-            texture = "__fx_ffffff";
-        }
-        byTexture[texture].push_back(std::move(triangle));
-    }
-    if (byTexture.empty()) {
+    if (!body || !head || entityIndex >= scene.entities.size()) {
         return;
     }
-    EntityMesh mesh;
-    mesh.entity = entityIndex;
-    mesh.model = model;
-    mesh.fx = true;
-    for (const auto& [textureName, list] : byTexture) {
-        const std::uint32_t texture = ensureTexture(scene, install, textureName);
-        TextureBatch batch;
-        batch.texture = texture;
-        if (!list.empty()) {
-            batch.blend = list.front().blend;
-        }
-        batch.firstIndex = static_cast<std::uint32_t>(mesh.indices.size());
-        for (const MdlMeshTriangle& triangle : list) {
-            mesh.triangles.push_back(triangle);
-            for (int i = 0; i < 3; ++i) {
-                mesh.vertices.push_back({triangle.v[i].position, triangle.v[i].normal,
-                                         triangle.v[i].uv});
-                mesh.indices.push_back(static_cast<std::uint32_t>(mesh.vertices.size() - 1));
-            }
-        }
-        batch.indexCount = static_cast<std::uint32_t>(mesh.indices.size()) - batch.firstIndex;
-        if (batch.indexCount != 0) {
-            mesh.batches.push_back(batch);
-        }
+    const std::string name = scene.entities[entityIndex].headItemModel;
+    if (name.empty()) {
+        return;
     }
-    if (!mesh.vertices.empty()) {
-        scene.entityMeshes.push_back(std::move(mesh));
+    if (!head->hasNode("gogglehook")) {
+        return;
+    }
+    std::string error;
+    const std::shared_ptr<Mdl> item = loadModel(install, name, error);
+    if (!item) {
+        if (!error.empty()) {
+            scene.warnings.push_back(name + ": " + error);
+        }
+        return;
+    }
+    const std::size_t before = scene.entityMeshes.size();
+    buildMesh(scene, install, entityIndex, item, body, "headhook");
+    if (scene.entityMeshes.size() == before + 1u) {
+        EntityMesh& mesh = scene.entityMeshes.back();
+        mesh.attachScale = 1.0f; // 00610f40's weaponscale is for hand items only.
+        mesh.attachHead = head;
+        refreshEntityMeshImpl(mesh);
     }
 }
 
@@ -449,66 +553,110 @@ void refreshEntityMeshImpl(EntityMesh& mesh)
     if (!mesh.model) {
         return;
     }
-    if (mesh.fx) {
-        std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
-        for (MdlMeshTriangle& triangle : mesh.model->fxTriangles(mesh.animation,
-                                                                 mesh.animationTime)) {
-            std::string texture = lower(triangle.texture);
-            if (texture.empty()) {
-                texture = "__fx_ffffff";
-            }
-            byTexture[texture].push_back(std::move(triangle));
-        }
-        mesh.triangles.clear();
-        mesh.vertices.clear();
-        for (const auto& [textureName, list] : byTexture) {
-            (void)textureName;
-            for (const MdlMeshTriangle& triangle : list) {
-                mesh.triangles.push_back(triangle);
-                for (int i = 0; i < 3; ++i) {
-                    mesh.vertices.push_back({triangle.v[i].position, triangle.v[i].normal,
-                                             triangle.v[i].uv});
-                }
-            }
-        }
-        if (mesh.indices.size() != mesh.vertices.size()) {
-            mesh.indices.clear();
-            for (std::uint32_t i = 0; i < mesh.vertices.size(); ++i) {
-                mesh.indices.push_back(i);
-            }
-        }
-        ++mesh.revision;
-        return;
-    }
     if (mesh.attachModel) {
-        const std::optional<Mdl::Pose> hand = mesh.attachModel->nodePose(
-            mesh.attachNode, mesh.attachAnimation, mesh.attachTime);
+        MdlPoseRequest handPose;
+        handPose.animation = mesh.attachAnimation;
+        handPose.time = mesh.attachTime;
+        handPose.previous = mesh.attachPrevious;
+        handPose.previousTime = mesh.attachPreviousTime;
+        handPose.blend = mesh.attachBlend;
+        std::optional<Mdl::Pose> hand;
+        if (mesh.attachHead) {
+            // As posedHeadTriangles poses the head: a body with hturn_g turns it itself, any other
+            // body has the turn put in the hook's frame on the head model.
+            const bool bodyTurns = mesh.attachModel->hasNode("hturn_g");
+            MdlPoseRequest bodyRequest = handPose;
+            if (bodyTurns) {
+                bodyRequest.headTurn = &mesh.attachHeadTurn;
+            }
+            const std::optional<Mdl::Pose> hook = mesh.attachModel->nodePoseFor(mesh.attachNode, bodyRequest);
+            MdlPoseRequest headRequest;
+            headRequest.animation = mesh.attachAnimation;
+            headRequest.time = mesh.attachTime;
+            headRequest.headRootOnly = true;
+            headRequest.danglyTime = -1.0f;
+            const float own = mesh.attachHead->animationDuration(mesh.attachAnimation);
+            if (own > 0.0f) {
+                headRequest.time = std::fmod(mesh.attachTime, own);
+            }
+            Mat3 frameTurn;
+            if (!bodyTurns && hook.has_value()) {
+                Mat3 inverse;
+                for (int col = 0; col < 3; ++col) {
+                    for (int row = 0; row < 3; ++row) {
+                        inverse.m[col][row] = hook->rotation.m[row][col];
+                    }
+                }
+                frameTurn = multiplyRotations(inverse, multiplyRotations(mesh.attachHeadTurn, hook->rotation));
+                headRequest.headTurn = &frameTurn;
+            }
+            const std::optional<Mdl::Pose> goggle = mesh.attachHead->nodePoseFor("gogglehook", headRequest);
+            if (hook.has_value() && goggle.has_value()) {
+                Mdl::Pose composed;
+                composed.rotation = multiplyRotations(hook->rotation, goggle->rotation);
+                const Vec3 moved = rotate(hook->rotation, goggle->translation);
+                composed.translation = {hook->translation.x + moved.x, hook->translation.y + moved.y,
+                                        hook->translation.z + moved.z};
+                hand = composed;
+            }
+        } else {
+            hand = mesh.attachModel->nodePoseFor(mesh.attachNode, handPose);
+        }
+        MdlPoseRequest itemPose;
+        itemPose.animation = mesh.animation;
+        itemPose.time = mesh.animationTime;
+        const float itemScale = mesh.attachHidden ? 0.0f : mesh.attachScale;
+        // A saber's swing trail keeps world places (00481ae0): the item model goes to the world
+        // by the hand, then the entity's place and bearing as the renderer draws it.
+        SaberTrailFeed trailFeed;
+        if (mesh.trailPlaced && hand.has_value()) {
+            const float c = std::cos(mesh.trailBearing);
+            const float s = std::sin(mesh.trailBearing);
+            const Mat3 bearing{{{c, -s, 0.0f}, {s, c, 0.0f}, {0.0f, 0.0f, 1.0f}}};
+            const Vec3 at = rotate(bearing, hand->translation);
+            trailFeed.trails = &mesh.saberTrails;
+            trailFeed.rotation = multiplyRotations(bearing, hand->rotation);
+            trailFeed.origin = {mesh.trailPosition.x + at.x, mesh.trailPosition.y + at.y, mesh.trailPosition.z + at.z};
+            trailFeed.scale = itemScale;
+            trailFeed.dt = mesh.trailDt;
+            trailFeed.step = mesh.trailStep;
+            mesh.trailDt = 0.0f;
+            mesh.trailStep = false;
+            itemPose.saberTrail = &trailFeed;
+        }
+        // The item's casters hang in the hand's part tree, scaled by the weapon scale (00474710 walks
+        // the creature's parts into attached models; each part's +0x24 scale goes on with glScalef).
+        mesh.shadowParts.clear();
+        if (hand.has_value() && !mesh.attachHidden) {
+            for (Mdl::ShadowPart part : mesh.model->shadowPartsFor(itemPose)) {
+                const Vec3 moved = rotate(hand->rotation, part.pose.translation * itemScale);
+                part.pose.rotation = multiplyRotations(hand->rotation, part.pose.rotation);
+                part.pose.translation = hand->translation + moved;
+                part.pose.scale *= itemScale;
+                mesh.shadowParts.push_back(part);
+            }
+        }
         std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
-        for (MdlMeshTriangle& triangle : mesh.model->posedTriangles({}, 0.0f)) {
+        for (MdlMeshTriangle& triangle : mesh.model->posedTrianglesFor(itemPose)) {
             if (hand.has_value()) {
                 for (MdlMeshVertex& vertex : triangle.v) {
-                    const Vec3 rotated = rotate(hand->rotation, vertex.position);
+                    const Vec3 scaled{vertex.position.x * itemScale, vertex.position.y * itemScale,
+                                      vertex.position.z * itemScale};
+                    const Vec3 rotated = rotate(hand->rotation, scaled);
                     vertex.position = {hand->translation.x + rotated.x,
                                        hand->translation.y + rotated.y,
                                        hand->translation.z + rotated.z};
                     vertex.normal = normalized(rotate(hand->rotation, vertex.normal));
                 }
             }
-            std::string texture = lower(triangle.texture);
-            if (texture.empty()) {
-                texture = "__default";
-            }
-            byTexture[texture].push_back(std::move(triangle));
+            byTexture[materialKey(triangle)].push_back(std::move(triangle));
         }
-        mesh.triangles.clear();
         mesh.vertices.clear();
         for (const auto& [textureName, list] : byTexture) {
             (void)textureName;
             for (const MdlMeshTriangle& triangle : list) {
-                mesh.triangles.push_back(triangle);
                 for (int i = 0; i < 3; ++i) {
-                    mesh.vertices.push_back({triangle.v[i].position, triangle.v[i].normal,
-                                             triangle.v[i].uv});
+                    mesh.vertices.push_back(toSceneVertex(triangle.v[i], triangle));
                 }
             }
         }
@@ -522,51 +670,59 @@ void refreshEntityMeshImpl(EntityMesh& mesh)
         ++mesh.revision;
         return;
     }
-    std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
+    VertexGroups groups;
     std::vector<MdlMeshTriangle> posedTriangles;
-    if (!mesh.extraRotations.empty()) {
-        posedTriangles = mesh.model->posedTrianglesRigged(
-            mesh.animation, mesh.animationTime, mesh.danglyTime, mesh.extraRotations);
-    } else if (mesh.blendRemaining > 0.0f && !mesh.previousAnimation.empty()
-        && mesh.blendDuration > 0.0f) {
-        const float blend = 1.0f - mesh.blendRemaining / mesh.blendDuration;
-        posedTriangles = mesh.model->blendedTriangles(
-            mesh.previousAnimation, mesh.previousAnimationTime, mesh.animation,
-            mesh.animationTime, blend, mesh.danglyTime);
+    if (mesh.referenceHolder) {
+        Vec3 at;
+        Mat3 turn{{{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}};
+        mesh.referenceHolder->nodeWorldAt(mesh.referenceNode, mesh.referenceClip, mesh.referenceTime, at, turn);
+        posedTriangles = mesh.model->placedPosedTriangles(mesh.animation, mesh.animationTime, at + mesh.origin, turn);
+    } else if (mesh.scriptLoop) {
+        posedTriangles = mesh.model->scriptLoopTriangles(mesh.animation, mesh.animationTime, mesh.origin);
+    } else if (mesh.roomAnimated) {
+        posedTriangles = mesh.model->loopMeshTriangles(mesh.animation, mesh.animationTime, mesh.origin);
     } else {
-        posedTriangles = mesh.model->posedTriangles(mesh.animation, mesh.animationTime,
-                                                    mesh.danglyTime);
+        posedTriangles = mesh.model->posedTrianglesFor(bodyPoseRequest(mesh));
     }
-    for (MdlMeshTriangle& triangle : posedTriangles) {
-        std::string texture = lower(triangle.texture);
-        if (texture.empty()) {
-            texture = "__default";
-        }
-        byTexture[texture].push_back(std::move(triangle));
-    }
-    appendHeadTriangles(mesh.model, mesh.headModel, mesh.headNode,
-                        mesh.animation, mesh.animationTime, byTexture);
-    mesh.triangles.clear();
-    mesh.vertices.clear();
-    for (const auto& [textureName, list] : byTexture) {
-        (void)textureName;
-        for (const MdlMeshTriangle& triangle : list) {
-            mesh.triangles.push_back(triangle);
-            for (int i = 0; i < 3; ++i) {
-                SceneVertex vertex;
-                vertex.position = triangle.v[i].position;
-                vertex.normal = triangle.v[i].normal;
-                vertex.uv = triangle.v[i].uv;
-                mesh.vertices.push_back(vertex);
+    mesh.shadowParts.clear();
+    if (!mesh.referenceHolder && !mesh.scriptLoop && !mesh.roomAnimated) {
+        mesh.shadowParts = mesh.model->shadowPartsFor(bodyPoseRequest(mesh));
+        if (mesh.headModel && mesh.headModel->hasShadowMeshes()) {
+            MdlPoseRequest head;
+            Mat3 headFrameTurn;
+            std::optional<Mdl::Pose> hook;
+            headPoseRequest(mesh, head, headFrameTurn, hook);
+            for (Mdl::ShadowPart part : mesh.headModel->shadowPartsFor(head)) {
+                if (hook.has_value()) {
+                    part.pose.translation = hook->translation + rotate(hook->rotation, part.pose.translation);
+                    part.pose.rotation = multiplyRotations(hook->rotation, part.pose.rotation);
+                }
+                mesh.shadowParts.push_back(part);
             }
         }
     }
+    groupVertices(posedTriangles, groups);
+    groupVertices(posedHeadTriangles(mesh), groups);
+    flattenVertices(groups, mesh);
     if (mesh.indices.size() != mesh.vertices.size()) {
         mesh.indices.clear();
         mesh.indices.reserve(mesh.vertices.size());
         for (std::uint32_t i = 0; i < mesh.vertices.size(); ++i) {
             mesh.indices.push_back(i);
         }
+    }
+    if (mesh.clipPlaced && !mesh.vertices.empty()) {
+        Vec3 low = mesh.vertices.front().position;
+        Vec3 high = low;
+        for (const SceneVertex& vertex : mesh.vertices) {
+            low.x = std::min(low.x, vertex.position.x);
+            low.y = std::min(low.y, vertex.position.y);
+            low.z = std::min(low.z, vertex.position.z);
+            high.x = std::max(high.x, vertex.position.x);
+            high.y = std::max(high.y, vertex.position.y);
+            high.z = std::max(high.z, vertex.position.z);
+        }
+        mesh.center = (low + high) * 0.5f;
     }
     ++mesh.revision;
 }
@@ -612,13 +768,23 @@ void applyEquippedWeapon(Entity& entity, Install& install, const Gff& utc,
         return;
     }
     for (const std::uint32_t item : utc.list(*list)) {
+        // The entry's struct type is the slot's bit mask: 0x10 right hand, 0x20 left hand.
+        const std::uint32_t mask = utc.structure(item).typeId;
+        const bool right = (mask & 0x10u) != 0;
+        const bool left = (mask & 0x20u) != 0;
+        const bool head = (mask & 0x01u) != 0;
+        if (!right && !left && !head) {
+            continue;
+        }
         std::int32_t baseItem = intField(utc, item, "BaseItem", -1);
-        if (baseItem < 0) {
+        std::int32_t variation = intField(utc, item, "ModelVariation", -1);
+        if (baseItem < 0 || variation < 0) {
             const std::string resref = textField(utc, item, "EquippedRes");
             if (!resref.empty()) {
                 if (const std::optional<ItemTemplate> templ = loadItemTemplate(install, resref);
                     templ.has_value()) {
-                    baseItem = templ->baseItem;
+                    baseItem = baseItem < 0 ? templ->baseItem : baseItem;
+                    variation = variation < 0 ? templ->modelVariation : variation;
                 }
             }
         }
@@ -629,15 +795,20 @@ void applyEquippedWeapon(Entity& entity, Install& install, const Gff& utc,
         if (baseitems.rowIndex(row) < 0) {
             continue;
         }
+        if (head) {
+            entity.headItemModel = itemHandModel(install, baseitems, baseItem, variation);
+            continue;
+        }
         const std::string weaponType = baseitems.cell(row, "weapontype");
         if (!weaponType.empty() && weaponType != "0" && weaponType != "****") {
-            const std::string model = baseitems.cell(row, "defaultmodel");
-            if (!model.empty() && model != "I_Null") {
-                if (entity.weaponModel.empty()) {
-                    entity.weaponModel = model;
-                } else if (entity.offhandModel.empty()) {
-                    entity.offhandModel = model;
-                }
+            const std::string model = itemHandModel(install, baseitems, baseItem, variation);
+            const std::int32_t wield = std::atoi(baseitems.cell(row, "weaponwield").c_str());
+            if (right) {
+                entity.weaponModel = model;
+                entity.rightWield = wield;
+            } else {
+                entity.offhandModel = model;
+                entity.leftWield = wield;
             }
         }
         if (weaponType == "4") {
@@ -647,21 +818,44 @@ void applyEquippedWeapon(Entity& entity, Install& install, const Gff& utc,
     }
 }
 
-std::string creatureModel(const TwoDa& appearances, std::uint32_t appearance, std::string& texture)
+std::string creatureModel(const TwoDa& appearances, std::uint32_t appearance, std::string& texture,
+                          BodyVariant body = {})
 {
     const std::string row = std::to_string(appearance);
     if (appearances.rowIndex(row) < 0) {
         return {};
     }
-    texture = appearances.cell(row, "texa");
-    if (texture.empty()) {
-        texture = appearances.cell(row, "racetex");
+    // Retail 00697610: the armour's letter, clamped to 1..10 (a..j); without armour, a.
+    const std::string letter(1, static_cast<char>('a' + std::clamp(body.variation, 1, 10) - 1));
+    std::string model = body.variation > 0 ? appearances.cell(row, "model" + letter) : std::string{};
+    if (!model.empty() && model != "****") {
+        texture = appearances.cell(row, "tex" + letter);
+    } else {
+        model = appearances.cell(row, "modela");
+        texture = appearances.cell(row, "texa");
     }
-    std::string model = appearances.cell(row, "modela");
+    // Rows that aren't body-part models take their map from racetex: Alien_Duros_02 and _03 share
+    // the model and differ only there (retail frames: green Duros, tar_m02aa).
+    const std::string raceTexture = appearances.cell(row, "racetex");
+    const std::string modelType = appearances.cell(row, "modeltype");
+    if (texture.empty() || (modelType != "B" && !raceTexture.empty() && raceTexture != "****")) {
+        texture = raceTexture;
+    }
     if (model.empty()) {
         model = appearances.cell(row, "race");
     }
     return model;
+}
+
+// The Body slot's item among a creature's template items (slot bit 1, equipableslots 0x2).
+BodyVariant wornBodyVariant(Install& install, const Entity& entity)
+{
+    for (const auto& item : entity.creatureItems) {
+        if (item.slot == 1) {
+            return armorBodyVariant(install, item.resref);
+        }
+    }
+    return {};
 }
 
 std::string creatureHeadModel(Install& install, const TwoDa& appearances,
@@ -689,32 +883,27 @@ std::string creatureHeadModel(Install& install, const TwoDa& appearances,
     if (head < 0) {
         return {};
     }
-    auto data = install.find("heads", 2017);
-    if (!data.has_value()) {
+    const std::shared_ptr<const TwoDa> heads = install.table("heads");
+    if (heads == nullptr) {
         return {};
     }
-    try {
-        const TwoDa heads = TwoDa::parse(std::move(*data), "heads");
-        const std::string headRow = std::to_string(head);
-        if (heads.rowIndex(headRow) < 0) {
-            return {};
-        }
-        std::string model = heads.cell(headRow, "head");
-        if (model == "****") {
-            model.clear();
-        }
-        return model;
-    } catch (const FormatError&) {
+    const std::string headRow = std::to_string(head);
+    if (heads->rowIndex(headRow) < 0) {
         return {};
     }
+    std::string model = heads->cell(headRow, "head");
+    if (model == "****") {
+        model.clear();
+    }
+    return model;
 }
 
 void applyCreatureAudio(Entity& entity, const TwoDa& appearances,
-                        const std::optional<TwoDa>& soundSets, const Gff& utc,
+                        const std::shared_ptr<const TwoDa>& soundSets, const Gff& utc,
                         std::uint32_t root)
 {
     const std::int32_t soundSetId = intField(utc, root, "SoundSetFile", -1);
-    if (soundSets.has_value() && soundSetId >= 0 && soundSetId != 65535) {
+    if (soundSets != nullptr && soundSetId >= 0 && soundSetId != 65535) {
         const std::string row = std::to_string(soundSetId);
         if (soundSets->rowIndex(row) >= 0) {
             entity.soundSet = soundSets->cell(row, "resref");
@@ -722,7 +911,10 @@ void applyCreatureAudio(Entity& entity, const TwoDa& appearances,
     }
     const std::string appearanceRow = std::to_string(entity.appearance);
     if (appearances.rowIndex(appearanceRow) >= 0) {
-        entity.footstepType = std::atoi(appearances.cell(appearanceRow, "footsteptype").c_str());
+        const std::string footstep = appearances.cell(appearanceRow, "footsteptype");
+        entity.footstepType = footstep.empty() || footstep == "****" ? -1 : std::atoi(footstep.c_str());
+        const std::string size = appearances.cell(appearanceRow, "sizecategory");
+        entity.sizeCategory = size.empty() || size == "****" ? 0 : std::atoi(size.c_str());
         entity.soundAppType = std::atoi(appearances.cell(appearanceRow, "soundapptype").c_str());
     }
 }
@@ -878,20 +1070,15 @@ EntityMesh buildWorldEntityMesh(Scene& scene, Install& install, const std::share
     }
     std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
     for (MdlMeshTriangle& triangle : model->posedTrianglesLayered({}, true)) {
-        std::string texture = lower(triangle.texture);
-        if (texture.empty()) {
-            texture = "__default";
-        }
-        byTexture[texture].push_back(std::move(triangle));
+        byTexture[materialKey(triangle)].push_back(std::move(triangle));
     }
-    for (const auto& [textureName, list] : byTexture) {
-        TextureBatch batch;
-        batch.texture = ensureTexture(scene, install, textureName);
-        batch.blend = list.front().blend;
+    for (const auto& [materialName, list] : byTexture) {
+        (void)materialName;
+        TextureBatch batch = makeMaterialBatch(scene, install, list.front(), true);
         batch.firstIndex = static_cast<std::uint32_t>(mesh.indices.size());
         for (const MdlMeshTriangle& triangle : list) {
             for (int i = 0; i < 3; ++i) {
-                mesh.vertices.push_back({triangle.v[i].position, triangle.v[i].normal, triangle.v[i].uv});
+                mesh.vertices.push_back(toSceneVertex(triangle.v[i], triangle));
                 mesh.indices.push_back(static_cast<std::uint32_t>(mesh.vertices.size() - 1));
             }
         }
@@ -909,11 +1096,7 @@ void bakeWorldEntityMesh(EntityMesh& mesh, const std::shared_ptr<Mdl>& model,
     }
     std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
     for (MdlMeshTriangle& triangle : model->posedTrianglesLayered(layers, true)) {
-        std::string texture = lower(triangle.texture);
-        if (texture.empty()) {
-            texture = "__default";
-        }
-        byTexture[texture].push_back(std::move(triangle));
+        byTexture[materialKey(triangle)].push_back(std::move(triangle));
     }
     std::size_t at = 0;
     for (const auto& [textureName, list] : byTexture) {
@@ -924,6 +1107,9 @@ void bakeWorldEntityMesh(EntityMesh& mesh, const std::shared_ptr<Mdl>& model,
                 vertex.position = translation + rotate(rotation, triangle.v[i].position);
                 vertex.normal = rotate(rotation, triangle.v[i].normal);
                 vertex.uv = triangle.v[i].uv;
+                vertex.uv1 = triangle.v[i].uv1;
+                vertex.selfIllum = meshEmission(triangle);
+                vertex.alpha = triangle.alpha;
             }
         }
     }
@@ -954,6 +1140,45 @@ void collectScriptHooks(const Gff& gff, std::uint32_t structure,
     }
 }
 
+std::string itemHandModel(Install& install, const TwoDa& baseitems, std::int32_t baseItem,
+                          std::int32_t modelVariation)
+{
+    const std::string row = std::to_string(baseItem);
+    if (baseitems.rowIndex(row) < 0) {
+        return {};
+    }
+    const std::string itemClass = baseitems.cell(row, "itemclass");
+    if (modelVariation > 0 && !itemClass.empty() && itemClass != "****") {
+        char suffix[16];
+        std::snprintf(suffix, sizeof(suffix), "_%03d", static_cast<int>(modelVariation));
+        const std::string name = itemClass + suffix;
+        if (install.find(name, resType(ResType::Mdl)).has_value()) {
+            return name;
+        }
+    }
+    const std::string fallback = baseitems.cell(row, "defaultmodel");
+    return fallback == "I_Null" || fallback == "****" ? std::string{} : fallback;
+}
+
+std::int32_t wieldClass(std::int32_t rightWield, std::int32_t leftWield, bool hasRight, bool hasLeft)
+{
+    if (!hasRight) {
+        return hasLeft ? 0 : 8;
+    }
+    if (hasLeft) {
+        return leftWield == 2 ? 4 : leftWield == 4 ? 6 : 0;
+    }
+    switch (rightWield) {
+    case 1: return 1;
+    case 2: return 2;
+    case 3: return 3;
+    case 4: return 5;
+    case 5: return 7;
+    case 6: return 9;
+    default: return 8;
+    }
+}
+
 std::optional<ItemTemplate> loadItemTemplate(Install& install, const std::string& resref)
 {
     auto data = install.find(resref, 2025); // UTI
@@ -972,6 +1197,7 @@ std::optional<ItemTemplate> loadItemTemplate(Install& install, const std::string
         item.plot = intField(uti, uti.rootIndex(), "Plot", 0) != 0;
         item.charges = intField(uti, uti.rootIndex(), "Charges", 0);
         item.addCost = intField(uti, uti.rootIndex(), "AddCost", 0);
+        item.modelVariation = intField(uti, uti.rootIndex(), "ModelVariation", 0);
         if (const GffField* list = uti.field(uti.rootIndex(), "PropertiesList"); list != nullptr) {
             for (const std::uint32_t entry : uti.list(*list)) {
                 ItemTemplate::Property property;
@@ -981,12 +1207,14 @@ std::optional<ItemTemplate> loadItemTemplate(Install& install, const std::string
                 property.costValue = intField(uti, entry, "CostValue", 0);
                 property.param1 = intField(uti, entry, "Param1", 0);
                 property.param1Value = intField(uti, entry, "Param1Value", 0);
+                property.chanceAppear = intField(uti, entry, "ChanceAppear", 100);
                 property.usesPerDay = intField(uti, entry, "UsesPerDay", 255);
                 property.useable = intField(uti, entry, "Useable", 1) != 0;
+                property.upgradeType = intField(uti, entry, "UpgradeType", 255);
                 item.properties.push_back(property);
             }
         }
-        const std::optional<Tlk> tlk = loadTlk(install);
+        const std::shared_ptr<const Tlk> tlk = install.dialogTlk();
         item.name = locField(uti, uti.rootIndex(), "LocalizedName", tlk ? &*tlk : nullptr);
         return item;
     } catch (const FormatError&) {
@@ -1004,10 +1232,10 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
     try {
         Gff utc = Gff::parse(std::move(*data), utcResref + ".utc");
         const std::uint32_t root = utc.rootIndex();
-        const std::optional<Tlk> tlk = loadTlk(install);
-        const std::optional<TwoDa> appearances = loadTable(install, "appearance");
-        const std::optional<TwoDa> soundSets = loadTable(install, "soundset");
-        const std::optional<TwoDa> baseitems = loadTable(install, "baseitems");
+        const std::shared_ptr<const Tlk> tlk = install.dialogTlk();
+        const std::shared_ptr<const TwoDa> appearances = install.table("appearance");
+        const std::shared_ptr<const TwoDa> soundSets = install.table("soundset");
+        const std::shared_ptr<const TwoDa> baseitems = install.table("baseitems");
 
         Entity entity;
         entity.kind = EntityKind::Creature;
@@ -1031,9 +1259,11 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
         }
         entity.hitPoints = std::max(1, std::min(entity.hitPoints, entity.maxHitPoints));
         // defense, attackBonus and damageMin/Max come from Rules::deriveCreatureCombat.
-        entity.fortSave = intField(utc, root, "FortSaveThrow", 0);
-        entity.willSave = intField(utc, root, "WillSaveThrow", 0);
-        entity.refSave = intField(utc, root, "RefSaveThrow", 0);
+        // Retail 005afce0 reads the per-creature save bonuses fortbonus, willbonus and refbonus
+        // (stats +0x1a0..+0x1a2); *SaveThrow are totals 005b1b90 only writes.
+        entity.fortSave = intField(utc, root, "fortbonus", 0);
+        entity.willSave = intField(utc, root, "willbonus", 0);
+        entity.refSave = intField(utc, root, "refbonus", 0);
         applyGameplayFields(entity, utc, root);
         applyCreatureStats(entity, utc, root);
         entity.scriptDialogue = textField(utc, root, "ScriptDialogue");
@@ -1042,13 +1272,14 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
         entity.walkRateRow = intField(utc, root, "WalkRate", 7);
         entity.hostile = false;
         readCreatureItems(entity, utc);
-        if (baseitems.has_value()) {
+        if (baseitems != nullptr) {
             applyEquippedWeapon(entity, install, utc, *baseitems);
         }
         collectScriptHooks(utc, root, entity.scripts);
-        if (appearances.has_value()) {
+        if (appearances != nullptr) {
             std::string texture;
-            entity.model = creatureModel(*appearances, entity.appearance, texture);
+            entity.bodyVariant = wornBodyVariant(install, entity);
+            entity.model = creatureModel(*appearances, entity.appearance, texture, entity.bodyVariant);
             entity.texture = texture;
             applyCreatureAudio(entity, *appearances, soundSets, utc, root);
         }
@@ -1059,7 +1290,10 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
             if (const std::shared_ptr<Mdl> model =
                     loadModel(install, scene.entities[index].model, error)) {
                 std::shared_ptr<Mdl> head;
-                if (appearances.has_value() && !model->hasNode("head_g")) {
+                // Retail 00698219 takes the head from the appearance row and 0069b0fa hangs it on
+                // HEADHOOK, whatever else the body has. `head_g` is not a head: in the 27 bodies
+                // with a head row it is a 14 to 168 face proxy, untextured in all but one.
+                if (appearances != nullptr) {
                     const std::string headName = creatureHeadModel(
                         install, *appearances, scene.entities[index].appearance);
                     if (!headName.empty()) {
@@ -1089,6 +1323,7 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
                                   model, spawned.offhandAttach);
                     }
                 }
+                attachHeadItem(scene, install, static_cast<std::uint32_t>(index), model, head);
             } else {
                 scene.warnings.push_back(scene.entities[index].model + ": " + error);
             }
@@ -1099,11 +1334,28 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
     }
 }
 
-std::size_t spawnPlayerAvatar(Scene& scene, Install& install, std::uint32_t appearance,
-                              const std::string& name, Vec3 position, float bearing)
+BodyVariant armorBodyVariant(Install& install, const std::string& itemResref)
 {
-    const std::optional<TwoDa> appearances = loadTable(install, "appearance");
-    if (!appearances.has_value()) {
+    BodyVariant variant;
+    auto data = install.find(itemResref, 2025); // UTI
+    if (!data.has_value()) {
+        return variant;
+    }
+    try {
+        const Gff uti = Gff::parse(std::move(*data), itemResref + ".uti");
+        variant.variation = intField(uti, uti.rootIndex(), "BodyVariation", 0);
+        variant.texture = intField(uti, uti.rootIndex(), "TextureVar", 0);
+    } catch (const FormatError&) {
+    }
+    return variant;
+}
+
+std::size_t spawnPlayerAvatar(Scene& scene, Install& install, std::uint32_t appearance,
+                              const std::string& name, Vec3 position, float bearing,
+                              BodyVariant body)
+{
+    const std::shared_ptr<const TwoDa> appearances = install.table("appearance");
+    if (appearances == nullptr) {
         return static_cast<std::size_t>(-1);
     }
     Entity entity;
@@ -1121,7 +1373,8 @@ std::size_t spawnPlayerAvatar(Scene& scene, Install& install, std::uint32_t appe
     entity.walkRate = 3.8f;
     entity.hostile = false;
     std::string texture;
-    entity.model = creatureModel(*appearances, appearance, texture);
+    entity.bodyVariant = body;
+    entity.model = creatureModel(*appearances, appearance, texture, body);
     entity.texture = texture;
     scene.entities.push_back(std::move(entity));
     const std::size_t index = scene.entities.size() - 1;
@@ -1148,14 +1401,84 @@ std::size_t spawnPlayerAvatar(Scene& scene, Install& install, std::uint32_t appe
     return index;
 }
 
+namespace {
+
+// A reference node on a door or placeable shows another rigid model at that node, moving with it.
+// Shipped: dor_ukn01 shows dor_ukn02; the other holders name fx_ref, which has no geometry. No
+// creature model holds one. Each is its own mesh on the attachment path, at the model's own scale.
+void buildReferencedMeshes(Scene& scene, Install& install, std::uint32_t entityIndex, const std::shared_ptr<Mdl>& holder)
+{
+    for (const Mdl::ReferenceNode& reference : holder->references()) {
+        std::string error;
+        const std::shared_ptr<Mdl> shown = loadModel(install, lower(reference.model), error);
+        if (!shown || shown->hasSkinnedMesh()) {
+            continue;
+        }
+        const std::size_t before = scene.entityMeshes.size();
+        buildMesh(scene, install, entityIndex, shown, holder, reference.nodeName);
+        if (scene.entityMeshes.size() != before) {
+            scene.entityMeshes.back().attachScale = 1.0f;
+            refreshEntityMesh(scene.entityMeshes.back());
+        }
+    }
+}
+
+} // namespace
+
+std::size_t spawnStuntBody(Scene& scene, Install& install, const std::string& body,
+                           const std::shared_ptr<Mdl>& head, const std::string& headNode,
+                           const Mdl& clips)
+{
+    std::string error;
+    // A model of its own: two participants can share a body and differ in their clips.
+    const std::shared_ptr<Mdl> model = loadModel(install, body, error);
+    if (!model) {
+        scene.warnings.push_back(body + ": " + error);
+        return static_cast<std::size_t>(-1);
+    }
+    model->mergeAnimations(clips);
+    Entity entity;
+    entity.kind = EntityKind::Placeable;
+    entity.tag = clips.name();
+    entity.name = clips.name();
+    entity.model = body;
+    scene.entities.push_back(std::move(entity));
+    const std::size_t index = scene.entities.size() - 1;
+    buildMesh(scene, install, static_cast<std::uint32_t>(index), model, nullptr, {}, head, headNode);
+    return index;
+}
+
+std::size_t spawnModelEntity(Scene& scene, Install& install, const std::string& modelName,
+                             Vec3 position, float bearing)
+{
+    std::string error;
+    const std::shared_ptr<Mdl> model = loadModel(install, modelName, error);
+    if (!model) {
+        scene.warnings.push_back(modelName + ": " + error);
+        return static_cast<std::size_t>(-1);
+    }
+    Entity entity;
+    entity.kind = EntityKind::Placeable;
+    entity.tag = modelName;
+    entity.name = modelName;
+    entity.model = modelName;
+    entity.position = position;
+    entity.bearing = bearing;
+    scene.entities.push_back(std::move(entity));
+    const std::size_t index = scene.entities.size() - 1;
+    buildMesh(scene, install, static_cast<std::uint32_t>(index), model, nullptr, {}, nullptr, {});
+    buildReferencedMeshes(scene, install, static_cast<std::uint32_t>(index), model);
+    return index;
+}
+
 void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
 {
-    const std::optional<Tlk> tlk = loadTlk(install);
-    const std::optional<TwoDa> appearances = loadTable(install, "appearance");
-    const std::optional<TwoDa> soundSets = loadTable(install, "soundset");
-    const std::optional<TwoDa> genericDoors = loadTable(install, "genericdoors");
-    const std::optional<TwoDa> placeables = loadTable(install, "placeables");
-    const std::optional<TwoDa> baseitems = loadTable(install, "baseitems");
+    const std::shared_ptr<const Tlk> tlk = install.dialogTlk();
+    const std::shared_ptr<const TwoDa> appearances = install.table("appearance");
+    const std::shared_ptr<const TwoDa> soundSets = install.table("soundset");
+    const std::shared_ptr<const TwoDa> genericDoors = install.table("genericdoors");
+    const std::shared_ptr<const TwoDa> placeables = install.table("placeables");
+    const std::shared_ptr<const TwoDa> baseitems = install.table("baseitems");
 
     for (std::size_t index = 0; index < scene.entities.size(); ++index) {
         Entity& entity = scene.entities[index];
@@ -1179,9 +1502,9 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                     }
                     entity.hitPoints = std::max(1, std::min(entity.hitPoints, entity.maxHitPoints));
                     // defense, attackBonus and damageMin/Max: Rules::deriveCreatureCombat.
-                    entity.fortSave = intField(utc, utc.rootIndex(), "FortSaveThrow", 0);
-                    entity.willSave = intField(utc, utc.rootIndex(), "WillSaveThrow", 0);
-                    entity.refSave = intField(utc, utc.rootIndex(), "RefSaveThrow", 0);
+                    entity.fortSave = intField(utc, utc.rootIndex(), "fortbonus", 0);
+                    entity.willSave = intField(utc, utc.rootIndex(), "willbonus", 0);
+                    entity.refSave = intField(utc, utc.rootIndex(), "refbonus", 0);
                     applyGameplayFields(entity, utc, utc.rootIndex());
                     applyCreatureStats(entity, utc, utc.rootIndex());
                     entity.scriptDialogue = textField(utc, utc.rootIndex(), "ScriptDialogue");
@@ -1190,12 +1513,13 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                     entity.walkRateRow = intField(utc, utc.rootIndex(), "WalkRate", 7);
                     entity.hostile = false; // GameSession applies faction relations
                     readCreatureItems(entity, utc);
-                    if (baseitems.has_value()) {
+                    if (baseitems != nullptr) {
                         applyEquippedWeapon(entity, install, utc, *baseitems);
                     }
-                    if (appearances.has_value()) {
+                    if (appearances != nullptr) {
                         std::string texture;
-                        entity.model = creatureModel(*appearances, entity.appearance, texture);
+                        entity.bodyVariant = wornBodyVariant(install, entity);
+                        entity.model = creatureModel(*appearances, entity.appearance, texture, entity.bodyVariant);
                         entity.texture = texture;
                         applyCreatureAudio(entity, *appearances, soundSets, utc, utc.rootIndex());
                     }
@@ -1209,6 +1533,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                     Gff utd = Gff::parse(std::move(*data), entity.templateResref + ".utd");
                     collectScriptHooks(utd, utd.rootIndex(), entity.scripts);
                     entity.tag = textField(utd, utd.rootIndex(), "Tag");
+                    entity.name = locField(utd, utd.rootIndex(), "LocName", tlk ? &*tlk : nullptr); // the target block's name
                     entity.faction = static_cast<std::uint32_t>(intField(utd, utd.rootIndex(), "Faction", 0));
                     applyGameplayFields(entity, utd, utd.rootIndex());
                     // A door is bashable: UTD HP / CurrentHP are its hit points.
@@ -1219,7 +1544,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                     const std::uint32_t genericType = static_cast<std::uint32_t>(
                         intField(utd, utd.rootIndex(), "GenericType", 0));
                     entity.appearance = genericType;
-                    if (genericDoors.has_value()) {
+                    if (genericDoors != nullptr) {
                         entity.model = genericDoors->cell(std::to_string(genericType), "modelname");
                     }
                 } catch (const FormatError&) {
@@ -1232,6 +1557,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                     Gff utp = Gff::parse(std::move(*data), entity.templateResref + ".utp");
                     collectScriptHooks(utp, utp.rootIndex(), entity.scripts);
                     entity.tag = textField(utp, utp.rootIndex(), "Tag");
+                    entity.name = locField(utp, utp.rootIndex(), "LocName", tlk ? &*tlk : nullptr);
                     entity.conversation = textField(utp, utp.rootIndex(), "Conversation");
                     applyGameplayFields(entity, utp, utp.rootIndex());
                     entity.appearance = static_cast<std::uint32_t>(
@@ -1248,7 +1574,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                         }
                     }
                     entity.useable = entity.useable || !entity.lootItems.empty();
-                    if (placeables.has_value()) {
+                    if (placeables != nullptr) {
                         entity.model = placeables->cell(std::to_string(entity.appearance), "modelname");
                     }
                 } catch (const FormatError&) {
@@ -1312,8 +1638,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
             std::string error;
             if (const std::shared_ptr<Mdl> model = loadModel(install, entity.model, error)) {
                 std::shared_ptr<Mdl> head;
-                if (entity.kind == EntityKind::Creature && appearances.has_value()
-                    && !model->hasNode("head_g")) {
+                if (entity.kind == EntityKind::Creature && appearances != nullptr) {
                     const std::string headName = creatureHeadModel(
                         install, *appearances, entity.appearance);
                     if (!headName.empty()) {
@@ -1326,6 +1651,9 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                 }
                 buildMesh(scene, install, static_cast<std::uint32_t>(index), model,
                           nullptr, {}, head, head ? "headhook" : "");
+                if (entity.kind != EntityKind::Creature) {
+                    buildReferencedMeshes(scene, install, static_cast<std::uint32_t>(index), model);
+                }
                 if (!entity.weaponModel.empty()) {
                     std::string weaponError;
                     if (const std::shared_ptr<Mdl> weapon =
@@ -1342,6 +1670,7 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                                   model, entity.offhandAttach);
                     }
                 }
+                attachHeadItem(scene, install, static_cast<std::uint32_t>(index), model, head);
             } else {
                 scene.warnings.push_back(entity.model + ": " + error);
             }
@@ -1349,6 +1678,299 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
     }
     addTriggerGeometry(scene, git);
     addEncounterGeometry(scene, install, git);
+}
+
+ObjectClip objectStateClip(const Entity& entity, const Mdl& model)
+{
+    const auto steady = [&](const char* clip) {
+        // A pose clip has length 0 and still carries keys (dor_lhr01 closed/opened1/opened2: 4 and 7 controllers), so it
+        // counts as present (doors only); retail shows the closed door in that pose, not the bind pose (retail row 27 frames).
+        const bool present = entity.kind == EntityKind::Door ? model.animationIndex(clip) >= 0
+                                                             : model.animationDuration(clip) > 0.0f;
+        return present ? ObjectClip{clip} : ObjectClip{};
+    };
+    if (entity.kind == EntityKind::Door) {
+        // retail 0058a1f0: the door's four states.
+        if (entity.openState == 3) {
+            return steady("dead");
+        }
+        if (entity.open) {
+            const bool second = entity.openState == 2;
+            ObjectClip clip = steady(second ? "opened2" : "opened1");
+            if (clip.name.empty()) {
+                // No resting clip: the end of the swing.
+                const char* swing = second && model.animationDuration("opening2") > 0.0f ? "opening2" : "opening1";
+                const float duration = model.animationDuration(swing);
+                if (duration > 0.0f) {
+                    clip = ObjectClip{swing, duration, false};
+                }
+            }
+            return clip;
+        }
+        return steady("closed");
+    }
+    if (entity.kind != EntityKind::Placeable) {
+        return {};
+    }
+    if (entity.open) {
+        return steady("open"); // retail 00585670: a set Open starts in the open state.
+    }
+    // Inferred: the state values are not spelled out in retail's reader. The clips the placeables
+    // in each state carry agree (see the worldposes survey): 1 open, 2 close, 3 dead, 4 on, 5 off.
+    switch (entity.animationState) {
+    case 1: return steady("open");
+    case 2: return steady("close");
+    case 3: return steady("dead");
+    case 4: return steady("on");
+    case 5: return steady("off");
+    default: return {};
+    }
+}
+
+const char* placeableScriptClip(std::int32_t animation, bool& loop)
+{
+    // ANIMATION_PLACEABLE_* of the shipped nwscript.nss; the transition clips of each are the
+    // state changes in retail 0063e930, and their names rows 312 to 317 of animations.2da.
+    static const char* const kClips[] = {
+        "off2on", "on2off", "close2open", "open2close", "animloop01", "animloop02", "animloop03",
+        "animloop04", "animloop05", "animloop06", "animloop07", "animloop08", "animloop09", "animloop10"};
+    if (animation < 200 || animation > 213) {
+        return nullptr;
+    }
+    loop = animation >= 204;
+    return kClips[animation - 200];
+}
+
+void addRoomScriptMesh(Scene& scene, Install& install, const std::shared_ptr<Mdl>& model, Vec3 origin, int room)
+{
+    std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
+    for (MdlMeshTriangle& triangle : model->scriptLoopTriangles({}, 0.0f, origin)) {
+        byTexture[materialKey(triangle)].push_back(std::move(triangle));
+    }
+    EntityMesh mesh;
+    mesh.entity = UINT32_MAX;
+    mesh.model = model;
+    mesh.roomAnimated = true;
+    mesh.scriptLoop = true;
+    mesh.origin = origin;
+    mesh.room = room;
+    mesh.animationLoop = true;
+    for (const auto& [materialName, list] : byTexture) {
+        (void)materialName;
+        TextureBatch batch = makeMaterialBatch(scene, install, list.front());
+        batch.room = room;
+        batch.firstIndex = static_cast<std::uint32_t>(mesh.indices.size());
+        Vec3 sum{};
+        for (const MdlMeshTriangle& triangle : list) {
+            for (int i = 0; i < 3; ++i) {
+                sum = sum + triangle.v[i].position;
+                mesh.vertices.push_back(toSceneVertex(triangle.v[i], triangle));
+                mesh.indices.push_back(static_cast<std::uint32_t>(mesh.vertices.size() - 1));
+            }
+        }
+        batch.indexCount = static_cast<std::uint32_t>(mesh.indices.size()) - batch.firstIndex;
+        if (batch.indexCount != 0) {
+            batch.center = sum * (1.0f / static_cast<float>(batch.indexCount));
+            mesh.batches.push_back(batch);
+        }
+    }
+    if (!mesh.vertices.empty()) {
+        scene.entityMeshes.push_back(std::move(mesh));
+    }
+}
+
+bool setRoomClip(Scene& scene, const std::string& room, const std::string& clip)
+{
+    const std::string wanted = lower(room);
+    bool found = false;
+    for (EntityMesh& mesh : scene.entityMeshes) {
+        if (!mesh.scriptLoop || mesh.room < 0 || static_cast<std::size_t>(mesh.room) >= scene.rooms.size()
+            || lower(scene.rooms[static_cast<std::size_t>(mesh.room)].room) != wanted) {
+            continue;
+        }
+        mesh.animation = clip;
+        mesh.animationTime = 0.0f;
+        mesh.animationLoop = true;
+        refreshEntityMeshImpl(mesh);
+        poseRoomScriptLights(scene, mesh);
+        found = true;
+    }
+    return found;
+}
+
+void poseRoomScriptLights(Scene& scene, const EntityMesh& mesh)
+{
+    if (!mesh.scriptLoop || mesh.room < 0 || !mesh.model) {
+        return;
+    }
+    Mat3 turn{{{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}};
+    for (Scene::WorldLight& light : scene.lights) {
+        if (light.room == mesh.room && light.node != SIZE_MAX) {
+            Vec3 at = light.position - mesh.origin;
+            mesh.model->nodeWorldAt(light.node, mesh.animation, mesh.animationTime, at, turn);
+            light.position = at + mesh.origin;
+        }
+    }
+    for (FlareLight& flare : scene.flareLights) {
+        if (flare.room == mesh.room && flare.node != SIZE_MAX && flare.entity == UINT32_MAX) {
+            mesh.model->nodeWorldAt(flare.node, mesh.animation, mesh.animationTime, flare.local, turn);
+        }
+    }
+}
+
+void addRoomLoopMesh(Scene& scene, Install& install, const std::shared_ptr<Mdl>& model,
+                     const std::string& clip, Vec3 origin, int room)
+{
+    std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
+    for (MdlMeshTriangle& triangle : model->loopMeshTriangles(clip, 0.0f, origin)) {
+        byTexture[materialKey(triangle)].push_back(std::move(triangle));
+    }
+    EntityMesh mesh;
+    mesh.entity = UINT32_MAX;
+    mesh.model = model;
+    mesh.roomAnimated = true;
+    mesh.origin = origin;
+    mesh.room = room;
+    mesh.animation = clip;
+    mesh.animationLoop = true;
+    for (const auto& [materialName, list] : byTexture) {
+        (void)materialName;
+        TextureBatch batch = makeMaterialBatch(scene, install, list.front());
+        batch.room = room;
+        batch.firstIndex = static_cast<std::uint32_t>(mesh.indices.size());
+        Vec3 sum{};
+        for (const MdlMeshTriangle& triangle : list) {
+            for (int i = 0; i < 3; ++i) {
+                sum = sum + triangle.v[i].position;
+                mesh.vertices.push_back(toSceneVertex(triangle.v[i], triangle));
+                mesh.indices.push_back(static_cast<std::uint32_t>(mesh.vertices.size() - 1));
+            }
+        }
+        batch.indexCount = static_cast<std::uint32_t>(mesh.indices.size()) - batch.firstIndex;
+        if (batch.indexCount != 0) {
+            batch.center = sum * (1.0f / static_cast<float>(batch.indexCount));
+            mesh.batches.push_back(batch);
+        }
+    }
+    if (!mesh.vertices.empty()) {
+        scene.entityMeshes.push_back(std::move(mesh));
+    }
+}
+
+void addSkinnedReferenceMesh(Scene& scene, Install& install, const std::shared_ptr<const Mdl>& model,
+                             const std::shared_ptr<const Mdl>& holder, std::size_t node,
+                             const std::string& holderClip, Vec3 origin, int room)
+{
+    EntityMesh mesh;
+    mesh.entity = UINT32_MAX;
+    mesh.model = std::const_pointer_cast<Mdl>(model);
+    mesh.roomAnimated = true;
+    mesh.origin = origin;
+    mesh.room = room;
+    mesh.animationLoop = true;
+    mesh.referenceHolder = holder;
+    mesh.referenceNode = node;
+    mesh.referenceClip = holderClip;
+    // Engine choice: the clip the reference's child plays was not traced in retail. The list is the
+    // one a placeable without an idle uses (GameSession::initAnimations).
+    for (const char* name : {"pause1", "pause", "cpause1", "default", "animloop01", "animloop1"}) {
+        if (model->animationDuration(name) > 0.0f) {
+            mesh.animation = name;
+            break;
+        }
+    }
+    Vec3 at;
+    Mat3 turn{{{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}};
+    holder->nodeWorldAt(node, holderClip, 0.0f, at, turn);
+    std::map<std::string, std::vector<MdlMeshTriangle>> byTexture;
+    for (MdlMeshTriangle& triangle : model->placedPosedTriangles(mesh.animation, 0.0f, at + origin, turn)) {
+        byTexture[materialKey(triangle)].push_back(std::move(triangle));
+    }
+    for (const auto& [materialName, list] : byTexture) {
+        (void)materialName;
+        TextureBatch batch = makeMaterialBatch(scene, install, list.front());
+        batch.room = room;
+        batch.firstIndex = static_cast<std::uint32_t>(mesh.indices.size());
+        Vec3 sum{};
+        for (const MdlMeshTriangle& triangle : list) {
+            for (int i = 0; i < 3; ++i) {
+                sum = sum + triangle.v[i].position;
+                mesh.vertices.push_back(toSceneVertex(triangle.v[i], triangle));
+                mesh.indices.push_back(static_cast<std::uint32_t>(mesh.vertices.size() - 1));
+            }
+        }
+        batch.indexCount = static_cast<std::uint32_t>(mesh.indices.size()) - batch.firstIndex;
+        if (batch.indexCount != 0) {
+            batch.center = sum * (1.0f / static_cast<float>(batch.indexCount));
+            mesh.batches.push_back(batch);
+        }
+    }
+    if (!mesh.vertices.empty()) {
+        scene.entityMeshes.push_back(std::move(mesh));
+    }
+}
+
+void rebuildEntityWeapons(Scene& scene, Install& install, std::size_t entityIndex)
+{
+    if (entityIndex >= scene.entities.size()) {
+        return;
+    }
+    const std::uint32_t owner = static_cast<std::uint32_t>(entityIndex);
+    std::shared_ptr<Mdl> body;
+    // Mesh slots stay where they are: other systems keep indices into this list.
+    std::vector<std::size_t> freeSlots;
+    for (std::size_t i = 0; i < scene.entityMeshes.size(); ++i) {
+        EntityMesh& mesh = scene.entityMeshes[i];
+        if (mesh.entity != owner) {
+            continue;
+        }
+        if (mesh.attachModel) {
+            mesh.visible = false;
+            freeSlots.push_back(i);
+        } else if (!body) {
+            body = mesh.model;
+        }
+    }
+    if (!body) {
+        return;
+    }
+    const Entity& entity = scene.entities[entityIndex];
+    const std::string names[2] = {entity.weaponModel, entity.offhandModel};
+    const std::string attach[2] = {entity.weaponAttach, entity.offhandAttach};
+    for (int hand = 0; hand < 2; ++hand) {
+        if (names[hand].empty()) {
+            continue;
+        }
+        std::string error;
+        const std::shared_ptr<Mdl> weapon = loadModel(install, names[hand], error);
+        if (!weapon) {
+            scene.warnings.push_back(names[hand] + ": " + error);
+            continue;
+        }
+        const std::size_t before = scene.entityMeshes.size();
+        buildMesh(scene, install, owner, weapon, body, attach[hand]);
+        if (scene.entityMeshes.size() != before && !freeSlots.empty()) {
+            scene.entityMeshes[freeSlots.back()] = std::move(scene.entityMeshes.back());
+            scene.entityMeshes.pop_back();
+            freeSlots.pop_back();
+        }
+    }
+    // The head slot item, on the body mesh's head (006964c0).
+    std::shared_ptr<Mdl> head;
+    for (const EntityMesh& mesh : scene.entityMeshes) {
+        if (mesh.entity == owner && !mesh.attachModel && mesh.headModel) {
+            head = mesh.headModel;
+            break;
+        }
+    }
+    const std::size_t before = scene.entityMeshes.size();
+    attachHeadItem(scene, install, owner, body, head);
+    if (scene.entityMeshes.size() != before && !freeSlots.empty()) {
+        scene.entityMeshes[freeSlots.back()] = std::move(scene.entityMeshes.back());
+        scene.entityMeshes.pop_back();
+        freeSlots.pop_back();
+    }
+    ++scene.meshRevision;
 }
 
 } // namespace ke::kotor

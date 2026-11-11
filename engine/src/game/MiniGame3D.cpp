@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <SDL3/SDL_stdinc.h>
+
 #include <cstdio>
 #include <cstring>
 
@@ -145,30 +147,35 @@ bool sameLayers(const std::vector<kotor::MdlAnimLayer>& a, const std::vector<kot
     return true;
 }
 
-// Moller-Trumbore. Returns the segment parameter of the first hit, or a negative value.
+// retail 004ab750, the face test under every hit-mesh query (0043e930 -> part vt+0x1c 004429d0 ->
+// AABB part 004428f0 -> 00441570, or trimesh 00440ff0). It is one-sided: the segment must go from
+// the front of the face's plane (n.p + d >= 0) to its back (<= 0), then the crossing point must be
+// inside every edge, cross(v[i+1] - v[i], p - v[i]) . n >= -1e-5 (007440f8). Retail reads n and d from
+// the face record; every shipped minigame hit mesh (68 hitbump and hitbullet nodes) winds its faces
+// with that normal, pointing outwards, so the winding normal stands in for it. A closed hit box
+// therefore stops the path entering it and not the path leaving it.
 float segmentTriangle(Vec3 from, Vec3 to, const std::array<Vec3, 3>& face)
 {
-    const Vec3 direction = to - from;
-    const Vec3 edge1 = face[1] - face[0];
-    const Vec3 edge2 = face[2] - face[0];
-    const Vec3 p = kotor::cross(direction, edge2);
-    const float det = kotor::dot(edge1, p);
-    if (std::fabs(det) < 1e-9f) {
+    Vec3 normal = kotor::cross(face[1] - face[0], face[2] - face[0]);
+    const float area = kotor::length(normal);
+    if (area <= 0.0f) {
         return -1.0f;
     }
-    const float inverse = 1.0f / det;
-    const Vec3 s = from - face[0];
-    const float u = kotor::dot(s, p) * inverse;
-    if (u < 0.0f || u > 1.0f) {
+    normal = normal * (1.0f / area);
+    const float front = kotor::dot(normal, from - face[0]);
+    const float back = kotor::dot(normal, to - face[0]);
+    if (!(front >= 0.0f && back <= 0.0f && front != back)) {
         return -1.0f;
     }
-    const Vec3 q = kotor::cross(s, edge1);
-    const float v = kotor::dot(direction, q) * inverse;
-    if (v < 0.0f || u + v > 1.0f) {
-        return -1.0f;
+    const float t = front / (front - back);
+    const Vec3 point = from + (to - from) * t;
+    for (std::size_t i = 0; i < 3; ++i) {
+        const Vec3 edge = face[(i + 1) % 3] - face[i];
+        if (kotor::dot(kotor::cross(edge, point - face[i]), normal) < -1e-5f) {
+            return -1.0f;
+        }
     }
-    const float t = kotor::dot(edge2, q) * inverse;
-    return t >= 0.0f && t <= 1.0f ? t : -1.0f;
+    return t;
 }
 
 // First crossing of a world-space segment with `faces`, placed by `instance`.
@@ -215,15 +222,37 @@ std::string gunHookName(std::int32_t bankId)
 
 } // namespace
 
+float miniGameSegmentHit(Vec3 from, Vec3 to, const std::vector<std::array<Vec3, 3>>& faces)
+{
+    float best = -1.0f;
+    for (const std::array<Vec3, 3>& face : faces) {
+        const float t = segmentTriangle(from, to, face);
+        if (t >= 0.0f && (best < 0.0f || t < best)) {
+            best = t;
+        }
+    }
+    return best;
+}
+
 std::vector<kotor::MdlAnimLayer> MgInstance::layers() const
 {
     std::vector<kotor::MdlAnimLayer> out;
-    out.reserve(overlays.size() + 1);
+    out.reserve(settled.size() + overlays.size() + 1);
+    // Weights are not blended (Inferred, engine choice): an entry at weight 0 adds nothing, any
+    // other replaces the channels it animates. The minigame clips with no transition time (all of
+    // m17mg_camera's) only ever hold 0 or 1.
+    for (const MgAnim& kept : settled) {
+        if (kept.weight > 0.0f) {
+            out.push_back({kept.name, kept.time});
+        }
+    }
     if (!base.name.empty()) {
         out.push_back({base.name, base.time});
     }
     for (const MgAnim& overlay : overlays) {
-        out.push_back({overlay.name, overlay.time});
+        if (overlay.weight > 0.0f) {
+            out.push_back({overlay.name, overlay.time});
+        }
     }
     return out;
 }
@@ -267,6 +296,12 @@ std::unique_ptr<MgInstance> MiniGameWorld::instance(ScriptApi api, const std::st
         if (!built.vertices.empty()) {
             api.scene().entityMeshes.push_back(std::move(built));
             created->mesh = api.scene().entityMeshes.size() - 1;
+            created->emitterFirst = api.scene().emitters.size();
+            created->flareFirst = api.scene().flareLights.size();
+            kotor::addModelEmitters(api.scene(), api.install(), entry->model, UINT32_MAX, created->position,
+                                    created->rotation);
+            created->emitterCount = api.scene().emitters.size() - created->emitterFirst;
+            created->flareCount = api.scene().flareLights.size() - created->flareFirst;
         }
     }
     return created;
@@ -385,6 +420,10 @@ std::unique_ptr<MiniGameWorld> MiniGameWorld::create(ScriptApi api)
     world->acceleration = source.accelSeconds > 0.0f
         ? (source.maximumSpeed - std::max(source.minimumSpeed, 0.0f)) / source.accelSeconds
         : 0.0f;
+    // retail 00670543 -> 0066cfd0: Start_Offset sets both the clamp origin (+0x208) and the offset
+    // (+0x1c4). 0066cb40 clamps around that origin, so the M12ab turret's pitch range is 7 + 2..45
+    // and it rests at 9 degrees, as retail's orientation log shows.
+    world->origin = source.startOffset;
     world->offset = source.startOffset;
     world->tunnelPositive = source.tunnelPositive;
     world->tunnelNegative = source.tunnelNegative;
@@ -437,7 +476,7 @@ void MiniGameWorld::start(ScriptApi api)
         runSlot(api, *enemy, kotor::kMgOnCreate);
     }
     // retail 006714e0 / 006701c0: the idle clip, then the track at speed * 0.01.
-    const auto startFollower = [this](MgFollower& follower) {
+    const auto startFollower = [this, api](MgFollower& follower) {
         for (const std::unique_ptr<MgInstance>& created : follower.models) {
             if (created->base.name.empty()) {
                 playOn(*created, "Ready_01", 1.0f, 0);
@@ -451,6 +490,7 @@ void MiniGameWorld::start(ScriptApi api)
             created->previousPosition = created->position;
         }
         placeGuns(follower);
+        startEngineSound(api, follower);
     };
     startFollower(*player_);
     for (MgFollower* enemy : enemies_) {
@@ -513,15 +553,29 @@ bool MiniGameWorld::playOn(MgInstance& target, const std::string& animation, flo
     clip.loop = (flags & kOneShot) == 0;
     clip.duration = target.model->animationDurationAnyCase(animation);
     if ((flags & kOverlay) != 0) {
-        for (MgAnim& overlay : target.overlays) {
-            if (lowered(overlay.name) == lowered(animation)) {
-                overlay = clip;
-                pending_.push_back({&target, "start" + lowered(animation)});
-                return true;
+        // retail 00485bd0: a clip already in the list is taken out (00445080) with its time kept,
+        // then put back at the top (00445020), so a re-played overlay wins over the others; the
+        // swoop timer's digits rely on that. An overlay returns before the `start` notification.
+        // A new entry starts at weight 0 with the clip's transition time; one found keeps its time
+        // and weight and loses its done mark.
+        const std::string key = lowered(animation);
+        clip.weight = 0.0f;
+        for (const kotor::MdlAnimationInfo& info : target.model->animations()) {
+            if (lowered(info.name) == key) {
+                clip.transition = info.transition;
+                break;
             }
         }
+        for (auto it = target.overlays.begin(); it != target.overlays.end(); ++it) {
+            if (lowered(it->name) == key) {
+                clip.time = it->time;
+                clip.weight = it->weight;
+                target.overlays.erase(it);
+                break;
+            }
+        }
+        std::erase_if(target.settled, [&key](const MgAnim& kept) { return lowered(kept.name) == key; });
         target.overlays.push_back(clip);
-        pending_.push_back({&target, "start" + lowered(animation)});
         return true;
     }
     if ((flags & kQueue) != 0 && !target.base.name.empty() && !target.holding) {
@@ -533,6 +587,22 @@ bool MiniGameWorld::playOn(MgInstance& target, const std::string& animation, flo
         target.base.rate = rate;
         target.base.loop = clip.loop;
         return true;
+    }
+    if (!target.base.name.empty() && lowered(target.base.name) != lowered(animation)) {
+        // The replaced clip's last blend (00483d80) stays written into the nodes it animated:
+        // retail's HealthNN hides accumulate across clips (00485bd0 / 00486670), so keep it
+        // beneath the new base like an ended overlay.
+        const std::string key = lowered(target.base.name);
+        std::erase_if(target.settled, [&key](const MgAnim& kept) { return lowered(kept.name) == key; });
+        MgAnim kept = target.base;
+        kept.weight = 1.0f;
+        target.settled.push_back(kept);
+        constexpr std::size_t kSettledCap = 16;
+        if (target.settled.size() > kSettledCap) {
+            target.settled.erase(target.settled.begin(),
+                                 target.settled.begin() +
+                                     static_cast<std::ptrdiff_t>(target.settled.size() - kSettledCap));
+        }
     }
     target.base = clip;
     target.queue.clear();
@@ -573,7 +643,7 @@ void MiniGameWorld::advance(MgInstance& target, float dt)
     if (!target.alive) {
         return;
     }
-    const auto advanceClip = [&](MgAnim& clip) -> bool {
+    const auto advanceClip = [&](MgAnim& clip, bool notifyDone = true) -> bool {
         const float previous = clip.time;
         clip.time += dt * clip.rate;
         const float duration = clip.duration;
@@ -603,7 +673,9 @@ void MiniGameWorld::advance(MgInstance& target, float dt)
             return true;
         }
         clip.time = duration;
-        pending_.push_back({&target, "done" + lowered(clip.name)});
+        if (notifyDone) {
+            pending_.push_back({&target, "done" + lowered(clip.name)});
+        }
         return true;
     };
 
@@ -619,13 +691,34 @@ void MiniGameWorld::advance(MgInstance& target, float dt)
             target.holding = true;
         }
     }
+    // retail 00486670, per entry: a one-shot at its end fades its weight out (2 dt / transition, or
+    // by 2 with no transition: 00741be0), and at or under 0 is marked done with the weight back at 1
+    // when it has no transition; a marked entry is freed on the next update with its `done`
+    // notification. Below 1 and not marked, the weight fades in (dt / transition, else +1, 0073d764).
+    // A replay (00485bd0) clears the mark, so a one-shot played every heartbeat never leaves.
     for (std::size_t i = 0; i < target.overlays.size();) {
-        const bool finished = advanceClip(target.overlays[i]);
-        if (finished && !target.overlays[i].loop) {
+        MgAnim& clip = target.overlays[i];
+        if (!clip.loop && clip.done) {
+            pending_.push_back({&target, "done" + lowered(clip.name)});
+            // The entry goes, its last frame stays in the nodes.
+            const std::string key = lowered(clip.name);
+            std::erase_if(target.settled, [&key](const MgAnim& kept) { return lowered(kept.name) == key; });
+            target.settled.push_back(clip);
             target.overlays.erase(target.overlays.begin() + static_cast<std::ptrdiff_t>(i));
-        } else {
-            ++i;
+            continue;
         }
+        const bool atEnd = advanceClip(clip, false) && !clip.loop;
+        if (atEnd) {
+            clip.weight -= clip.transition > 0.0f ? 2.0f * dt / clip.transition : 2.0f;
+            if (clip.weight < 0.0f) {
+                clip.weight = clip.transition > 0.0f ? 0.0f : 1.0f;
+                clip.done = true;
+            }
+        }
+        if (!clip.done && clip.weight < 1.0f) {
+            clip.weight = std::min(1.0f, clip.weight + (clip.transition > 0.0f ? dt / clip.transition : 1.0f));
+        }
+        ++i;
     }
 }
 
@@ -703,13 +796,61 @@ bool MiniGameWorld::runSlot(ScriptApi api, MgObject& target, std::size_t slot)
     return true;
 }
 
-void MiniGameWorld::playSound(ScriptApi api, const std::string& resref, const kotor::Vec3* where)
+// 0066e900 / 006701c0: the Engine sound is a looping 3D source at the follower, group 23 for the
+// player and 24 (MiniGame_Enemy, full to 100 m, silent past 300 m) for an enemy, played by Go and
+// kept at the follower (CSWTrackFollower::GetPosition) each update.
+void MiniGameWorld::startEngineSound(ScriptApi api, MgFollower& target)
+{
+    if (target.engineSound.empty() || target.engineVoice >= 0 || target.models.empty()) {
+        return;
+    }
+    if (AudioSystem* audio = api.session.audioOrNull()) {
+        const Vec3 at = target.models.front()->position;
+        AudioSystem::GroupSound request;
+        request.group = target.isPlayer ? AudioSystem::kGroupDefault : AudioSystem::kGroupMiniGameEnemy;
+        request.position = &at;
+        request.sourceVolume127 = target.soundVolume[0];
+        request.loop = true;
+        target.engineVoice = audio->playGroupSound(target.engineSound, request);
+        if (SDL_getenv("KOTOR_DEBUG_MG_SOUND") != nullptr) {
+            std::fprintf(stderr, "[mg-sound] engine %s %s voice %d at %.1f %.1f %.1f\n", target.name.c_str(),
+                         target.engineSound.c_str(), target.engineVoice, at.x, at.y, at.z);
+        }
+    }
+}
+
+void MiniGameWorld::stopEngineSound(ScriptApi api, MgFollower& target)
+{
+    if (target.engineVoice < 0) {
+        return;
+    }
+    if (AudioSystem* audio = api.session.audioOrNull()) {
+        audio->mixer().stopVoice(target.engineVoice);
+    }
+    target.engineVoice = -1;
+}
+
+void MiniGameWorld::playSound(ScriptApi api, const std::string& resref, const kotor::Vec3* where, int group)
 {
     if (resref.empty()) {
         return;
     }
     if (AudioSystem* audio = api.session.audioOrNull()) {
-        audio->playEffect(resref, where);
+        bool played = false;
+        if (group >= 0) {
+            // A 3D source in a priority group at volume 127 (RETAIL row 38: mgs_sith_fire group 24,
+            // 100/300 m, from 006db3d0; mgs_ebon_hit group 23, 10/30 m, from 0066c190).
+            AudioSystem::GroupSound request;
+            request.group = group;
+            request.position = where;
+            played = audio->playGroupSound(resref, request) >= 0;
+        } else {
+            played = audio->playEffect(resref, where);
+        }
+        if (SDL_getenv("KOTOR_DEBUG_MG_SOUND") != nullptr) {
+            std::fprintf(stderr, "[mg-sound] effect %s played %d at %.1f %.1f %.1f\n", resref.c_str(), played ? 1 : 0,
+                         where ? where->x : 0.0f, where ? where->y : 0.0f, where ? where->z : 0.0f);
+        }
     }
 }
 
@@ -727,7 +868,10 @@ void MiniGameWorld::onBulletHit(ScriptApi api, MgObject& target, bool fromDefaul
             adjustHitPoints(api, hit, -target.lastBulletDamage);
         }
     }
-    playSound(api, target.lastBulletSound, &target.lastBulletPoint);
+    // 0066c25c..0066c2b4: 3D at the hit point (+0x54), group 23 when the hit object is the
+    // player (vcall +0x18), else 24.
+    const bool hitPlayer = target.isFollower && static_cast<MgFollower&>(target).isPlayer;
+    playSound(api, target.lastBulletSound, &target.lastBulletPoint, hitPlayer ? 23 : 24);
 }
 
 // retail 0066e8e0
@@ -763,8 +907,21 @@ void MiniGameWorld::onDeath(ScriptApi api, MgFollower& target, bool fromDefault)
     if (!fromDefault && runSlot(api, target, kotor::kMgOnDeath)) {
         return;
     }
-    Vec3 where = target.models.empty() ? Vec3{} : target.models.front()->position;
-    playSound(api, target.deathSound, &where);
+    // 0066e2a0: Stop (the engine loop with it), then PlayOneShotSound(Death, group 0x18 - isPlayer,
+    // no delay, volume 100) 005d7550: a 2D one-shot in group 24 (MiniGame_Enemy) or 23 (Default).
+    stopEngineSound(api, target);
+    if (!target.deathSound.empty()) {
+        if (AudioSystem* audio = api.session.audioOrNull()) {
+            AudioSystem::GroupSound request;
+            request.group = target.isPlayer ? AudioSystem::kGroupDefault : AudioSystem::kGroupMiniGameEnemy;
+            request.sourceVolume127 = 100;
+            const int voice = audio->playGroupSound(target.deathSound, request);
+            if (SDL_getenv("KOTOR_DEBUG_MG_SOUND") != nullptr) {
+                std::fprintf(stderr, "[mg-sound] death %s %s voice %d\n", target.name.c_str(),
+                             target.deathSound.c_str(), voice);
+            }
+        }
+    }
     for (const std::unique_ptr<MgInstance>& created : target.models) {
         if (!created->alive) {
             continue;
@@ -1005,7 +1162,13 @@ void MiniGameWorld::fireGun(ScriptApi api, MgGun& gun)
     gun.cooldown = bank.rateOfFire;
     playOn(*gun.instance, "fire", 1.0f, kOneShot);
     playOn(*gun.instance, "ready", 1.0f, kQueue);
-    playSound(api, bank.fireSound, &gun.instance->position);
+    // The player's bank (006daec0, 006daf3c): PlayOneShotSound 2D in group 23. An enemy's
+    // (006db3d0, 006db4c7): the 3D call 005d5e10 at the gun in group 24.
+    if (gun.follower->isPlayer) {
+        playSound(api, bank.fireSound, nullptr, 23);
+    } else {
+        playSound(api, bank.fireSound, &gun.instance->position, 24);
+    }
 }
 
 // retail 006db180: within Sensing_Radius, aim within the spreads, clamped to them; the
@@ -1057,7 +1220,7 @@ void MiniGameWorld::gunEvent(ScriptApi api, MgGun& gun, const std::string& name)
     }
 }
 
-void MiniGameWorld::spawnBullet(ScriptApi, MgGun& gun, int hookIndex)
+void MiniGameWorld::spawnBullet(ScriptApi api, MgGun& gun, int hookIndex)
 {
     MgFollower& owner = *gun.follower;
     const kotor::MgGunBankData& bank = owner.banks[gun.bank];
@@ -1105,6 +1268,22 @@ void MiniGameWorld::spawnBullet(ScriptApi, MgGun& gun, int hookIndex)
     if (!pool.empty()) {
         shot.mesh = pool.back();
         pool.pop_back();
+        if (!poolEmitters_.contains(shot.mesh)) {
+            // The bullet's own emitters (plume, inner, outer; their birth rates are keyed in its
+            // explode clip: the fire burst where a shot hits). Made with the first shot that uses
+            // this mesh, as retail builds the bullet's model when it fires, so their textures are
+            // not loaded with the module (kotor_p6_content M12ab count).
+            const std::size_t first = api.scene().emitters.size();
+            kotor::addModelEmitters(api.scene(), api.install(), entry->second.model, UINT32_MAX, {}, identityMat());
+            for (std::size_t e = first; e < api.scene().emitters.size(); ++e) {
+                api.scene().emitters[e].hidden = true;
+            }
+            poolEmitters_[shot.mesh] = {first, api.scene().emitters.size() - first};
+        }
+        if (const auto found = poolEmitters_.find(shot.mesh); found != poolEmitters_.end()) {
+            shot.emitterFirst = found->second.first;
+            shot.emitterCount = found->second.second;
+        }
     }
     playOn(shot, "ready", 1.0f, 0);
     ++bulletsFired_;
@@ -1274,11 +1453,29 @@ void MiniGameWorld::updateFollower(ScriptApi api, MgFollower& target, float dt)
     placeFollower(target);
     if (!target.models.empty()) {
         target.velocity = dt > 0.0f ? (target.models.front()->position - before) * (1.0f / dt) : Vec3{};
+        if (target.engineVoice >= 0) {
+            if (AudioSystem* audio = api.session.audioOrNull()) {
+                audio->mixer().setVoicePosition(target.engineVoice, target.models.front()->position);
+            }
+        }
     }
     for (const std::unique_ptr<MgInstance>& created : target.models) {
         advance(*created, dt);
     }
     placeGuns(target);
+    // Diagnostic (KOTOR_DEBUG_MG_ENEMY=1): each enemy's place, facing and clips every frame.
+    static const bool debugEnemies = SDL_getenv("KOTOR_DEBUG_MG_ENEMY") != nullptr;
+    if (debugEnemies && !target.isPlayer && !target.removed && !target.models.empty()) {
+        const MgInstance& shown = *target.models.front();
+        std::fprintf(stderr,
+                     "[mg-enemy] %s pos %.2f %.2f %.2f fwd %.3f %.3f %.3f track %s %.3f/%.3f rate %.3f model %s %.3f\n",
+                     target.name.c_str(), shown.position.x, shown.position.y, shown.position.z,
+                     shown.rotation.m[0][1], shown.rotation.m[1][1], shown.rotation.m[2][1],
+                     target.track ? target.track->base.name.c_str() : "-",
+                     target.track ? target.track->base.time : 0.0f,
+                     target.track ? target.track->base.duration : 0.0f,
+                     target.track ? target.track->base.rate : 0.0f, shown.base.name.c_str(), shown.base.time);
+    }
     for (const std::unique_ptr<MgGun>& gun : target.guns) {
         advance(*gun->instance, dt);
         if (!target.isPlayer && !target.removed) {
@@ -1370,6 +1567,37 @@ void MiniGameWorld::tick(ScriptApi api, float dt)
 std::size_t MiniGameWorld::bake(kotor::Scene& scene)
 {
     std::size_t changed = 0;
+    // Diagnostic: the lights the minigame's meshes can be lit by (KOTOR_DEBUG_MG_LIGHT=1).
+    static const bool debugLights = SDL_getenv("KOTOR_DEBUG_MG_LIGHT") != nullptr;
+    if (debugLights && !lightsLogged_) {
+        lightsLogged_ = true;
+        std::fprintf(stderr, "[mg-light] scene lights %zu ambient %.3f %.3f %.3f dyn %.3f %.3f %.3f\n",
+                     scene.lights.size(), scene.ambient.x, scene.ambient.y, scene.ambient.z,
+                     scene.dynamicAmbient.x, scene.dynamicAmbient.y, scene.dynamicAmbient.z);
+        for (const kotor::Scene::WorldLight& light : scene.lights) {
+            std::fprintf(stderr, "[mg-light]  at %.2f %.2f %.2f colour %.3f %.3f %.3f r %.1f prio %d type %d amb %d\n",
+                         light.position.x, light.position.y, light.position.z, light.colour.x, light.colour.y,
+                         light.colour.z, light.radius, light.priority, light.dynamicType, light.ambientOnly ? 1 : 0);
+        }
+        if (player_ && !player_->models.empty()) {
+            const kotor::Vec3 at = player_->models.front()->position;
+            const kotor::SampledLight lit = kotor::sampleSceneLight(scene, at);
+            std::fprintf(stderr, "[mg-light] at player %.2f %.2f %.2f ambient %.3f %.3f %.3f\n", at.x, at.y, at.z,
+                         lit.ambient.x, lit.ambient.y, lit.ambient.z);
+            for (const auto& bound : lit.lights) {
+                std::fprintf(stderr, "[mg-light]  bound %.2f %.2f %.2f colour %.3f %.3f %.3f q %g\n", bound.position.x,
+                             bound.position.y, bound.position.z, bound.colour.x, bound.colour.y, bound.colour.z,
+                             bound.quadratic);
+            }
+        }
+        std::fprintf(stderr, "[mg-light] flares %zu\n", scene.flareLights.size());
+    }
+    // The area's room lights keep their flares: RETAIL row 34 (m12ab) draws AuroraLight02's sun
+    // flare (00457ec0, ray test 0) at its scriptloop04 place (kotor::poseRoomScriptLights). Every
+    // other flare shows only with a live model below.
+    for (kotor::FlareLight& flare : scene.flareLights) {
+        flare.hidden = flare.room < 0;
+    }
     const auto bakeOne = [&](MgInstance& target) {
         if (target.mesh == kNoMesh || target.mesh >= scene.entityMeshes.size()) {
             return;
@@ -1380,16 +1608,42 @@ std::size_t MiniGameWorld::bake(kotor::Scene& scene)
             mesh.visible = shown;
             ++changed;
         }
+        // A model out of the game, such as an unused explosion of a pool, keeps its lights and
+        // emitters out as well. Inferred: retail frames of m12ab show no flare from them.
+        for (std::size_t i = 0; i < target.emitterCount; ++i) {
+            scene.emitters[target.emitterFirst + i].hidden = !shown;
+        }
+        for (std::size_t i = 0; i < target.flareCount; ++i) {
+            scene.flareLights[target.flareFirst + i].hidden = !shown;
+        }
         if (!target.alive) {
             return;
         }
         std::vector<kotor::MdlAnimLayer> layers = target.layers();
+        // The model's emitters key their rates by its clip: MGB_* bullets birth their fire only in
+        // `explode` (plume, inner, outer birthrate keys), played on a hit (0066c190 path).
+        for (std::size_t i = 0; i < target.emitterCount; ++i) {
+            kotor::EmitterInstance& emitter = scene.emitters[target.emitterFirst + i];
+            emitter.ownerDriven = true;
+            emitter.ownerClip = layers.empty() ? std::string{} : layers.back().animation;
+            emitter.ownerTime = layers.empty() ? 0.0f : layers.back().time;
+        }
         if (target.baked && target.bakedPosition.x == target.position.x
             && target.bakedPosition.y == target.position.y && target.bakedPosition.z == target.position.z
             && sameMat(target.bakedRotation, target.rotation) && sameLayers(target.bakedLayers, layers)) {
             return;
         }
         kotor::bakeWorldEntityMesh(mesh, target.model, layers, target.rotation, target.position);
+        for (std::size_t i = 0; i < target.emitterCount; ++i) {
+            kotor::EmitterInstance& emitter = scene.emitters[target.emitterFirst + i];
+            emitter.origin = target.position;
+            emitter.orientation = target.rotation;
+        }
+        for (std::size_t i = 0; i < target.flareCount; ++i) {
+            kotor::FlareLight& flare = scene.flareLights[target.flareFirst + i];
+            flare.origin = target.position;
+            flare.orientation = target.rotation;
+        }
         target.bakedLayers = std::move(layers);
         target.bakedPosition = target.position;
         target.bakedRotation = target.rotation;
@@ -1430,6 +1684,11 @@ std::size_t MiniGameWorld::bake(kotor::Scene& scene)
             if (index < scene.entityMeshes.size() && scene.entityMeshes[index].visible) {
                 scene.entityMeshes[index].visible = false;
                 ++changed;
+            }
+            if (const auto found = poolEmitters_.find(index); found != poolEmitters_.end()) {
+                for (std::size_t e = 0; e < found->second.second; ++e) {
+                    scene.emitters[found->second.first + e].hidden = true;
+                }
             }
         }
     }

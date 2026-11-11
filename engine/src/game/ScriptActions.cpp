@@ -26,9 +26,11 @@ constexpr int kInstantActionsPerTick = 32;
 // Stops at this gap from the followed creature when the script names no distance
 // (ActionFollowLeader). No retail value was recovered.
 constexpr float kDefaultFollowDistance = 2.0f;
-// How far one leg of ActionRandomWalk wanders. No retail value was recovered.
-constexpr float kRandomWalkRadius = 5.0f;
-constexpr float kRandomWalkPauseMax = 3.0f;
+// AIActionRandomWalk 00515ac0: a leg ends at the queued centre plus rand()%15 - 7 (0x747c6c) metres
+// on x and y; each leg waits 3 s first (15 s at AI level 0, which this engine does not model).
+constexpr int kRandomWalkSpread = 15;
+constexpr float kRandomWalkOffset = 7.0f;
+constexpr float kRandomWalkWait = 3.0f;
 
 // nwscript ACTION_* constants.
 constexpr std::int64_t kActionMoveToPoint = 0;
@@ -70,7 +72,13 @@ Progress walkAction(ScriptApi api, std::uint32_t self, ActorAction& action, koto
     if (action.force) {
         action.remaining -= dt;
     }
-    action.stuck = result == ActorStep::Blocked ? action.stuck + dt : 0.0f;
+    // Retail 00516630 returns "done" when it aborts a walk, and the walk action ends with it; a forced move still
+    // runs to its timeout or its jump.
+    if (result == ActorStep::Aborted && !action.force) {
+        api.log("actor move aborted by the walk step");
+        return Progress::Finished;
+    }
+    action.stuck = result == ActorStep::Blocked || result == ActorStep::Aborted ? action.stuck + dt : 0.0f;
     if (action.force && (action.remaining <= 0.0f || action.stuck >= kForceStuckJump)) {
         jumpActor(api, self, target, action.facingDegrees);
         return Progress::Finished;
@@ -180,15 +188,22 @@ bool runFrontAction(ScriptApi api, std::uint32_t self, float dt)
             return true;
         }
         kotor::Entity& door = api.scene().entities[index];
-        // Lock state does not refuse a scripted open: the retail handler was not
-        // traced that far and shipped scripts unlock through SetLocked, which
-        // belongs to the world-state family.
-        if (taken.kind == ActorActionKind::OpenDoor && door.kind == kotor::EntityKind::Door) {
+        // A door opening itself from its OnFailToOpen passes its own lock: retail 0058bbd5 looks in the
+        // door's queue for action 0x14 aimed at itself and then skips the locked feedback, and
+        // k_ptar_alertsith and k_ptar_alertboun open their plot doors no other way.
+        const bool opensItself = taken.kind == ActorActionKind::OpenDoor && door.kind == kotor::EntityKind::Door
+            && api.session.objectForEntityIndex(index) == self;
+        if (taken.kind == ActorActionKind::OpenDoor && door.kind == kotor::EntityKind::Door && !opensItself) {
             // World-state family: a locked door opens only with its key, else OnFailToOpen.
             api.session.openDoor(index, self);
         } else if (taken.kind == ActorActionKind::OpenDoor) {
             door.open = true;
-            api.playAnimation(index, "opening1", false);
+            // A door that opens itself is its own opener: CSWSDoor::OpenDoor 00589c70 gets a zero offset, which
+            // is not above 0.0, so the open state is 2 and the clip opening2 (retail row 32: end_door01).
+            door.openState = 2;
+            if (!api.playAnimation(index, "opening2", false)) {
+                api.playAnimation(index, "opening1", false);
+            }
             doorHook(api, index, "OnOpen", "lastOpenedBy", self);
         } else if (taken.kind == ActorActionKind::CloseDoor) {
             door.open = false;
@@ -210,22 +225,28 @@ bool runFrontAction(ScriptApi api, std::uint32_t self, float dt)
             if (api.dialogueActive()) {
                 return false;
             }
-            if (!action.ignoreRange && api.world().get(action.object) != nullptr) {
+            // A trigger can't walk or own a line. k_ptar_sithtalk runs this on one, naming a
+            // placeable: retail runs tar_m02aa's opening with that placeable as owner (node
+            // scripts logged on it at 005d45d0). Inferred rule: only a creature speaks for itself.
+            const std::size_t selfEntity = api.entityFor(self);
+            const bool selfIsTrigger = selfEntity != static_cast<std::size_t>(-1)
+                && api.session.scene().entities[selfEntity].kind == kotor::EntityKind::Trigger;
+            if (!selfIsTrigger && !action.ignoreRange && api.world().get(action.object) != nullptr) {
                 Progress progress = Progress::Running;
                 if (!reachObject(api, self, action, kConversationRange, dt, progress)) {
                     return false;
                 }
             }
-            action.started = true;
             const std::string resref = action.text;
             const std::uint32_t target = action.object;
-            // Node scripts may touch this queue, so `action` is not used after.
-            const std::uint32_t owner = self == api.pc() ? target : self;
+            const std::uint32_t owner = (self == api.pc() || selfIsTrigger) ? target : self;
+            // Retail CSWSObject::AIActionDialogObject (0057a470) returns 2 (complete, 00745dc0) once
+            // it has posted the start: the actions queued behind it (k_pend_traskdl40's pause, walk
+            // and resume on end_trask01's first node) run while the conversation is up. Popped
+            // first, since node scripts may clear or extend this queue.
+            pop();
             api.startConversation(owner, resref);
-            return false;
-        }
-        if (api.dialogueActive()) {
-            return false;
+            return true;
         }
         pop();
         return true;
@@ -243,7 +264,13 @@ bool runFrontAction(ScriptApi api, std::uint32_t self, float dt)
         if (!action.started) {
             action.started = true;
             const std::string name = api.animationName(action.animation);
-            if (!name.empty() && index != static_cast<std::size_t>(-1)) {
+            bool placeableLoop = false;
+            const char* placeable = index != static_cast<std::size_t>(-1)
+                    && api.session.scene().entities[index].kind == kotor::EntityKind::Placeable
+                ? kotor::placeableScriptClip(action.animation, placeableLoop) : nullptr;
+            if (placeable != nullptr) {
+                api.playAnimation(index, placeable, placeableLoop);
+            } else if (!name.empty() && index != static_cast<std::size_t>(-1)) {
                 api.playAnimation(index, name, api.animationLooping(action.animation));
             }
             if (action.remaining <= 0.0f) {
@@ -263,25 +290,30 @@ bool runFrontAction(ScriptApi api, std::uint32_t self, float dt)
         return true;
     }
     case ActorActionKind::RandomWalk: {
-        // retail 0052d440 queues action 0x2d, which only ClearAllActions ends. The leg
-        // length and the pause between legs are this engine's: see the constants.
+        // retail 0052d440 queues action 0x2d around the creature's position then; only another
+        // command ends it. 00515ac0 re-queues itself with a Wait (3 s) and a move to a point in a
+        // 15 m square around that centre. The walk falls back as the walkmesh path (004bcb70)
+        // fails: up to 20 tries, 0.75 of the length each (0x73e31c), turned when under 0.3 of it
+        // (0x746d38), given up under 1 m (0x73d764); here the walker's own stop rule stands in.
         if (action.remaining > 0.0f) {
             action.remaining -= dt;
             return false;
         }
         if (!action.started) {
+            if (!action.ignoreRange) {
+                action.ignoreRange = true; // The first leg waits too.
+                action.remaining = kRandomWalkWait;
+                return false;
+            }
             action.started = true;
-            const float angle = static_cast<float>(api.world().rng.randint(0, 359)) / kDegrees;
-            const float reach = kRandomWalkRadius
-                * static_cast<float>(api.world().rng.randint(20, 100)) / 100.0f;
-            const kotor::Vec3 from = api.position(self);
-            action.point = {from.x + std::cos(angle) * reach, from.y + std::sin(angle) * reach, from.z};
+            const float dx = static_cast<float>(api.world().rng.randint(0, kRandomWalkSpread - 1)) - kRandomWalkOffset;
+            const float dy = static_cast<float>(api.world().rng.randint(0, kRandomWalkSpread - 1)) - kRandomWalkOffset;
+            action.point = {action.centre.x + dx, action.centre.y + dy, action.centre.z};
             action.stuck = 0.0f;
         }
         if (walkAction(api, self, action, action.point, kArrivalTolerance, dt) == Progress::Finished) {
             action.started = false;
-            action.remaining = kRandomWalkPauseMax
-                * static_cast<float>(api.world().rng.randint(0, 100)) / 100.0f;
+            action.remaining = kRandomWalkWait;
         }
         return false;
     }
@@ -339,6 +371,7 @@ bool runFrontAction(ScriptApi api, std::uint32_t self, float dt)
         PresentationState& shown = api.sim().presentation;
         shown.lastBarkStrref = taken.animation;
         shown.lastBarkSpeaker = self;
+        ++shown.barkSerial;
         api.log("bark strref " + std::to_string(taken.animation));
         return true;
     }
@@ -676,6 +709,7 @@ Cells actionRandomWalk(ActionCall& call)
 {
     ActorAction action;
     action.kind = ActorActionKind::RandomWalk;
+    action.centre = call.api().position(call.self());
     call.api().enqueue(call.self(), std::move(action));
     return ActionCall::none();
 }

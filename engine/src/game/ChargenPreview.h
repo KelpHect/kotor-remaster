@@ -18,6 +18,7 @@
 #include "render/Backend.h"
 
 #include <array>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -44,6 +45,23 @@ public:
     void showClassSelection(const Rules& rules);
     // portcust: one creature, positioned so the head fills the view.
     void showHead(std::int32_t appearance, std::int32_t gender);
+    // An in-game 3D frame (party selection LBL_3D, character sheet LBL_3DCHAR): one body in the
+    // class selection's framing.
+    void showBody(std::int32_t appearance, kotor::BodyVariant body = {});
+    // The character sheet (retail 006afda0, 006100f0): the body inside charrec_light, whose emitters and camera
+    // follow the alignment (0 dark .. 100 light).
+    // `who` (a tag or name, may be empty) picks the companion hooks: t3m4, hk47 and zaalbar have their own.
+    void showSheet(std::int32_t appearance, kotor::BodyVariant body, std::int32_t alignment, const std::string& who = {});
+    // The galaxy map (retail 00695180, 006933a0): 3D_PlanetDisplay plays `galaxy`'s default clip,
+    // 3D_PlanetModel the planet's zoomin once, then rotate. Each camera rides its model's animated
+    // camerahook. An empty name leaves the planet frame without a model.
+    void showGalaxy(const std::string& planetModel);
+
+    // The body the models wear, and the character sheet's camera as the room's keyed hook places it (for gates).
+    kotor::BodyVariant bodyVariant() const { return bodyVariant_; }
+    const SceneCamera& sheetCamera() const { return sheetCamera_; }
+    const std::string& sheetHook() const { return sheetHook_; }
+    float sheetRaise() const { return sheetRaise_; }
 
     // Advances the idle clip by dt and re-poses every mesh. True when anything moved.
     bool advance(float dt);
@@ -65,6 +83,7 @@ private:
     int spawn(std::int32_t appearance, kotor::Vec3 position);
     void startIdle();
     SceneCamera cameraFrom(const char* rigModel, const char* hook, std::string& error) const;
+    SceneCamera hookCamera(int entity) const;
 
     kotor::Install& install_;
     kotor::Scene scene_;
@@ -75,6 +94,23 @@ private:
     SceneCamera headCameraFemale_;
     std::array<int, 6> slotEntity_{{-1, -1, -1, -1, -1, -1}};
     std::array<std::int32_t, 6> slotAppearance_{{-1, -1, -1, -1, -1, -1}};
+    kotor::BodyVariant bodyVariant_;
+    int galaxyEntity_ = -1;
+    int sheetEntity_ = -1;
+    // The rig room of classsel and portcust (006dc3c0 cgbody_light, 006f9430 cghead_light): loaded into the scene
+    // with its default clip, so its mist emitters fill the box behind the body or head as in retail.
+    int roomEntity_ = -1;
+    SceneCamera roomCamera_;
+    void placeRoom(const char* model, const SceneCamera& camera);
+    std::string sheetClip_;
+    SceneCamera sheetCamera_;
+    std::shared_ptr<kotor::Mdl> sheetRig_;
+    float sheetRaise_ = 0.0f; // the body's own camerahook height (006974d0), added to the room hook
+    std::string sheetHook_ = "camerahook";
+    float sheetTime_ = 0.0f;
+    SceneCamera sheetHookCamera() const;
+    int planetEntity_ = -1;
+    std::string planetModel_;
     int headEntity_ = -1;
     std::int32_t headAppearance_ = -1;
     std::int32_t headGender_ = 0;

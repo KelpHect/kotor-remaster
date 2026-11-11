@@ -62,9 +62,14 @@ def install_sha(install: Path) -> str:
     return digest.hexdigest()
 
 
-def run_one(exe: Path, install: Path, module: str) -> dict:
+def run_one(exe: Path, install: Path, module: str, saves_dir: str | None = None,
+            settings_file: str | None = None) -> dict:
     command = [str(exe), "--install", str(install), "--module", module,
                "--content-stats", "--null", "--headless"]
+    if saves_dir:
+        command += ["--saves-dir", saves_dir]
+    if settings_file:
+        command += ["--settings-file", settings_file]
     try:
         result = subprocess.run(command, capture_output=True, text=True,
                                 timeout=120, check=False)
@@ -119,6 +124,10 @@ def validate(rows: dict[str, dict], baseline: dict, install: Path) -> list[str]:
         if not row.get("area"):
             failures.append(f"{module}: empty area")
         for key in ("rooms", "vertices", "textures", "entities"):
+            # M12ab's rooms are all moved by scriptloop clips (retail CSWCRoom::PlayAnimation
+            # 00646180), so its geometry is in room entity meshes, not the static vertices.
+            if key == "vertices" and int(row.get("entity_meshes") or 0) > 0 and int(row.get("rooms") or 0) > 0                     and int(row.get("batches") or 0) == 0:
+                continue
             if int(row.get(key) or 0) < 1:
                 failures.append(f"{module}: {key}=0")
         if int(row.get("warnings") or 0) != 0:
@@ -150,6 +159,8 @@ def main(argv=None) -> int:
     parser.add_argument("--accept-baseline-change", action="store_true",
                         help="required to overwrite an existing baseline")
     parser.add_argument("--jobs", type=int, default=6)
+    parser.add_argument("--saves-dir", help="passed to every engine run, so none touches the user's saves")
+    parser.add_argument("--settings-file", help="passed to every engine run, so none touches the user's settings")
     args = parser.parse_args(argv)
     exe = Path(args.exe).resolve()
     install = Path(args.install).resolve()
@@ -166,7 +177,7 @@ def main(argv=None) -> int:
     print(f"p6 content: {len(modules)} modules from {install}", flush=True)
     rows: dict[str, dict] = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-        futures = {pool.submit(run_one, exe, install, module): module
+        futures = {pool.submit(run_one, exe, install, module, args.saves_dir, args.settings_file): module
                    for module in modules}
         for done, future in enumerate(concurrent.futures.as_completed(futures), 1):
             module = futures[future]

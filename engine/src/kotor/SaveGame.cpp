@@ -266,10 +266,11 @@ std::string objectTag(const Gff& gff, std::uint32_t structure)
     return tag;
 }
 
-std::vector<SavedInventoryItem> readInventory(const Gff& gff)
+// One item list as the game stores it. `worn`: an Equip_ItemList, whose struct type is the slot mask
+// (the lowest bit is kept) and whose item resref is EquippedRes (a retail save writes no InventoryRes there).
+std::vector<SavedInventoryItem> readItems(const Gff& gff, const GffField* itemList, bool worn)
 {
     std::vector<SavedInventoryItem> items;
-    const GffField* itemList = field(gff, gff.rootIndex(), "ItemList");
     if (itemList == nullptr) {
         return items;
     }
@@ -280,7 +281,21 @@ std::vector<SavedInventoryItem> readInventory(const Gff& gff)
             structure = gff.structIndex(*nested);
         }
         SavedInventoryItem item;
-        item.resref = text(gff, structure, "InventoryRes");
+        if (worn) {
+            item.equipped = true;
+            item.slot = -1;
+            const std::uint32_t mask = gff.structure(raw).typeId;
+            for (std::int32_t bit = 0; bit < 32 && mask != 0; ++bit) {
+                if ((mask & (1u << bit)) != 0) {
+                    item.slot = bit;
+                    break;
+                }
+            }
+            item.resref = text(gff, structure, "EquippedRes");
+        }
+        if (item.resref.empty()) {
+            item.resref = text(gff, structure, "InventoryRes");
+        }
         if (item.resref.empty()) {
             item.resref = text(gff, structure, "InventoryResRef");
         }
@@ -298,11 +313,34 @@ std::vector<SavedInventoryItem> readInventory(const Gff& gff)
         item.cost = numberInt(gff, structure, "Cost", 0);
         item.stack = std::max(1, numberInt(gff, structure, "StackSize", 1));
         item.identified = numberInt(gff, structure, "Identified", 1) != 0;
+        item.upgrades = static_cast<std::uint32_t>(numberInt(gff, structure, "Upgrades", 0));
+        item.newItem = numberInt(gff, structure, "NewItem", 0) != 0;
+        {
+            for (const std::uint32_t entry : list(gff, structure, "PropertiesList")) { // retail 00555790's layout
+                ItemTemplate::Property property;
+                property.name = numberInt(gff, entry, "PropertyName", 0);
+                property.subtype = numberInt(gff, entry, "Subtype", 0);
+                property.costTable = numberInt(gff, entry, "CostTable", 0);
+                property.costValue = numberInt(gff, entry, "CostValue", 0);
+                property.param1 = numberInt(gff, entry, "Param1", 0);
+                property.param1Value = numberInt(gff, entry, "Param1Value", 0);
+                property.chanceAppear = numberInt(gff, entry, "ChanceAppear", 100);
+                property.usesPerDay = numberInt(gff, entry, "UsesPerDay", 255);
+                property.useable = numberInt(gff, entry, "Useable", 1) != 0;
+                property.upgradeType = numberInt(gff, entry, "UpgradeType", 255);
+                item.properties.push_back(property);
+            }
+        }
         if (!item.resref.empty()) {
             items.push_back(std::move(item));
         }
     }
     return items;
+}
+
+std::vector<SavedInventoryItem> readInventory(const Gff& gff)
+{
+    return readItems(gff, field(gff, gff.rootIndex(), "ItemList"), false);
 }
 
 void readPlayer(const Gff& gff, std::uint32_t structure, OriginalSave& save)
@@ -320,16 +358,29 @@ void readPlayer(const Gff& gff, std::uint32_t structure, OriginalSave& save)
     save.intel = numberInt(gff, structure, "Int", 10);
     save.wis = numberInt(gff, structure, "Wis", 10);
     save.cha = numberInt(gff, structure, "Cha", 10);
-    save.hp = numberInt(gff, structure, "CurrentHitPoints",
-                        numberInt(gff, structure, "HitPoints", 1));
-    save.maxHp = std::max(1, numberInt(gff, structure, "MaxHitPoints", save.hp));
+    // Retail creature loader 005afce0: for a PC (IsPC set, 005b1306) the current
+    // HP is CurrentHitPoints + (max HP - HitPoints), with max HP from the
+    // creature's max-HP getter (vtable +0x98, 005b1320), then set via 004cc280.
+    // Force follows the same rule with the max-force getter (005b134a). A save
+    // made straight after chargen holds HitPoints 0 / CurrentHitPoints 0 /
+    // MaxHitPoints 6 and retail shows 6/6. The stored Max* fields stand in for
+    // the getters, which retail wrote from the same values when it saved.
+    const std::int32_t baseHp = numberInt(gff, structure, "HitPoints", 1);
+    const std::int32_t currentHp = numberInt(gff, structure, "CurrentHitPoints", baseHp);
+    save.maxHp = std::max(1, numberInt(gff, structure, "MaxHitPoints", baseHp));
+    const bool isPc = numberInt(gff, structure, "IsPC", 1) != 0;
+    save.hp = isPc ? currentHp + (save.maxHp - baseHp) : currentHp;
     save.xp = numberInt(gff, structure, "Experience", 0);
     save.alignment = std::clamp(numberInt(gff, structure, "GoodEvil", 50), 0, 100);
     save.gender = std::clamp(numberInt(gff, structure, "Gender", 0), 0, 1);
     save.portraitId = numberInt(gff, structure, "PortraitId", -1);
     save.appearance = numberInt(gff, structure, "Appearance_Type", -1);
-    save.forcePoints = numberInt(gff, structure, "CurrentForce", 0);
-    save.maxForcePoints = numberInt(gff, structure, "MaxForcePoints", 0);
+    const std::int32_t baseForce = numberInt(gff, structure, "ForcePoints", 0);
+    save.maxForcePoints = numberInt(gff, structure, "MaxForcePoints", baseForce);
+    save.forcePoints = numberInt(gff, structure, "CurrentForce", baseForce);
+    if (isPc) {
+        save.forcePoints += save.maxForcePoints - baseForce;
+    }
     const auto classes = list(gff, structure, "ClassList");
     if (!classes.empty()) {
         save.classId = numberInt(gff, classes.front(), "Class", 0);
@@ -389,11 +440,15 @@ void readGlobals(const Gff& gff, OriginalSave& save)
     const std::vector<std::uint8_t> numberBytes = binary(gff, gff.rootIndex(), "ValNumber");
     const std::vector<std::uint8_t> booleanBytes = binary(gff, gff.rootIndex(), "ValBoolean");
     const std::vector<std::uint8_t> locationBytes = binary(gff, gff.rootIndex(), "ValLocation");
+    save.globalBooleanBytes = booleanBytes.size();
+    save.globalNumberBytes = numberBytes.size();
+    save.globalLocationBytes = locationBytes.size();
     for (std::size_t i = 0; i < numbers.size(); ++i) {
         SavedGlobal value;
         value.type = SavedGlobal::Type::Number;
         value.name = numbers[i];
-        value.number = i < numberBytes.size() ? numberBytes[i] : 0;
+        // Retail keeps one byte per number and reads it sign-extended (00529240, 00538dc0).
+        value.number = i < numberBytes.size() ? static_cast<std::int8_t>(numberBytes[i]) : 0;
         save.globals.push_back(std::move(value));
     }
     for (std::size_t i = 0; i < booleans.size(); ++i) {
@@ -467,7 +522,24 @@ void readParty(const Gff& gff, OriginalSave& save)
         }
     }
     save.gold = numberInt(gff, gff.rootIndex(), "PT_GOLD", save.gold);
+    // LoadTableInfo 00565d20 reads 18 counts and 10 side cards. ENGINE CHOICE: a save with no list at
+    // all (engine saves written before the lists were kept) keeps the new-game defaults.
+    const auto pazaakCards = list(gff, gff.rootIndex(), "PT_PAZAAKCARDS");
+    if (!pazaakCards.empty()) {
+        for (std::size_t i = 0; i < save.pazaakCards.size(); ++i) {
+            save.pazaakCards[i] = i < pazaakCards.size() ? numberInt(gff, pazaakCards[i], "PT_PAZAAKCOUNT", 0) : 0;
+        }
+        const auto sideList = list(gff, gff.rootIndex(), "PT_PAZSIDELIST");
+        for (std::size_t i = 0; i < save.pazaakSideList.size(); ++i) {
+            save.pazaakSideList[i] = i < sideList.size() ? numberInt(gff, sideList[i], "PT_PAZSIDECARD", 0) : 0;
+        }
+    }
     save.playedSeconds = numberInt(gff, gff.rootIndex(), "PT_PLAYEDSECONDS", save.playedSeconds);
+    // 005661df reads 6 bytes and falls back to zeros.
+    const std::vector<std::uint8_t> tutorials = binary(gff, gff.rootIndex(), "PT_TUT_WND_SHOWN");
+    for (std::size_t i = 0; i < save.tutorialShown.size(); ++i) {
+        save.tutorialShown[i] = i < tutorials.size() ? tutorials[i] : 0u;
+    }
 }
 
 // AVAILNPC<n>: a stored creature in the same shape as the player node.
@@ -689,7 +761,7 @@ GffNodePtr buildItemNode(const SavedInventoryItem& source)
     item->addLocString("LocalizedName", UINT32_MAX, name);
     item->addUInt16("StackSize", static_cast<std::uint32_t>(std::max(1, source.stack)));
     item->addUInt8("Stolen", 0);
-    item->addUInt32("Upgrades", 0);
+    item->addUInt32("Upgrades", source.upgrades);
     item->addUInt8("Dropable", 1);
     item->addUInt8("Pickpocketable", 1);
     item->addUInt8("ModelVariation", 1);
@@ -698,7 +770,24 @@ GffNodePtr buildItemNode(const SavedInventoryItem& source)
     item->addUInt32("Cost", static_cast<std::uint32_t>(std::max(0, source.cost)));
     item->addUInt32("AddCost", static_cast<std::uint32_t>(std::max(0, source.cost)));
     item->addUInt8("Plot", 0);
-    item->addList("PropertiesList", {});
+    // Retail 00555790: one struct per property (struct id = its list index), words for the
+    // name, subtype and cost value, bytes for the rest.
+    std::vector<GffNodePtr> properties;
+    for (const ItemTemplate::Property& property : source.properties) {
+        auto entry = std::make_shared<GffNode>(static_cast<std::uint32_t>(properties.size()));
+        entry->addUInt16("PropertyName", static_cast<std::uint32_t>(property.name) & 0xFFFFu);
+        entry->addUInt16("Subtype", static_cast<std::uint32_t>(property.subtype) & 0xFFFFu);
+        entry->addUInt8("CostTable", static_cast<std::uint32_t>(property.costTable) & 0xFFu);
+        entry->addUInt16("CostValue", static_cast<std::uint32_t>(property.costValue) & 0xFFFFu);
+        entry->addUInt8("Param1", static_cast<std::uint32_t>(property.param1) & 0xFFu);
+        entry->addUInt8("Param1Value", static_cast<std::uint32_t>(property.param1Value) & 0xFFu);
+        entry->addUInt8("ChanceAppear", static_cast<std::uint32_t>(property.chanceAppear) & 0xFFu);
+        entry->addUInt8("UsesPerDay", static_cast<std::uint32_t>(property.usesPerDay) & 0xFFu);
+        entry->addUInt8("Useable", property.useable ? 1u : 0u);
+        entry->addUInt8("UpgradeType", static_cast<std::uint32_t>(property.upgradeType) & 0xFFu);
+        properties.push_back(std::move(entry));
+    }
+    item->addList("PropertiesList", std::move(properties));
     item->addFloat("XPosition", 0.0f);
     item->addFloat("YPosition", 0.0f);
     item->addFloat("ZPosition", 0.0f);
@@ -706,7 +795,7 @@ GffNodePtr buildItemNode(const SavedInventoryItem& source)
     item->addFloat("YOrientation", 0.0f);
     item->addFloat("ZOrientation", 0.0f);
     item->addUInt8("NonEquippable", 0);
-    item->addUInt8("NewItem", 0);
+    item->addUInt8("NewItem", source.newItem ? 1u : 0u);
     item->addUInt8("DELETING", 0);
     return item;
 }
@@ -758,7 +847,8 @@ GffNodePtr buildPlayerNode(const OriginalSave& save)
     node->addUInt8("PartyInteract", 0);
     node->addUInt8("NotReorienting", 0);
     node->addUInt8("BodyBag", 0);
-    node->addInt16("HitPoints", static_cast<std::int16_t>(save.hp));
+    // HitPoints holds the base max so that 005afce0 reads back current = CurrentHitPoints.
+    node->addInt16("HitPoints", static_cast<std::int16_t>(save.maxHp));
     node->addInt16("CurrentHitPoints", static_cast<std::int16_t>(save.hp));
     node->addInt16("MaxHitPoints", static_cast<std::int16_t>(save.maxHp));
     node->addInt16("PregameCurrent", static_cast<std::int16_t>(save.maxHp));
@@ -851,7 +941,14 @@ GffNodePtr buildPlayerNode(const OriginalSave& save)
     std::vector<GffNodePtr> equipped;
     for (const SavedInventoryItem& item : save.inventory) {
         if (item.equipped) {
-            equipped.push_back(buildItemNode(item));
+            // The slot mask is the struct type, as in a UTC and as readItems reads it back.
+            const std::uint32_t mask = item.slot >= 0 && item.slot < 32 ? (1u << item.slot) : 0u;
+            auto worn = std::make_shared<GffNode>(mask);
+            worn->fields() = buildItemNode(item)->fields();
+            if (item.resref.size() <= 16) {
+                worn->addResRef("EquippedRes", item.resref);
+            }
+            equipped.push_back(std::move(worn));
         }
     }
     node->addList("Equip_ItemList", std::move(equipped));
@@ -980,9 +1077,25 @@ GffNodePtr buildPartyTable(const OriginalSave& save)
     node->addInt32("PT_AISTATE", 0);
     node->addInt32("PT_FOLLOWSTATE", 0);
     node->addStruct("GlxyMap", std::make_shared<GffNode>(0));
-    node->addList("PT_PAZAAKCARDS", {});
-    node->addList("PT_PAZSIDELIST", {});
-    node->addBinary("PT_TUT_WND_SHOWN", {});
+    // SaveTableInfo 005648c0: 18 INT counts and a 19th entry as BYTE, then the ten side cards.
+    std::vector<GffNodePtr> pazaakCards;
+    for (const std::int32_t count : save.pazaakCards) {
+        auto entry = std::make_shared<GffNode>(0);
+        entry->addInt32("PT_PAZAAKCOUNT", count);
+        pazaakCards.push_back(std::move(entry));
+    }
+    auto unusedCount = std::make_shared<GffNode>(0);
+    unusedCount->addUInt8("PT_PAZAAKCOUNT", 0);
+    pazaakCards.push_back(std::move(unusedCount));
+    node->addList("PT_PAZAAKCARDS", std::move(pazaakCards));
+    std::vector<GffNodePtr> sideList;
+    for (const std::int32_t kind : save.pazaakSideList) {
+        auto entry = std::make_shared<GffNode>(0);
+        entry->addInt32("PT_PAZSIDECARD", kind);
+        sideList.push_back(std::move(entry));
+    }
+    node->addList("PT_PAZSIDELIST", std::move(sideList));
+    node->addBinary("PT_TUT_WND_SHOWN", std::vector<std::uint8_t>(save.tutorialShown.begin(), save.tutorialShown.end()));
     node->addInt32("PT_LAST_GUI_PNL", 5);
     node->addList("PT_FB_MSG_LIST", {});
     node->addList("PT_DLG_MSG_LIST", {});
@@ -1018,8 +1131,8 @@ GffNodePtr buildGlobalVars(const OriginalSave& save)
             auto name = std::make_shared<GffNode>(0);
             name->addString("Name", value.name);
             numberNames.push_back(std::move(name));
-            numberBytes.push_back(static_cast<std::uint8_t>(
-                std::clamp<std::int32_t>(value.number, 0, 255)));
+            // Retail 00529680 stores the low byte of the number (-128 to 127 as read back).
+            numberBytes.push_back(static_cast<std::uint8_t>(value.number & 0xff));
         } else if (value.type == SavedGlobal::Type::Boolean) {
             auto name = std::make_shared<GffNode>(0);
             name->addString("Name", value.name);
@@ -1052,6 +1165,12 @@ GffNodePtr buildGlobalVars(const OriginalSave& save)
     node->addList("CatNumber", std::move(numberNames));
     node->addList("CatLocation", std::move(locationNames));
     node->addList("CatString", std::move(stringNames));
+    // Retail CSWGlobalVariableTable save (005299b0): ValBoolean is count/8 + 1 bytes, ValNumber one
+    // byte per number, and ValLocation a fixed 0x960 bytes (100 slots of 6 floats, unused ones zero).
+    booleanBytes.resize(booleanIndex / 8u + 1u, 0);
+    if (locationBytes.size() < 0x960u) {
+        locationBytes.resize(0x960u, 0);
+    }
     node->addBinary("ValBoolean", std::move(booleanBytes));
     node->addBinary("ValNumber", std::move(numberBytes));
     node->addBinary("ValLocation", std::move(locationBytes));
@@ -1074,6 +1193,8 @@ GffNodePtr buildNfo(const OriginalSave& save)
     }
     node->addInt32("LIVECONTENT", 0);
     node->addResRef("PORTRAIT0", save.portrait);
+    node->addResRef("PORTRAIT1", save.partyPortrait1);
+    node->addResRef("PORTRAIT2", save.partyPortrait2);
     return node;
 }
 
@@ -1142,6 +1263,23 @@ std::uint32_t templateType(SavedObjectState::Kind kind)
 void patchGit(GffNode& git, const OriginalSave& save, Install& install)
 {
     git.remove("UseTemplates");
+    // Retail 005061d0: the area map's explored bits, struct id 0x65, at the GIT's root.
+    git.remove("AreaMap");
+    if (save.areaMap.present && !save.areaMap.words.empty()) {
+        auto map = std::make_shared<GffNode>(0x65);
+        map->addInt32("AreaMapResX", save.areaMap.resX);
+        map->addInt32("AreaMapResY", save.areaMap.resY);
+        map->addUInt32("AreaMapDataSize", static_cast<std::uint32_t>(save.areaMap.words.size() * 4u));
+        std::vector<std::uint8_t> bytes;
+        bytes.reserve(save.areaMap.words.size() * 4u);
+        for (const std::uint32_t word : save.areaMap.words) {
+            for (int shift = 0; shift < 32; shift += 8) {
+                bytes.push_back(static_cast<std::uint8_t>(word >> shift));
+            }
+        }
+        map->addBinary("AreaMapData", std::move(bytes));
+        git.addStruct("AreaMap", std::move(map));
+    }
     struct ListSpec {
         const char* label;
         SavedObjectState::Kind kind;
@@ -1353,26 +1491,9 @@ OriginalSave readOriginalSave(const std::filesystem::path& folder,
     const std::vector<std::uint32_t> players = list(ifo, ifo.rootIndex(), "Mod_PlayerList");
     if (!players.empty()) {
         readPlayer(ifo, players.front(), save);
-        // Equipped items live in the player's Equip_ItemList.
-        const GffField* equip = field(ifo, players.front(), "Equip_ItemList");
-        if (equip != nullptr) {
-            for (const std::uint32_t structure : ifo.list(*equip)) {
-                SavedInventoryItem item;
-                item.resref = text(ifo, structure, "InventoryRes");
-                if (item.resref.empty()) {
-                    item.resref = text(ifo, structure, "Tag");
-                }
-                item.name = firstLoc(ifo, structure, "LocalizedName");
-                item.baseItem = numberInt(ifo, structure, "BaseItem", 0);
-                item.cost = numberInt(ifo, structure, "Cost", 0);
-                item.stack = std::max(1, numberInt(ifo, structure, "StackSize", 1));
-                item.identified = numberInt(ifo, structure, "Identified", 1) != 0;
-                item.equipped = true;
-                item.slot = static_cast<std::int32_t>(save.inventory.size());
-                if (!item.resref.empty()) {
-                    save.inventory.push_back(std::move(item));
-                }
-            }
+        // Equipped items live in the player's Equip_ItemList (slot mask in the struct type).
+        for (SavedInventoryItem& item : readItems(ifo, field(ifo, players.front(), "Equip_ItemList"), true)) {
+            save.inventory.push_back(std::move(item));
         }
     }
     if (gitEntry != nullptr) {
@@ -1382,6 +1503,19 @@ OriginalSave readOriginalSave(const std::filesystem::path& folder,
             save.useTemplates = git.integer(*useTemplates) != 0;
         }
         readObjects(git, save);
+        // Retail 00505da0.
+        if (const GffField* map = git.field(git.rootIndex(), "AreaMap"); map != nullptr && map->type == GffType::Struct) {
+            const std::uint32_t at = git.structIndex(*map);
+            save.areaMap.present = true;
+            save.areaMap.resX = numberInt(git, at, "AreaMapResX", 0);
+            save.areaMap.resY = numberInt(git, at, "AreaMapResY", 0);
+            const std::vector<std::uint8_t> bytes = binary(git, at, "AreaMapData");
+            save.areaMap.words.assign(bytes.size() / 4u, 0u);
+            for (std::size_t i = 0; i < save.areaMap.words.size(); ++i) {
+                save.areaMap.words[i] = static_cast<std::uint32_t>(bytes[i * 4u]) | static_cast<std::uint32_t>(bytes[i * 4u + 1u]) << 8
+                    | static_cast<std::uint32_t>(bytes[i * 4u + 2u]) << 16 | static_cast<std::uint32_t>(bytes[i * 4u + 3u]) << 24;
+            }
+        }
     }
     if (save.journal.empty() && save.gold == 0) {
         // Some unusual saves embed PARTYTABLE inside the outer ERF.
@@ -1459,7 +1593,7 @@ bool writeOriginalSave(const std::filesystem::path& folder, const OriginalSave& 
     writeFile(folder / "PARTYTABLE.res", writeGff("PT  ", *buildPartyTable(save)));
     writeFile(folder / "GLOBALVARS.res", writeGff("GVT ", *buildGlobalVars(save)));
     writeFile(folder / "savenfo.res", writeGff("NFO ", *buildNfo(save)));
-    writeFile(folder / "Screen.tga", makeSaveThumbnail());
+    writeFile(folder / "Screen.tga", save.screenTga.empty() ? makeSaveThumbnail() : save.screenTga);
     return true;
 }
 
@@ -1485,6 +1619,43 @@ OriginalSaveCheck checkOriginalSave(const std::filesystem::path& folder)
         check.errors.push_back(exception.what());
     }
     return check;
+}
+
+std::vector<std::uint8_t> encodeSaveScreenshot(const std::uint8_t* rgba, int width, int height)
+{
+    if (rgba == nullptr || width <= 0 || height <= 0) {
+        return {};
+    }
+    constexpr int size = 256;
+    std::vector<std::uint8_t> out;
+    out.reserve(18u + static_cast<std::size_t>(size) * size * 3u);
+    const std::uint8_t header[18] = {0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                     size & 0xFF, size >> 8, size & 0xFF, size >> 8, 24, 0x20};
+    out.insert(out.end(), header, header + 18);
+    for (int y = 0; y < size; ++y) {
+        const int sy0 = y * height / size;
+        const int sy1 = std::max(sy0 + 1, (y + 1) * height / size);
+        for (int x = 0; x < size; ++x) {
+            const int sx0 = x * width / size;
+            const int sx1 = std::max(sx0 + 1, (x + 1) * width / size);
+            unsigned sum[3] = {0, 0, 0};
+            unsigned count = 0;
+            for (int sy = sy0; sy < sy1 && sy < height; ++sy) {
+                for (int sx = sx0; sx < sx1 && sx < width; ++sx) {
+                    const std::uint8_t* px = rgba + (static_cast<std::size_t>(sy) * width + sx) * 4u;
+                    sum[0] += px[0];
+                    sum[1] += px[1];
+                    sum[2] += px[2];
+                    ++count;
+                }
+            }
+            count = std::max(1u, count);
+            out.push_back(static_cast<std::uint8_t>(sum[2] / count)); // B
+            out.push_back(static_cast<std::uint8_t>(sum[1] / count)); // G
+            out.push_back(static_cast<std::uint8_t>(sum[0] / count)); // R
+        }
+    }
+    return out;
 }
 
 std::vector<std::uint8_t> makeSaveThumbnail()

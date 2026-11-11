@@ -6,12 +6,15 @@
 
 #include "core/Log.h"
 #include "game/AudioSystem.h"
+#include "game/EncounterPlanner.h"
 #include "game/GameSession.h"
+#include "game/Pathfinding.h"
 #include "script/ActionRuntime.h"
 #include "script/ActionTable.h"
 #include "script/Ncs.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
@@ -31,8 +34,6 @@ constexpr std::size_t kNone = static_cast<std::size_t>(-1);
 // player forever.
 constexpr float kRestrictWatchdogSeconds = 120.0f;
 constexpr float kFadeHoldWatchdogSeconds = 120.0f;
-// Passive trap detection: how close the player must be for an Awareness roll.
-constexpr float kTrapDetectRadius = 6.0f;
 // SpeakString reach for TALKVOLUME_TALK / WHISPER. No retail value was recovered.
 constexpr float kTalkRadius = 20.0f;
 constexpr float kWhisperRadius = 2.0f;
@@ -256,6 +257,7 @@ bool GameSession::closeDoor(std::size_t index)
     }
     scene_.entities[index].open = false;
     playAnimation(index, "closing1", false);
+    effects_->objectSound(index, ObjectSound::Closed);
     runHook("OnClosed", index, controlledObject());
     return true;
 }
@@ -268,6 +270,7 @@ UseOutcome GameSession::openDoor(std::size_t index, std::uint32_t actor)
     const std::uint32_t who = actor == 0 ? controlledObject() : actor;
     if (scene_.entities[index].locked && !keyUnlock(index)) {
         logEvent("door " + scene_.entities[index].tag + ": locked");
+        effects_->objectSound(index, ObjectSound::Locked);
         runHook("OnFailToOpen", index, who);
         return UseOutcome::Locked;
     }
@@ -277,7 +280,21 @@ UseOutcome GameSession::openDoor(std::size_t index, std::uint32_t actor)
     }
     if (index < scene_.entities.size() && !scene_.entities[index].open) {
         scene_.entities[index].open = true;
-        playAnimation(index, "opening1", false);
+        // Retail CSWSDoor::OpenDoor 00589c70: the open state is 1 when the opener stands on the side the door
+        // faces (dot of opener minus door with the door's facing, the rotated +Y axis, above 0.0), else 2; the
+        // clip is opening<state> (CSWCAnimBaseDoor 006e59c0 names it from the animation 2DA).
+        {
+            const kotor::Entity& door = scene_.entities[index];
+            const kotor::Vec3 at = ScriptApi{*this}.position(who);
+            const float side = (at.x - door.position.x) * -std::sin(door.bearing)
+                + (at.y - door.position.y) * std::cos(door.bearing);
+            const int state = who != objectForEntity(index) && side > 0.0f ? 1 : 2;
+            scene_.entities[index].openState = state;
+            if (!playAnimation(index, "opening" + std::to_string(state), false)) {
+                playAnimation(index, "opening1", false);
+            }
+        }
+        effects_->objectSound(index, ObjectSound::Opened);
         runHook("OnOpen", index, who);
     }
     return UseOutcome::Opened;
@@ -314,6 +331,7 @@ bool GameSession::bashDoor(std::size_t index)
         scene_.entities[index].locked = false;
         scene_.entities[index].open = true;
         playAnimation(index, "opening1", false);
+        effects_->objectSound(index, ObjectSound::Destroyed);
         ScriptContext killed{{"lastKiller", controlledObject()}};
         runHook("OnDeath", index, controlledObject(), &killed);
     }
@@ -381,6 +399,106 @@ bool GameSession::detectTrap(std::size_t index)
     return true;
 }
 
+void GameSession::updateMineChecks(float dt)
+{
+    ScriptApi api{*this};
+    GameSession& session = *this;
+    // retail 004fa390 CSWSCreature::UpdateMineCheck, per creature: a creature standing still
+    // checks every 100 ms out to 20 m (400 sq) with Awareness + d10 + 10; one on the move
+    // every 3000 ms within 3 m (9 sq) with Awareness + d10. The distance is to the nearest
+    // point of the trap polygon; a mine of the creature's own faction is skipped (retail also
+    // skips reputation >= 90; party traps are hostile-faction here). The controlled creature,
+    // the PC and the companions run it; a companion's rank is its UTC rank only.
+    {
+        std::vector<std::uint32_t> searchers{session.controlledObject()};
+        if (searchers.front() != api.pc()) {
+            searchers.push_back(api.pc());
+        }
+        for (const CompanionState& companion : session.companions()) {
+            const std::size_t index = session.findEntity(companion.tag);
+            if (index != static_cast<std::size_t>(-1)) {
+                const std::uint32_t object = api.objectFor(index);
+                if (std::find(searchers.begin(), searchers.end(), object) == searchers.end()) {
+                    searchers.push_back(object);
+                }
+            }
+        }
+        for (const std::uint32_t searcher : searchers) {
+            if (!api.isAlive(searcher)) {
+                continue;
+            }
+            ActorState& state = api.actor(searcher);
+            const kotor::Vec3 at = api.position(searcher);
+            const bool still = state.mineCheckPositionKnown
+                && std::hypot(at.x - state.mineCheckPosition.x, at.y - state.mineCheckPosition.y) < 0.01f;
+            state.mineCheckPosition = at;
+            state.mineCheckPositionKnown = true;
+            state.mineCheckTimer += dt;
+            const float interval = still ? 0.1f : 3.0f;
+            if (state.mineCheckTimer < interval) {
+                continue;
+            }
+            state.mineCheckTimer = 0.0f;
+            const float rangeSq = still ? 400.0f : 9.0f;
+            for (std::size_t i = 0; i < api.scene().entities.size(); ++i) {
+                const kotor::Entity& entity = api.scene().entities[i];
+                if (!entity.trapFlag || !entity.trapDetectable || entity.trapDetected || entity.trapDisarmed) {
+                    continue;
+                }
+                if (const std::size_t own = api.entityFor(searcher);
+                    own < api.scene().entities.size() && entity.faction == api.scene().entities[own].faction) {
+                    continue; // own faction's mine
+                }
+                float best = std::numeric_limits<float>::max();
+                for (const kotor::TriggerVolume& volume : api.scene().triggers) {
+                    if (volume.entity != i) {
+                        continue;
+                    }
+                    const std::size_t n = volume.vertices.size();
+                    for (std::size_t v = 0; v < n; ++v) {
+                        const kotor::Vec3 p0 = volume.vertices[v];
+                        const kotor::Vec3 p1 = volume.vertices[(v + 1) % n];
+                        const float ex = p1.x - p0.x;
+                        const float ey = p1.y - p0.y;
+                        const float len = ex * ex + ey * ey;
+                        float t = len > 0.0f ? ((at.x - p0.x) * ex + (at.y - p0.y) * ey) / len : 0.0f;
+                        t = std::clamp(t, 0.0f, 1.0f);
+                        const float qx = p0.x + ex * t - at.x;
+                        const float qy = p0.y + ey * t - at.y;
+                        best = std::min(best, qx * qx + qy * qy);
+                    }
+                }
+                if (best == std::numeric_limits<float>::max()) {
+                    best = distance2(at, entity.position);
+                }
+                if (best >= rangeSq) {
+                    continue;
+                }
+                const std::int32_t roll = 1 + static_cast<std::int32_t>(session.random() % 10u) + (still ? 10 : 0);
+                std::int32_t awareness = 0;
+                if (searcher == session.controlledObject()) {
+                    awareness = session.skillRank("awareness");
+                } else if (searcher == api.pc()) {
+                    for (const auto& [name, value] : session.character().skills) {
+                        if (lowerText(name) == "awareness") {
+                            awareness = value;
+                        }
+                    }
+                } else if (const std::size_t own = api.entityFor(searcher);
+                           own < api.scene().entities.size() && api.scene().entities[own].stats.skills.size() > 3) {
+                    awareness = api.scene().entities[own].stats.skills[3]; // SKILL_AWARENESS
+                }
+                if (entity.trapDetectDC <= awareness + roll) {
+                    if (!entity.trapDetected) {
+                        scene_.entities[i].trapDetected = true;
+                        scriptWorld_.attrs["last_trap_detected"] = static_cast<std::int64_t>(objectForEntity(i));
+                    }
+                }
+            }
+        }
+    }
+}
+
 bool GameSession::disarmTrap(std::size_t index)
 {
     if (index >= scene_.entities.size()) {
@@ -390,8 +508,22 @@ bool GameSession::disarmTrap(std::size_t index)
     if (!entity.trapFlag || !entity.trapDisarmable || !entity.trapDetected || entity.trapDisarmed) {
         return false;
     }
-    if (!skillCheck("security", entity.trapDisarmDC, "disarm trap")) {
-        springTrap(index, controlledObject());
+    // retail 00519570 AIActionDisarmMine: Demolitions (skill 1) rank + a roll that is a flat 20
+    // out of combat and d20 in combat, against the disarm DC (1 when unset). A DC over 35
+    // cannot be disarmed; failing by more than 10 springs the mine, a smaller miss does nothing.
+    // Untrained use is allowed (no untrained check there).
+    const std::uint32_t disarmer = controlledObject();
+    const bool fighting = ScriptApi{*this}.actor(disarmer).combat.inCombat;
+    const std::int32_t roll = fighting ? 1 + static_cast<std::int32_t>(random() % 20u) : 20;
+    const std::int32_t rank = skillRank("demolitions");
+    const std::int32_t dc = entity.trapDisarmDC > 0 ? entity.trapDisarmDC : 1;
+    const bool ok = dc <= 35 && roll + rank >= dc;
+    logEvent("disarm trap: demolitions " + std::to_string(roll) + "+" + std::to_string(rank)
+             + (ok ? " >= " : " < ") + std::to_string(dc));
+    if (!ok) {
+        if (roll + rank < dc - 10) {
+            springTrap(index, disarmer);
+        }
         return false;
     }
     entity.trapDisarmed = true;
@@ -446,16 +578,16 @@ UseOutcome GameSession::useObjectImpl(std::size_t index, bool checkReach)
             }
             return openDoor(index);
         }
-        // A transition door is crossed by clicking it, and only while unlocked.
-        if (scene_.entities[index].locked && !keyUnlock(index)) {
+        // A transition door is crossed by clicking it, while unlocked or standing open. Open passing
+        // the lock is inferred from k_ptar_alertsith, which opens a locked door and unlocks nothing; the
+        // retail click path was not traced.
+        if (scene_.entities[index].locked && !scene_.entities[index].open && !keyUnlock(index)) {
             logEvent("door " + scene_.entities[index].tag + ": locked, no transition");
             runHook("OnFailToOpen", index, pc);
             return UseOutcome::Locked;
         }
-        if (sim_->areaUnescapable) {
-            logEvent("door " + scene_.entities[index].tag + ": area is unescapable");
-            return UseOutcome::Refused;
-        }
+        // Area +0x2ac stops no door: retail reads it only in 005367b0 (GetAreaUnescapable) and two
+        // GUI panels, 0062dd20 and 00693650.
         runHook("OnOpen", index, pc);
         return loadModule(linkedModule, nullptr, linkedTo) ? UseOutcome::Transition
                                                            : UseOutcome::Refused;
@@ -467,6 +599,7 @@ UseOutcome GameSession::useObjectImpl(std::size_t index, bool checkReach)
     }
     if (entity.locked && !keyUnlock(index)) {
         logEvent("use " + entity.tag + ": locked");
+        effects_->objectSound(index, ObjectSound::Locked);
         runHook("OnFailToOpen", index, pc);
         return UseOutcome::Locked;
     }
@@ -475,6 +608,7 @@ UseOutcome GameSession::useObjectImpl(std::size_t index, bool checkReach)
         springTrap(index, pc);
     }
     logEvent("use " + scene_.entities[index].tag);
+    effects_->objectSound(index, ObjectSound::Used);
     runHook("OnUsed", index, pc);
     if (index >= scene_.entities.size()) {
         return UseOutcome::Used;
@@ -504,27 +638,229 @@ void GameSession::releaseControl()
     sim_->fade = FadeState{};
 }
 
-std::string GameSession::substituteTokens(std::string text) const
+#if defined(_WIN32)
+extern "C" __declspec(dllimport) int __stdcall GetKeyNameTextW(long lParam, wchar_t* lpString, int cchSize);
+#endif
+
+namespace {
+
+// Retail key id (keymap.2da language0, swkotor.ini [Keymapping]) to DirectInput scancode, as the
+// key table builder 005e1880 stores them (param_1[id + 0x59] = DIK, read back by 005e0230).
+constexpr std::array<std::pair<int, int>, 104> kKeyIdToDik{{
+    {6, 0x1C}, {7, 0xCB}, {8, 0xCD}, {9, 0xC8}, {10, 0xD0}, {11, 0x4F}, {12, 0x50}, {13, 0x51}, {14, 0x4B},
+    {15, 0x4C}, {16, 0x4D}, {17, 0x47}, {18, 0x48}, {19, 0x49}, {20, 0x52}, {21, 0x53}, {22, 0x4A}, {23, 0x4E},
+    {24, 0x2A}, {25, 0x36}, {26, 0x38}, {27, 0xB8}, {28, 0x1D}, {29, 0x9D}, {30, 0x0F}, {31, 0x01}, {32, 0xC7},
+    {33, 0xCF}, {34, 0xC9}, {35, 0xD1}, {36, 0xD2}, {37, 0xD3}, {38, 0xB7}, {39, 0x3B}, {40, 0x3C}, {41, 0x3D},
+    {42, 0x3E}, {43, 0x3F}, {44, 0x40}, {45, 0x41}, {46, 0x42}, {47, 0x43}, {48, 0x44}, {49, 0x57}, {50, 0x58},
+    {51, 0x1E}, {52, 0x30}, {53, 0x2E}, {54, 0x20}, {55, 0x12}, {56, 0x21}, {57, 0x22}, {58, 0x23}, {59, 0x17},
+    {60, 0x24}, {61, 0x25}, {62, 0x26}, {63, 0x32}, {64, 0x31}, {65, 0x18}, {66, 0x19}, {67, 0x10}, {68, 0x13},
+    {69, 0x1F}, {70, 0x14}, {71, 0x16}, {72, 0x2F}, {73, 0x11}, {74, 0x2D}, {75, 0x15}, {76, 0x2C}, {77, 0x02},
+    {78, 0x03}, {79, 0x04}, {80, 0x05}, {81, 0x06}, {82, 0x07}, {83, 0x08}, {84, 0x09}, {85, 0x0A}, {86, 0x0B},
+    {87, 0x39}, {88, 0x9C}, {89, 0x3A}, {90, 0xC5}, {91, 0x64}, {92, 0x65}, {93, 0x66}, {94, 0x0C}, {95, 0x0D},
+    {96, 0x0E}, {97, 0x1A}, {98, 0x1B}, {99, 0x27}, {100, 0x28}, {101, 0x29}, {102, 0x2B}, {103, 0x33},
+    {104, 0x34}, {105, 0x35}, {106, 0x37}, {107, 0xB3}, {108, 0xB5}, {110, 0x00},
+}};
+
+// Retail names a key with DirectInput's own object name (005e3d10 calls the keyboard device's
+// GetObjectInfo), which is the system's key name for the scancode. Off Windows the shipped
+// keymap.2da "character" text stands in.
+std::string keyDisplayName(int keyId, const std::string& fallback)
 {
-    std::size_t at = 0;
-    while ((at = text.find('<', at)) != std::string::npos) {
-        const std::size_t close = text.find('>', at);
-        if (close == std::string::npos) {
-            break;
+#if defined(_WIN32)
+    for (const auto& [id, dik] : kKeyIdToDik) {
+        if (id != keyId || dik == 0) {
+            continue;
         }
-        const std::string name = lowerText(text.substr(at + 1, close - at - 1));
-        if (name.rfind("custom", 0) == 0 && name.size() > 6
-            && std::all_of(name.begin() + 6, name.end(),
-                           [](unsigned char c) { return std::isdigit(c) != 0; })) {
-            const auto it = sim_->customTokens.find(std::atoi(name.c_str() + 6));
-            const std::string value = it != sim_->customTokens.end() ? it->second : std::string{};
-            text.replace(at, close - at + 1, value);
-            at += value.size();
-        } else {
-            at = close + 1;
+        const long lParam = (static_cast<long>(dik & 0x7F) << 16) | ((dik & 0x80) != 0 ? (1L << 24) : 0L);
+        wchar_t name[80] = {};
+        const int length = GetKeyNameTextW(lParam, name, 80);
+        if (length > 0) {
+            std::string out;
+            for (int i = 0; i < length; ++i) {
+                out.push_back(name[i] < 0x100 ? static_cast<char>(name[i]) : '?'); // Latin-1 into the 1252 fonts
+            }
+            return out;
         }
     }
-    return text;
+#else
+    (void)keyId;
+#endif
+    return fallback;
+}
+
+} // namespace
+
+// Retail CTlkTable::ParseTokens (0041dd30): "<<" is a literal '<'; "<CUSTOMn>" is the module's
+// SetCustomToken text; any other <Name> is looked up by exact, case-sensitive name in
+// stringtokens.2da (loaded by 0041e5a0) and resolved by CSWTlkTable's token callback
+// (00674b90) against the token object, which the dialogue sets to the player's creature
+// (0062e100). An unknown or unclosed token prints "<UNRECOGNIZED TOKEN>".
+std::string GameSession::substituteTokens(std::string text) const
+{
+    if (!stringTokensLoaded_) {
+        stringTokensLoaded_ = true;
+        auto& install = const_cast<kotor::Install&>(install_);
+        if (auto data = install.find("stringtokens", kotor::resType(kotor::ResType::TwoDa)); data.has_value()) {
+            stringTokens_ = kotor::TwoDa::parse(std::move(*data), "stringtokens.2da");
+        }
+        if (auto data = install.find("keymap", kotor::resType(kotor::ResType::TwoDa)); data.has_value()) {
+            keymapTable_ = kotor::TwoDa::parse(std::move(*data), "keymap.2da");
+        }
+        if (auto data = install.find("classes", kotor::resType(kotor::ResType::TwoDa)); data.has_value()) {
+            classesTable_ = kotor::TwoDa::parse(std::move(*data), "classes.2da");
+        }
+    }
+    const auto tlkText = [&](std::int64_t strref, int gender) -> std::string {
+        if (!tlk_.has_value() || strref < 0) {
+            return {};
+        }
+        return tlk_->text(static_cast<std::uint32_t>(strref), gender);
+    };
+    const auto number = [](const std::string& cell) -> std::int64_t {
+        return cell.empty() || cell == "****" ? -1 : std::strtoll(cell.c_str(), nullptr, 10);
+    };
+    const int gender = std::clamp(character_.gender, 0, 1);
+    const auto resolve = [&](const std::string& name, std::string& out) -> bool {
+        if (!stringTokens_.has_value()) {
+            return false;
+        }
+        const kotor::TwoDa& table = *stringTokens_;
+        const int tokenColumn = table.columnIndex("token");
+        if (tokenColumn < 0) {
+            return false;
+        }
+        for (std::size_t row = 0; row < table.rowCount(); ++row) {
+            if (table.cell(row, static_cast<std::size_t>(tokenColumn)) != name) {
+                continue;
+            }
+            const auto field = [&](const char* column) {
+                const int index = table.columnIndex(column);
+                return index < 0 ? std::int64_t{-1} : number(table.cell(row, static_cast<std::size_t>(index)));
+            };
+            const std::int64_t action = field("actioncode");
+            const std::int64_t fallback = field("default");
+            const std::array<std::int64_t, 4> strrefs{field("strref1"), field("strref2"), field("strref3"),
+                                                       field("strref4")};
+            switch (action) {
+            case 0:
+                out = tlkText(strrefs[0], gender);
+                return true;
+            case 1:
+                out = tlkText(strrefs[static_cast<std::size_t>(gender)], gender);
+                return true;
+            case 2: // first and last name, a space between when both are set (00647ce0)
+            case 3:
+                out = character_.name;
+                return true;
+            case 4: // K1's player creature has no last name
+                out.clear();
+                return true;
+            case 8:
+            case 9: { // CSWClass::GetNameText / lower name (005be0e0, 005be180): classes.2da name, lower
+                out.clear();
+                if (classesTable_.has_value() && character_.classId >= 0
+                    && character_.classId < static_cast<std::int32_t>(classesTable_->rowCount())) {
+                    const int column = classesTable_->columnIndex(action == 8 ? "name" : "lower");
+                    if (column >= 0) {
+                        out = tlkText(number(classesTable_->cell(static_cast<std::size_t>(character_.classId),
+                                                                 static_cast<std::size_t>(column))),
+                                      gender);
+                    }
+                }
+                return true;
+            }
+            case 10:
+                out = std::to_string(character_.level);
+                return true;
+            case 0x18: // controller glyph: the default value printed with "%c" (0073e2f0)
+                out = std::string(1, static_cast<char>(fallback));
+                return true;
+            case 0x19: {
+                // A keymap event: the name of its bound key. Events 200..279 are keymap.2da row
+                // event - 200; the paired axis events from 280 name their row by the token name.
+                out = tlkText(0, gender);
+                if (!keymapTable_.has_value()) {
+                    return true;
+                }
+                const kotor::TwoDa& keys = *keymapTable_;
+                const int nameColumn = keys.columnIndex("name");
+                const int idColumn = keys.columnIndex("language0");
+                const int charColumn = keys.columnIndex("character");
+                std::size_t keyRow = keys.rowCount();
+                if (fallback >= 200 && fallback < 280) {
+                    keyRow = static_cast<std::size_t>(fallback - 200);
+                } else if (nameColumn >= 0) {
+                    for (std::size_t r = 0; r < keys.rowCount(); ++r) {
+                        if (keys.cell(r, static_cast<std::size_t>(nameColumn)) == name) {
+                            keyRow = r;
+                            break;
+                        }
+                    }
+                }
+                if (keyRow < keys.rowCount() && idColumn >= 0) {
+                    const std::int64_t keyId = number(keys.cell(keyRow, static_cast<std::size_t>(idColumn)));
+                    if (keyId > 0) {
+                        out = keyDisplayName(static_cast<int>(keyId),
+                                             charColumn >= 0 ? keys.cell(keyRow, static_cast<std::size_t>(charColumn))
+                                                             : std::string{});
+                    }
+                }
+                return true;
+            }
+            case 0x1a: { // mouse buttons, strrefs 0xbd62..0xbd65 (00674b90; swapped when left-handed)
+                static constexpr std::array<std::uint32_t, 4> kMouse{0xbd63, 0xbd62, 0xbd65, 0xbd64};
+                out = fallback >= 0 && fallback < 4 ? tlkText(kMouse[static_cast<std::size_t>(fallback)], gender)
+                                                     : tlkText(0, gender);
+                return true;
+            }
+            default:
+                // Cases 0x13..0x16 print nothing in retail. ENGINE CHOICE: race, subrace, alignment,
+                // game time and player name (00674b90 cases 5-7, 0xb-0x12, 0x17) are not built and
+                // print nothing; the shipped K1 text was not found to use them.
+                out.clear();
+                return true;
+            }
+        }
+        return false;
+    };
+
+    std::string result;
+    std::size_t at = 0;
+    while (at < text.size()) {
+        const char c = text[at];
+        if (c != '<') {
+            result.push_back(c);
+            ++at;
+            continue;
+        }
+        if (at + 1 < text.size() && text[at + 1] == '<') {
+            result.push_back('<');
+            at += 2;
+            continue;
+        }
+        const std::size_t close = text.find('>', at + 1);
+        std::string value = "<UNRECOGNIZED TOKEN>";
+        if (close == std::string::npos) {
+            result += value;
+            break;
+        }
+        const std::string name = text.substr(at + 1, close - at - 1);
+        if (name.size() >= 7 && name.compare(0, 6, "CUSTOM") == 0
+            && std::all_of(name.begin() + 6, name.end(), [](unsigned char d) { return std::isdigit(d) != 0; })) {
+            const auto it = sim_->customTokens.find(std::atoi(name.c_str() + 6));
+            if (it != sim_->customTokens.end()) {
+                value = it->second;
+            }
+        } else if (!name.empty()) {
+            std::string resolved;
+            if (resolve(name, resolved)) {
+                value = std::move(resolved);
+            }
+        }
+        result += value;
+        at = close + 1;
+    }
+    return result;
 }
 
 bool GameSession::setObjectFaction(std::uint32_t object, int faction)
@@ -671,72 +1007,6 @@ bool allDead(const kotor::Scene& scene, const EncounterState& state)
 
 } // namespace
 
-// One wave: RecCreatures (capped by MaxCreatures) drawn from the template's
-// creature list in order, placed on the volume's spawn points. The encounter's
-// Faction overrides the creature's own so a hostile encounter is hostile.
-// Gap: the CR/difficulty budget (encdifficulty.2da) that retail applies to the
-// creature mix was not recovered from the binary.
-std::int32_t GameSession::spawnEncounterWave(std::size_t encounterIndex)
-{
-    if (encounterIndex >= scene_.encounters.size() || encounterIndex >= encounterStates_.size()) {
-        return 0;
-    }
-    const kotor::EncounterVolume volume = scene_.encounters[encounterIndex];
-    const kotor::EncounterTemplate& encounter = volume.templateData;
-    EncounterState& state = encounterStates_[encounterIndex];
-    if (!encounter.active || encounter.creatures.empty() || volume.spawnPoints.empty()) {
-        return 0;
-    }
-    std::int32_t count = encounter.recCreatures > 0 ? encounter.recCreatures
-                                                    : encounter.maxCreatures;
-    if (count <= 0) {
-        count = static_cast<std::int32_t>(encounter.creatures.size());
-    }
-    if (encounter.maxCreatures > 0) {
-        count = std::min(count, encounter.maxCreatures);
-    }
-    ScriptApi api{*this};
-    std::set<std::string> singleSpawnUsed;
-    std::int32_t spawnedCount = 0;
-    for (std::int32_t i = 0; i < count; ++i) {
-        const kotor::EncounterCreature& creature =
-            encounter.creatures[static_cast<std::size_t>(i) % encounter.creatures.size()];
-        if (creature.singleSpawn && singleSpawnUsed.contains(creature.resref)) {
-            continue;
-        }
-        const kotor::EncounterSpawnPoint& point =
-            volume.spawnPoints[static_cast<std::size_t>(i) % volume.spawnPoints.size()];
-        const std::uint32_t object = spawnScriptCreature(creature.resref, point.position,
-                                                         point.bearing);
-        const std::size_t entityIndex = api.entityFor(object);
-        if (entityIndex == kNone) {
-            continue;
-        }
-        if (encounter.faction > 0) {
-            scene_.entities[entityIndex].faction = static_cast<std::uint32_t>(encounter.faction);
-        }
-        scene_.entities[entityIndex].hostileOverride = false;
-        if (script::GameObject* entry = scriptWorld_.get(object); entry != nullptr) {
-            entry->attrs["faction"] = static_cast<std::int64_t>(scene_.entities[entityIndex].faction);
-            entry->attrs["encounter_creature"] = static_cast<std::int64_t>(1);
-            applyCreatureTemplate(*entry, install_, creature.resref, scene_.entities[entityIndex]);
-        }
-        if (creature.singleSpawn) {
-            singleSpawnUsed.insert(creature.resref);
-        }
-        state.entities.push_back(entityIndex);
-        ++spawnedCount;
-    }
-    state.spawnedCount += spawnedCount;
-    state.spawned = state.spawnedCount > 0;
-    state.resetTimer = 0.0f;
-    if (spawnedCount > 0) {
-        state.exhausted = false;
-        refreshHostility();
-    }
-    return spawnedCount;
-}
-
 namespace {
 
 bool pointInEncounter(const kotor::EncounterVolume& volume, kotor::Vec3 point)
@@ -753,12 +1023,289 @@ bool pointInEncounter(const kotor::EncounterVolume& volume, kotor::Vec3 point)
     return inside;
 }
 
+// UTC total class levels (CSWSCreatureStats::GetLevel), for creatures that are not party members.
+std::int32_t utcTotalLevel(kotor::Install& install, const std::string& resref)
+{
+    auto data = install.find(resref, 2027);
+    if (!data.has_value()) {
+        return 1;
+    }
+    try {
+        kotor::Gff utc = kotor::Gff::parse(std::move(*data), resref + ".utc");
+        std::int32_t level = 0;
+        if (const kotor::GffField* list = utc.field(utc.rootIndex(), "ClassList"); list != nullptr) {
+            for (const std::uint32_t item : utc.list(*list)) {
+                if (const kotor::GffField* f = utc.field(item, "ClassLevel"); f != nullptr) {
+                    level += static_cast<std::int32_t>(utc.integer(*f));
+                } else if (const kotor::GffField* g = utc.field(item, "Level"); g != nullptr) {
+                    level += static_cast<std::int32_t>(utc.integer(*g));
+                }
+            }
+        }
+        return std::max(level, 1);
+    } catch (const kotor::FormatError&) {
+        return 1;
+    }
+}
+
 } // namespace
 
+// Encounter creature selection. Retail never spawns "RecCreatures of the list": CSWSEncounter works
+// out the party's challenge from who stands within 30 m of the entrant (TallyEnemyRadiusPoints,
+// 00591af0: every creature hostile to the encounter's faction, 1.5^level, a creature that is not in
+// the party counts at half its level), turns it into an encounter level (CalculateSpawnPool, 005931d0)
+// and a point budget, and picks list creatures to spend it (BuildSpawnList, 005935d0; see
+// EncounterPlanner.cpp). All of them appear at the spawn point farthest from the entrant, each at the
+// nearest safe spot within 20 m of it (SpawnCreatureFromSpawnList 00591ca0, ComputeSafeLocation
+// 004be860: the point itself, then square rings from 1 m growing by a body width).
+// Not ported: retail spawns one creature per AI update (here they appear on one frame); the
+// ComputeNonVisibleLocation fallback when no spawn point has a safe spot (004bee30) is a ring search
+// without its line-of-sight test.
+std::int32_t GameSession::spawnEncounterWave(std::size_t encounterIndex)
+{
+    if (encounterIndex >= scene_.encounters.size() || encounterIndex >= encounterStates_.size()) {
+        return 0;
+    }
+    const kotor::EncounterVolume volume = scene_.encounters[encounterIndex];
+    const kotor::EncounterTemplate& encounter = volume.templateData;
+    EncounterState& state = encounterStates_[encounterIndex];
+    if (!encounter.active || encounter.creatures.empty()) {
+        return 0;
+    }
+
+    // The entrant: the controlled character, or a party member inside the volume when it is not.
+    kotor::Vec3 entrant = controlledPosition();
+    if (!pointInEncounter(volume, entrant)) {
+        for (const kotor::Entity& entity : scene_.entities) {
+            if (entity.partyAvatar && !entity.dead && pointInEncounter(volume, entity.position)) {
+                entrant = entity.position;
+                break;
+            }
+        }
+    }
+
+    const auto lowerCopy = [](std::string text) {
+        std::transform(text.begin(), text.end(), text.begin(),
+                       [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        return text;
+    };
+    std::array<float, 4> fractionalMin{0.40f, 0.30f, 0.20f, 0.15f};
+    int difficulty = 0;
+    {
+        const auto number = [](const std::string& cell, double fallback) {
+            return cell.empty() || cell == "****" ? fallback : std::strtod(cell.c_str(), nullptr);
+        };
+        if (auto data = install_.find("fractionalcr", kotor::resType(kotor::ResType::TwoDa)); data.has_value()) {
+            const kotor::TwoDa table = kotor::TwoDa::parse(std::move(*data), "fractionalcr.2da");
+            const int column = table.columnIndex("min");
+            for (std::size_t row = 0; row < 4 && row < table.rowCount() && column >= 0; ++row) {
+                fractionalMin[row] = static_cast<float>(
+                    number(table.cell(row, static_cast<std::size_t>(column)), fractionalMin[row]));
+            }
+        }
+        // ReadEncounterFromGff 00592430: with encdifficulty.2da loaded the level offset is its VALUE
+        // at DifficultyIndex; a row that does not exist leaves it 0.
+        if (auto data = install_.find("encdifficulty", kotor::resType(kotor::ResType::TwoDa)); data.has_value()) {
+            const kotor::TwoDa table = kotor::TwoDa::parse(std::move(*data), "encdifficulty.2da");
+            const int column = table.columnIndex("value");
+            if (column >= 0 && encounter.difficultyIndex >= 0
+                && static_cast<std::size_t>(encounter.difficultyIndex) < table.rowCount()) {
+                difficulty = static_cast<int>(number(
+                    table.cell(static_cast<std::size_t>(encounter.difficultyIndex),
+                               static_cast<std::size_t>(column)), 0.0));
+            }
+        } else {
+            difficulty = encounter.difficulty;
+        }
+    }
+
+    // TallyEnemyRadiusPoints 00591af0: a box of +-30 m (_DAT_007455dc) around the entrant.
+    const auto inBox = [&](kotor::Vec3 p) {
+        return p.x >= entrant.x - 30.0f && p.x <= entrant.x + 30.0f && p.y >= entrant.y - 30.0f
+            && p.y <= entrant.y + 30.0f;
+    };
+    const auto hostileToEncounter = [&](std::uint32_t faction) {
+        return factions_.hostile(encounter.faction, static_cast<int>(faction));
+    };
+    float pool = 0.0f;
+    if (hostileToEncounter(0) && inBox(position_)) { // the player character, full level
+        pool += encounterLevelPoints(character_.level + 1, fractionalMin);
+    }
+    for (const kotor::Entity& entity : scene_.entities) {
+        if (entity.kind != kotor::EntityKind::Creature || entity.dead || !inBox(entity.position)
+            || !hostileToEncounter(entity.faction)) {
+            continue;
+        }
+        std::int32_t level = 1;
+        if (entity.partyAvatar) {
+            for (const CompanionState& companion : companions_) {
+                if (lowerCopy(companion.tag) == lowerCopy(entity.tag)) {
+                    level = companion.sheet.level;
+                    break;
+                }
+            }
+        } else {
+            level = utcTotalLevel(install_, entity.templateResref) / 2; // not in the party: half
+        }
+        pool += encounterLevelPoints(level + 1, fractionalMin); // points(level) = 1.5^level
+    }
+    if (pool == 0.0f) {
+        return 0; // 005931d0 leaves the budget empty and SpawnIfAppropriate spawns nothing
+    }
+    const int level = encounterLevel(pool, difficulty);
+
+    EncounterPlanner planner;
+    planner.fractionalMin = fractionalMin;
+    planner.recCreatures = encounter.recCreatures;
+    planner.maxCreatures = encounter.maxCreatures;
+    for (const std::size_t entity : state.entities) {
+        if (entity < scene_.entities.size() && !scene_.entities[entity].dead) {
+            ++planner.alive;
+        }
+    }
+    planner.pool = encounterLevelPoints(level, fractionalMin);
+    if (!(planner.pool > 0.0f)) {
+        return 0;
+    }
+    for (const kotor::EncounterCreature& creature : encounter.creatures) {
+        EncounterListEntry entry;
+        entry.resref = creature.resref;
+        entry.cr = creature.challengeRating;
+        entry.singleSpawn = creature.singleSpawn;
+        planner.list.push_back(std::move(entry));
+    }
+    planner.rand = [this]() { return static_cast<int>(random() & 0x7fffu); };
+    planner.prepare();
+    const std::vector<EncounterPick> picks = planner.build();
+    logEvent("encounter " + encounter.resref + " level " + std::to_string(level) + " pool "
+             + std::to_string(planner.pool) + " picks " + std::to_string(picks.size()));
+
+    // The spawn point farthest from the entrant (00591ca0).
+    const kotor::Vec3 centre = volume.vertices.empty() ? entrant : volume.vertices.front();
+    kotor::Vec3 origin = centre;
+    float bearing = 0.0f;
+    if (!volume.spawnPoints.empty()) {
+        float best = 0.0f;
+        std::size_t chosen = 0;
+        for (std::size_t i = 0; i < volume.spawnPoints.size(); ++i) {
+            const kotor::Vec3& p = volume.spawnPoints[i].position;
+            const float distance = (p.x - entrant.x) * (p.x - entrant.x) + (p.y - entrant.y) * (p.y - entrant.y)
+                + (p.z - entrant.z) * (p.z - entrant.z);
+            if (best * best < distance) {
+                best = std::sqrt(distance);
+                chosen = i;
+            }
+        }
+        origin = volume.spawnPoints[chosen].position;
+        bearing = volume.spawnPoints[chosen].bearing;
+    }
+    constexpr float kBody = 0.35f;
+    nav::NavMesh* mesh = navMesh();
+    const auto safeAt = [&](kotor::Vec3& p) {
+        if (mesh != nullptr && !mesh->empty()) {
+            const int tri = mesh->locate(p);
+            if (tri < 0) {
+                return false;
+            }
+            p.z = mesh->height(tri, p.x, p.y);
+        }
+        const auto clear = [&](kotor::Vec3 other) {
+            return std::hypot(other.x - p.x, other.y - p.y) >= 2.0f * kBody;
+        };
+        if (!clear(position_)) {
+            return false;
+        }
+        for (const kotor::Entity& entity : scene_.entities) {
+            if (entity.kind == kotor::EntityKind::Creature && !entity.dead && !clear(entity.position)) {
+                return false;
+            }
+        }
+        return true;
+    };
+    // ComputeSafeLocation 004be860: the point itself, then rings of half-width r = 1 m, growing by a
+    // body width, up to 20 m. Each ring walks its top and bottom rows, then its side columns.
+    const auto safeLocation = [&](kotor::Vec3 point, kotor::Vec3& out) {
+        kotor::Vec3 candidate = point;
+        if (safeAt(candidate)) {
+            out = candidate;
+            return true;
+        }
+        for (float r = 1.0f; r < 20.0f; r += kBody) {
+            for (float x = point.x - r; x <= point.x + r; x += kBody) {
+                for (const float y : {point.y - r, point.y + r}) {
+                    candidate = {x, y, point.z};
+                    if (safeAt(candidate)) {
+                        out = candidate;
+                        return true;
+                    }
+                }
+            }
+            for (float y = point.y - r + kBody; y <= point.y + r - kBody; y += kBody) {
+                for (const float x : {point.x - r, point.x + r}) {
+                    candidate = {x, y, point.z};
+                    if (safeAt(candidate)) {
+                        out = candidate;
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    };
+
+    ScriptApi api{*this};
+    std::int32_t spawnedCount = 0;
+    for (const EncounterPick& pickEntry : picks) {
+        kotor::Vec3 position = origin;
+        if (!safeLocation(origin, position)) {
+            // 004bee30: a safe spot within 30 m of the encounter.
+            bool found = false;
+            for (float r = 1.0f; r < 30.0f && !found; r += kBody) {
+                for (float angle = 0.0f; angle < 6.2831853f && !found; angle += kBody / r) {
+                    kotor::Vec3 candidate{centre.x + r * std::cos(angle), centre.y + r * std::sin(angle), centre.z};
+                    if (safeAt(candidate)) {
+                        position = candidate;
+                        found = true;
+                    }
+                }
+            }
+            if (!found) {
+                continue;
+            }
+        }
+        const std::uint32_t object = spawnScriptCreature(pickEntry.resref, position, bearing);
+        const std::size_t entityIndex = api.entityFor(object);
+        if (entityIndex == kNone) {
+            continue;
+        }
+        if (encounter.faction > 0) {
+            scene_.entities[entityIndex].faction = static_cast<std::uint32_t>(encounter.faction);
+        }
+        scene_.entities[entityIndex].hostileOverride = false;
+        if (script::GameObject* entry = scriptWorld_.get(object); entry != nullptr) {
+            entry->attrs["faction"] = static_cast<std::int64_t>(scene_.entities[entityIndex].faction);
+            entry->attrs["encounter_creature"] = static_cast<std::int64_t>(1);
+            applyCreatureTemplate(*entry, install_, pickEntry.resref, scene_.entities[entityIndex]);
+        }
+        state.entities.push_back(entityIndex);
+        ++spawnedCount;
+    }
+    state.spawnedCount += spawnedCount;
+    state.spawned = state.spawnedCount > 0;
+    state.resetTimer = 0.0f;
+    if (spawnedCount > 0) {
+        state.exhausted = false;
+        refreshHostility();
+    }
+    return spawnedCount;
+}
+
 // Encounters spawn when the player (or, for !PlayerOnly, a party member) walks
-// into the volume, not at module load. SpawnOption 1 is single shot; a Reset
-// encounter re-arms ResetTime seconds after its creatures are dead, Respawns
-// times (-1 forever), and spawns again at once if the player is still inside.
+// into the volume, not at module load. When the last spawned creature dies the
+// encounter goes inactive and its spawned flag clears (CSWSEncounter 00594310:
+// +0x238 and +0x278 to 0); only a SpawnOption 1 encounter with Reset set wakes
+// again, ResetTime seconds later and while fewer than Respawns waves have come
+// (-1 without limit; 00593fb0), and then spawns once someone is inside the volume.
 void GameSession::updateEncounterVolumes(float dt)
 {
     for (std::size_t i = 0; i < encounterStates_.size() && i < scene_.encounters.size(); ++i) {
@@ -783,8 +1330,7 @@ void GameSession::updateEncounterVolumes(float dt)
             if (!data.active || state.exhausted) {
                 return;
             }
-            const bool continuous = data.spawnOption == 0;
-            if (state.triggered && !(continuous && allDead(scene_, state))) {
+            if (state.triggered) {
                 return;
             }
             const std::size_t entityIndex = volume.entity;
@@ -799,7 +1345,13 @@ void GameSession::updateEncounterVolumes(float dt)
         if (entered) {
             enter();
         }
-        if (!state.triggered || !data.reset || !allDead(scene_, state) || state.respawnsRemaining == 0) {
+        if (state.triggered && allDead(scene_, state)) {
+            scene_.encounters[i].templateData.active = false;
+            state.triggered = false;
+            state.wiped = true;
+            state.resetTimer = 0.0f;
+        }
+        if (!state.wiped || data.spawnOption != 1 || !data.reset || state.respawnsRemaining == 0) {
             continue;
         }
         state.resetTimer += dt;
@@ -810,7 +1362,8 @@ void GameSession::updateEncounterVolumes(float dt)
         if (state.respawnsRemaining > 0) {
             --state.respawnsRemaining;
         }
-        state.triggered = false;
+        state.wiped = false;
+        scene_.encounters[i].templateData.active = true;
         if (state.inside) {
             enter();
         }
@@ -1360,6 +1913,7 @@ Cells revealMap(ActionCall& call)
     record.module = call.session.module();
     record.point = call.vectorArg(0);
     record.radius = static_cast<std::int32_t>(call.intArg(1, -1));
+    call.session.markMapAt(record.point, record.radius); // ACT_515
     api.sim().mapReveals.push_back(std::move(record));
     return ActionCall::none();
 }
@@ -1497,15 +2051,21 @@ Cells setDialogPlaceableCamera(ActionCall& call)
     return ActionCall::none();
 }
 
-// ACT_738 PlayRoomAnimation 00540dd0: ignored unless the room is in the layout. Held
-// for the renderer; room models do not animate from this yet.
+// ACT_738 PlayRoomAnimation 00540dd0: ignored unless the room is in the layout. Retail then
+// plays the room model's clip "scriptloop0%d" (below 10) or "scriptloop%d" through CSWCRoom::
+// PlayAnimation 00646180 (speed 1.0, flags 8). end_m01aa's m12aa_01q carries scriptloop01..10, one
+// per skybox. kotor::setRoomClip restarts that clip at time 0, looping, on the room's script
+// geometry (kotor/Geometry.cpp markRoomScriptMeshes); GameSession advances it each frame.
 Cells playRoomAnimation(ActionCall& call)
 {
     ScriptApi api = call.api();
     const std::string room = lowerText(call.stringArg(0));
     for (const kotor::LytRoom& known : api.scene().rooms) {
         if (lowerText(known.room) == room) {
-            api.sim().presentation.roomAnimations[room] = static_cast<std::int32_t>(call.intArg(1));
+            const std::int32_t animation = static_cast<std::int32_t>(call.intArg(1));
+            api.sim().presentation.roomAnimations[room] = animation;
+            const std::string clip = (animation < 10 ? "scriptloop0" : "scriptloop") + std::to_string(animation);
+            kotor::setRoomClip(api.scene(), known.room, clip);
             break;
         }
     }
@@ -1600,13 +2160,15 @@ Cells showLevelUpGui(ActionCall& call)
     return ActionCall::retInt(can ? 1 : 0);
 }
 
-// ACT_517 ShowTutorialWindow 00547340: once per window.
+// ACT_517 ShowTutorialWindow 00547340: window 0 is tutorial.2da row 9, 1 is row 40, 2 is row 42,
+// and any other number does nothing. 005f4120 then queues it unless it was shown before or tutorials
+// are off (0062f420).
 Cells showTutorialWindow(ActionCall& call)
 {
-    PresentationState& shown = call.api().sim().presentation;
     const std::int32_t window = static_cast<std::int32_t>(call.intArg(0));
-    if (shown.tutorialWindowsEnabled && shown.tutorialsShown.insert(window).second) {
-        shown.tutorialPending = window;
+    static constexpr std::int32_t rows[3] = {9, 40, 42};
+    if (window >= 0 && window < 3) {
+        call.api().session.showTutorial(rows[window]);
     }
     return ActionCall::none();
 }
@@ -1659,6 +2221,10 @@ Cells playVisualAreaEffect(ActionCall& call)
         at = location->position;
     }
     api.sim().presentation.areaVisuals.push_back({static_cast<std::int32_t>(call.intArg(0)), at});
+    EffectDirector::Spawn request; // drawn by game/Effects.cpp
+    request.vfx = static_cast<std::int32_t>(call.intArg(0));
+    request.place = at;
+    api.session.effects().spawn(request);
     return ActionCall::none();
 }
 
@@ -1669,6 +2235,7 @@ Cells barkString(ActionCall& call)
     PresentationState& shown = call.api().sim().presentation;
     shown.lastBarkSpeaker = call.objectArgOrInvalid(0);
     shown.lastBarkStrref = static_cast<std::int32_t>(call.intArg(1));
+    ++shown.barkSerial;
     call.api().log("bark strref " + std::to_string(shown.lastBarkStrref));
     return ActionCall::none();
 }
@@ -1743,6 +2310,17 @@ bool GameSession::gameEnded() const { return sim_->ending.ended; }
 bool GameSession::gameOverPanelVisible() const { return sim_->ending.gameOverPanel; }
 bool GameSession::creditsActive() const { return sim_->ending.credits; }
 float GameSession::creditsOpacity() const { return sim_->ending.creditOpacity; }
+bool GameSession::creditsOnLastPage() const
+{
+    const GameEndingState& ending = sim_->ending;
+    return ending.credits && ending.creditPage + 1 >= ending.creditPages.size();
+}
+float GameSession::creditsScrollProgress() const
+{
+    return creditsOnLastPage() ? std::clamp(1.0f - sim_->ending.creditScrollLeft / kCreditScrollSeconds, 0.0f, 1.0f)
+                               : 0.0f;
+}
+void GameSession::acknowledgeGameEnd() { sim_->ending.ended = false; }
 bool GameSession::creditsTransparent() const { return sim_->ending.creditsTransparent; }
 
 std::int32_t GameSession::creditsPageStrref() const
@@ -1759,6 +2337,105 @@ void GameSession::skipCredits()
 }
 
 std::int32_t GameSession::pendingTutorialWindow() const { return sim_->presentation.tutorialPending; }
+
+void GameSession::showTutorial(std::int32_t row)
+{
+    PresentationState& shown = sim_->presentation;
+    // retail 0062f420: rows below 0x2b, once each, and only while tutorials are on.
+    if (row < 0 || row >= 0x2b || !shown.tutorialWindowsEnabled) {
+        return;
+    }
+    if (shown.tutorialsShown.insert(row).second) {
+        shown.tutorialPending = row;
+        logEvent("tutorial " + std::to_string(row));
+    }
+}
+
+bool GameSession::partyWiped() const
+{
+    if (!controlledDead() || !playerDead_) {
+        return false;
+    }
+    for (const CompanionState& companion : companions_) {
+        const std::size_t index = const_cast<GameSession*>(this)->findEntity(companion.tag);
+        if (index != static_cast<std::size_t>(-1) && !scene_.entities[index].dead
+            && scene_.entities[index].hitPoints > 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// retail 004b6da0 TempDeathUpdate calls RunDeathSequence (005f7200) as soon as every party member
+// is down: panels hidden, a modal warning box (the message box here), the death camera, a global
+// fade to black after 12 s over 1 s; 005f7330 then sets EndGame's pending flag (+0x1a8), which
+// 00602eb0 turns into the return to the start screen. OK ends it at once, as EndGame does.
+// Not modelled: the death camera orbit and the game-speed ramp 005f7330 applies meanwhile.
+void GameSession::updatePartyWipe(float dt)
+{
+    if (sim_->ending.pending) {
+        return;
+    }
+    if (gameOverShown_) {
+        // retail 005f7330 UpdateDeathSequence: the 12 s global fade (StartGlobalFade delay
+        // 12.0, length 1.0 in 005f7200) ends the game by itself.
+        partyWipeTimer_ += dt;
+        if (partyWipeTimer_ >= kDeathSequenceSeconds) {
+            acknowledgeGameOver();
+        }
+        return;
+    }
+    if (!partyWiped()) {
+        partyWipeTimer_ = 0.0f;
+        return;
+    }
+    if (partyWipeTimer_ < 0.0f) {
+        return; // This wipe already ended the game (00602eb0 tears the world down).
+    }
+    partyWipeTimer_ += dt;
+    if (partyWipeTimer_ >= kPartyWipeSeconds) {
+        gameOverShown_ = true;
+        partyWipeTimer_ = 0.0f;
+        logEvent("game over");
+    }
+}
+
+void GameSession::acknowledgeGameOver()
+{
+    if (!gameOverShown_) {
+        return;
+    }
+    gameOverShown_ = false;
+    partyWipeTimer_ = -1.0f; // latched until the party is alive again
+    GameEndingState& ending = sim_->ending;
+    ending.pending = true;
+    ending.showGui = false;
+    ending.timer = 0.0f;
+}
+
+void GameSession::setTutorialWindowsEnabledForTest(bool enabled)
+{
+    PresentationState& shown = sim_->presentation;
+    shown.tutorialWindowsEnabled = enabled;
+    shown.tutorialPending = -1;
+    if (enabled) {
+        shown.tutorialsShown.clear();
+    }
+}
+
+void GameSession::killPartyForTest()
+{
+    playerHp_ = 0;
+    character_.hp = 0;
+    playerDead_ = true;
+    for (const CompanionState& companion : companions_) {
+        const std::size_t index = findEntity(companion.tag);
+        if (index != static_cast<std::size_t>(-1)) {
+            scene_.entities[index].hitPoints = 0;
+            scene_.entities[index].dead = true;
+        }
+    }
+}
 void GameSession::dismissTutorialWindow() { sim_->presentation.tutorialPending = -1; }
 bool GameSession::scriptPauseActive() const { return sim_->presentation.scriptPaused; }
 void GameSession::clearScriptPause() { sim_->presentation.scriptPaused = false; }
@@ -1976,12 +2653,13 @@ void registerWorldStateActions(HandlerTable& table)
 
 // ---- per-tick ---------------------------------------------------------------
 
-void tickWorldState(ScriptApi api, float dt)
+// The global fade. Retail draws it from the in-game GUI's fade panel (CSWGuiFade::Draw 00624570), which takes
+// its step from the client's own clock every frame and stops only while the fade-override panel is up
+// (0062fad0), so a game pause (the autopause popup) does not freeze it: BLEND's paired retail frames under
+// the Enemy Sighted popup are fully bright.
+void advanceFade(ScriptApi api, float dt)
 {
-    WorldSim& sim = api.sim();
-    GameSession& session = api.session;
-
-    FadeState& fade = sim.fade;
+    FadeState& fade = api.sim().fade;
     if (fade.active()) {
         fade.elapsed += dt;
         const float into = fade.elapsed - fade.wait;
@@ -2001,6 +2679,14 @@ void tickWorldState(ScriptApi api, float dt)
             }
         }
     }
+}
+
+void tickWorldState(ScriptApi api, float dt)
+{
+    WorldSim& sim = api.sim();
+    GameSession& session = api.session;
+
+    advanceFade(api, dt);
 
     sim.noClicksRemaining = std::max(0.0f, sim.noClicksRemaining - dt);
 
@@ -2019,19 +2705,7 @@ void tickWorldState(ScriptApi api, float dt)
 
     tickEnding(api, dt);
 
-    // Passive detection of nearby traps, once a second (Awareness roll each time).
-    sim.trapScanTimer += dt;
-    if (sim.trapScanTimer >= 1.0f) {
-        sim.trapScanTimer = 0.0f;
-        const kotor::Vec3 pc = api.position(api.pc());
-        for (std::size_t i = 0; i < api.scene().entities.size(); ++i) {
-            const kotor::Entity& entity = api.scene().entities[i];
-            if (entity.trapFlag && entity.trapDetectable && !entity.trapDetected
-                && !entity.trapDisarmed && distance2(pc, entity.position) <= kTrapDetectRadius) {
-                session.detectTrap(i);
-            }
-        }
-    }
+    session.updateMineChecks(dt);
 }
 
 
@@ -2204,6 +2878,15 @@ int runWorldStateFamilyTest(GameSession& game)
         check(game.fade().opacity == 1.0f && game.fade().color[0] == 1.0f, "fade_out_colour");
         game.releaseControl();
         check(!game.fade().active(), "release_clears_fade");
+
+        // The fade runs on real time: a fade-in owed after a dialogue is not frozen by a pause (the Enemy
+        // Sighted autopause), so the paused frame is bright, as retail's (CSWGuiFade::Draw 00624570).
+        callAction(game, 719, {real(0.0), real(1.0), real(0.0), real(0.0), real(0.0)});
+        check(game.fade().mode == FadeState::Mode::In && game.fade().opacity > 0.9f, "paused_fade_in_set");
+        for (int i = 0; i < 6; ++i) {
+            game.tickWhilePaused(0.2f); // 1.2 s of paused frames
+        }
+        check(!game.fade().active() && game.fade().opacity == 0.0f, "paused_fade_in_completes");
 
         // A module without a running cutscene or tutorial nag: a conversation
         // legitimately counts as the cutscene driving restrict mode.
@@ -2419,12 +3102,31 @@ int runWorldStateFamilyTest(GameSession& game)
             const kotor::Entity& a = other.scene().entities[trapA];
             check(a.trapDetectDC > 0 && a.trapDisarmDC > 0, "trap_data");
             check(!other.disarmTrap(trapA), "cannot_disarm_undetected");
+            // retail 004fa390: a creature standing still searches every 100 ms out to 20 m with
+            // Awareness + d10 + 10, so a trap 15 m off is found without walking onto it.
+            other.character().skills["Awareness"] = 40;
+            {
+                kotor::Vec3 off = triggerCentre(other, trapA);
+                off.x += 15.0f;
+                other.setPositionForTest(off);
+                tickFor(other, 0.5f);
+                check(other.scene().entities[trapA].trapDetected, "standing_still_finds_trap_15m_004fa390");
+                other.scene().entities[trapA].trapDetected = false;
+            }
             other.character().skills["Awareness"] = 40;
             check(other.detectTrap(trapA) && other.scene().entities[trapA].trapDetected,
                   "trap_detected");
+            // retail 00519570 disarms with Demolitions, not Security.
             other.character().skills["Security"] = 40;
+            other.character().skills["Demolitions"] = 0;
+            // A miss within 10 leaves the trap armed (DC 21..30 with a take-20 and no ranks).
+            const bool securityOnly = a.trapDisarmDC > 20 && a.trapDisarmDC <= 30
+                && other.disarmTrap(trapA);
+            logInfo(concat("worldstate: trap disarm DC ", a.trapDisarmDC));
+            check(!securityOnly, "security_does_not_disarm_00519570");
+            other.character().skills["Demolitions"] = 40;
             check(other.disarmTrap(trapA) && other.scene().entities[trapA].trapDisarmed,
-                  "trap_disarmed");
+                  "trap_disarmed_demolitions_00519570");
             other.setPositionForTest(triggerCentre(other, trapA));
             tickFor(other, 0.3f);
             check(!other.scene().entities[trapA].trapSprung, "disarmed_trap_stays_quiet");
@@ -2432,6 +3134,65 @@ int runWorldStateFamilyTest(GameSession& game)
             tickFor(other, 0.3f);
             check(other.scene().entities[trapB].trapSprung, "armed_trap_springs");
         }
+    }
+
+    // ---- encounter budget rules, hand-worked from the decompile (005919e0, 005931d0, 005935d0) ----
+    {
+        const std::array<float, 4> fraction{0.40f, 0.30f, 0.20f, 0.15f};
+        const auto approx = [](double a, double b) { return std::fabs(a - b) <= 1e-4 * std::max(1.0, std::fabs(b)); };
+        check(approx(encounterPoints(3.0f, fraction), 3.375), "cr_points_table");
+        check(approx(encounterPoints(3.9f, fraction), 3.375), "cr_points_truncates");
+        check(approx(encounterPoints(0.0f, fraction), 1.0), "cr_points_zero");
+        check(approx(encounterPoints(0.5f, fraction), 1.0) && approx(encounterPoints(0.35f, fraction), 1.0 / 1.5)
+                  && approx(encounterPoints(0.25f, fraction), 1.0 / 2.25) && approx(encounterPoints(0.17f, fraction), 1.0 / 3.375)
+                  && approx(encounterPoints(0.05f, fraction), 1.0 / 5.0625),
+              "cr_points_fractions");
+        check(approx(encounterPoints(60.0f, fraction), std::pow(1.5, 60.0))
+                  && approx(encounterPoints(-2.0f, fraction), 1.0 / 2.25),
+              "cr_points_outside_table");
+        check(encounterLevel(1.5f, 2) == 1, "encounter_level_one_hero_normal");
+        check(encounterLevel(100.0f, 0) == 8, "encounter_level_pool_100");
+        check(encounterLevel(4.5f, 0) == 0, "encounter_level_truncates");
+
+        const auto make = [&](std::initializer_list<std::pair<const char*, float>> entries, std::int32_t rec,
+                              std::int32_t max, float pool) {
+            EncounterPlanner planner;
+            for (const auto& entry : entries) {
+                EncounterListEntry item;
+                item.resref = entry.first;
+                item.cr = entry.second;
+                planner.list.push_back(item);
+            }
+            planner.recCreatures = rec;
+            planner.maxCreatures = max;
+            planner.pool = pool;
+            planner.rand = [] { return 0; };
+            planner.prepare();
+            return planner;
+        };
+        const auto names = [](const std::vector<EncounterPick>& picks) {
+            std::string out;
+            for (const EncounterPick& pick : picks) {
+                out += pick.resref + ",";
+            }
+            return out;
+        };
+        // Budget 11.39 = points of level 7: the CR 5 pick (7.59) leaves 3.80, CR 3 (3.375) fits within the
+        // 10% tolerance and leaves 0.42, CR 1 (1.5) fits the tolerance again.
+        EncounterPlanner rich = make({{"a", 1.0f}, {"b", 3.0f}, {"c", 5.0f}}, 3, 5, static_cast<float>(std::pow(1.5, 6.0)));
+        check(names(rich.build()) == "c,b,a,", "encounter_budget_takes_strongest_first");
+        // Budget 1.5: only the CR 1 creature fits; PadOutCreatureCount fills RecCreatures from the weakest CR.
+        EncounterPlanner poor = make({{"a", 1.0f}, {"b", 3.0f}, {"c", 5.0f}}, 3, 5, 1.5f);
+        check(names(poor.build()) == "a,a,a,", "encounter_pad_out_uses_weakest");
+        // A pick worth more than the cheapest creature is split when RecCreatures is not reached: budget 7.6
+        // takes the CR 5 (7.59) alone, then it is dropped and replaced by CR 3 (3.375) twice, CR 1 for the rest.
+        EncounterPlanner split = make({{"a", 1.0f}, {"b", 3.0f}, {"c", 5.0f}}, 3, 5, 7.6f);
+        const std::string splitNames = names(split.build());
+        check(splitNames == "b,b,a,", "encounter_split_strong_pick");
+        // MaxCreatures limits the first pass: alive creatures count against it.
+        EncounterPlanner capped = make({{"a", 1.0f}}, 2, 2, 100.0f);
+        capped.alive = 1;
+        check(names(capped.build()) == "a,", "encounter_alive_counts_against_max");
     }
 
     // ---- encounters spawn on entry (module tar_m03ab) ----
@@ -2461,15 +3222,40 @@ int runWorldStateFamilyTest(GameSession& game)
         check(volume != kMissing, "encounter_volume_found");
         if (volume != kMissing) {
             const kotor::EncounterTemplate data = other.scene().encounters[volume].templateData;
-            other.setPositionForTest(encounterCentre(other.scene().encounters[volume]));
+            const kotor::EncounterVolume volumeData = other.scene().encounters[volume];
+            const kotor::Vec3 entrantAt = encounterCentre(volumeData);
+            other.setPositionForTest(entrantAt);
             tickFor(other, 0.3f);
             const EncounterState& state = other.encounters()[volume];
-            const std::int32_t expected = data.maxCreatures > 0
-                ? std::min(data.recCreatures, data.maxCreatures)
-                : data.recCreatures;
+            // 005935d0: the picks are the budget's (initial pass, at most MaxCreatures) topped up to
+            // RecCreatures by PadOutCreatureCount (00590b10), unless single-spawn entries run out.
+            bool anySingle = false;
+            for (const kotor::EncounterCreature& creature : data.creatures) {
+                anySingle = anySingle || creature.singleSpawn;
+            }
             logInfo(concat("worldstate: encounter ", data.resref, " spawned=", state.spawnedCount,
-                           " expected=", expected));
-            check(state.spawnedCount == expected, "retail_spawn_count");
+                           " rec=", data.recCreatures, " max=", data.maxCreatures));
+            check(state.spawnedCount >= 1, "retail_spawn_count");
+            check(anySingle || state.spawnedCount >= data.recCreatures, "retail_spawn_count_reaches_rec");
+            check(data.maxCreatures <= 0 || state.spawnedCount <= std::max(data.maxCreatures, data.recCreatures),
+                  "retail_spawn_count_within_max");
+            // 00591ca0: the spawn point farthest from the entrant; each creature at a safe spot within
+            // 20 m of it (004be860).
+            float farthest = -1.0f;
+            kotor::Vec3 farthestPoint = entrantAt;
+            for (const kotor::EncounterSpawnPoint& point : volumeData.spawnPoints) {
+                const float d = std::hypot(point.position.x - entrantAt.x, point.position.y - entrantAt.y);
+                if (d > farthest) {
+                    farthest = d;
+                    farthestPoint = point.position;
+                }
+            }
+            bool nearFarthest = !state.entities.empty() && !volumeData.spawnPoints.empty();
+            for (const std::size_t entity : state.entities) {
+                const kotor::Vec3 at = other.scene().entities[entity].position;
+                nearFarthest = nearFarthest && std::hypot(at.x - farthestPoint.x, at.y - farthestPoint.y) <= 20.5f;
+            }
+            check(nearFarthest || volumeData.spawnPoints.empty(), "spawned_at_farthest_spawn_point");
             bool fromUtc = !state.entities.empty();
             for (const std::size_t entity : state.entities) {
                 const kotor::Entity& creature = other.scene().entities[entity];
@@ -2502,6 +3288,26 @@ int runWorldStateFamilyTest(GameSession& game)
             other.scene().entities[speaker].conversation = "lev40_brigcompn";
             callAction(other, 284, {num(31), text("7")});
             check(other.substituteTokens("(<CUSTOM31> spike(s))") == "(7 spike(s))", "token_substituted");
+            // Named tokens from stringtokens.2da (0041dd30 / 00674b90): the player's name, a
+            // gendered pair, the literal "<<", and unknown names.
+            other.character().name = "Revan";
+            other.character().gender = 0;
+            check(other.substituteTokens("I'm <FullName>.") == "I'm Revan.", "token_fullname");
+            check(other.substituteTokens("<FirstName>") == "Revan", "token_firstname");
+            check(other.substituteTokens("<<x") == "<x", "token_escaped_angle");
+            check(other.substituteTokens("<NoSuchToken>") == "<UNRECOGNIZED TOKEN>", "token_unrecognized");
+            const std::string male = other.substituteTokens("<sir/madam>");
+            other.character().gender = 1;
+            const std::string female = other.substituteTokens("<sir/madam>");
+            check(!male.empty() && !female.empty() && male != female && male.find('<') == std::string::npos,
+                  "token_gendered_pair");
+            check(other.substituteTokens("<Pause>").find('<') == std::string::npos
+                      && !other.substituteTokens("<Pause>").empty(),
+                  "token_key_name");
+            logInfo(concat("token check: sir/madam ", male, " / ", female, ", Pause key ", other.substituteTokens("<Pause>"),
+                           ", ActionDown ", other.substituteTokens("<ActionDown>"), ", class ",
+                           other.substituteTokens("<Class>")));
+            other.character().gender = 0;
             other.character().skills["Computer Use"] = 30;
             check(other.addInventoryItem("g_i_progspike01", 0, 12), "spikes_added");
             check(other.startDialogue(speaker), "dialogue_started");
@@ -2743,7 +3549,10 @@ int runRemainingActionsFamilyTest(GameSession& game)
     {
         const kotor::Vec3 before = traskAt();
         as(trask, 20, {});
-        tickFor(game, 8.0f);
+        // 00515ac0: each leg waits 3 s first. Old rule: the first leg set off at once.
+        tickFor(game, 2.5f);
+        check(gapTo(before) < 0.05f, "random_walk_waits_3s_first_00515ac0");
+        tickFor(game, 5.5f);
         check(gapTo(before) > 0.05f, "random_walk_moved");
         check(!api.actor(trask).queue.empty(), "random_walk_still_running");
         as(trask, 9, {});
@@ -2794,10 +3603,15 @@ int runRemainingActionsFamilyTest(GameSession& game)
         check(api.sim().presentation.returnOption && api.sim().presentation.returnStrref == 100,
               "return_strref");
         callAction(game, 517, {num(3)});
-        check(game.pendingTutorialWindow() == 3, "tutorial_shown");
+        check(game.pendingTutorialWindow() == -1, "tutorial_window_3_does_nothing"); // retail 00547340
+        callAction(game, 517, {num(1)});
+        check(game.pendingTutorialWindow() == 40, "tutorial_window_1_is_row_40");
         game.dismissTutorialWindow();
-        callAction(game, 517, {num(3)});
+        callAction(game, 517, {num(1)});
         check(game.pendingTutorialWindow() == -1, "tutorial_only_once");
+        callAction(game, 517, {num(0)});
+        check(game.pendingTutorialWindow() == 9, "tutorial_window_0_is_row_9");
+        game.dismissTutorialWindow();
         callAction(game, 430, {});
         check(api.sim().presentation.battleMusic, "battle_music_on");
         callAction(game, 431, {});
@@ -2811,6 +3625,13 @@ int runRemainingActionsFamilyTest(GameSession& game)
         const std::size_t visuals = api.sim().presentation.areaVisuals.size();
         callAction(game, 677, {num(1), {script::Value::makeEngine(callAction(game, 213, {obj(pc)}))}});
         check(api.sim().presentation.areaVisuals.size() == visuals + 1, "area_visual");
+        {
+            const auto userEvent = [&](std::int32_t number) {
+                return script::Value::makeEngine(callAction(game, 132, {num(number)}));
+            };
+            check(game.engineValuesEqual(userEvent(1), userEvent(1)) && !game.engineValuesEqual(userEvent(1), userEvent(2)),
+                  "events_compare_by_content");
+        }
         callAction(game, 57, {num(1)});
         check(game.scriptPauseActive(), "pause_requested");
         game.clearScriptPause();

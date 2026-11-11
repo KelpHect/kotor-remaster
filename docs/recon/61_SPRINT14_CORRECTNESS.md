@@ -78,8 +78,9 @@ SithSoldier combat, `end_m01aa -> end_m01ab`, save/load) and an all-module
 playthrough matrix: all **117 modules** load, settle for 120 frames and run
 **every entity-owned conversation** end-to-end (**780 conversations**,
 **10,133 dialogue lines**, 0 warnings). The retail GIT of `end_m01aa` references
-`end_carth001`, which is absent from the VFS; retail cannot start it either, so
-the gate asserts exactly this one known anomaly and zero engine failures. This
+`end_carth001`, which is absent from that module's VFS (it ships in
+`end_m01ab_s.rim`, and retail plays it on entering `end_m01ab`), so in `end_m01aa`
+retail cannot start it either; the gate asserts exactly this one known anomaly and zero engine failures. This
 is the P6 behaviour gate; the VM corpus remains the action-level oracle (8,666
 scripts / 303,616 actions).
 
@@ -139,6 +140,16 @@ persistent-object queries) because their branches are state-gated. The four
 save traces were recorded by replacing the profile QUICKSAVE slot; the module
 sweep uses the native `StartNewModule` thunk through a Frida RPC and is split
 with `tools/harness/split_live_modules.py`.
+
+## Loading an original save
+
+Measured on retail with the Taris save (`docs/evidence/s14/live-taris-semantic.jsonl`):
+a module's start scripts run with the save already in place. `k_pebn_pophawk` finds
+Carth available in PARTYTABLE, destroys the placed Carth and calls `SpawnAvailableNPC`.
+`k_ptar_carstr_en` doesn't fire, although the player loads inside `tar02_carstr`.
+`GameSession::loadOriginalSave` now runs the module and enter scripts last (spawn scripts stay before the restore) and marks the triggers
+the player stands in without firing them. GetAttackTarget (316) in that trace comes
+from this path, so it doesn't need a probe.
 
 ## Evidence
 

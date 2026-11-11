@@ -9,7 +9,9 @@
 #include <atomic>
 #include <cmath>
 #include <cstring>
+#include <fstream>
 #include <limits>
+#include <mutex>
 
 namespace ke::audio {
 
@@ -43,6 +45,9 @@ float clampSample(float value)
     return std::clamp(value, -1.0f, 1.0f);
 }
 
+// Test hook (setLegacyImaDecodeForTest): decode IMA ADPCM the way the engine did before the fix.
+std::atomic<bool> gLegacyImaForTest{false};
+
 bool decodeImaAdpcm(const std::uint8_t* data, std::size_t dataSize, std::uint16_t channels,
                     std::uint32_t sampleRate, std::uint16_t blockAlign,
                     std::uint16_t samplesPerBlock, SoundData& out)
@@ -57,6 +62,9 @@ bool decodeImaAdpcm(const std::uint8_t* data, std::size_t dataSize, std::uint16_
         11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794,
         32767,
     };
+    const bool legacy = gLegacyImaForTest.load();
+    // What the out-of-range read used to return: the table is followed by the step table.
+    static const int legacyIndexTable[16] = {-1, -1, -1, -1, 2, 4, 6, 8, 7, 8, 9, 10, 11, 12, 13, 14};
     if (channels == 0 || blockAlign < 4u * channels || dataSize < blockAlign) {
         return false;
     }
@@ -85,6 +93,13 @@ bool decodeImaAdpcm(const std::uint8_t* data, std::size_t dataSize, std::uint16_
         for (std::vector<float>& channel : decoded) {
             channel.reserve(samplesPerBlock);
         }
+        // The block header's predictor is the block's first output sample (2041 per 2048-byte
+        // stereo block); the pre-fix decoder dropped it.
+        if (!legacy) {
+            for (std::uint16_t channel = 0; channel < channels; ++channel) {
+                decoded[channel].push_back(static_cast<float>(predictor[channel]) / 32768.0f);
+            }
+        }
         const auto emit = [&](std::uint16_t channel, int nibble) {
             const int step = stepTable[index[channel]];
             int diff = step >> 3;
@@ -93,7 +108,10 @@ bool decodeImaAdpcm(const std::uint8_t* data, std::size_t dataSize, std::uint16_
             if ((nibble & 4) != 0) diff += step;
             if ((nibble & 8) != 0) diff = -diff;
             predictor[channel] = std::clamp(predictor[channel] + diff, -32768, 32767);
-            index[channel] = std::clamp(index[channel] + indexTable[nibble], 0, 88);
+            // The index step uses the nibble's magnitude bits only; the sign bit selects nothing.
+            // Pre-fix: indexTable[nibble] read past the 8-entry table for every negative nibble.
+            const int adjust = legacy ? legacyIndexTable[nibble] : indexTable[nibble & 7];
+            index[channel] = std::clamp(index[channel] + adjust, 0, 88);
             decoded[channel].push_back(static_cast<float>(predictor[channel]) / 32768.0f);
         };
         const std::uint8_t* payload = base + 4u * channels;
@@ -108,9 +126,11 @@ bool decodeImaAdpcm(const std::uint8_t* data, std::size_t dataSize, std::uint16_
                 }
             }
         } else {
-            // IMA stereo/multichannel: 8-sample groups per channel, 4 bytes each.
+            // IMA stereo/multichannel: 8-sample groups per channel, 4 bytes each, channels
+            // interleaved group by group, so one round consumes 4 bytes per channel.
+            // Pre-fix the cursor advanced 8 bytes per channel and skipped every other group.
             std::size_t cursor = 0;
-            const std::size_t group = 8u * static_cast<std::size_t>(channels);
+            const std::size_t group = (legacy ? 8u : 4u) * static_cast<std::size_t>(channels);
             while (cursor + group <= payloadSize
                    && decoded[0].size() < samplesPerBlock) {
                 for (std::uint16_t channel = 0; channel < channels; ++channel) {
@@ -139,6 +159,11 @@ bool decodeImaAdpcm(const std::uint8_t* data, std::size_t dataSize, std::uint16_
 }
 
 } // namespace
+
+void setLegacyImaDecodeForTest(bool on)
+{
+    gLegacyImaForTest.store(on);
+}
 
 std::size_t SoundData::frameCount() const
 {
@@ -408,15 +433,34 @@ struct Mixer::Impl {
         float pitch = 1.0f;
         bool loop = false;
         bool positional = false;
+        bool stream3d = false;      // a positional stream: retail's own falloff (see voiceGain)
+        float obstruction = 0.0f;   // GetObstructionFactor, only read by a stream3d voice
         bool active = true;
         kotor::Vec3 position;
         float minDistance = 1.0f;
         float maxDistance = 10.0f;
+        // Per-voice fade multiplier (fadeVoice): ramped per frame inside mix().
+        float fadeMul = 1.0f;
+        float fadeTarget = 1.0f;
+        float fadeStep = 0.0f;  // per output frame, signed
+        bool fading = false;
+        bool fadeStops = false;
     };
 
+    // The game thread starts, stops and retunes voices while the device thread runs
+    // mix(); every public Mixer call takes this lock (recursive: play() nests).
+    mutable std::recursive_mutex lock;
+
     int sampleRate = kMixRate;
-    float master = 0.85f;
+    // Retail has no master gain after the buses: the game never imports AIL_set_digital_master_volume_level
+    // (swkotor.exe), and the loopback of danm13's ambient loop is exactly the logged level
+    // (0.335 = 95/127 * 67/127 * 0.85, SC/audio/retail/r6_steam_a.wav).
+    float master = 1.0f;
     float busVolume[5] = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+    bool busMute[5] = {false, false, false, false, false};
+    bool busPause[5] = {false, false, false, false, false};
+    float busPeak[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    float busRms[5] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
     kotor::Vec3 listener;
     float yaw = 0.0f;
     ReverbPreset preset = reverbPreset("GENERIC");
@@ -447,6 +491,14 @@ struct Mixer::Impl {
     std::vector<float> wet;  // interleaved stereo
     std::array<float, kChunk> chunkLeft[2] = {};
     std::array<float, kChunk> chunkRight[2] = {};
+
+    // Diagnostic capture (Mixer::startCapture): seven raw 16-bit streams, WAV headers patched at stop.
+    struct Capture {
+        std::ofstream files[7];
+        std::uint64_t frames = 0;
+        std::vector<std::int16_t> block[7];
+    };
+    std::unique_ptr<Capture> capture;
 
     Impl()
     {
@@ -565,6 +617,25 @@ struct Mixer::Impl {
             const float dz = voice.position.z - listener.z;
             const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
             const float maxDistance = std::max(voice.maxDistance, voice.minDistance + 0.01f);
+            if (voice.stream3d) {
+                // Retail 005dc560: linear between min and max (nothing inside min), a source behind the
+                // listener loses up to an eighth, a hidden one the obstruction. Update3DStream hands
+                // pow(level * f, 0.6) to AIL_set_stream_volume_pan, and Mss32 2112a940 raises the volume to
+                // 1.6666666 (the double at 2114bf78) again, so the amplitude is level * f * rear, linear
+                // (checked on the loopbacks r6_steam_a / b / c to 3 percent).
+                float f = 1.0f;
+                if (distance > voice.minDistance) {
+                    f = (maxDistance - distance) / (maxDistance - voice.minDistance);
+                }
+                if (distance > 1.0e-4f) {
+                    const float dot = (dx * std::cos(yaw) + dy * std::sin(yaw)) / distance;
+                    if (dot < 0.0f) {
+                        f *= 1.0f + 0.125f * dot;
+                    }
+                }
+                f *= 1.0f - std::clamp(voice.obstruction, 0.0f, 1.0f);
+                return gain * std::max(f, 0.0f);
+            }
             const float attenuation = std::clamp(
                 (maxDistance - distance) / (maxDistance - voice.minDistance), 0.0f, 1.0f);
             gain *= attenuation * attenuation;
@@ -585,7 +656,17 @@ struct Mixer::Impl {
         }
         const float rightX = std::sin(yaw);
         const float rightY = -std::cos(yaw);
-        return std::clamp((dx * rightX + dy * rightY) / distance, -1.0f, 1.0f);
+        const float side = (dx * rightX + dy * rightY) / distance;
+        if (voice.stream3d) {
+            // Retail 005dc560: pan = 1 - |dot| / 2 on the right, |dot| / 2 on the left (dot = direction .
+            // listener forward), clamped to 0.05 .. 0.95; r6_steam_a / b / c log pan 0.854 / 0.585 / 0.522
+            // at dots 0.292 / 0.830 / 0.956. Returned as 2 * pan - 1; mix() applies Mss32's law.
+            const float dot = std::clamp((dx * std::cos(yaw) + dy * std::sin(yaw)) / distance, -1.0f, 1.0f);
+            const float half = 0.5f * std::fabs(dot);
+            const float retailPan = std::clamp(side >= 0.0f ? 1.0f - half : half, 0.05f, 0.95f);
+            return 2.0f * retailPan - 1.0f;
+        }
+        return std::clamp(side, -1.0f, 1.0f);
     }
 
     float sample(const SoundData& data, std::size_t frame, int channel) const
@@ -608,8 +689,11 @@ Mixer::Mixer()
 
 Mixer::~Mixer() = default;
 
+#define KE_MIXER_LOCK() const std::lock_guard<std::recursive_mutex> mixerLock(impl_->lock)
+
 void Mixer::setSampleRate(int sampleRate)
 {
+    KE_MIXER_LOCK();
     if (sampleRate > 0) {
         impl_->sampleRate = sampleRate;
     }
@@ -617,27 +701,68 @@ void Mixer::setSampleRate(int sampleRate)
 
 int Mixer::sampleRate() const
 {
+    KE_MIXER_LOCK();
     return impl_->sampleRate;
 }
 
 void Mixer::setListener(kotor::Vec3 position, float yaw)
 {
+    KE_MIXER_LOCK();
     impl_->listener = position;
     impl_->yaw = yaw;
 }
 
 void Mixer::setBusVolume(Bus bus, float volume)
 {
+    KE_MIXER_LOCK();
     impl_->busVolume[static_cast<std::size_t>(bus)] = std::clamp(volume, 0.0f, 4.0f);
 }
 
 float Mixer::busVolume(Bus bus) const
 {
+    KE_MIXER_LOCK();
     return impl_->busVolume[static_cast<std::size_t>(bus)];
+}
+
+void Mixer::setBusMuted(Bus bus, bool muted)
+{
+    KE_MIXER_LOCK();
+    impl_->busMute[static_cast<std::size_t>(bus)] = muted;
+}
+
+bool Mixer::busMuted(Bus bus) const
+{
+    KE_MIXER_LOCK();
+    return impl_->busMute[static_cast<std::size_t>(bus)];
+}
+
+void Mixer::setBusPaused(Bus bus, bool paused)
+{
+    KE_MIXER_LOCK();
+    impl_->busPause[static_cast<std::size_t>(bus)] = paused;
+}
+
+bool Mixer::busPaused(Bus bus) const
+{
+    KE_MIXER_LOCK();
+    return impl_->busPause[static_cast<std::size_t>(bus)];
+}
+
+float Mixer::busPeak(Bus bus) const
+{
+    KE_MIXER_LOCK();
+    return impl_->busPeak[static_cast<std::size_t>(bus)];
+}
+
+float Mixer::busRms(Bus bus) const
+{
+    KE_MIXER_LOCK();
+    return impl_->busRms[static_cast<std::size_t>(bus)];
 }
 
 void Mixer::setReverb(const std::string& label)
 {
+    KE_MIXER_LOCK();
     impl_->preset = reverbPreset(label);
     impl_->requestedCrossfade.store(false);
     impl_->requestedEnvironment.store(impl_->preset.environment);
@@ -645,6 +770,7 @@ void Mixer::setReverb(const std::string& label)
 
 void Mixer::setReverbEnvironment(int environment, bool crossfade)
 {
+    KE_MIXER_LOCK();
     const int id = environment >= kEaxEnvironmentCount ? 0 : std::max(environment, -1);
     impl_->preset = id >= 0 ? ReverbPreset{eaxEnvironment(id).label, id} : ReverbPreset{"OFF", -1};
     impl_->requestedCrossfade.store(crossfade);
@@ -653,36 +779,43 @@ void Mixer::setReverbEnvironment(int environment, bool crossfade)
 
 const ReverbPreset& Mixer::reverb() const
 {
+    KE_MIXER_LOCK();
     return impl_->preset;
 }
 
 int Mixer::reverbEnvironment() const
 {
+    KE_MIXER_LOCK();
     return impl_->environment;
 }
 
 bool Mixer::reverbFading() const
 {
+    KE_MIXER_LOCK();
     return impl_->fading;
 }
 
 void Mixer::setReverbCrossfadeSeconds(float seconds)
 {
+    KE_MIXER_LOCK();
     impl_->crossfadeSeconds = std::clamp(seconds, 0.01f, 2.0f);
 }
 
 void Mixer::setReverbSend(float level)
 {
+    KE_MIXER_LOCK();
     impl_->send = std::clamp(level, 0.0f, 1.0f);
 }
 
 float Mixer::reverbSend() const
 {
+    KE_MIXER_LOCK();
     return impl_->send;
 }
 
 std::size_t Mixer::reverbDenormalCount() const
 {
+    KE_MIXER_LOCK();
     return impl_->engines[0].denormalCount() + impl_->engines[1].denormalCount();
 }
 
@@ -690,6 +823,7 @@ int Mixer::play(const std::shared_ptr<const SoundData>& data, Bus bus, float vol
                 bool loop, bool positional, kotor::Vec3 position, float minDistance,
                 float maxDistance, float pan, float pitch)
 {
+    KE_MIXER_LOCK();
     if (!data || data->frameCount() == 0) {
         return 0;
     }
@@ -711,35 +845,42 @@ int Mixer::play(const std::shared_ptr<const SoundData>& data, Bus bus, float vol
 
 int Mixer::playMusic(const std::shared_ptr<const SoundData>& data, float volume, bool loop)
 {
+    KE_MIXER_LOCK();
     stopBus(Bus::Music);
     return play(data, Bus::Music, volume, loop, false, {}, 1.0f, 10.0f, 0.0f, 1.0f);
 }
 
 void Mixer::stopMusic()
 {
+    KE_MIXER_LOCK();
     stopBus(Bus::Music);
 }
 
 void Mixer::stopVoice(int voice)
 {
+    KE_MIXER_LOCK();
     for (Impl::Voice& entry : impl_->voices) {
         if (entry.id == voice) {
             entry.active = false;
+            entry.data.reset();
         }
     }
 }
 
 void Mixer::stopBus(Bus bus)
 {
+    KE_MIXER_LOCK();
     for (Impl::Voice& entry : impl_->voices) {
         if (entry.bus == bus) {
             entry.active = false;
+            entry.data.reset();
         }
     }
 }
 
 void Mixer::stopAll()
 {
+    KE_MIXER_LOCK();
     for (Impl::Voice& entry : impl_->voices) {
         entry.active = false;
     }
@@ -747,6 +888,7 @@ void Mixer::stopAll()
 
 void Mixer::setVoiceVolume(int voice, float volume)
 {
+    KE_MIXER_LOCK();
     for (Impl::Voice& entry : impl_->voices) {
         if (entry.id == voice) {
             entry.volume = std::clamp(volume, 0.0f, 4.0f);
@@ -754,8 +896,47 @@ void Mixer::setVoiceVolume(int voice, float volume)
     }
 }
 
+void Mixer::setVoiceStream3D(int voice, bool on)
+{
+    KE_MIXER_LOCK();
+    for (Impl::Voice& entry : impl_->voices) {
+        if (entry.id == voice) {
+            entry.stream3d = on;
+        }
+    }
+}
+
+void Mixer::setVoiceObstruction(int voice, float obstruction)
+{
+    KE_MIXER_LOCK();
+    for (Impl::Voice& entry : impl_->voices) {
+        if (entry.id == voice) {
+            entry.obstruction = std::clamp(obstruction, 0.0f, 1.0f);
+        }
+    }
+}
+
+std::vector<Mixer::StreamProbe> Mixer::stream3DProbes() const
+{
+    KE_MIXER_LOCK();
+    std::vector<StreamProbe> out;
+    for (const Impl::Voice& entry : impl_->voices) {
+        if (entry.active && entry.positional && entry.stream3d) {
+            out.push_back({entry.id, entry.position});
+        }
+    }
+    return out;
+}
+
+kotor::Vec3 Mixer::listenerPosition() const
+{
+    KE_MIXER_LOCK();
+    return impl_->listener;
+}
+
 void Mixer::setVoicePosition(int voice, kotor::Vec3 position)
 {
+    KE_MIXER_LOCK();
     for (Impl::Voice& entry : impl_->voices) {
         if (entry.id == voice) {
             entry.position = position;
@@ -764,8 +945,91 @@ void Mixer::setVoicePosition(int voice, kotor::Vec3 position)
     }
 }
 
+void Mixer::setVoicePitch(int voice, float pitch)
+{
+    KE_MIXER_LOCK();
+    for (Impl::Voice& entry : impl_->voices) {
+        if (entry.id == voice) {
+            entry.pitch = std::clamp(pitch, 0.05f, 8.0f);
+        }
+    }
+}
+
+bool Mixer::voiceActive(int voice) const
+{
+    KE_MIXER_LOCK();
+    for (const Impl::Voice& entry : impl_->voices) {
+        if (entry.id == voice) {
+            return entry.active;
+        }
+    }
+    return false;
+}
+
+float Mixer::voiceVolume(int voice) const
+{
+    KE_MIXER_LOCK();
+    for (const Impl::Voice& entry : impl_->voices) {
+        if (entry.id == voice) {
+            return entry.volume;
+        }
+    }
+    return 0.0f;
+}
+
+void Mixer::fadeVoice(int voice, float target, float seconds, bool stopAtEnd)
+{
+    KE_MIXER_LOCK();
+    for (Impl::Voice& entry : impl_->voices) {
+        if (entry.id != voice || !entry.active) {
+            continue;
+        }
+        target = std::clamp(target, 0.0f, 4.0f);
+        const float frames = seconds * static_cast<float>(impl_->sampleRate);
+        if (frames < 1.0f) {
+            entry.fadeMul = target;
+            entry.fading = false;
+            if (stopAtEnd && target <= 0.0f) {
+                entry.active = false;
+            }
+            return;
+        }
+        entry.fadeTarget = target;
+        entry.fadeStep = (target - entry.fadeMul) / frames;
+        entry.fading = entry.fadeStep != 0.0f;
+        entry.fadeStops = stopAtEnd;
+        if (!entry.fading && stopAtEnd && target <= 0.0f) {
+            entry.active = false;
+        }
+        return;
+    }
+}
+
+float Mixer::voiceFade(int voice) const
+{
+    KE_MIXER_LOCK();
+    for (const Impl::Voice& entry : impl_->voices) {
+        if (entry.id == voice) {
+            return entry.fadeMul;
+        }
+    }
+    return 0.0f;
+}
+
+void Mixer::setVoiceFade(int voice, float multiplier)
+{
+    KE_MIXER_LOCK();
+    for (Impl::Voice& entry : impl_->voices) {
+        if (entry.id == voice) {
+            entry.fadeMul = std::clamp(multiplier, 0.0f, 4.0f);
+            entry.fading = false;
+        }
+    }
+}
+
 void Mixer::setVoiceCursor(int voice, double seconds)
 {
+    KE_MIXER_LOCK();
     for (Impl::Voice& entry : impl_->voices) {
         if (entry.id == voice && entry.data) {
             const double frames = static_cast<double>(entry.data->frameCount());
@@ -777,6 +1041,7 @@ void Mixer::setVoiceCursor(int voice, double seconds)
 
 double Mixer::voiceCursor(int voice) const
 {
+    KE_MIXER_LOCK();
     for (const Impl::Voice& entry : impl_->voices) {
         if (entry.id == voice) {
             return entry.cursor / static_cast<double>(impl_->sampleRate);
@@ -790,6 +1055,7 @@ void Mixer::mix(float* interleavedStereo, int frames)
     if (interleavedStereo == nullptr || frames <= 0) {
         return;
     }
+    KE_MIXER_LOCK();
     const std::size_t samples = static_cast<std::size_t>(frames) * 2u;
     impl_->takeRequests();
     for (std::vector<float>& buffer : impl_->buses) {
@@ -802,8 +1068,14 @@ void Mixer::mix(float* interleavedStereo, int frames)
     impl_->sendMono.assign(static_cast<std::size_t>(frames), 0.0f);
 
     for (Impl::Voice& voice : impl_->voices) {
+        if (!voice.active) {
+            voice.data.reset(); // a finished voice must not keep its samples alive
+        }
         if (!voice.active || !voice.data) {
             continue;
+        }
+        if (impl_->busPause[static_cast<std::size_t>(voice.bus)]) {
+            continue; // frozen where it is
         }
         const SoundData& data = *voice.data;
         const std::size_t sourceFrames = data.frameCount();
@@ -813,10 +1085,31 @@ void Mixer::mix(float* interleavedStereo, int frames)
         }
         const float gain = impl_->voiceGain(voice);
         const float pan = impl_->voicePan(voice);
-        const float leftGain = gain * std::sqrt((1.0f - pan) * 0.5f);
-        const float rightGain = gain * std::sqrt((1.0f + pan) * 0.5f);
+        float leftGain;
+        float rightGain;
+        if (voice.stream3d) {
+            // Mss32 AIL_set_sample_volume_pan 2112a940: left = vol * (1 - pan)^0.3, right = vol * pan^0.3
+            // (the doubles at 2114bf68; 0.5 gives 2^-0.3 = 0.8123 each, the float at 2114bf70).
+            const float p = std::clamp((pan + 1.0f) * 0.5f, 0.0f, 1.0f);
+            leftGain = gain * std::pow(1.0f - p, 0.3f);
+            rightGain = gain * std::pow(p, 0.3f);
+        } else if (!voice.positional) {
+            // A 2D voice plays at the full level in both channels: AIL_set_sample_volume_levels 2112a800 stores
+            // left and right as given (the retail dump logs 0.335 and 0.428 for both). The mixer's
+            // constant-power law gives 0.7071 at the centre, hence the factor.
+            leftGain = gain * 1.41421356f * std::sqrt((1.0f - pan) * 0.5f);
+            rightGain = gain * 1.41421356f * std::sqrt((1.0f + pan) * 0.5f);
+        } else {
+            // A positional one-shot sample goes through Miles' 3D provider (AIL_set_3D_sample_volume), whose
+            // rendering no retail loopback has measured yet. It keeps the gain staging it always had,
+            // constant power and the 0.85 that used to be the master gain, until one does.
+            constexpr float kUnverified3DSampleGain = 0.85f;
+            leftGain = gain * kUnverified3DSampleGain * std::sqrt((1.0f - pan) * 0.5f);
+            rightGain = gain * kUnverified3DSampleGain * std::sqrt((1.0f + pan) * 0.5f);
+        }
         std::vector<float>& bus = impl_->buses[static_cast<std::size_t>(voice.bus)];
         const bool sends = reverbOn && voice.positional
+            && !impl_->busMute[static_cast<std::size_t>(voice.bus)]
             && (voice.bus == Bus::Effects || voice.bus == Bus::Ambient || voice.bus == Bus::Voice);
         const float sendGain = sends
             ? impl_->send * impl_->busVolume[static_cast<std::size_t>(voice.bus)] * 0.5f
@@ -837,13 +1130,27 @@ void Mixer::mix(float* interleavedStereo, int frames)
                 + (impl_->sample(data, hi, 0) - impl_->sample(data, lo, 0)) * t;
             const float right = impl_->sample(data, lo, 1)
                 + (impl_->sample(data, hi, 1) - impl_->sample(data, lo, 1)) * t;
-            bus[static_cast<std::size_t>(frame) * 2u] += left * leftGain;
-            bus[static_cast<std::size_t>(frame) * 2u + 1u] += right * rightGain;
+            const float fade = voice.fadeMul;
+            bus[static_cast<std::size_t>(frame) * 2u] += left * leftGain * fade;
+            bus[static_cast<std::size_t>(frame) * 2u + 1u] += right * rightGain * fade;
             if (sends) {
                 impl_->sendMono[static_cast<std::size_t>(frame)] +=
-                    (left * leftGain + right * rightGain) * sendGain;
+                    (left * leftGain + right * rightGain) * sendGain * fade;
             }
             voice.cursor += static_cast<double>(voice.pitch);
+            if (voice.fading) {
+                voice.fadeMul += voice.fadeStep;
+                const bool reached = voice.fadeStep >= 0.0f ? voice.fadeMul >= voice.fadeTarget
+                                                           : voice.fadeMul <= voice.fadeTarget;
+                if (reached) {
+                    voice.fadeMul = voice.fadeTarget;
+                    voice.fading = false;
+                    if (voice.fadeStops && voice.fadeTarget <= 0.0f) {
+                        voice.active = false;
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -857,31 +1164,134 @@ void Mixer::mix(float* interleavedStereo, int frames)
             impl_->voices.end());
     }
 
+    double busSquares[5] = {};
+    float busPeaks[5] = {};
     double sumSquares = 0.0;
+    Impl::Capture* capture = impl_->capture.get();
+    if (capture != nullptr) {
+        for (std::vector<std::int16_t>& block : capture->block) {
+            block.assign(samples, 0);
+        }
+    }
+    const auto pcm16 = [](float v) {
+        const float clamped = std::isfinite(v) ? std::clamp(v, -1.0f, 1.0f) : 0.0f;
+        return static_cast<std::int16_t>(std::lround(clamped * 32767.0f));
+    };
     for (int frame = 0; frame < frames; ++frame) {
         float left = 0.0f;
         float right = 0.0f;
         for (int bus = 0; bus < 5; ++bus) {
-            const float volume = impl_->busVolume[static_cast<std::size_t>(bus)];
+            const float volume = impl_->busMute[static_cast<std::size_t>(bus)]
+                ? 0.0f
+                : impl_->busVolume[static_cast<std::size_t>(bus)];
             const std::vector<float>& buffer = impl_->buses[static_cast<std::size_t>(bus)];
-            left += buffer[static_cast<std::size_t>(frame) * 2u] * volume;
-            right += buffer[static_cast<std::size_t>(frame) * 2u + 1u] * volume;
+            const float busLeft = buffer[static_cast<std::size_t>(frame) * 2u] * volume;
+            const float busRight = buffer[static_cast<std::size_t>(frame) * 2u + 1u] * volume;
+            left += busLeft;
+            right += busRight;
+            busSquares[bus] += static_cast<double>(busLeft) * busLeft
+                + static_cast<double>(busRight) * busRight;
+            busPeaks[bus] = std::max({busPeaks[bus], std::fabs(busLeft), std::fabs(busRight)});
+            if (capture != nullptr) {
+                capture->block[bus][static_cast<std::size_t>(frame) * 2u] = pcm16(busLeft);
+                capture->block[bus][static_cast<std::size_t>(frame) * 2u + 1u] = pcm16(busRight);
+            }
         }
         left += impl_->wet[static_cast<std::size_t>(frame) * 2u];
         right += impl_->wet[static_cast<std::size_t>(frame) * 2u + 1u];
+        if (capture != nullptr) {
+            capture->block[5][static_cast<std::size_t>(frame) * 2u] = pcm16(impl_->wet[static_cast<std::size_t>(frame) * 2u]);
+            capture->block[5][static_cast<std::size_t>(frame) * 2u + 1u] = pcm16(impl_->wet[static_cast<std::size_t>(frame) * 2u + 1u]);
+        }
         left = clampSample(left * impl_->master);
         right = clampSample(right * impl_->master);
+        if (capture != nullptr) {
+            capture->block[6][static_cast<std::size_t>(frame) * 2u] = pcm16(left);
+            capture->block[6][static_cast<std::size_t>(frame) * 2u + 1u] = pcm16(right);
+        }
         interleavedStereo[static_cast<std::size_t>(frame) * 2u] = left;
         interleavedStereo[static_cast<std::size_t>(frame) * 2u + 1u] = right;
         sumSquares += static_cast<double>(left) * left
             + static_cast<double>(right) * right;
     }
+    if (capture != nullptr) {
+        for (int stream = 0; stream < 7; ++stream) {
+            capture->files[stream].write(reinterpret_cast<const char*>(capture->block[stream].data()),
+                                         static_cast<std::streamsize>(samples * sizeof(std::int16_t)));
+        }
+        capture->frames += static_cast<std::uint64_t>(frames);
+    }
     impl_->lastRms = static_cast<float>(std::sqrt(sumSquares
                                                   / static_cast<double>(samples)));
+    for (int bus = 0; bus < 5; ++bus) {
+        impl_->busPeak[bus] = busPeaks[bus];
+        impl_->busRms[bus] = static_cast<float>(
+            std::sqrt(busSquares[bus] / static_cast<double>(samples)));
+    }
+}
+
+namespace {
+const char* const kCaptureNames[7] = {"music", "ambient", "effects", "voice", "movie", "reverb", "final"};
+
+void writeCaptureHeader(std::ofstream& file, std::uint64_t frames, int sampleRate)
+{
+    const std::uint32_t dataBytes = static_cast<std::uint32_t>(frames * 4u);
+    const auto put32 = [&](std::uint32_t v) { file.write(reinterpret_cast<const char*>(&v), 4); };
+    const auto put16 = [&](std::uint16_t v) { file.write(reinterpret_cast<const char*>(&v), 2); };
+    file.write("RIFF", 4);
+    put32(36u + dataBytes);
+    file.write("WAVEfmt ", 8);
+    put32(16);
+    put16(1);
+    put16(2);
+    put32(static_cast<std::uint32_t>(sampleRate));
+    put32(static_cast<std::uint32_t>(sampleRate) * 4u);
+    put16(4);
+    put16(16);
+    file.write("data", 4);
+    put32(dataBytes);
+}
+} // namespace
+
+bool Mixer::startCapture(const std::string& prefix)
+{
+    KE_MIXER_LOCK();
+    stopCapture();
+    auto capture = std::make_unique<Impl::Capture>();
+    for (int stream = 0; stream < 7; ++stream) {
+        capture->files[stream].open(prefix + "_" + kCaptureNames[stream] + ".wav", std::ios::binary);
+        if (!capture->files[stream]) {
+            return false;
+        }
+        writeCaptureHeader(capture->files[stream], 0, impl_->sampleRate);
+    }
+    impl_->capture = std::move(capture);
+    return true;
+}
+
+void Mixer::stopCapture()
+{
+    KE_MIXER_LOCK();
+    if (!impl_->capture) {
+        return;
+    }
+    for (std::ofstream& file : impl_->capture->files) {
+        file.seekp(0);
+        writeCaptureHeader(file, impl_->capture->frames, impl_->sampleRate);
+        file.close();
+    }
+    impl_->capture.reset();
+}
+
+bool Mixer::capturing() const
+{
+    KE_MIXER_LOCK();
+    return impl_->capture != nullptr;
 }
 
 std::size_t Mixer::activeVoices() const
 {
+    KE_MIXER_LOCK();
     return static_cast<std::size_t>(std::count_if(
         impl_->voices.begin(), impl_->voices.end(),
         [](const Impl::Voice& voice) { return voice.active; }));
@@ -889,6 +1299,7 @@ std::size_t Mixer::activeVoices() const
 
 std::size_t Mixer::activeVoices(Bus bus) const
 {
+    KE_MIXER_LOCK();
     return static_cast<std::size_t>(std::count_if(
         impl_->voices.begin(), impl_->voices.end(),
         [bus](const Impl::Voice& voice) { return voice.active && voice.bus == bus; }));
@@ -896,11 +1307,13 @@ std::size_t Mixer::activeVoices(Bus bus) const
 
 float Mixer::lastRms() const
 {
+    KE_MIXER_LOCK();
     return impl_->lastRms;
 }
 
 float Mixer::voiceGain(int voice) const
 {
+    KE_MIXER_LOCK();
     for (const Impl::Voice& entry : impl_->voices) {
         if (entry.id == voice) {
             return impl_->voiceGain(entry);
@@ -911,6 +1324,7 @@ float Mixer::voiceGain(int voice) const
 
 float Mixer::voicePan(int voice) const
 {
+    KE_MIXER_LOCK();
     for (const Impl::Voice& entry : impl_->voices) {
         if (entry.id == voice) {
             return impl_->voicePan(entry);

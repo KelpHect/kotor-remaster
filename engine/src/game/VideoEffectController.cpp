@@ -79,6 +79,7 @@ void VideoEffectController::enable(kotor::Install& install, std::int32_t row)
     next.noiseTranslate = noiseDefaults_.noiseTranslate;
     state_ = next;
     if (state_.active()) {
+        logInfo(concat("video effect on: row ", row));
         ++applied_;
     }
 }

@@ -102,12 +102,53 @@ and play it on `OBJECT_SELF`.
 
 ## 5. Weapon attachment
 
-`Equip_ItemList[].EquippedRes` is resolved through the UTI to `BaseItem`; the
-base item's `defaultmodel` is the weapon MDL. The first weapon becomes
-`Entity::weaponModel` on `Rhand_g`; a second becomes `offhandModel` on
-`Lhand_g`. Weapon meshes are separate `EntityMesh` records with the creature
-as `attachModel`; each animation refresh obtains the hand node world pose and
-transforms the weapon bind vertices into creature model space.
+An `Equip_ItemList` entry's struct type is its slot mask: 0x10 the right hand, 0x20 the left. The
+UTI gives `BaseItem` and `ModelVariation`, and the model is `<itemclass>_<variation>` (retail
+`005b30e0`); `defaultmodel` is only the variation 001. Retail `00610f40` and `0069a6b0` hang the
+items on the `rhand` and `lhand` hooks, not the `Rhand_g` and `Lhand_g` bones, and scale them by
+appearance `weaponscale`. The hook sits about 9 cm from the bone and turned about 84 degrees from
+it: an item on the bone is off the grip and points the wrong way. Weapon meshes are separate
+`EntityMesh` records with the creature as `attachModel`; each refresh takes the hook's pose from
+the body's clip and its blend.
+
+### Clips by what the hands hold
+
+Retail `00613710` reduces the hands to a class: 8 empty; right hand alone by `weaponwield` 1 to 1,
+2 to 2, 3 to 3, 4 to 5, 5 to 7, 6 to 9; with a left hand, left `weaponwield` 2 to 4 and 4 to 6,
+otherwise 0. Retail `0069f650` then picks the row:
+
+| Class | Holds | Ready | Walk, run with weapons out | Attack |
+|---|---|---|---|---|
+| 1 | baton | `g1r1` | `walk`, `run` | `g1a1`, `g1a2` |
+| 2 | one melee | `g2r1` | `walkSS`, `runSS` | `c2a1`..`c2a5` |
+| 3 | two-handed | `g3r1` | `walkST`, `runST` | `c3a1`..`c3a5` |
+| 4 | two melee | `g4r1` | `walkDS`, `runds` | `c4a1`..`c4a5` |
+| 5 | pistol | `g5r1` | `walk`, `run` | `b5a1` |
+| 6 | two pistols | `g6r1` | `walk`, `run` | `b6a1` |
+| 7 | rifle | `g7r1` | `walkRF`, `runRF` (always) | `b7a1` |
+| 8 | nothing | `g8r1` | `walk`, `run` | `g8a1`, `g8a2` |
+| 9 | repeater | `g7r1` | `walkRF`, `runRF` (always) | `b9a1` |
+
+Models without these rows take the other model type's: `00614110` gives `b0a1` for ranged without
+a feat (`b0a2`..`b0a4` by feat), `00613da0` gives `g0a1` plus the attack index for melee (table row
+0x114 onward). `0069f650` gives `die` and `dead` (rows 0x50, 0x51), or `cdie` and `cdead` (0x112,
+0x113). A war droid (`c_drdwar`) has only the second kind: `cdie` is its explosion and `cdead` the
+wreck. Retail frames at `tar_m02aa` show the wrecks and a soldier's body still there about a minute
+after they died, so a killed creature's body stays; how long it stays beyond that isn't measured.
+
+A creature's bearing is the way it faces (`GetFacing`, the GIT orientation vector), and its model
+faces +Y, so the model turns by the bearing less a quarter turn. Doors and placeables turn by
+`Bearing` itself. Ours shot from retail's measured camera at `tar_m02aa` drew every creature a
+quarter turn off until `Entity::drawBearing` applied this; with it, the PC's `g2r1` pose and the
+droids' facing line up with the retail frames.
+
+Attacks are `00613da0` (melee) and `00614110` (ranged, the row without a feat). `00647130` runs a
+powered item's `powerup`, `powered`, `powerdown` and `off` clips as the weapons come out and go
+away. Clips whose `animations.2da` `hideequippeditems` is 1 hide the items.
+
+Inferred: "weapons out" is taken to be combat mode, from `006182a0` setting the flags as combat
+mode changes. Standing ready while in combat, the fallback attack rows for creatures, and cycling
+the attack index are this engine's reading. An item stays visible when the weapons are away.
 
 ## 6. Cutscene cameras
 
@@ -121,11 +162,51 @@ right   = R(orientation) * (1,0,0)
 up      = right x forward
 ```
 
+The loader reads the GFF floats as W X Y Z (X and Y are 0 in all 1,099 shipped cameras); reading
+them X Y Z W rolls every camera about X and put the speaker in view for 8 of 1,744 resolvable
+static-camera dialogue lines, against 1,443 (median 8.9 degrees off axis) with W first.
+
+A camera-model `camerahook` (`CameraAngle` 4, clips `CUTnnnW`) is a modeller's camera: it looks along
+local -Z with local +Y up, the same as the minigame camera hooks. Over the 236 shipped clips of the
+24 `*_cam` models, -Z is level (|z| < 0.5) in 91% and +Y is within 26 degrees of world up in 90%;
+the former forward (local +Y) was level in 5%. Who the animated cutscenes frame is not checked
+against actor positions: the staged characters are placed by script, not by the GIT.
+
 DLG `CameraAngle` 1/2/3 uses `CamHeightOffset`/`TarHeightOffset` and the
 verified speaker/target framing formulas. `camera()` prefers the animated
 clip, then a preset, then a static `CameraID`, then first-person.
+
+Retail `006bb7b0` (called from `006bd260`) computes the preset eyes from the CAMERAHOOK node of each
+creature, with FOV 55 pushed at `0x6bd2fc`. Hooked live on `end_trask01`, the eyes for angles 1, 2 and
+3 land within 6 mm of `presetCamera`. Lines carrying `CameraAngle` 0 are not one shot: paired frames
+show the close-up, the over-the-shoulder and the two-shot on different lines, and the choice is made
+before `006306e0` (it arrives through the queue at `this+0x124`). The choice is a fixed table at `+0xa8`
+walked one row per line from a seed set at `0059f220` (rows 1,3,1,3,2,2,1,3,1,2,1,2,1,3,2,3,1,1,1);
+`game/DialogueShots.h` follows it, checked on `end_trask01` and `tar02_postraid`. The follow camera comes from `camerastyle.2da`
+by ARE `CameraStyle` (retail reads at `00508c50`): the eye is `distance` behind the creature and
+`height` above its camerahook, looking `90 - pitch` degrees below level, measured on four styles. A static
+camera's projection fovy is its GIT `FieldOfView`: read on retail at 50, 55 and 45 in `tar_m02aa`, and at
+55 on cameras 5 and 9 of `end_m01aa`.
 `CamVidEffect` is -1/0 only in the 1,135-DLG corpus (45,396 / 39, 0
 non-default), so non-default effect semantics are evidence-based out of scope.
+
+A textless DLG entry that pauses the conversation holds: `k_ptar_shoot` on the third entry of
+`tar02_preraid` calls `ActionPauseConversation` and, 1.08 s later, `SetDialogPlaceableCamera(5)`, then
+resumes after a delay. On retail the entries of that conversation land on cameras 1, 3, 4, 5, 6, 2, 8 at
+0.8, 6.2, 15.8, 17.0, 21.3, 30.0 and 32.2 s, with the eyes equal to ours to 3 decimals. `GetObjectByTag`
+lowers its tag (`005e6080`), and `k_ptar_sithtalk` starts the conversation on the trigger's target
+placeable `trooper1_invis`.
+
+Each line turns its speaker and listener toward each other (`006306e0`). Logged live on `tar02_preraid`:
+creatures with `appearance.2da` `headtrack` 0 face the other exactly; the PC (`headtrack` 1) turns only as
+needed to keep the other within `head_arc_h`, and its head follows the other's `camerahook` on `hturn_g`,
+clamped to `head_arc_h` and `head_arc_v`, within 10 m, blend time 0.25 (`006146e0`, `00487190`, tick
+`00481dc0`). `SetLockOrientationInDialog` skips the creature, `SetLockHeadFollowInDialog` makes it face
+fully. Starting a death clip plays `appearance.2da` `DeathVFX` (`0063eeb2`), 4034 on the war droid.
+
+That effect (`v_drdexpld_01`) throws solid pieces: emitters with a `chunk` model and no sprite. Ours draws each
+particle as that model, tumbling, in the emitter's start colour. Inferred from frames of the retail fight; retail's
+chunk path was not read.
 
 ## 7. Dangly and saber meshes
 

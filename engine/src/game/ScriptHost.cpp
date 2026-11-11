@@ -1,5 +1,6 @@
 #include "game/ScriptHost.h"
 
+#include "game/Ambience.h"
 #include "game/GameSession.h"
 
 #include <algorithm>
@@ -38,6 +39,7 @@ WorldSim::WorldSim()
     registerEventActions(handlers);
     registerVideoEffectActions(handlers);
     registerMiniGameActions(handlers);
+    registerAmbienceActions(handlers); // last: replaces the older audio stubs
 }
 
 // ---- ActionCall ------------------------------------------------------------
@@ -224,12 +226,13 @@ void ScriptApi::setPosition(std::uint32_t object, kotor::Vec3 position) const
     }
 }
 
-void ScriptApi::setPosition(std::uint32_t object, kotor::Vec3 position, float facing) const
+void ScriptApi::setPosition(std::uint32_t object, kotor::Vec3 position, float facing,
+                            bool turnCamera) const
 {
     if (object == pc()) {
         session.playerBearing_ = facing;
         // The camera heading follows the PC only while the PC is the steered body.
-        if (!session.companionControlled()) {
+        if (turnCamera && !session.companionControlled()) {
             session.yaw_ = facing;
         }
     } else if (const std::size_t index = entityFor(object);

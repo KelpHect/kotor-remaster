@@ -55,13 +55,17 @@ ParseResult fail(ParseResult result, std::string message)
 ParseResult parseArguments(int argc, char** argv)
 {
     ParseResult result;
+    // A flag missing its value is always the last argument. Handlers get an empty string,
+    // never a null, so atoi or a string assignment can't crash on it; the error follows below.
+    std::string_view flagMissingValue;
 
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg = argv[i];
 
         auto requireValue = [&]() -> const char* {
             if (i + 1 >= argc) {
-                return nullptr;
+                flagMissingValue = arg;
+                return "";
             }
             ++i;
             return argv[i];
@@ -95,6 +99,10 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.hidden = true;
             continue;
         }
+        if (arg == "--fullscreen") {
+            result.options.fullscreen = true;
+            continue;
+        }
         if (arg == "--validate") {
             result.options.validate = true;
             continue;
@@ -105,6 +113,34 @@ ParseResult parseArguments(int argc, char** argv)
         }
         if (arg == "--no-vsync") {
             result.options.vsync = false;
+            continue;
+        }
+        if (arg == "--max-fps") {
+            result.options.maxFps = std::atoi(requireValue());
+            continue;
+        }
+        if (arg == "--background-fps") {
+            result.options.backgroundFps = std::atoi(requireValue());
+            continue;
+        }
+        if (arg == "--start-minimized") {
+            result.options.startMinimized = true;
+            continue;
+        }
+        if (arg == "--soak") {
+            result.options.soak = requireValue();
+            continue;
+        }
+        if (arg == "--soak-modules") {
+            result.options.soakModules = requireValue();
+            continue;
+        }
+        if (arg == "--soak-out") {
+            result.options.soakOut = requireValue();
+            continue;
+        }
+        if (arg == "--soak-cycles") {
+            result.options.soakCycles = std::atoi(requireValue());
             continue;
         }
         if (arg == "--no-fallback") {
@@ -332,6 +368,27 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.chargenGui = true;
             continue;
         }
+        if (arg == "--front-end-test") {
+            result.options.frontEndTest = true;
+            result.options.guiScreen = "mainmenu";
+            continue;
+        }
+        if (arg == "--front-end-scenario") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--front-end-scenario requires a name");
+            }
+            result.options.frontEndScenario = value;
+            continue;
+        }
+        if (arg == "--front-end-out") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--front-end-out requires a directory");
+            }
+            result.options.frontEndOut = value;
+            continue;
+        }
         if (arg == "--chargen-gui-test") {
             result.options.chargenGuiTest = true;
             continue;
@@ -374,6 +431,41 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.noMovies = true;
             continue;
         }
+        if (arg == "--startup-movies") {
+            result.options.startupMovies = true;
+            continue;
+        }
+        if (arg == "--play-dialogue") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--play-dialogue requires a DLG resref");
+            }
+            result.options.playDialogue = value;
+            continue;
+        }
+        if (arg == "--no-auto-advance") {
+            result.options.noAutoAdvance = true;
+            continue;
+        }
+        if (arg == "--no-audio") {
+            result.options.noAudio = true;
+            continue;
+        }
+        if (arg == "--audio-capture") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--audio-capture requires a file prefix");
+            }
+            result.options.audioCapture = value;
+            continue;
+        }
+        if (arg == "--fixed-dt") {
+            const char* value = requireValue();
+            if (!parseDouble(value, 0.0001, result.options.fixedDt)) {
+                return fail(std::move(result), "--fixed-dt requires seconds per frame");
+            }
+            continue;
+        }
         if (arg == "--camera-noclip") {
             result.options.cameraNoClip = true;
             continue;
@@ -392,6 +484,34 @@ ParseResult parseArguments(int argc, char** argv)
         }
         if (arg == "--action-coverage") {
             result.options.actionCoverage = requireValue();
+            continue;
+        }
+        if (arg == "--quest-trace") {
+            result.options.questTrace = requireValue();
+            continue;
+        }
+        if (arg == "--conversation-flow") {
+            result.options.conversationFlow = requireValue();
+            continue;
+        }
+        if (arg == "--plot-replay") {
+            result.options.plotReplay = requireValue();
+            continue;
+        }
+        if (arg == "--quest-graph") {
+            result.options.questGraph = requireValue();
+            continue;
+        }
+        if (arg == "--quest-trace-baseline") {
+            result.options.questBaseline = requireValue();
+            continue;
+        }
+        if (arg == "--quest-trace-modules") {
+            result.options.questModules = requireValue();
+            continue;
+        }
+        if (arg == "--quest-trace-break") {
+            result.options.questBreak = requireValue();
             continue;
         }
         if (arg == "--action-corpus") {
@@ -454,6 +574,18 @@ ParseResult parseArguments(int argc, char** argv)
                 return fail(std::move(result), "--gui-screen requires a resref");
             }
             result.options.guiScreen = value;
+            continue;
+        }
+        if (arg == "--debug-ui") {
+            result.options.debugUi = true;
+            continue;
+        }
+        if (arg == "--saves-dir" || arg == "--settings-file") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), std::string(arg) + " requires a path");
+            }
+            (arg == "--saves-dir" ? result.options.savesDir : result.options.settingsFile) = value;
             continue;
         }
         if (arg == "--gui-action") {
@@ -622,6 +754,43 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.minigameRenderCheck = true;
             continue;
         }
+        if (arg == "--texture-wrap-check") {
+            result.options.textureWrapCheck = true;
+            continue;
+        }
+        if (arg == "--capture-camera") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--capture-camera requires a view");
+            }
+            result.options.captureCamera = value;
+            continue;
+        }
+        if (arg == "--input-script" || arg == "--input-script-out") {
+            const bool script = arg == "--input-script";
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), script ? "--input-script requires a file" : "--input-script-out requires a folder");
+            }
+            (script ? result.options.inputScript : result.options.inputScriptOut) = value;
+            continue;
+        }
+        if (arg == "--capture-action") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--capture-action requires door:n@frame or equip:n:model@frame");
+            }
+            result.options.captureAction = value;
+            continue;
+        }
+        if (arg == "--spawn-vfx") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--spawn-vfx requires id[:creature]");
+            }
+            result.options.spawnVfx = value;
+            continue;
+        }
         if (arg == "--screenshot") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -712,6 +881,7 @@ ParseResult parseArguments(int argc, char** argv)
             if (!parseInteger(value, 64, result.options.width)) {
                 return fail(std::move(result), "--width requires an integer >= 64");
             }
+            result.options.sizeGiven = true;
             continue;
         }
         if (arg == "--height") {
@@ -719,6 +889,7 @@ ParseResult parseArguments(int argc, char** argv)
             if (!parseInteger(value, 64, result.options.height)) {
                 return fail(std::move(result), "--height requires an integer >= 64");
             }
+            result.options.sizeGiven = true;
             continue;
         }
         if (arg == "--title") {
@@ -733,6 +904,9 @@ ParseResult parseArguments(int argc, char** argv)
         return fail(std::move(result), "Unknown argument: " + std::string(arg));
     }
 
+    if (!flagMissingValue.empty()) {
+        return fail(std::move(result), std::string(flagMissingValue) + " requires a value");
+    }
     return result;
 }
 
@@ -753,7 +927,10 @@ void printUsage()
         << "Window / loop:\n"
         << "  --width <px>          Window width (default 1280)\n"
         << "  --height <px>         Window height (default 720)\n"
+        << "  --fullscreen          Start borderless at the desktop size (F11 toggles)\n"
         << "  --hidden              Create the window hidden\n"
+        << "  --input-script <f>    Play a timed walk of mouse, key and shot steps (app/InputScript.h)\n"
+        << "  --input-script-out <d>  Folder for the walk's frames\n"
         << "  --headless            Force the SDL dummy video driver\n"
         << "  --frames <n>          Exit after n frames\n"
         << "  --seconds <s>         Exit after s seconds\n"
@@ -800,6 +977,7 @@ void printUsage()
         << "  --gui-test            Assert all shipped GUI screens and control trees\n"
         << "  --minigame-test       Assert the pazaak state machine\n"
         << "  --minigame-render-check  Compare a minigame frame with and without its meshes\n"
+        << "  --texture-wrap-check  Render a tiled room triangle under each wrap mode and measure it\n"
         << "  --localization-test   Assert TLK language and localized paths\n"
         << "  --vfs-test            Assert five-pass VFS and 2DA merges\n"
         << "  --k2-test             Assert KotOR 2 profile, geometry and 001EBO\n"
@@ -824,16 +1002,33 @@ void printUsage()
         << "  --avatar-test         Assert player/companion meshes and locomotion\n"
         << "  --third-person        Render the player avatar with an orbit camera\n"
         << "  --no-movies           Suppress module/movie overlays for inspection\n"
+        << "  --play-dialogue <dlg> Start this conversation with the controlled creature as owner\n"
+        << "  --no-auto-advance     Dialogue entries wait for a click instead of following their voice-over\n"
+        << "  --startup-movies      Play the retail intro logos (leclogo, biologo, legal); Esc skips each\n"
+        << "  --no-audio            Open no audio device (the mixer still runs on the frame clock)\n"
+        << "  --audio-capture <p>   Write each bus and the final mix to <p>_music|ambient|effects|voice|movie|reverb|final.wav\n"
+        << "  --fixed-dt <s>       Advance the session by s seconds every frame (reproducible captures)\n"
         << "  --camera-noclip       Disable third-person camera collision (debug)\n"
         << "  --start-minigame <pazaak|swoop|turret>  Open pazaak, or load a shipped race or turret module\n"
         << "  --family-test <name>  Run one Wave 2 family gate (e.g. worldstate)\n"
         << "  --action-coverage <out.tsv>  Dump each action's handler status\n"
         << "  --action-corpus <dir>  NCS scripts; fail when one uses an unhandled action\n"
+        << "  --quest-graph <dir>   Write the static quest graph (no simulation)\n"
+        << "  --quest-trace <dir>   Quest tracer: graph, per-edge execution, navigation, gate\n"
+        << "  --quest-trace-baseline <file>  Allowed exceptions and the pass floor\n"
+        << "  --quest-trace-modules <a,b>    Trace only these modules\n"
+        << "  --quest-trace-break <name>     Negative check: inject a test-only fault\n"
         << "  --player-appearance <row>  appearance.2da row for the player (default 92)\n"
         << "  --player-name <text>  Player display name (default Player)\n"
         << "  --minigame-script <ncs> PlayPazaak script bridge assertions\n"
         << "  --gui-screen <resref> Render one .gui screen in the debug UI\n"
         << "  --gui-action <tag>    Activate one control before rendering\n"
+        << "  --front-end-test      Drive the shipped menu, options, load and movies screens by real events\n"
+        << "  --front-end-scenario <n> Run another front-end gate sequence (store)\n"
+        << "  --front-end-out <d>   Folder for the front-end gate frames\n"
+        << "  --debug-ui            Also draw the developer panels (scaffold, playable slice) over the HUD\n"
+        << "  --saves-dir <dir>     Folder listed by the load/save screens\n"
+        << "  --settings-file <f>   Options file written by the options screens\n"
         << "  --video-effect-fixtures <dir>  Folder of video_effect_*.ncs fixtures\n"
         << "  --video-effect-sequence <a,b,..>  Run one fixture (row0,row1,row2,off) per frame\n"
         << "  --video-effect-warmup <n>  Frames to render before the sequence starts\n"
@@ -847,6 +1042,7 @@ void printUsage()
         << "  --demo-dialogue       Position at Trask and open the real dialogue UI\n"
         << "  --demo-combat         Position at a hostile creature and start combat\n"
         << "  --screenshot <path>   Write a BMP after the requested frames\n"
+        << "  --capture-camera <v>  entry, creature[:n], placeable[:n], door[:n] or x,y,z,lx,ly,lz[,fov]; hides the UI\n"
         << "  --save <path>         Save slot for the player state (F5 writes, --load reads)\n"
         << "  --load                Load the save slot at startup\n"
         << "  --original-save-load <folder>       Load an original SAVEGAME.sav folder\n"

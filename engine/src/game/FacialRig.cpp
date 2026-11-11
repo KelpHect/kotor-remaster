@@ -1,75 +1,15 @@
 #include "game/FacialRig.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdlib>
 
 namespace ke {
-
-namespace {
-
-kotor::Mat3 identity()
-{
-    kotor::Mat3 matrix;
-    matrix.m[0][0] = 1.0f;
-    matrix.m[1][1] = 1.0f;
-    matrix.m[2][2] = 1.0f;
-    return matrix;
-}
-
-kotor::Mat3 rotationX(float angle)
-{
-    kotor::Mat3 matrix = identity();
-    const float c = std::cos(angle);
-    const float s = std::sin(angle);
-    matrix.m[1][1] = c;
-    matrix.m[1][2] = -s;
-    matrix.m[2][1] = s;
-    matrix.m[2][2] = c;
-    return matrix;
-}
-
-kotor::Mat3 rotationZ(float angle)
-{
-    kotor::Mat3 matrix = identity();
-    const float c = std::cos(angle);
-    const float s = std::sin(angle);
-    matrix.m[0][0] = c;
-    matrix.m[0][1] = -s;
-    matrix.m[1][0] = s;
-    matrix.m[1][1] = c;
-    return matrix;
-}
-
-const VisemePose kPoses[16] = {
-    {0.00f, 0.00f, 0.00f, 0.00f}, // Silence
-    {0.35f, 0.15f, 0.25f, 0.00f}, // Eat
-    {0.18f, 0.65f, 0.10f, 0.10f}, // If
-    {0.55f, -0.35f, 0.80f, 0.00f}, // Ox
-    {0.62f, -0.20f, 0.70f, 0.00f}, // Oat
-    {0.22f, 0.45f, 0.20f, 0.05f}, // Wet
-    {0.12f, 0.75f, 0.10f, 0.15f}, // Size
-    {0.30f, 0.15f, 0.55f, 0.00f}, // Church
-    {0.20f, 0.50f, 0.15f, 0.00f}, // Fave
-    {0.32f, 0.25f, 0.30f, 0.00f}, // Though
-    {0.40f, -0.10f, 0.50f, 0.00f}, // Told
-    {0.00f, 0.00f, 0.40f, 0.00f}, // Bump
-    {0.30f, -0.20f, 0.35f, 0.00f}, // New
-    {0.85f, 0.35f, 0.15f, 0.20f}, // Roar
-    {0.50f, 0.40f, 0.20f, 0.00f}, // Cage
-    {0.35f, 0.25f, 0.20f, 0.00f}, // Earth
-};
-
-} // namespace
 
 bool FacialRig::load(kotor::Install& install, std::string& error)
 {
     error.clear();
     names_.clear();
-    poses_.clear();
-    currentRotations_.clear();
     viseme_ = 0;
-    currentPose_ = {};
     auto data = install.find("visemes", kotor::resType(kotor::ResType::TwoDa));
     if (!data.has_value()) {
         error = "visemes.2da is missing";
@@ -84,7 +24,6 @@ bool FacialRig::load(kotor::Install& install, std::string& error)
             return false;
         }
         names_.assign(16, {});
-        poses_.assign(16, {});
         std::vector<bool> seen(16, false);
         for (std::size_t row = 0; row < table.rowCount(); ++row) {
             const std::string idText = table.cell(row, static_cast<std::size_t>(idColumn));
@@ -102,16 +41,13 @@ bool FacialRig::load(kotor::Install& install, std::string& error)
                 continue;
             }
             names_[static_cast<std::size_t>(id)] = std::move(name);
-            poses_[static_cast<std::size_t>(id)] = kPoses[id];
             seen[static_cast<std::size_t>(id)] = true;
         }
         if (std::find(seen.begin(), seen.end(), false) != seen.end()) {
             error = "visemes.2da does not cover ids 0..15";
             names_.clear();
-            poses_.clear();
             return false;
         }
-        currentPose_ = poses_[0];
         return true;
     } catch (const kotor::FormatError& exception) {
         error = exception.what();
@@ -126,50 +62,36 @@ const std::string& FacialRig::visemeName(int viseme) const
         ? names_[static_cast<std::size_t>(viseme)] : empty;
 }
 
-VisemePose FacialRig::pose(int viseme) const
+kotor::MdlFacePose FacialRig::facePose(const kotor::LipSync& lip, float time)
 {
-    return viseme >= 0 && static_cast<std::size_t>(viseme) < poses_.size()
-        ? poses_[static_cast<std::size_t>(viseme)] : VisemePose{};
-}
-
-float FacialRig::jawAngle(int viseme) const
-{
-    return -0.55f * pose(viseme).jawOpen;
-}
-
-std::map<std::string, kotor::Mat3> FacialRig::rotations(int viseme) const
-{
-    std::map<std::string, kotor::Mat3> out;
-    const VisemePose channels = pose(viseme);
-    if (channels.jawOpen > 0.0f) {
-        out.emplace("f_jaw_g", rotationX(-0.55f * channels.jawOpen));
-        out.emplace("tongue", rotationX(-0.18f * channels.jawOpen));
+    kotor::MdlFacePose pose;
+    if (lip.frames.empty()) {
+        return pose;
     }
-    if (channels.mouthWide != 0.0f) {
-        out.emplace("f_lmc_g", rotationZ(0.22f * channels.mouthWide));
-        out.emplace("f_rmc_g", rotationZ(-0.22f * channels.mouthWide));
+    const auto shape = [&](std::size_t key) { return clipFraction(static_cast<int>(lip.frames[key].viseme)); };
+    pose.weight = 1.0f;
+    const std::size_t last = lip.frames.size() - 1;
+    if (time >= lip.frames[last].time) {
+        pose.fractionA = pose.fractionB = shape(last);
+        const float end = std::max(lip.frames[last].time, lip.duration);
+        pose.weight = std::clamp(1.0f - (time - end) / kFadeSeconds, 0.0f, 1.0f);
+        return pose;
     }
-    if (channels.lipRound > 0.0f) {
-        out.emplace("f_um_g", rotationX(0.12f * channels.lipRound));
+    std::size_t next = 0;
+    while (next < last && lip.frames[next].time < time) {
+        ++next;
     }
-    if (channels.browRaise > 0.0f) {
-        out.emplace("f_lbrw_g", rotationX(0.12f * channels.browRaise));
-        out.emplace("f_rbrw_g", rotationX(0.12f * channels.browRaise));
-    }
-    return out;
+    const std::size_t before = next == 0 ? 0 : next - 1;
+    pose.fractionA = shape(before);
+    pose.fractionB = shape(next);
+    const float span = lip.frames[next].time - lip.frames[before].time;
+    pose.blend = span > 0.0f ? std::clamp((time - lip.frames[before].time) / span, 0.0f, 1.0f) : 1.0f;
+    return pose;
 }
 
 void FacialRig::setViseme(int viseme)
 {
-    if (poses_.empty()) {
-        viseme_ = 0;
-        currentPose_ = {};
-        currentRotations_.clear();
-        return;
-    }
-    viseme_ = std::clamp(viseme, 0, static_cast<int>(poses_.size()) - 1);
-    currentPose_ = pose(viseme_);
-    currentRotations_ = rotations(viseme_);
+    viseme_ = names_.empty() ? 0 : std::clamp(viseme, 0, static_cast<int>(names_.size()) - 1);
 }
 
 } // namespace ke

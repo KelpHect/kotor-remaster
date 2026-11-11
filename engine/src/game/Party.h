@@ -68,6 +68,10 @@ struct PartyTable {
     int controlled = kNpcPlayer;  // PT_CONTROLLED_NP.
     bool solo = false;            // PT_SOLOMODE.
     std::int32_t xpPool = 0;      // PT_XP_POOL.
+    // PT_PAZAAKCARDS / PT_PAZSIDELIST: the Pazaak cards owned per kind and the last side deck chosen.
+    // ClearTable 00563200 starts a game with kinds 0..4 (+1..+5) twice each and no side deck.
+    std::array<std::int32_t, 18> pazaakCards{2, 2, 2, 2, 2};
+    std::array<std::int32_t, 10> pazaakSideList{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
     // SetLockHeadFollowInDialog: objects whose head must not track the speaker.
     std::set<std::uint32_t> headFollowLocked;
     // Lazy caches of static data (npc.2da PercentXP, template per NPC).

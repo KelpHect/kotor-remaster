@@ -296,6 +296,8 @@ bool GameSession::loadNpcSheet(int npc)
         sheet.wis = gffInt(utc, root, "Wis", sheet.wis);
         sheet.cha = gffInt(utc, root, "Cha", sheet.cha);
         sheet.alignment = std::clamp(gffInt(utc, root, "GoodEvil", 50), 0, 100);
+        // UTC PortraitId is the portraits.2da row (the party screens and the HUD draw it).
+        sheet.portraitRow = gffInt(utc, root, "PortraitId", -1);
         // A UTC carries no experience; the level's threshold is the floor.
         sheet.xp = rules_.loaded() ? rules_.xpForLevel(level) : 0;
         sheet.maxHp = std::max(1, gffInt(utc, root, "MaxHitPoints", 1));
@@ -1131,6 +1133,85 @@ bool GameSession::openPartySelection(const std::string& exitScript, int forceNpc
     return true;
 }
 
+// Retail 00693650 builds the map panel's Party Selection button from three tests, in this
+// order, and keeps the strref of the first that fails: the area's Unescapable flag (0x9633,
+// "That function is unavailable at this time."), the party being together (0x9634, "You must
+// rejoin your party first.") and no enemy near the party (0x963e, "That cannot be done while
+// there are enemies nearby."). ENGINE CHOICE: "together" is every member within 40 m (the test
+// is 00635350, not read), "near" 11 m (the 0xb in the retail comparison, a distance whose
+// measure was not traced).
+std::uint32_t GameSession::partySelectionRefusal()
+{
+    if (sim_->areaUnescapable) {
+        return 38451;
+    }
+    if (!partyTogether()) {
+        return 38452;
+    }
+    if (hostileNearParty()) {
+        return 38462;
+    }
+    return 0;
+}
+
+// Retail 0062dd20 with its third parameter zero (the UI path, not a script) stops at the
+// Unescapable flag; the map panel has already refused the other two reasons.
+bool GameSession::openPartySelectionFromMap()
+{
+    if (partySelectionRefusal() != 0) {
+        return false;
+    }
+    return openPartySelection("", -1, -1);
+}
+
+bool GameSession::requestPartySelectionFromUi()
+{
+    if (const std::uint32_t refusal = partySelectionRefusal(); refusal != 0) {
+        feedback(localization_->tlk().text(refusal));
+        return false;
+    }
+    return openPartySelection("", -1, -1);
+}
+
+bool GameSession::partyTogether(float meters)
+{
+    const kotor::Vec3 leader = controlledPosition();
+    for (const std::uint32_t member : partyObjects()) {
+        if (member == controlledObject()) {
+            continue;
+        }
+        for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+            if (objectForEntity(i) == member) {
+                const float dx = scene_.entities[i].position.x - leader.x;
+                const float dy = scene_.entities[i].position.y - leader.y;
+                if (std::sqrt(dx * dx + dy * dy) > meters) {
+                    return false;
+                }
+                break;
+            }
+        }
+    }
+    return true;
+}
+
+bool GameSession::hostileNearParty(float meters)
+{
+    const std::uint32_t leader = controlledObject();
+    const kotor::Vec3 at = controlledPosition();
+    for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+        const kotor::Entity& entity = scene_.entities[i];
+        if (entity.kind != kotor::EntityKind::Creature || entity.dead || entity.partyAvatar) {
+            continue;
+        }
+        const float dx = entity.position.x - at.x;
+        const float dy = entity.position.y - at.y;
+        if (std::sqrt(dx * dx + dy * dy) <= meters && isEnemy(ScriptApi{*this}, leader, objectForEntity(i))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool GameSession::partySelectionToggle(int npc)
 {
     if (!partySelection_.active || !isAvailableNpc(npc)) {
@@ -1297,12 +1378,22 @@ void GameSession::writePartyState(std::ostream& file) const
     for (const std::uint32_t object : party_.headFollowLocked) {
         file << "plock=" << object << "\n";
     }
+    // PT_PAZAAKCARDS then PT_PAZSIDELIST (retail writer 00564dc8).
+    file << "ppaz=";
+    for (const std::int32_t count : party_.pazaakCards) {
+        file << count << ",";
+    }
+    file << "|";
+    for (const std::int32_t kind : party_.pazaakSideList) {
+        file << kind << ",";
+    }
+    file << "\n";
 }
 
 bool parsePartyLine(const std::string& key, const std::string& value, PartyLoad& out)
 {
     if (key != "pt" && key != "pnpc" && key != "psheet" && key != "pskill" && key != "pfeat"
-        && key != "ppower" && key != "pitem" && key != "plock" && key != "pctl") {
+        && key != "ppower" && key != "pitem" && key != "plock" && key != "pctl" && key != "ppaz") {
         return false;
     }
     out.present = true;
@@ -1310,6 +1401,19 @@ bool parsePartyLine(const std::string& key, const std::string& value, PartyLoad&
     const auto num = [&](std::size_t i, std::int64_t fallback = 0) -> std::int64_t {
         return i < p.size() && !p[i].empty() ? std::stoll(p[i]) : fallback;
     };
+    if (key == "ppaz") {
+        const auto fill = [](const std::string& text, auto& into) {
+            const std::vector<std::string> cells = splitText(text, ',');
+            for (std::size_t i = 0; i < into.size() && i < cells.size(); ++i) {
+                if (!cells[i].empty()) {
+                    into[i] = std::stoi(cells[i]);
+                }
+            }
+        };
+        fill(p.size() > 0 ? p[0] : std::string{}, out.table.pazaakCards);
+        fill(p.size() > 1 ? p[1] : std::string{}, out.table.pazaakSideList);
+        return true;
+    }
     if (key == "pctl") {
         if (p.size() >= 4) {
             out.hasControlledPosition = true;
@@ -1455,6 +1559,14 @@ bool GameSession::restorePartyTable(PartyLoad&& load)
 void GameSession::writePartyToOriginalSave(kotor::OriginalSave& save) const
 {
     save.xpPool = party_.xpPool;
+    save.pazaakCards = party_.pazaakCards;
+    save.pazaakSideList = party_.pazaakSideList;
+    save.tutorialShown.fill(0u);
+    for (const std::int32_t row : sim_->presentation.tutorialsShown) { // PT_TUT_WND_SHOWN, 0062f420's bits
+        if (row >= 0 && row < 0x2b) {
+            save.tutorialShown[static_cast<std::size_t>(row >> 3)] |= static_cast<std::uint8_t>(1u << (row & 7));
+        }
+    }
     save.solo = party_.solo;
     save.controlledNpc = party_.controlled;
     save.party.clear();
@@ -1511,6 +1623,11 @@ void GameSession::writePartyToOriginalSave(kotor::OriginalSave& save) const
             copy.slot = item.slot;
             copy.equipped = item.equipped;
             copy.identified = item.identified;
+            copy.upgrades = item.upgrades;
+            // Retail 00555790 saves each item's properties; this const path has only the template cache.
+            if (const auto cached = itemTemplates_.find(item.resref); cached != itemTemplates_.end()) {
+                copy.properties = cached->second.properties;
+            }
             saved.inventory.push_back(std::move(copy));
         }
     }
@@ -1528,6 +1645,14 @@ void GameSession::readPartyFromOriginalSave(const kotor::OriginalSave& save)
     companions_.clear();
     partyTags_.clear();
     party_.xpPool = save.xpPool;
+    party_.pazaakCards = save.pazaakCards;
+    party_.pazaakSideList = save.pazaakSideList;
+    sim_->presentation.tutorialsShown.clear();
+    for (std::int32_t row = 0; row < 0x2b; ++row) {
+        if ((save.tutorialShown[static_cast<std::size_t>(row >> 3)] & (1u << (row & 7))) != 0u) {
+            sim_->presentation.tutorialsShown.insert(row);
+        }
+    }
     party_.solo = save.solo;
     for (int npc = 0; npc < kNpcCount; ++npc) {
         const kotor::SavedNpc& saved = save.npcs[static_cast<std::size_t>(npc)];
@@ -1810,6 +1935,7 @@ Cells giveXpAction(ActionCall& c)
     if (c.session.npcForObject(object) == -2) {
         return std::nullopt;
     }
+    c.session.statusFeedback(2, static_cast<std::int32_t>(c.intArg(1))); // ACT_393
     c.session.giveXp(static_cast<std::int32_t>(c.intArg(1)));
     return ActionCall::none();
 }
@@ -2209,6 +2335,7 @@ int runPartyFamilyTest(GameSession& game)
     check(!game.headFollowLocked(carthAgain), "head_follow_unlocked");
 
     // ---- ShowPartySelectionGUI: forced NPC, toggles, accept, exit script ---------------------
+    game.declareGlobalForTest("PARTY_EXIT");
     game.addScriptForTest("party_exit",
                           PartyScript().constInt(1).constString("PARTY_EXIT").action(581, 2).bytes());
     run(712, {S("party_exit"), I(nw("NPC_BASTILA")), I(-1)});

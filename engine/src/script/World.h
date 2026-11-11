@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <deque>
 #include <map>
+#include <optional>
 #include <memory>
 #include <set>
 #include <string>
@@ -18,6 +19,24 @@ namespace ke::script {
 
 using AttrValue = std::variant<std::int64_t, double, std::string, bool,
                                std::map<std::string, std::int64_t>>;
+
+// Script global names compare without case in retail: the catalogue lookup hashes the
+// lower-cased name (00528e50) and compares with _stricmp (00529030, 005e58c0). Shipped
+// scripts rely on it: they spell 69 globals in more than one case.
+struct NoCaseLess {
+    bool operator()(const std::string& a, const std::string& b) const
+    {
+        const std::size_t count = a.size() < b.size() ? a.size() : b.size();
+        for (std::size_t i = 0; i < count; ++i) {
+            const char x = a[i] >= 'A' && a[i] <= 'Z' ? static_cast<char>(a[i] - 'A' + 'a') : a[i];
+            const char y = b[i] >= 'A' && b[i] <= 'Z' ? static_cast<char>(b[i] - 'A' + 'a') : b[i];
+            if (x != y) {
+                return x < y;
+            }
+        }
+        return a.size() < b.size();
+    }
+};
 
 struct GameObject {
     std::uint32_t id = 0;
@@ -60,6 +79,8 @@ struct WorldEvent {
 // Deterministic object/world model used by the script runtime. It mirrors the
 // verified Sprint 3 Python model; the engine binds its real entities to these
 // objects instead of inventing a second object system.
+enum class GlobalKind : std::uint8_t { Boolean, Number, String, Location };
+
 class World {
 public:
     explicit World(std::uint64_t seed = 0x4B4F544F52ULL);
@@ -80,6 +101,17 @@ public:
 
     Value getLocal(std::uint32_t id, const std::string& name, ValueType type = ValueType::Int) const;
     void setLocal(std::uint32_t id, const std::string& name, Value value);
+    // An object's script variables as retail's CSWVarTable keeps them: 96 booleans (three words) and
+    // 8 number bytes, apart from each other. SetLocalBoolean 0059b040 ignores an index outside 0..95;
+    // GetLocalBoolean (0053b818 -> 0059b000) gives the raw bit, so index 5 reads 32 and index 31 reads
+    // 0x80000000. SetLocalNumber's handler 00543130 ignores a value outside -128..127 and 0059b0d0 an
+    // index outside 0..7; GetLocalNumber pushes the byte zero-extended (0053b80c), so -1 reads 255.
+    // Stored in `locals` as "b<index>" (0 or 1) and "<index>" (the byte), which the save writes as is.
+    static std::string localBooleanKey(std::int64_t index) { return "b" + std::to_string(index); }
+    std::int32_t localBoolean(std::uint32_t id, std::int64_t index) const;
+    void setLocalBoolean(std::uint32_t id, std::int64_t index, bool value);
+    std::int32_t localNumber(std::uint32_t id, std::int64_t index) const;
+    void setLocalNumber(std::uint32_t id, std::int64_t index, std::int64_t value);
     Value getGlobal(const std::string& name, ValueType type = ValueType::Int) const;
     void setGlobal(const std::string& name, Value value);
 
@@ -96,7 +128,15 @@ public:
                       const std::string& source = "AssignCommand");
     void scheduleFunctor(double delay, std::int64_t id, std::uint32_t target = 0,
                          const std::string& source = "DelayCommand");
+    // Moves the clock and takes every due timer, in retail event order (see World.cpp).
     std::vector<Timer> advance(double seconds);
+    void advanceClock(double seconds);
+    // The earliest due timer, first scheduled first among equal times; none when nothing is due.
+    std::optional<Timer> popDue();
+    std::int64_t nowMs() const;
+    // When a delay posted now comes due, or nothing when retail drops it (negative delay).
+    std::optional<double> dueAfter(double delay) const;
+    bool timerDue(const Timer& timer) const;
 
     std::int64_t attrInt(const std::string& name, std::int64_t fallback = 0) const;
     double attrFloat(const std::string& name, double fallback = 0.0) const;
@@ -109,7 +149,7 @@ public:
     std::uint32_t nextId = 1;
     std::map<std::uint32_t, GameObject> objects;
     std::map<std::string, std::vector<std::uint32_t>> tags;
-    std::map<std::string, Value> globals;
+    std::map<std::string, Value, NoCaseLess> globals;
     std::vector<std::uint32_t> party;
     std::deque<QueuedAction> actionQueue;
     std::vector<Timer> timers;

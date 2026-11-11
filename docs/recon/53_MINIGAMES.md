@@ -72,8 +72,13 @@ Rules recovered from retail, all in `MiniGame3D.cpp`:
   `bullethook<N>` (00673a40). Enemy shots aim at the target plus Target_Offset, scattered by
   Inaccuracy * distance. Bullets fly along local Y (006db090).
 - Bullets test the moved segment against each target model's `hitbullet` mesh (006730a0);
-  obstacles use `hitbump` against the player's path (0066e6b0). Trigger enemies use a
-  moving sphere of the summed radii (0066eda0, 004abdd0).
+  obstacles use `hitbump` against the player's path from the model's previous position
+  (+0x94, vt+0x6c 004499d0) to its position (+0x78, vt+0x64 00449980) (0066e6b0). Both go
+  through 0043e930 and the AABB part (vtable 00741048, 004428f0 -> 00441570) to the face
+  test 004ab750, which is one-sided: a hit needs the path to cross a face from the front of
+  its plane to the back. Every shipped hit mesh (68 nodes) is a closed box with outward
+  faces, so a path through an obstacle hits once, on entry; the exit face does not count.
+  Trigger enemies use a moving sphere of the summed radii (0066eda0, 004abdd0).
 - Callback scripts replace the default; the SWMG_On* actions run the default from inside
   them (0066c190, 0066e5c0, 0066e2a0, 0066e7a0).
 - The view hangs from `camerahook`. In the shipped `m12ab_camera` and `m17mg_camera` bind
@@ -91,8 +96,12 @@ Known simplifications, each noted at its code:
 
 - The UseInertia branch of 0066d640 smooths the model toward queued track rotation keys;
   models here follow `modelhook` directly.
-- Turret offset as Euler degrees (heading about Z after pitch about X) is an
-  interpretation: the composing routine was not recovered.
+- Turret offset as Euler degrees: 0066d640 copies the offset into every rotating model
+  part of type 0x3eb and into the camera model (+0x220); 0049f5f0 builds the rotation with
+  004acac0, which takes degrees (007415f8) and multiplies axis rotations about Z (offset z),
+  X (offset x) and Y (offset y) through 004a9ac0, then multiplies the result with the part's
+  hook orientation (vt+0x68). The camera model and the cockpit models get the same rotation,
+  so this alone does not explain retail's side-switching cockpit (see below).
 - The enemy gun's horizontal angle axis is assumed (`004aa0f0` was not read to its end).
 - `DoBumping` is 0 in all four ARE files, so the push-out branch of 0066eda0 cannot run
   and is not implemented.
@@ -106,6 +115,53 @@ Known simplifications, each noted at its code:
   draw as opaque dark bands. Scene textures use the renderers' clamped sampler in every
   module, which streaks tiled track surfaces. Enemy fire pressure against retail is
   unmeasured: a fighter's shots almost always hit the stationary Hawk here.
+
+Clip weights (00485bd0 adds, 00486670 updates, applied by 00483d80 -> 00483330):
+
+- A new clip starts at weight 0 with the animation's transition time; a replayed clip keeps
+  its time and weight and clears its done mark. An overlay goes to the front of the list,
+  which is applied last.
+- Each frame a clip that is not done gains `dt / transition` (or 1.0 when the transition is
+  0, 0073d764) up to 1. A one-shot clip at its end loses `2 dt / transition` (or 2.0,
+  00741be0); below 0 it is marked done (weight 1 again when the transition is 0) and the
+  next update sends `done` and frees it.
+- 00483330 blends each controller as `node = lerp(node, key(time), weight)`: the previous
+  time is passed as `-100 - prevTime` (0074186c), which is always below -95 (00743254).
+  Values stay in the nodes after a clip is freed.
+
+Open differences, with the evidence gathered so far:
+
+- Swoop gear meter: settled. The heartbeat (stack offsets traced from the bytecode, not the
+  decompiled names) computes the meter from `MIN_RACE_GEAR` and `SWMG_GetPlayerSpeed`
+  (005ccc60 reads follower +0x98, written by 0066c870 every frame from the 0066d640 ramp):
+  gear 1 gives `speed / 60 * 8`, gears 2-4 `(speed - low) / (high - low) * 8` over
+  60/100/150/210, gear 5 `(speed - 210) / 210 * 16`. At the finish it plays only `meter0`.
+  Retail's speed log (`swoop_speed_log.tsv`) shows `TAR_SWOOP_ACCEL` 0, the per-gear
+  minimum/maximum/acceleration 35/70/20, 60/120/8, 100/190/6, 150/225/3.3 and 210/420/2
+  (raised by each boost pad), and 0/0/71.97 after the finish; the meter shows 3 to 9
+  chevrons during that race and one around the finish. The earlier one-and-six reading was
+  that run's input. Ours gives the same values gear by gear.
+- Turret cockpit. The offset is in degrees, yaw wraps (no limit) and pitch is held to
+  2..45 (+0x1e4), as here. Retail's log shows every rotating part and the camera model
+  holding the same quaternion (pitch about X, then yaw about Z) and the view orbiting the
+  pivot 0.64 away at height 0.444, as here. Yet the frames show the cockpit and its one
+  visible gun behaving as if fixed to the ship: the gun is on the left facing forward (yaw
+  about 300..60) and on the right, with the cockpit seen mirrored, facing backward (about
+  160..260), while the HUD stays put. Here `mgf_turret` (RotatingModel 1, holding both
+  gunbanks) turns with the camera, so the cockpit never changes. The only model attached
+  without the rotation is `mgf_ebonhawk` (RotatingModel 0: 0066d2f0 attaches it to the
+  track's `modelhook` with kind 0, the disabled 0x3e9 part); its hull behind the cockpit
+  changes with heading in retail's frames as it does here. In retail's side sheet the
+  cockpit keeps its screen position and its two dials stay in place, but the struts and the
+  gun swap sides, which a rotation cannot produce. What draws it that way was not found. Callers of 0049fb10 (the plain
+  dependent, vtable 00743894) are the camera hook (00671748, 00671797), bullets (00674a9d)
+  and 00690f21.
+
+Diagnostics (`game/ScriptMiniGame.cpp`): setting the environment variable
+`KOTOR_DEBUG_MG_ANIM` logs every `SWMG_PlayAnimation` call with its target and retail flags;
+`KOTOR_DEBUG_MG_SPEED` logs the player's speed, minimum, maximum and acceleration each time
+a script reads `SWMG_GetPlayerSpeed` (the swoop heartbeat does so every frame), in the
+columns of retail's speed log.
 
 ## Gate
 

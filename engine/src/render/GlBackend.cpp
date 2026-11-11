@@ -1,5 +1,6 @@
 #include "render/BackendFactory.h"
 #include "render/Backend.h"
+#include "render/Bmp.h"
 #include "render/GlScene.h"
 #include "core/Log.h"
 
@@ -39,6 +40,20 @@ using GlClearFn = void(KE_GLAPI*)(std::uint32_t);
 using GlViewportFn = void(KE_GLAPI*)(int, int, int, int);
 using GlGetStringFn = const unsigned char*(KE_GLAPI*)(std::uint32_t);
 
+using GlBlendFuncSeparateFn = void(KE_GLAPI*)(std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t);
+
+GlBlendFuncSeparateFn g_glBlendFuncSeparate = nullptr;
+
+// Retail draws `blending additive` art with glBlendFunc(SRC_ALPHA, ONE) (0047af70). ImGui's own
+// draw state is (SRC_ALPHA, ONE_MINUS_SRC_ALPHA, ONE, ONE_MINUS_SRC_ALPHA); only the colour
+// destination factor changes. ImDrawCallback_ResetRenderState restores the original.
+void glUiAdditive(const ImDrawList*, const ImDrawCmd*)
+{
+    if (g_glBlendFuncSeparate != nullptr) {
+        g_glBlendFuncSeparate(0x0302u /*SRC_ALPHA*/, 1u /*ONE*/, 1u /*ONE*/, 0x0303u /*ONE_MINUS_SRC_ALPHA*/);
+    }
+}
+
 constexpr std::uint32_t kGlColorBufferBit = 0x00004000u;
 constexpr std::uint32_t kGlVersion = 0x1F02u;
 constexpr std::uint32_t kGlRenderer = 0x1F01u;
@@ -59,16 +74,6 @@ public:
     {
         window_ = window;
 
-        if (!SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4)
-            || !SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5)
-            || !SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE)
-            || !SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1)
-            || !SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24)
-            || !SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8)) {
-            error = concat("SDL_GL_SetAttribute failed: ", SDL_GetError());
-            return false;
-        }
-
         context_ = SDL_GL_CreateContext(window_);
         if (context_ == nullptr) {
             error = concat("OpenGL 4.5 core context unavailable: ", SDL_GetError());
@@ -81,6 +86,9 @@ public:
             return false;
         }
 
+        int depthBits = 0;
+        SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &depthBits);
+        logInfo(concat("GL depth buffer bits: ", depthBits));
         if (!SDL_GL_SetSwapInterval(options.vsync ? 1 : 0)) {
             logWarn(concat("SDL_GL_SetSwapInterval failed (continuing): ", SDL_GetError()));
         }
@@ -89,6 +97,8 @@ public:
         glClear_ = reinterpret_cast<GlClearFn>(SDL_GL_GetProcAddress("glClear"));
         glViewport_ = reinterpret_cast<GlViewportFn>(SDL_GL_GetProcAddress("glViewport"));
         glGetString_ = reinterpret_cast<GlGetStringFn>(SDL_GL_GetProcAddress("glGetString"));
+        g_glBlendFuncSeparate =
+            reinterpret_cast<GlBlendFuncSeparateFn>(SDL_GL_GetProcAddress("glBlendFuncSeparate"));
 
         if (glClearColor_ == nullptr || glClear_ == nullptr || glViewport_ == nullptr
             || glGetString_ == nullptr) {
@@ -130,6 +140,9 @@ public:
         }
 
         initialized_ = true;
+        // --screenshot: read the frame before the swap (the front buffer is undefined
+        // afterwards, and black for a hidden window), see screenshot().
+        captureArmed_ = !options.screenshot.empty();
         if (!sceneRenderer_.initialize(error)) {
             logWarn(concat("Scene renderer unavailable; HUD-only OpenGL: ", error));
         } else {
@@ -174,11 +187,30 @@ public:
         }
     }
 
+    void syncSceneMeshes(const kotor::Scene* scene) override
+    {
+        if (scene == nullptr || scene != scene_ || !sceneReady_) {
+            setScene(scene);
+            return;
+        }
+        std::string uploadError;
+        if (!sceneRenderer_.syncMeshes(*scene_, uploadError)) {
+            logError(concat("Scene sync failed: ", uploadError));
+        }
+    }
+
     void setCamera(const SceneCamera& camera) override { camera_ = camera; }
 
     void setVideoEffect(const VideoEffectState& effect) override
     {
         sceneRenderer_.setVideoEffect(effect);
+    }
+
+    void refreshSceneVertices(const kotor::Scene& scene, std::size_t first, std::size_t count) override
+    {
+        if (sceneReady_) {
+            sceneRenderer_.refreshSceneVertices(scene, first, count);
+        }
     }
 
     void refreshEntityMeshes(const kotor::Scene& scene) override
@@ -190,7 +222,13 @@ public:
 
     bool screenshot(const std::filesystem::path& path) override
     {
-        if (!sceneReady_ || scene_ == nullptr || window_ == nullptr) {
+        if (!sceneReady_ || window_ == nullptr) {
+            return false;
+        }
+        if (captureArmed_ && captureWidth_ > 0 && captureHeight_ > 0 && !capturePixels_.empty()) {
+            return writeBmpTopDown(path, captureWidth_, captureHeight_, capturePixels_);
+        }
+        if (scene_ == nullptr) {
             return false;
         }
         int width = 0;
@@ -274,6 +312,11 @@ public:
         return true;
     }
 
+    UiDrawCallback uiAdditiveCallback() const override
+    {
+        return g_glBlendFuncSeparate != nullptr ? &glUiAdditive : nullptr;
+    }
+
     void releaseUiImage(std::uint64_t& textureId) override
     {
         if (!initialized_) {
@@ -299,6 +342,22 @@ public:
             frame.height = captureHeight_;
             frame.rgba = capturePixels_;
             return true;
+        }
+        int width = 0;
+        int height = 0;
+        SDL_GetWindowSizeInPixels(window_, &width, &height);
+        if (!sceneRenderer_.readFramePixels(false, width, height, frame.rgba)) {
+            return false;
+        }
+        frame.width = width;
+        frame.height = height;
+        return true;
+    }
+
+    bool captureLatest(CapturedFrame& frame) override
+    {
+        if (!initialized_ || !sceneReady_ || window_ == nullptr) {
+            return false;
         }
         int width = 0;
         int height = 0;

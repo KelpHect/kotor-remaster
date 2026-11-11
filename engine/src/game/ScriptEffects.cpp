@@ -171,6 +171,41 @@ void applyEffect(ScriptApi api, std::int32_t durationType, std::int64_t id, std:
     if (!api.isAlive(target) && data.type != 14) {
         return;
     }
+    if (data.type == 31 && creature) { // EffectPoison: OnApplyPoison 004db320 sends sound-set enum 0x1c
+        const std::size_t poisoned = api.entityFor(target);
+        if (poisoned != static_cast<std::size_t>(-1)) {
+            api.session.effects().speak(poisoned, 27, EffectDirector::VoiceKind::Broadcast);
+        }
+    }
+    if (data.type == 75) { // EffectVisualEffect: the model and its sounds come from game/Effects.cpp
+        EffectDirector::Spawn request;
+        request.vfx = argInt(data, 0);
+        request.target = api.session.bodyOfObject(target); // the PC is its avatar body
+        request.targetObject = target;
+        request.temporary = durationType == 1;
+        request.seconds = duration;
+        request.permanent = durationType == 2;
+        request.ownerEffect = (durationType == 1 || durationType == 2) ? id : 0;
+        api.session.effects().spawn(request);
+    }
+    if (data.type == 21) { // EffectBeam(nBeam, oEffector, nBodyPart, bMiss), retail ACT_207 00531260
+        EffectDirector::Spawn request;
+        request.vfx = argInt(data, 0);
+        request.target = api.session.bodyOfObject(target); // the PC is its avatar body
+        request.targetObject = target;
+        request.temporary = durationType == 1;
+        request.seconds = duration;
+        request.permanent = durationType == 2;
+        request.ownerEffect = (durationType == 1 || durationType == 2) ? id : 0;
+        if (data.args.size() > 1) {
+            request.beamSource = api.session.bodyOfObject(static_cast<std::uint32_t>(data.args[1].integer));
+        }
+        // BODY_NODE_* in nwscript.nss. A missing beam (bMiss) still ends on the target here.
+        static constexpr const char* kNodes[] = {"handconjure", "impact", "headconjure", "lhand", "rhand"};
+        const std::int32_t part = argInt(data, 2);
+        request.beamNode = part >= 0 && part < 5 ? kNodes[part] : "rhand";
+        api.session.effects().spawn(request);
+    }
     switch (data.type) {
     case effect::kHeal:
         if (creature) {
@@ -269,6 +304,19 @@ Cells applyEffectAtLocation(ActionCall& call)
     }
     if (data->type == 20) {
         call.api().log("ApplyEffectAtLocation: area of effect not simulated");
+    }
+    if (data->type == 75) { // EffectVisualEffect at a place: a fire-and-forget model
+        if (const LocationData* location = call.api().sim().engine.get<LocationData>(call.engineArg(2))) {
+            EffectDirector::Spawn request;
+            request.vfx = argInt(*data, 0);
+            request.place = location->position;
+            request.placeBearing = location->facing * 0.0174532925f;
+            const std::int32_t kind = static_cast<std::int32_t>(call.intArg(0));
+            request.temporary = kind == 1;
+            request.seconds = static_cast<float>(call.floatArg(3));
+            request.permanent = kind == 2;
+            call.api().session.effects().spawn(request);
+        }
     }
     return ActionCall::none();
 }
@@ -434,10 +482,22 @@ Cells getHasSpellEffect(ActionCall& call)
 
 } // namespace
 
+void applyEffectRecord(ScriptApi api, std::int32_t durationType, std::int64_t id,
+                       std::uint32_t target, float duration, std::uint32_t creator,
+                       std::int32_t spellId)
+{
+    applyEffect(api, durationType, id, target, duration, creator, spellId);
+}
+
+// retail 005b4880 IsDebilitated reads creature +0x8ed, which only OnApplySetState (004e1c20) raises.
+// The SetState constructors (005313f0, 00534810, 00534c20, 00534e90, 005351e0) are Confused 1,
+// Frightened 2, DroidStun 3, Stunned 4, Paralyze 5, Sleep 6, Choke 7, Horrified 8, WhirlWind 10 and
+// the cutscene stun/paralyze/horrified. Entangle (130) builds its own effect type (0x7466c4) and
+// does not debilitate. Knockdown and Force push keep their engine handlers (not traced to +0x8ed).
 bool isDisablingEffect(std::int32_t type)
 {
     switch (type) {
-    case 11: // Entangle
+    case effect::kWhirlwind:
     case 24: // Confused
     case 25: // Frightened
     case 27: // Paralyze

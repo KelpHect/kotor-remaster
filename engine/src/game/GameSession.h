@@ -1,6 +1,8 @@
 #pragma once
 
 #include "game/AudioSystem.h"
+#include "game/DialogueShots.h"
+#include "game/Effects.h"
 #include "game/FacialRig.h"
 #include "game/Factions.h"
 #include "game/MiniGame3D.h"
@@ -22,6 +24,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -50,6 +53,9 @@ struct DialogueOption {
 
 struct DialogueView {
     bool active = false;
+    // The conversation's type is Computer (DLG ConversationType 1, retail reader 005a2ae0): the
+    // terminal screen (computer.gui) shows it instead of the letterboxed dialog panel.
+    bool computer = false;
     std::string npcTag;
     std::string speaker;
     // The object the current line is spoken by (DLG Speaker tag, else the
@@ -63,9 +69,52 @@ struct DialogueView {
     std::uint32_t entry = UINT32_MAX;
     std::int32_t cameraId = -1;
     std::int32_t cameraAngle = -1;
+    // A line whose replies are on screen is shot on the one who answers (see showDialogueEntry).
+    bool shotOnListener = false;
+    std::int32_t replyCameraAngle = 0; // the angle the reply list is shot from, once it is up
     std::int32_t camVidEffect = 0;
     float camHeightOffset = 0.0f;
     float tarHeightOffset = 0.0f;
+    float camFieldOfView = -1.0f; // the node's CamFieldOfView, -1 for the scene's view angle
+};
+
+// One floating line over an object (retail 00688e10, kept per object by 0068b7c0).
+struct FloatingText {
+    std::uint32_t object = 0;
+    std::string text;
+    kotor::Vec3 color{1.0f, 1.0f, 1.0f};
+    float seconds = 1.5f;
+    float age = 0.0f;
+    int line = 0; // lines above the newest one
+};
+
+// What retail 0062eeb0 gathers until the world is free (0062ef90): the status summary's rows.
+struct StatusSummary {
+    bool journal = false;
+    bool creditsBothWays = false; // retail bit 0x100
+    std::int32_t credits = 0;
+    std::int32_t xp = 0;
+    std::int32_t stealthXp = 0;
+    std::int32_t light = 0;
+    std::int32_t dark = 0;
+    bool received = false;
+    bool lost = false;
+    bool any() const
+    {
+        return journal || credits != 0 || creditsBothWays || xp != 0 || stealthXp != 0 || light != 0 || dark != 0 || received || lost;
+    }
+};
+
+// The explored bits of an area's map (retail 00578c60: MapResX columns, at most 88, 0 meaning 88; rows in the 440x256
+// view's proportion; 005061d0 keeps them in the area's AreaMap).
+struct MapFog {
+    int cols = 0;
+    int rows = 0;
+    std::vector<char> seen;
+    // The saved words as retail holds them (00578fc0 copies them whole; 00578fa0 sets every byte
+    // to 0xff), padding bits past the last cell included; written back under the seen cells.
+    std::vector<std::uint32_t> words;
+    std::size_t seenCount() const { return static_cast<std::size_t>(std::count(seen.begin(), seen.end(), char{1})); }
 };
 
 struct DialogueChoiceEvent {
@@ -81,7 +130,7 @@ struct ModuleTransitionEvent {
     std::string to;
 };
 
-enum class UiPanel { None, Character, Inventory, Party, Journal, Merchant, Loot };
+enum class UiPanel { None, Character, Inventory, Party, Journal, Merchant, Loot, Equipment, Abilities, Messages, Map, LevelUp };
 const char* uiPanelName(UiPanel panel);
 
 enum class CombatMode { Normal, PowerAttack, Flurry, CriticalStrike, Whirlwind };
@@ -94,11 +143,21 @@ namespace nav {
 class NavMesh;
 struct Runtime;
 } // namespace nav
+namespace quest {
+struct QuestTraceOptions;
+int runQuestTrace(GameSession& game, const QuestTraceOptions& options);
+struct FlowOptions;
+int runConversationFlow(GameSession& game, const FlowOptions& options);
+int runPlotReplay(GameSession& game, const FlowOptions& options);
+} // namespace quest
 
 class GameSession : public script::ActionHost {
     friend struct ScriptApi;
     friend struct ItemOps;
     friend struct CombatOps;
+    friend class EffectDirector;
+    friend struct QuestTraceOps;
+    friend struct QuestFlowOps;
 
 public:
     GameSession(std::string installPath, std::string module, int language = -1,
@@ -138,10 +197,13 @@ public:
     void setRsvRootForTest(std::filesystem::path root) { rsvRoot_ = std::move(root); }
 
     void update(float dt, const InputState& input);
+    // A frame the world does not tick (pause, a screen over the world): retail's server loop
+    // (004babb0) still runs TempDeathUpdate (004b6da0) on the real clock.
+    void tickWhilePaused(float realDt);
     SceneCamera camera() const;
     SceneCamera cinematicCamera(std::int32_t cameraId) const;
     SceneCamera presetCamera(std::int32_t angle, float camHeight, float targetHeight,
-                             kotor::Vec3 speaker, kotor::Vec3 target) const;
+                             kotor::Vec3 speaker, kotor::Vec3 target, std::int32_t side = 1) const;
     void setDialogueCameraForTest(std::int32_t cameraId) {
         dialogueView_.active = true;
         dialogueView_.cameraId = cameraId;
@@ -149,18 +211,36 @@ public:
     bool setDialogueCameraAnimationForTest(const std::string& model, const std::string& clip);
     std::string interactionPrompt() const;
     bool interact();
+    // Retail 00620350 HandleMouseClickInWorld: ndcX and ndcY are the pointer in -1..1 (y up), aspect the view
+    // width over height. False when no selectable object is under the pointer.
+    bool clickWorld(float ndcX, float ndcY, float aspect);
+    std::size_t pickEntity(kotor::Vec3 eye, kotor::Vec3 dir) const;
+    bool performDefaultAction(std::size_t index);
+    bool activateSelected();
     bool testTransition(std::string& from, std::string& to);
     // Queues the module the next update() enters, through the same path as the
     // StartNewModule action (new game: chargen hands the character here).
     void requestModule(const std::string& module) { pendingModule_ = module; }
+    // New Game: the module the menu stood on is a backdrop, not a place the player has been.
+    // Retail's new game starts from an empty server world, so the next update() enters `module`
+    // fresh (its spawn and OnEnter scripts run) with no globals, journal or module snapshots
+    // carried over, and without the backdrop's OnExit/OnClientLeave hooks.
+    void startNewGame(const std::string& module);
+    // Called with the destination module just before update() loads it: the application
+    // shows the loading screen there (the load itself blocks the frame loop).
+    void setModuleLoadHook(std::function<void(const std::string&)> hook) { moduleLoadHook_ = std::move(hook); }
     bool save(const std::filesystem::path& path) const;
     bool load(const std::filesystem::path& path);
     // Original KotOR save folder (SAVEGAME.sav + sidecars). The reader maps
     // the saved player/party/inventory/globals and overlays the saved GIT
     // object state; the writer emits a complete original slot.
-    bool loadOriginalSave(const std::filesystem::path& folder);
+    // asPlayer: play the loaded game as the PC (avatar and follow camera) before the module start
+    // scripts run, so a conversation they start finds the PLAYER (WALK_DIFFS W29/W38).
+    bool loadOriginalSave(const std::filesystem::path& folder, bool asPlayer = false);
     bool saveOriginalSave(const std::filesystem::path& folder,
                           const std::string& saveName = "Engine Save");
+    // The frame the next original save stores as Screen.tga (taken before the pause menu opened).
+    void setSaveScreenshot(std::vector<std::uint8_t> tga) { saveScreenTga_ = std::move(tga); }
     const kotor::GameProfile& gameProfile() const { return install_.profile(); }
 
     kotor::Vec3 position() const { return position_; }
@@ -169,6 +249,8 @@ public:
     float elapsedSeconds() const { return elapsed_; }
     bool grounded() const { return grounded_; }
     float floorHeightAt(float x, float y) const;
+    // The walkmesh height below (x, y) under maxZ; false where there is no walkmesh.
+    bool floorBelow(float x, float y, float maxZ, float& height) const;
 
     bool startDialogue(std::size_t entityIndex);
     bool startDialogue(const std::string& tag);
@@ -186,10 +268,25 @@ public:
         lipTime_ = 0.0f;
         dialogueView_.active = false;
     }
+    // PlayMovie plays at once (skippable: its handler 00540ed0 carries no flag). The queue
+    // follows QueueMovie(name, bSkippable) / PlayMovieQueue(bAllowSeparateSkips): queuing
+    // plays nothing; Escape (skipMovie) ends a skippable movie, and with
+    // bAllowSeparateSkips FALSE ends the whole queue.
     bool playMovie(const std::string& name);
     void stopMovie();
-    bool queueMovie(const std::string& name, bool playNow);
-    bool playMovieQueue();
+    bool queueMovie(const std::string& name, bool skippable = true);
+    bool playMovieQueue(bool allowSeparateSkips = true);
+    bool skipMovie();
+    // The movie clock, audio cursor and queue; update() calls it.
+    void advanceMovie(float dt);
+    // Retail runs a movie inside a blocking loop (00602af0): the world and its scripts wait.
+    // The frontend turns this on; a test driving update() directly keeps its clock.
+    void setMovieHoldsWorld(bool hold) { movieHoldsWorld_ = hold; }
+    bool movieHoldsWorld() const { return movieHoldsWorld_; }
+    std::size_t queuedMovies() const { return movieQueue_.size(); }
+    bool movieSkippable() const { return movieSkippable_; }
+    // Retail BeginIntro (00602dc0): leclogo, biologo, legal, each skippable on its own.
+    bool playStartupMovies();
     bool moviePlaying() const { return moviePlaying_; }
     const std::string& movieName() const { return movieName_; }
     float movieTime() const { return movieTime_; }
@@ -200,14 +297,56 @@ public:
     }
     int movieFrameIndex() const { return movieFrameIndex_; }
     bool seekMovie(float seconds);
+    // PlayPazaak (action 364) opens the shipped screens in order: pazaakwager (when a wager is asked),
+    // pazaaksetup (the side deck), pazaakgame. The screens (GameScreensPazaak.cpp) only show this model.
+    // Retail: StartPazaakGame 005f3810, the start panel 00681a90, EndPazaakGame 005f3950.
+    enum class PazaakStage { None, Wager, Setup, Game };
     bool startPazaak(std::int32_t opponentDeck, std::string endScript,
                      std::int32_t maxWager, bool tutorial, std::uint32_t opponent);
     PazaakGame* pazaak() { return pazaak_.get(); }
     const PazaakGame* pazaak() const { return pazaak_.get(); }
-    bool pazaakActive() const { return pazaak_ != nullptr; }
+    PazaakStage pazaakStage() const { return pazaakStage_; }
+    bool pazaakActive() const { return pazaakStage_ != PazaakStage::None; }
     int lastPazaakResult() const { return lastPazaakResult_; }
+    std::uint32_t pazaakOpponent() const { return pazaakOpponent_; }
+    // LBL_NPCNAME: the opponent creature's name when there is one (the game panel 006808a0).
+    std::string pazaakOpponentName() const;
+    bool pazaakTutorial() const { return pazaakTutorial_; }
+    // The side deck panel's help box (only with bShowTutorial).
+    PazaakHelp& pazaakSetupHelp() { return pazaakSetupHelp_; }
+    const PazaakHelp& pazaakSetupHelp() const { return pazaakSetupHelp_; }
+    // The match is over and its outcome has been shown: EndPazaakGame with bWon = more sets.
     void resolvePazaakIfOver();
-    void stopPazaak() { pazaak_.reset(); pazaakEndScript_.clear(); pazaakWager_ = 0; }
+    // Escape and OK on the quit question: before the table (0067d3d0) nothing is wagered; at the table
+    // (0067db50) the match is forfeit and the wager lost. Both end the game with a result of 0.
+    void quitPazaak();
+    void forfeitPazaak();
+    // EndPazaakGame 005f3950: keeps the result, settles the wager, runs the end script with an invalid
+    // OBJECT_SELF, every time the game ends.
+    void endPazaakGame(bool won, std::int32_t wager);
+    void stopPazaak();
+    // The wager popup (0067f000, 0067e150): it opens at the maximum (the script's, cut to the gold
+    // held) and steps by one, never under 1.
+    int pazaakMaxWager() const;
+    int pazaakWager() const { return pazaakWagerChosen_; }
+    int pazaakWagerStep() const { return 1; }
+    void setPazaakWager(int wager);
+    void confirmPazaakWager();
+    // The setup screen: 18 card kinds (0..5 are +1..+6, 6..11 are -1..-6, 12..17 are +/-1..+/-6). The
+    // cards owned are PARTYTABLE counts (ClearTable 00563200 starts a game with +1..+5 twice each); the
+    // side deck is exactly ten (ShowDisabledButtons 0067e400) and is kept in PARTYTABLE (00681890).
+    static constexpr std::size_t kPazaakDeckSize = 10;
+    int pazaakCardsOwned(int kind) const;
+    const std::vector<int>& pazaakChosen() const { return pazaakChosen_; }
+    bool pazaakChoose(int kind);
+    bool pazaakUnchoose(std::size_t slot);
+    bool pazaakPlay();
+    static PazaakCard pazaakCardOfKind(int kind);
+    std::int32_t pazaakWagerAtStake() const { return pazaakWager_; }
+    // CItemRepository::AddItem 0055d330: a pazaak card item (base item 86) given to the party becomes a
+    // PARTYTABLE count (AddPazaakCard 004efb40, kind = (ModelVariation + 11) % 18) and the first one
+    // brings the sideboard item. True when the item was taken that way.
+    bool absorbPazaakCard(const std::string& resref, std::int32_t baseItem, std::int32_t stack);
     // Shipped minigame modules. Entering one is a normal module load; these are the
     // player-level input and the state a window or a bot reads (game/MiniGame3D.h).
     bool miniGameActive() const;
@@ -225,6 +364,15 @@ public:
     void chooseDialogueOption(std::size_t optionIndex);
     void endDialogue();
     const DialogueView& dialogue() const { return dialogueView_; }
+    // Cutscene-style playback of a conversation: when on, an entry that only continues (one
+    // link without a player line, or no link) advances by itself once its voice-over has
+    // finished (or, with no voice, after its Delay or a reading time). The application turns
+    // it on; fixtures leave it off and advance by choosing.
+    void setDialogueAutoAdvance(bool enabled) { dialogueAutoAdvance_ = enabled; }
+    bool dialogueAutoAdvance() const { return dialogueAutoAdvance_; }
+    // Seconds the current entry has been shown.
+    float dialogueEntryAge() const { return dialogueEntryAge_; }
+    std::size_t dialogueStuntCount() const { return dialogueStunts_.size(); }
     // True while an ActionPauseConversation holds the conversation; options are
     // refused until a resume runs or nothing is left in flight.
     bool dialoguePaused() const { return sim_->dialoguePaused; }
@@ -237,7 +385,8 @@ public:
         std::uint32_t self, std::uint16_t id, const std::vector<std::vector<script::Value>>& args);
     // Level-up points waiting to be spent. Levels themselves arrive with the XP.
     bool canLevelUp() const {
-        return character_.attributePoints > 0 || character_.skillPoints > 0 || character_.featPoints > 0;
+        return character_.attributePoints > 0 || character_.skillPoints > 0 || character_.featPoints > 0
+            || character_.powerPoints > 0;
     }
     void addPlayerClass(std::int32_t classId);
     AudioSystem* audioOrNull() { return audio_.get(); }
@@ -246,11 +395,62 @@ public:
     bool creditsActive() const;
     std::int32_t creditsPageStrref() const; // -1 when no credits are showing.
     float creditsOpacity() const;
+    // The last credits page scrolls instead of fading: 0 at its start, 1 when it has gone.
+    bool creditsOnLastPage() const;
+    float creditsScrollProgress() const;
+    // The front end took the finished ending (it went back to the main menu).
+    void acknowledgeGameEnd();
     bool creditsTransparent() const;
     void skipCredits();
-    // A tutorial window a script asked for, or -1; dismiss clears it.
+    // The tutorial popup waiting to be shown, as a tutorial.2da row, or -1; dismiss clears it. A
+    // script's ShowTutorialWindow(0..2) maps to rows 9, 40 and 42 (retail 00547340, nothing for
+    // other numbers); the game raises the rest by event (showTutorial), once per row.
     std::int32_t pendingTutorialWindow() const;
     void dismissTutorialWindow();
+    void showTutorial(std::int32_t row);
+    // The whole party is down: the player's character and every companion. The game over message
+    // follows at once (retail 004b6da0 -> 005f7200 RunDeathSequence) and the game ends after the
+    // 12 s hold and 1 s fade (005f7330), or at OK.
+    bool partyWiped() const;
+    bool gameOverMessage() const { return gameOverShown_; }
+    // OK on the game over message: the world ends and the UI returns to the main menu, where
+    // Load Game is one click away (the same end EndGame gives, retail 00602eb0).
+    void acknowledgeGameOver();
+    void killPartyForTest();
+
+    // ---- the upgrade bench (UpgradeBench.cpp) ----
+    struct UpgradeSlot {
+        int type = 0;           // upgrade.2da upgradetype: 0 saber crystals, 1..3 melee, 4..7 ranged, 8..9 armor
+        std::vector<int> rows;  // the upgrade.2da rows this item takes in the slot
+    };
+    struct UpgradeRow {
+        std::string label;
+        std::string templ;      // the upgrade item's template (lower case)
+        int type = 0;
+    };
+    const std::vector<UpgradeRow>& upgradeRows();
+    int upgradeRowOf(const std::string& resref); // -1 when the template is not an upgrade item
+    std::vector<UpgradeSlot> upgradeSlots(const InventoryItem& item);
+    // 0 lightsaber, 1 ranged, 2 melee, 3 armor, -1 when the item takes no upgrades.
+    int upgradeCategory(const InventoryItem& item);
+    int upgradeInstalled(const InventoryItem& item, int slotType); // the row installed in the slot, or -1
+    // Installs `rowPerType[slotType]` (-1 empties the slot) into the item: the new upgrade item is
+    // spent and the replaced one returns to the pack. True when anything changed.
+    bool assembleUpgrades(std::size_t inventoryIndex, const std::map<int, int>& rowPerType);
+    bool upgradeScreenOpen() const;           // ShowUpgradeScreen is waiting for the player
+    std::uint32_t upgradeTarget() const;      // its item argument (invalid for the bench)
+    void closeUpgradeScreen();
+    void openUpgradeScreenForTest(std::uint32_t item = 0x7f000000);
+    const kotor::ItemTemplate* upgradeTemplate(const std::string& resref);
+    // Pushes the pack's rows into their item objects (what a row changed directly must do to stay).
+    void syncInventoryObjects();
+    // The gates turn the popups off except where they test them, so a first-time tutorial does not
+    // cover a screen under test; on also forgets which rows were shown.
+    void setTutorialWindowsEnabledForTest(bool enabled);
+    // retail 004b6da0 runs the death sequence (005f7200) on the first update with every
+    // party member down; the sequence holds 12 s, fades to black over 1 s, then ends the game.
+    static constexpr float kPartyWipeSeconds = 0.0f;
+    static constexpr float kDeathSequenceSeconds = 13.0f;
     bool scriptPauseActive() const;
     void clearScriptPause();
     // The last start attempt found no starting link whose Active passed. This is
@@ -288,6 +488,7 @@ public:
     bool lockDoor(std::size_t entityIndex);
     bool bashDoor(std::size_t entityIndex);        // melee damage less Hardness; not Plot
     bool detectTrap(std::size_t entityIndex);      // Awareness check
+    void updateMineChecks(float dt);               // retail 004fa390 UpdateMineCheck, party members
     bool disarmTrap(std::size_t entityIndex);      // Security check; failure springs it
     bool playerHasKey(const std::string& keyTag);
     // Length of the walkmesh path from the player to an entity; negative when
@@ -300,24 +501,132 @@ public:
     void releaseControl();  // clears NoClicksFor and restrict mode, ends the fade
     const FadeState& fade() const { return sim_->fade; }
     const GalaxyMapState& galaxyMap() const { return sim_->galaxy; }
+    const PresentationState& presentation() const { return sim_->presentation; }
     bool galaxyMapOpen() const { return sim_->galaxy.open; }
     // The UI/bot picks a planet: it must be available and selectable. Runs the
     // engine's galaxy map script and closes the map.
     bool selectPlanet(std::int32_t planet);
     void closeGalaxyMap() { sim_->galaxy.open = false; }
+    // ShowGalaxyMap / SetPlanetAvailable / SetPlanetSelectable without a script (the screen gates).
+    void showGalaxyMap(std::int32_t highlighted) { sim_->galaxy.open = true; sim_->galaxy.highlighted = highlighted; }
+    void setPlanet(std::size_t planet, bool available, bool selectable)
+    {
+        if (planet < kPlanetSlots) {
+            sim_->galaxy.available[planet] = available;
+            sim_->galaxy.selectable[planet] = selectable;
+        }
+    }
     std::string substituteTokens(std::string text) const;
     std::vector<std::pair<std::int32_t, std::string>> galaxyPlanetNames();
     bool mapPinEnabled(const std::string& waypointTag) const;
     bool mapRevealed(kotor::Vec3 point) const;
     bool areaUnescapable() const { return sim_->areaUnescapable; }
+    // The SetAreaUnescapable script action without a script (the screen gates).
+    void setAreaUnescapableForTest(bool value) { sim_->areaUnescapable = value; }
+    void setGoldForTest(std::int32_t value) { gold_ = value; }
+    // "Planet - Area", the text a retail save and the map panel show for the current module.
+    std::string areaDisplayName();
 
     void attackNearestHostile();
+    // The target block's arrows: the next (+1, the down arrow) or previous (-1, the up arrow) living
+    // enemy within reach by distance, which becomes the attack target. Without a current target
+    // the nearest is taken.
+    void cycleCombatTarget(int direction);
+    // Living enemies within reach of the controlled creature (the arrows show when more than one).
+    std::size_t hostilesInReach();
+    // The HUD's Clear buttons: drops the controlled creature's queued actions and the target.
+    void cancelCombat();
+    // Deselects the client's selected object, which hides the HUD target block.
+    void clearSelection();
+    // The queued actions of the controlled creature (the HUD's queue icons).
+    std::size_t controlledQueueSize() const;
     std::uint32_t combatTarget() const { return combatTarget_; }
     std::string combatTargetName() const;
+    // Hit points over maximum of the combat target, 0..1 (0 without a target).
+    float combatTargetHealthRatio() const;
+    // The creature the HUD's target block and reticle are on: the combat target, else the client's
+    // selected object (CClientExoApp +0x188) while it is a live creature other than the controlled
+    // one. 004cf490 (conversation start) writes the conversation owner to +0x188, so the speaker
+    // keeps the block after the conversation (W46). NOT TRACED: the other writers of +0x188
+    // (mouse pick, Tab cycling) and what clears it.
+    std::uint32_t hudTarget() const;
+    // CSWCCreatureStats::GetCanUseSkill(6): Security is a trained-only skill, so it takes a rank.
+    bool canUseSecurity() const { return skillRank("security") > 0; }
+    std::string hudTargetName() const;
+    float hudTargetHealthRatio() const;
+    bool hudTargetHostile() const;
     std::int32_t playerHp() const { return playerHp_; }
     std::int32_t playerMaxHp() const { return playerMaxHp_; }
     bool playerDead() const { return playerDead_; }
+    // A pending autopause (CClientExoApp::SetAutoPaused reason, 0 for none), taken once by the frame loop.
+    // Scripted runs take the Enemy Sighted autopause only while a check turns this on.
+    bool enemySightedPauseForTest() const { return enemySightedPauseForTest_; }
+    void setEnemySightedPauseForTest(bool on)
+    {
+        enemySightedPauseForTest_ = on;
+        enemySighted_ = false; // the next hostile in sight counts as the first
+    }
+    int takeAutoPauseRequest()
+    {
+        const int reason = autoPauseRequest_;
+        autoPauseRequest_ = 0;
+        return reason;
+    }
+    // The controlled member's combat message (CSWPartyMemberData +0x84, set by 006345e0): the HUD
+    // takes a raised strref once and draws it per CSWGuiMainInterface::SetCombatMessage 00687700.
+    void raiseCombatMessage(std::uint32_t strref) { combatMessageRequest_ = strref; }
+    std::uint32_t takeCombatMessage()
+    {
+        const std::uint32_t strref = combatMessageRequest_;
+        combatMessageRequest_ = 0;
+        return strref;
+    }
+    bool controlledDebilitated();
     const std::vector<std::string>& combatLog() const { return combatLog_; }
+    // What the messages screen's Feedback list shows: the lines the player is told as things happen
+    // (experience, credits, journal, level up), oldest first. The texts are retail's own strings.
+    void feedback(const std::string& line);
+    // Retail 006027c0, gated by option bit 0x10. Types as its switch: 0 damage, 1 heal, 2 miss, 3 XP, 4 level.
+    void floatingText(std::uint32_t object, int type, std::int32_t value);
+    const std::vector<FloatingText>& floatingTexts() const { return floating_; }
+    // The point a line stands on: the object's head; false when it has no place in this area.
+    bool floatingAnchor(std::uint32_t object, kotor::Vec3& at);
+    // Retail 0062eeb0: 0 journal, 1 credits, 2 XP, 3 stealth XP, 4/5 alignment (sign), 7 item received, 8 item lost.
+    void statusFeedback(int kind, std::int32_t value);
+    // Retail keeps a bit on the item (+0x288 bit 7): 0055d330 sets it on a new arrival, 00555fd0 on leaving the holder.
+    bool isNewItem(std::uint32_t object) const { return newItems_.contains(object); }
+    void markNewItem(std::uint32_t object) { newItems_.insert(object); }
+    void clearNewItem(std::uint32_t object) { newItems_.erase(object); }
+    void clearNewItems() { newItems_.clear(); } // inferred: 00556050 empties a list the same way; its caller was not read
+    // This area's explored map; null where the area has no map.
+    const MapFog* mapFog() const;
+    // Retail 00579210: the point's cell has been seen. True where there is no map to hide.
+    bool mapPointSeen(const kotor::Vec3& at) const;
+    // Retail 005792d0: the point's cell and those within `radius` (a diamond). Below zero, all of it (00578fa0).
+    void markMapAt(const kotor::Vec3& at, int radius);
+    void suppressStatusSummaryEntries(std::int32_t count) { statusSuppress_ += count; } // retail 0062f0c0, +0x78
+    // Retail 00602eb0: a quarter second with no conversation or screen up, then 0062ef90 raises the pop-up or the icons.
+    void stepFeedback(float dt, bool blocked);
+    bool statusSummaryOpen() const { return statusOpen_; }
+    const StatusSummary& statusSummaryShown() const { return statusShown_; }
+    void dismissStatusSummary() { statusOpen_ = false; }
+    const StatusSummary& statusSummaryPending() const { return statusPending_; }
+    // Seconds left of a HUD feedback icon, indexed as 00686920 binds them and 00687fe0 raises them.
+    float feedbackIconSeconds(std::size_t index) const { return index < feedbackIcons_.size() ? feedbackIcons_[index] : 0.0f; }
+    // A run with no one to answer a pop-up gets the icons instead.
+    void holdStatusSummaryForTest(bool held) { statusHeld_ = held; }
+    // Retail 00631d80, 006a70a0: with subtitles off a voiced line shows no text; replies and silent lines still do.
+    bool dialogueLineShown() const { return (feedbackOptions_ & 0x4u) != 0u || !(dialogueVoiceStarted_ || voicedForTest_); }
+    void setDialogueVoicedForTest(bool voiced) { voicedForTest_ = voiced; }
+    // The entry is still being spoken (its voice plays, or a silent entry's hold runs): the dialog
+    // panel shows the line, the number keys choose nothing and a click skips it (CSWGuiDialog
+    // 006a7230: state bit 0x77e&1 -> SkipPastDialog 004ae970; SetReplies 006a86a0 clears the bit).
+    bool dialogueLineSpeaking() const;
+    void skipDialogueLine();
+    // The lines the PC has spoken since the last call, "Name: text" (a chosen reply with text is the PC's line,
+    // retail 006bd260 -> AppendToDialogBuffer 00630560); the Messages dialog list takes them.
+    std::vector<std::string> takeSpokenReplies() { return std::exchange(spokenReplies_, {}); }
+    const std::vector<std::string>& feedbackLog() const { return feedbackLog_; }
     const std::vector<std::string>& scriptLog() const { return scriptLog_; }
 
     // Script/world state used by the P5 gates and the save file.
@@ -331,6 +640,10 @@ public:
     const std::vector<EncounterState>& encounters() const { return encounterStates_; }
     int activeMerchant() const { return activeMerchant_; }
     bool openStore(std::size_t entityIndex);
+    // Orders the controlled creature to attack entity `entity` (the attack command and its target).
+    void attackEntity(std::size_t entity);
+    // The store nearest the controlled creature (the M key); false when the area has none.
+    bool openNearestStore();
     bool openStoreByTag(const std::string& tag);
     void closeStore();
     // OpenStore (ACT_378): bonuses are clamped to [-100, 100] and added to the
@@ -350,6 +663,11 @@ public:
     void takeAllLoot();
     // Closing a container fires its OnClosed script; remaining loot stays in it.
     void closeLoot();
+    // W038: the destroy event a dead non-party creature gets (004e0e2e), and its body bag (004ce220).
+    float destroyObjectDelay(const kotor::Entity& creature);
+    float fadeDelayOnDeath(const kotor::Entity& creature);
+    std::uint32_t spawnBodyBag(std::size_t creatureIndex);
+    void updateCorpses(float dt);
     const std::vector<std::string>& partyTags() const { return partyTags_; }
     const std::vector<CompanionState>& companions() const { return companions_; }
     int selectedCompanion() const { return selectedCompanion_; }
@@ -419,6 +737,17 @@ public:
     // toggle NPCs, then accept or cancel (both run the exit script).
     const PartySelectionState& partySelection() const { return partySelection_; }
     bool openPartySelection(const std::string& exitScript, int forceNpc1, int forceNpc2);
+    // The map panel's Party Selection button (retail 00693650 decides it, 0062dd20 refuses it when
+    // the script did not ask): the strref of why it is refused, 0 when it is open to the player.
+    std::uint32_t partySelectionRefusal();
+    bool openPartySelectionFromMap();
+    // The same refusal on the other UI path (the L key): the reason goes to the feedback log, since
+    // no map panel is open to show it.
+    bool requestPartySelectionFromUi();
+    // Every party member stands within `meters` of the controlled creature.
+    bool partyTogether(float meters = 40.0f);
+    // A living enemy within `meters` of any party member.
+    bool hostileNearParty(float meters = 11.0f);
     bool partySelectionToggle(int npc);
     bool acceptPartySelection();
     void cancelPartySelection();
@@ -464,6 +793,10 @@ public:
     // state that advances awards its global.jrl plot XP.
     bool addJournalQuest(const std::string& plotId, std::int32_t state, bool allowOverrideHigher);
     std::string journalEntryText(const std::string& plotId, std::int32_t state);
+    // The journal screen: a quest's title (global.jrl category Name) and whether its current
+    // state ends it.
+    std::string journalCategoryName(const std::string& plotId);
+    bool journalQuestFinished(const std::string& plotId);
     std::int32_t journalQuestExperience(const std::string& plotId);
     // GivePlotXP (ACT_714): plot.2da row by label, xp * percent / 100.
     void givePlotXp(const std::string& plotLabel, std::int32_t percent);
@@ -496,15 +829,19 @@ public:
     std::uint32_t itemPossessor(std::uint32_t item);
     // Items in a holder's carried inventory, in order. Worn items are not listed.
     std::vector<std::uint32_t> itemsOf(std::uint32_t holder);
+    std::vector<std::uint32_t> itemsWornBy(std::uint32_t creature);
     // The item object standing for character_.inventory[index].
     std::uint32_t inventoryObject(std::size_t index);
     bool equipItemObject(std::uint32_t creature, std::uint32_t item, std::int32_t slot = -1);
     bool unequipItemObject(std::uint32_t creature, std::uint32_t item);
+    std::uint32_t wornItemObject(std::uint32_t creature, std::int32_t slot);
     // Uses an item as `user`: applies its CastSpell item properties through the spell's
     // impact script, raises the module activation event and spends a charge or one of
     // the stack. The quest bot and the UI both call this.
     bool useItem(std::uint32_t item, std::uint32_t user,
                  std::uint32_t target = script::kObjectInvalid);
+    // True when the item carries an ActivateItem property the player can use.
+    bool itemUsable(std::uint32_t item);
     // Gold held by a creature (the party's for the PC and party members).
     std::int32_t creatureGold(std::uint32_t creature) const;
     void addCreatureGold(std::uint32_t creature, std::int32_t amount);
@@ -512,8 +849,12 @@ public:
     bool removePartyMember(const std::string& tag);
     bool learnFeat(std::int32_t featId);
     bool learnPower(std::int32_t powerId);
+    // A pick on the level-up power list: spends a power point (Rules::canLearnPowerAtLevelUp).
+    bool learnLevelUpPower(std::int32_t powerId);
     bool spendSkillPoint(const std::string& skill);
     bool spendAttributePoint(std::int32_t index);
+    // One rank of skills.2da row `index`: the class's cost per rank and the level's rank cap apply.
+    bool spendSkillRank(std::int32_t index);
     void giveXp(std::int32_t amount);
 
     // Combat/Force/alignment core.
@@ -547,6 +888,8 @@ public:
                                                const ScriptContext& context);
     // Test fixtures: a compiled script served by resref ahead of the install.
     void addScriptForTest(const std::string& resref, std::vector<std::uint8_t> bytes);
+    // Retail drops a global globalcat.2da does not declare, so a gate's read-out must say it is one.
+    void declareGlobalForTest(const std::string& name);
     std::uint32_t objectForTag(const std::string& tag) const;
     std::uint32_t areaObject() const { return sim_->areaObject; }
     std::uint32_t moduleObject() const { return sim_->moduleObject; }
@@ -574,6 +917,20 @@ public:
     void applyCharacter(const CharacterSheet& sheet);
     void setPlayerAppearance(std::uint32_t appearance, const std::string& name = {});
     std::uint32_t playerAppearance() const { return playerAppearance_; }
+    // The map's pins (retail 00692c70): waypoints with a note that is enabled, by entity index, in
+    // area order. Still different: retail also requires the pin's fog cell to be explored.
+    std::vector<std::size_t> mapPins() const;
+    // The feedback options, by retail's bits of the options word (FrontEnd.h's FeedbackRow).
+    std::uint32_t feedbackOptions() const { return feedbackOptions_; }
+    void setFeedbackOptions(std::uint32_t bits)
+    {
+        if ((bits ^ feedbackOptions_) & 0x2u) {
+            setTutorialWindowsEnabledForTest((bits & 0x2u) != 0u); // 0062f420 tests this bit
+        }
+        feedbackOptions_ = bits;
+    }
+    // What the PC's Body slot gives its model (retail 00697610).
+    kotor::BodyVariant wornBodyVariant();
     void setThirdPerson(bool enabled) {
         thirdPerson_ = enabled;
         if (enabled) {
@@ -599,13 +956,33 @@ public:
     void leaveStealth();
     bool stealthActive() const { return stealthActive_; }
     bool playAnimation(std::size_t entityIndex, const std::string& name, bool loop = true);
+    // Rests a door or placeable in the clip of its state (a restored open door stands open).
+    void applyObjectStateClip(std::size_t entityIndex);
     void stopAnimation(std::size_t entityIndex);
     std::string animationName(std::size_t entityIndex) const;
     float animationTime(std::size_t entityIndex) const;
     std::uint32_t animationRevision() const { return animationRevision_; }
+    // Gameplay sound and visual effects (game/Effects.h).
+    EffectDirector& effects() { return *effects_; }
+    std::uint32_t effectsTopologyRevision() const;
     bool entityHasFacialPose(std::size_t entityIndex) const;
     void initAnimations();
     void updateAnimations(float dt);
+    // The clip a creature shows for how it moves and what it holds (AnimationFamily.cpp).
+    void updateCreatureStances(float dt);
+    bool hidesEquippedItems(const std::string& clip);
+    void playAttackClip(std::size_t entityIndex);
+    // The swing playAttackClip would start next and its impact time in seconds (combatanimations.2da
+    // hit1, retail 005b4f30); negative when unknown.
+    float nextAttackImpact(std::size_t entityIndex, int subAttack = 0) const;
+    // The PC's body is the avatar entity, which has no script object of its own.
+    std::uint32_t objectOfBody(std::size_t entityIndex) const {
+        return entityIndex == playerEntity_ ? scriptWorld_.pc : objectForEntity(entityIndex);
+    }
+    std::size_t bodyOfObject(std::uint32_t object) const {
+        return object == scriptWorld_.pc ? playerEntity_ : entityOfObject(object);
+    }
+    void refreshHeldItems(std::uint32_t creature);
     void setAnimationEnabled(bool enabled) { animationEnabled_ = enabled; }
     bool animationEnabled() const { return animationEnabled_; }
     // Test hook invocation without moving the player; returns false if the
@@ -647,6 +1024,9 @@ private:
         std::string resref;
         std::uint32_t npcObject = 0;
         kotor::Dlg dlg;
+        DialogueShots shots;
+        // The first answer per Speaker tag holds for the conversation (0059fc30).
+        std::map<std::string, std::uint32_t> speakers;
     };
 
     bool loadModule(const std::string& module, const kotor::Vec3* spawn, const std::string& linkedDoor);
@@ -654,15 +1034,27 @@ private:
     const kotor::Entity* nearestConversation(float maxDistance) const;
     bool loadDialogue(const std::string& resref, kotor::Dlg& dlg, int speakerGender = 0);
     void showDialogueEntry(std::uint32_t entryIndex);
+    // The voice, fade and participant animations a node carries (retail reader 0059f5f0).
+    void playDialoguePresentation(const kotor::DlgNodePresentation& node,
+                                  const std::string& fallbackSound);
+    void restoreDialogueAnimations();
+    // StuntList of a cutscene conversation: each named participant is replaced by its stunt
+    // model (hidden original, shown stand-in) until the conversation ends.
+    void spawnDialogueStunts();
+    void removeDialogueStunts();
+    std::size_t dialogueStuntFor(std::size_t participant) const;
+    void tickDialogueAdvance(float dt);
     bool startConversation(std::uint32_t owner, const std::string& resref);
     void finishDialogue(bool aborted);
     void clearDialogueState();
+    void completeArrival();
     ScriptContext dialogueContext() const;
     bool dialogueLinkPasses(const std::string& linkActive, const std::string& nodeActive);
     template <typename Node>
     bool applyDialogueNode(const Node& node, std::uint32_t generation);
     std::vector<std::uint32_t> passingReplies(const kotor::DlgEntry& entry);
     std::uint32_t firstPassingEntry(const kotor::DlgReply& reply);
+    bool dialogueSpeakerResolves(const std::string& speaker);
     void loadJournalData();
     void loadPlotTable();
     const JournalCategory* journalCategory(const std::string& plotId);
@@ -671,7 +1063,11 @@ private:
     ActorStep stepActorToward(std::uint32_t object, kotor::Vec3 target, float speed, float dt,
                               float stopDistance);
     bool lineOfSight(kotor::Vec3 from, kotor::Vec3 to) const;
-    std::shared_ptr<const std::vector<script::Instruction>> decodedScript(const std::string& resref);
+    // Retail GetObstructionFactor 0050ccf0 for a sound: 0.4 for every surface of the area the line from the
+    // sound to the listener crosses (surfacemat lineofsight), the line restarted a tenth of a metre past each
+    // hit, 1.0 once the sum passes 1. Doors and other objects on the line are not counted (0.4 / 0.55 there).
+    float soundObstruction(kotor::Vec3 from, kotor::Vec3 to) const;
+    script::ProgramPtr decodedScript(const std::string& resref);
     ScriptContext hookContext(const std::string& hook, std::uint32_t entering) const;
     void placeAtLink(const std::string& linkedTo);
     // Module persistence, in WorldPersistence.cpp.
@@ -724,7 +1120,13 @@ private:
     void followLeader(std::uint32_t follower, kotor::Vec3 anchor, kotor::Vec3 slot, float dt);
     void placePartyAtEntry();
     friend int runPathfindingFamilyTest(GameSession& game);
+    friend int quest::runQuestTrace(GameSession& game, const quest::QuestTraceOptions& options);
+    friend int quest::runConversationFlow(GameSession& game, const quest::FlowOptions& options);
+    friend int quest::runPlotReplay(GameSession& game, const quest::FlowOptions& options);
     friend int runCompanionFamilyTest(GameSession& game);
+    friend int runAnimationFamilyTest(GameSession& game);
+    friend void grantWeaponFeats(GameSession& game, std::uint32_t object);
+    friend bool runAnimationCaptureAction(GameSession& game, const std::string& action);
     // Companion control internals (PartyControl.cpp).
     void stepControlledCompanion(float dt, const InputState& input);
     void onControlChanged(int previous, int next);
@@ -756,10 +1158,33 @@ private:
     void runSpawnAndEnterScripts();
     void runReturnScripts();
     bool scriptValueTruthy(const std::optional<script::Value>& value) const;
+public:
+    bool engineValuesEqual(const script::Value& a, const script::Value& b) const;
+private:
+    void loadGlobalCatalog();
     void syncPlayerToScriptWorld();
     void spawnPlayerAvatar();
+    std::set<std::uint32_t> newItems_;
+    mutable std::map<std::string, MapFog> mapFogs_;
+    std::vector<FloatingText> floating_;
+    std::uint32_t xpFloatObject_ = 0xFFFFFFFFu;
+    StatusSummary statusPending_;
+    StatusSummary statusShown_;
+    bool statusOpen_ = false;
+    bool statusHeld_ = false;
+    bool statusPopupOwed_ = false;
+    bool voicedForTest_ = false;
+    std::int32_t statusSuppress_ = 0;
+    float statusWait_ = 0.0f;
+    std::array<float, 9> feedbackIcons_{};
+    std::uint32_t feedbackOptions_ = 0x43eu; // 0061d950's reset value of the rows' bits
     void updatePlayerAvatar(float dt, bool moving);
+    void updateAudioListener();
     void updateFacialMeshes();
+    // Each line's speaker and listener turn toward each other (retail 006306e0).
+    void faceDialogueParticipants();
+    bool appearanceRows(); // Loads appearanceHeads_.
+    void tickHeadFollow(float dt);
     void syncEntityToScriptWorld(std::size_t index);
     std::string scriptSource(const std::string& resref);
 
@@ -770,6 +1195,7 @@ private:
     std::unique_ptr<kotor::Localization> localization_;
     std::uint32_t languageId_ = 0;
     std::unique_ptr<AudioSystem> audio_;
+    std::unique_ptr<EffectDirector> effects_;
     kotor::Scene scene_;
     kotor::Vec3 position_;
     float yaw_ = 0.0f;
@@ -777,6 +1203,7 @@ private:
     std::size_t playerEntity_ = static_cast<std::size_t>(-1);
     std::uint32_t playerAppearance_ = 92;
     std::string playerName_ = "Player";
+    std::vector<std::string> spokenReplies_;
     float playerBearing_ = 0.0f;
     bool thirdPerson_ = false;
     mutable bool playerVisible_ = true;
@@ -786,6 +1213,11 @@ private:
     float elapsed_ = 0.0f;
 
     std::optional<kotor::Tlk> tlk_;
+    // stringtokens.2da, keymap.2da and classes.2da for the dialogue token parser (0041dd30).
+    mutable bool stringTokensLoaded_ = false;
+    mutable std::optional<kotor::TwoDa> stringTokens_;
+    mutable std::optional<kotor::TwoDa> keymapTable_;
+    mutable std::optional<kotor::TwoDa> classesTable_;
     std::optional<ActiveDialogue> activeDialogue_;
     DialogueView dialogueView_;
     VideoEffectController videoEffects_;
@@ -794,14 +1226,53 @@ private:
     float dialogueCameraTime_ = 0.0f;
     float dialogueCameraDuration_ = 0.0f;
     std::optional<kotor::LipSync> activeLip_;
+    bool dialogueAutoAdvance_ = false;
+    float dialogueEntryAge_ = 0.0f;
+    float dialogueHold_ = 0.0f;       // seconds the entry waits when no voice plays
+    struct HeadFollow {
+        std::size_t entity = 0;
+        std::size_t target = 0;
+        float arcH = 0.0f; // Radians, appearance.2da head_arc_h and head_arc_v.
+        float arcV = 0.0f;
+    };
+    std::vector<HeadFollow> headFollow_;
+    std::optional<kotor::TwoDa> appearanceHeads_;
+    bool dialogueVoiceStarted_ = false;
+    bool dialogueLineSkipped_ = false; // skipDialogueLine on the current entry
+    bool dialogueTrackStarted_ = false;
+    // Entities an AnimList moved off their idle clip, with the clip to return to.
+    struct SavedAnimation {
+        std::size_t entity = 0;
+        std::string name;
+        bool loop = true;
+    };
+    std::vector<SavedAnimation> dialogueSavedAnimations_;
+    // Nodes reached, (is a reply, index), for the sequence modes only.
+    std::vector<std::pair<bool, std::uint32_t>> dialogueTrail_;
+    bool traceDialogueTrail_ = false;
+    struct DialogueStunt {
+        std::size_t participant = 0;
+        std::size_t stand = 0;
+    };
+    std::vector<DialogueStunt> dialogueStunts_;
     float lipTime_ = 0.0f;
     FacialRig facialRig_;
+    std::map<std::string, bool> hideItemClips_;
     FactionSystem factions_;
     bool moviePlaying_ = false;
     std::string movieName_;
     float movieTime_ = 0.0f;
     float movieDuration_ = 0.0f;
-    std::vector<std::string> movieQueue_;
+    struct QueuedMovie {
+        std::string name;
+        bool skippable = true;
+    };
+    std::vector<QueuedMovie> movieQueue_;
+    bool movieSkippable_ = true;
+    bool movieSeparateSkips_ = true;
+    bool movieHoldsWorld_ = false;
+    void endCurrentMovie();
+    bool startMovie(const std::string& name, bool skippable);
     std::unique_ptr<kotor::BinkPlayer> moviePlayer_;
     kotor::BinkVideoFrame movieFrame_;
     int movieFrameIndex_ = -1;
@@ -812,10 +1283,22 @@ private:
     std::uint32_t pazaakOpponent_ = 0;
     std::int32_t pazaakWager_ = 0;
     int lastPazaakResult_ = -1;
+    PazaakStage pazaakStage_ = PazaakStage::None;
+    std::vector<PazaakCard> pazaakOpponentSide_;
+    std::int32_t pazaakDeckIndex_ = 0;
+    std::int32_t pazaakMaxWager_ = 0;
+    std::int32_t pazaakWagerChosen_ = 0;
+    std::vector<int> pazaakChosen_;
+    bool pazaakTutorial_ = false;
+    PazaakHelp pazaakSetupHelp_;
+    std::uint32_t pazaakSeed_ = 0;
+    std::uint32_t pazaakGames_ = 0;
 
     std::int32_t playerHp_ = 100;
     std::int32_t playerMaxHp_ = 100;
     std::uint32_t combatTarget_ = UINT32_MAX;
+    std::uint32_t selectedEntity_ = UINT32_MAX; // client +0x2b4 (SetLastTarget 005f4a20) as an entity index (hudTarget)
+    std::vector<std::string> feedbackLog_;
     int combatRound_ = 0;
     CombatMode combatMode_ = CombatMode::Normal;
     std::int32_t combatModeRank_ = 1;
@@ -828,8 +1311,44 @@ private:
     float footstepTimer_ = 0.0f;
     std::int32_t forceJumpBonus_ = 0;
     std::vector<bool> triggerInside_;
+    bool saveModuleStartPending_ = false;
     std::vector<std::string> combatLog_;
     bool playerDead_ = false;
+    int autoPauseRequest_ = 0;
+    bool enemySighted_ = false;      // retail client +0x324: a hostile has been in sight
+    bool enemySightedPauseForTest_ = false;
+    float enemySightedTimer_ = 0.0f; // retail +0x394: 10 s after the last one
+    void tickEnemySighted(float dt);
+    std::uint32_t clickedEntity_ = UINT32_MAX; // the object a world click selected
+    std::uint32_t pendingUse_ = UINT32_MAX;    // the object a default action walks to
+    void tickPendingUse();
+    bool finishUse(std::size_t index);
+    // Retail 004f2c30 (CSWSCreature::ValidNearestObjectType): the objects the client's selection scan
+    // (005fa5a0 over 004fc4c0) takes into its lists. hostile is the creature's standing against the
+    // controlled one; doors and placeables are never hostile here.
+    bool targetableKind(std::size_t index) const;
+    bool targetableEntity(std::size_t index, bool& hostile);
+    struct TargetCandidate {
+        std::size_t index = 0;
+        float turn = 0.0f;    // counter-clockwise turn from straight ahead, degrees, 0..359
+        float squared = 0.0f; // squared distance
+        bool hostile = false;
+    };
+    // 004fc4c0 with 30 m for both ranges: angular is every candidate ascending by turn (equal turns keep
+    // entity order); forward is the indices into angular of those in front of the controlled creature
+    // inside the cone (see the .cpp), ascending by squared distance.
+    void buildTargetLists(std::vector<TargetCandidate>& angular, std::vector<std::size_t>& forward);
+    // 00617ad0 CanSee for a candidate: a closed door or placeable is the target's own geometry, which
+    // retail leaves out of the ray, so the ray stops short of it.
+    bool targetVisible(std::size_t index);
+    float targetLosTimer_ = 0.0f; // retail +0x368: how long the selected object has been out of sight
+    std::uint32_t combatMessageRequest_ = 0;
+    bool steeringMessage_ = false; // 42476 raised by steering (006227e0)
+    float partyWipeTimer_ = 0.0f;
+    std::vector<UpgradeRow> upgradeRows_;
+    bool upgradeRowsLoaded_ = false;
+    bool gameOverShown_ = false;
+    void updatePartyWipe(float dt);
     bool classicBugs_ = true;
     bool traceActions_ = false;
     std::vector<DialogueChoiceEvent> dialogueChoices_;
@@ -846,9 +1365,11 @@ private:
     PartySelectionState partySelection_;
     UiPanel activePanel_ = UiPanel::None;
     std::map<std::string, std::int32_t> journal_;
+    bool newGameStart_ = false; // startNewGame: the next loadModule does not leave the backdrop
     std::map<std::string, std::string> globalKinds_; // KotOR GVT category
     std::map<std::string, std::array<float, 6>> locationGlobals_;
     std::string originalAreaName_;
+    std::vector<std::uint8_t> saveScreenTga_;
     std::string originalPortrait_;
     std::int32_t originalTimePlayed_ = 0;
     std::vector<std::uint8_t> originalRepute_;
@@ -872,6 +1393,10 @@ private:
     MoveOutcome moveOutcome_ = MoveOutcome::None;
     std::size_t moveBlockingDoor_ = static_cast<std::size_t>(-1);
     bool quietWorldForTest_ = false; // The navigation gate: no triggers, scripts or combat.
+    // Retail's load-complete fade (00602eb0 at 006031be) and its deferral (client +0xb98): see
+    // GameSession::completeArrival.
+    bool arrivalPending_ = false;
+    bool deferredFadeIn_ = false;
     std::uint32_t dialogueGeneration_ = 0;
     std::vector<std::uint32_t> entityObjects_;
     std::map<std::string, std::vector<std::uint8_t>> ncsCache_;
@@ -879,6 +1404,7 @@ private:
     std::set<std::uint32_t> spawnRan_;
     std::set<std::string> missingScripts_;
     std::string pendingModule_;
+    std::function<void(const std::string&)> moduleLoadHook_;
     double heartbeatTimer_ = 0.0;
     std::uint32_t nextItemObject_ = 0x10000;
 };

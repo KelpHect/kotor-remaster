@@ -1,7 +1,10 @@
 #include "kotor/Formats.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cstdlib>
 #include <cstring>
+#include <string>
 
 namespace ke::kotor {
 
@@ -89,14 +92,18 @@ void decodeDxt(const std::vector<std::uint8_t>& data, std::size_t offset, int w,
                     alpha[12] = alpha[13] = alpha[14] = alpha[15] = 255;
                 }
             } else {
+                // The three-colour DXT1 mode: index 3 is black. TPC encoding 2 is the RGB format (no
+                // alpha channel), so no texel is transparent. (This block used to clear texel 15's
+                // alpha whatever its index was, which punched a hole in the corner of every such block.)
                 for (int ch = 0; ch < 3; ++ch) {
                     colors[2][ch] = static_cast<std::uint8_t>((colors[0][ch] + colors[1][ch]) / 2);
                     colors[3][ch] = 0;
                 }
-                for (int i = 0; i < 16; ++i) {
-                    alpha[i] = 255;
+                if (!dxt5) {
+                    for (int i = 0; i < 16; ++i) {
+                        alpha[i] = 255;
+                    }
                 }
-                alpha[15] = 0;
             }
             const std::uint32_t bits = static_cast<std::uint32_t>(data[bo + colorOffset + 4])
                 | (static_cast<std::uint32_t>(data[bo + colorOffset + 5]) << 8)
@@ -293,6 +300,267 @@ Image decodeTga(const std::vector<std::uint8_t>& data, const std::string& name)
         }
     }
     return image;
+}
+
+namespace {
+
+// Bytes of one mip level in a TPC pixel region; 0 for an encoding this reader does not know.
+std::size_t tpcLevelBytes(int w, int h, std::uint8_t encoding, bool compressed)
+{
+    const std::size_t blocksW = static_cast<std::size_t>(std::max(1, (w + 3) / 4));
+    const std::size_t blocksH = static_cast<std::size_t>(std::max(1, (h + 3) / 4));
+    const std::size_t pixels = static_cast<std::size_t>(w) * static_cast<std::size_t>(h);
+    switch (encoding) {
+    case 1:
+        return pixels;
+    case 0x0C:
+        return pixels * 4u;
+    case 2:
+        return compressed ? blocksW * blocksH * 8u : pixels * 3u;
+    case 3:
+    case 4:
+        return compressed ? blocksW * blocksH * 16u : pixels * 4u;
+    default:
+        return 0;
+    }
+}
+
+std::size_t tpcChainBytes(int w, int h, std::uint8_t encoding, int mips, bool compressed)
+{
+    std::size_t total = 0;
+    for (int level = 0; level < mips; ++level) {
+        total += tpcLevelBytes(w, h, encoding, compressed);
+        w = std::max(1, w / 2);
+        h = std::max(1, h / 2);
+    }
+    return total;
+}
+
+bool looksLikeTxi(const std::uint8_t* bytes, std::size_t size)
+{
+    if (size == 0) {
+        return false;
+    }
+    bool sawWord = false;
+    for (std::size_t i = 0; i < size; ++i) {
+        const std::uint8_t c = bytes[i];
+        const bool text = (c >= 0x20 && c < 0x7F) || c == '\r' || c == '\n' || c == '\t';
+        if (!text) {
+            return false;
+        }
+        sawWord = sawWord || std::isalnum(c) != 0;
+    }
+    return sawWord;
+}
+
+} // namespace
+
+std::string tpcEmbeddedTxi(const std::vector<std::uint8_t>& data)
+{
+    if (data.size() <= 128) {
+        return {};
+    }
+    const std::uint32_t dataSize = readU32(data.data(), data.size(), 0, "TPC data size");
+    const int w = readU16(data.data(), data.size(), 8, "TPC width");
+    const int h = readU16(data.data(), data.size(), 10, "TPC height");
+    const std::uint8_t encoding = data[12];
+    const int mips = std::max<int>(1, data[13]);
+    if (w <= 0 || h <= 0 || w > 4096 || h > 4096 || tpcLevelBytes(w, h, encoding, true) == 0) {
+        return {};
+    }
+    // The pixel region is the stored mip-0 size, the whole compressed chain or the whole raw
+    // chain (docs/recon/18); the candidate whose remainder is empty or text is the right one.
+    std::vector<std::size_t> candidates;
+    if (h == w * 6) {
+        // A cube map: six faces, each with its own mip chain, so `h` is not one image's height.
+        // Every shipped cm_* map ends in "cube 1" here; reading past it left them as flat strips.
+        const std::size_t perFace = tpcChainBytes(w, w, encoding, mips, dataSize != 0);
+        candidates.push_back(perFace * 6u);
+    }
+    if (dataSize != 0) {
+        candidates.push_back(dataSize);
+    }
+    candidates.push_back(tpcChainBytes(w, h, encoding, mips, true));
+    candidates.push_back(tpcChainBytes(w, h, encoding, mips, false));
+    for (const std::size_t pixelBytes : candidates) {
+        if (128u + pixelBytes > data.size()) {
+            continue;
+        }
+        const std::size_t tail = data.size() - 128u - pixelBytes;
+        if (tail == 0) {
+            return {};
+        }
+        if (looksLikeTxi(data.data() + 128u + pixelBytes, tail)) {
+            return std::string(reinterpret_cast<const char*>(data.data()) + 128u + pixelBytes, tail);
+        }
+    }
+    return {};
+}
+
+std::uint8_t txiClampFlags(const std::string& txi)
+{
+    std::uint8_t flags = 0;
+    std::size_t at = 0;
+    while (at < txi.size()) {
+        std::size_t end = txi.find('\n', at);
+        if (end == std::string::npos) {
+            end = txi.size();
+        }
+        std::size_t i = at;
+        while (i < end && (txi[i] == ' ' || txi[i] == '\t' || txi[i] == '\r')) {
+            ++i;
+        }
+        std::size_t wordEnd = i;
+        while (wordEnd < end && txi[wordEnd] != ' ' && txi[wordEnd] != '\t' && txi[wordEnd] != '\r') {
+            ++wordEnd;
+        }
+        if (wordEnd - i == 5) {
+            bool match = true;
+            for (std::size_t k = 0; k < 5; ++k) {
+                match = match && std::tolower(static_cast<unsigned char>(txi[i + k])) == "clamp"[k];
+            }
+            if (match) {
+                // Each matching line overwrites the field, so the last one wins (retail
+                // 00422390 hands the rest of the line to sscanf("%d")).
+                const std::string rest = txi.substr(wordEnd, end - wordEnd);
+                flags = static_cast<std::uint8_t>(std::strtol(rest.c_str(), nullptr, 10) & 3L);
+            }
+        }
+        at = end + 1;
+    }
+    return flags;
+}
+
+std::uint8_t textureClampFlags(const std::vector<std::uint8_t>& data, std::uint32_t type,
+                               const std::vector<std::uint8_t>* separateTxi)
+{
+    if (type == resType(ResType::Tpc)) {
+        const std::uint8_t embedded = txiClampFlags(tpcEmbeddedTxi(data));
+        if (embedded != 0) {
+            return embedded;
+        }
+    }
+    if (separateTxi != nullptr && !separateTxi->empty()) {
+        return txiClampFlags(std::string(separateTxi->begin(), separateTxi->end()));
+    }
+    return 0;
+}
+
+Image decodeCubeLatLong(const std::vector<std::uint8_t>& data, const std::string& name)
+{
+    if (data.size() < 128) {
+        return {};
+    }
+    const std::uint32_t dataSize = readU32(data.data(), data.size(), 0, "TPC data size");
+    const int w = readU16(data.data(), data.size(), 8, "TPC width");
+    const int h = readU16(data.data(), data.size(), 10, "TPC height");
+    const std::uint8_t encoding = data[12];
+    const int mips = std::max<int>(1, data[13]);
+    if (w <= 0 || h != w * 6) {
+        return {};
+    }
+    const bool compressed = dataSize != 0;
+    const std::size_t stride = tpcChainBytes(w, w, encoding, mips, compressed);
+    if (stride == 0 || 128u + stride * 6u > data.size()) {
+        return {};
+    }
+    // Six faces, each with its own mip chain, in file order (placed below).
+    std::array<Image, 6> faces;
+    for (int face = 0; face < 6; ++face) {
+        Image& image = faces[static_cast<std::size_t>(face)];
+        image.width = w;
+        image.height = w;
+        image.rgba.assign(static_cast<std::size_t>(w) * w * 4u, 0u);
+        const std::size_t payload = 128u + stride * static_cast<std::size_t>(face);
+        if (compressed && (encoding == 2 || encoding == 4)) {
+            decodeDxt(data, payload, w, w, image, encoding == 4);
+        } else if (encoding == 2) {
+            for (int i = 0; i < w * w; ++i) {
+                const std::size_t o = payload + static_cast<std::size_t>(i) * 3u;
+                put(image, i % w, i / w, data[o], data[o + 1], data[o + 2], 255);
+            }
+        } else if (encoding == 4) {
+            std::memcpy(image.rgba.data(), data.data() + payload, image.rgba.size());
+        } else {
+            return {};
+        }
+    }
+    (void)name;
+    // Retail 00423f90 uploads file face i to GL face 0x8515 + {1,0,2,3,4,5}[i] (0x78db50), so the
+    // first two are swapped, after turning it {3,1,0,2,2,0}[i] quarter turns (0x78db38) with
+    // 0041fbd0: 1 sends source (x, y) to (h-1-y, x), 2 to (w-1-x, h-1-y), 3 to (y, w-1-x).
+    {
+        constexpr int kTarget[6] = {1, 0, 2, 3, 4, 5};
+        constexpr int kTurns[6] = {3, 1, 0, 2, 2, 0};
+        std::array<Image, 6> placed;
+        for (int face = 0; face < 6; ++face) {
+            const Image& source = faces[static_cast<std::size_t>(face)];
+            Image& target = placed[static_cast<std::size_t>(kTarget[face])];
+            target.width = w;
+            target.height = w;
+            target.rgba.assign(source.rgba.size(), 0u);
+            for (int y = 0; y < w; ++y) {
+                for (int x = 0; x < w; ++x) {
+                    int row = y;
+                    int column = x;
+                    switch (kTurns[face]) {
+                    case 1: row = x; column = w - 1 - y; break;
+                    case 2: row = w - 1 - y; column = w - 1 - x; break;
+                    case 3: row = w - 1 - x; column = y; break;
+                    default: break;
+                    }
+                    std::memcpy(target.rgba.data() + (static_cast<std::size_t>(row) * w + column) * 4u,
+                                source.rgba.data() + (static_cast<std::size_t>(y) * w + x) * 4u, 4u);
+                }
+            }
+        }
+        faces = std::move(placed);
+    }
+    // Resampled so one sampler2D serves both backends, faces now in GL order and orientation.
+    Image out;
+    out.width = w * 4;
+    out.height = w * 2;
+    out.rgba.assign(static_cast<std::size_t>(out.width) * out.height * 4u, 0u);
+    const float pi = 3.14159265358979f;
+    for (int y = 0; y < out.height; ++y) {
+        const float polar = (static_cast<float>(y) + 0.5f) / static_cast<float>(out.height) * pi;
+        for (int x = 0; x < out.width; ++x) {
+            const float azimuth = ((static_cast<float>(x) + 0.5f) / static_cast<float>(out.width) - 0.5f) * 2.0f * pi;
+            const float dx = std::sin(polar) * std::cos(azimuth);
+            const float dy = std::sin(polar) * std::sin(azimuth);
+            const float dz = std::cos(polar);
+            const float ax = std::abs(dx);
+            const float ay = std::abs(dy);
+            const float az = std::abs(dz);
+            int face = 0;
+            float sc = 0.0f;
+            float tc = 0.0f;
+            float ma = 1.0f;
+            if (ax >= ay && ax >= az) {
+                face = dx > 0.0f ? 0 : 1;
+                ma = ax;
+                sc = dx > 0.0f ? -dz : dz;
+                tc = -dy;
+            } else if (ay >= az) {
+                face = dy > 0.0f ? 2 : 3;
+                ma = ay;
+                sc = dx;
+                tc = dy > 0.0f ? dz : -dz;
+            } else {
+                face = dz > 0.0f ? 4 : 5;
+                ma = az;
+                sc = dz > 0.0f ? dx : -dx;
+                tc = -dy;
+            }
+            const int fx = std::clamp(static_cast<int>((sc / ma * 0.5f + 0.5f) * static_cast<float>(w)), 0, w - 1);
+            const int fy = std::clamp(static_cast<int>((tc / ma * 0.5f + 0.5f) * static_cast<float>(w)), 0, w - 1);
+            const std::uint8_t* source = faces[static_cast<std::size_t>(face)].rgba.data()
+                + (static_cast<std::size_t>(fy) * w + fx) * 4u;
+            std::uint8_t* target = out.rgba.data() + (static_cast<std::size_t>(y) * out.width + x) * 4u;
+            std::memcpy(target, source, 4u);
+        }
+    }
+    return out;
 }
 
 Image decodeTexture(const std::vector<std::uint8_t>& data, std::uint32_t type, const std::string& name)

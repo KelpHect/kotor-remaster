@@ -21,6 +21,10 @@ namespace ke {
 struct ScriptApi;
 class GameSession;
 
+// The hit-mesh test in the mesh's own space: the first segment parameter at which `from` -> `to`
+// crosses a face from its front to its back, or a negative value (retail 004ab750).
+float miniGameSegmentHit(kotor::Vec3 from, kotor::Vec3 to, const std::vector<std::array<kotor::Vec3, 3>>& faces);
+
 // Player-level input for one tick. Bots and the window use this same path.
 struct MiniGameInput {
     float axisX = 0.0f; // Swoop: lateral, + is right. Turret: keyboard yaw.
@@ -92,6 +96,11 @@ struct MgAnim {
     float rate = 1.0f;
     float duration = 0.0f;
     bool loop = true;
+    // Overlay entries (retail 00485bd0 / 00486670): the blend weight (+0x14), the clip's transition
+    // time (animation +0x54) and the done mark (+0x20).
+    float weight = 1.0f;
+    float transition = 0.0f;
+    bool done = false;
 };
 
 // One model in the world.
@@ -101,13 +110,22 @@ struct MgInstance {
     MgAnim base;
     bool holding = false; // A one-shot base clip ended and holds its last frame.
     std::vector<MgAnim> queue;
-    std::vector<MgAnim> overlays;
+    std::vector<MgAnim> overlays; // Lowest priority first: the last one wins (retail 00485bd0).
+    // One-shot overlays that ended. retail 00486670 frees the entry, but its 00483d80 blend has
+    // written the clip's last frame into the nodes and nothing writes them back, so they keep
+    // it beneath whatever still animates them.
+    std::vector<MgAnim> settled;
     kotor::Mat3 rotation;
     kotor::Vec3 position;
     kotor::Vec3 previousPosition;
     bool rotating = true;
     bool alive = true;
     std::size_t mesh = static_cast<std::size_t>(-1);
+    // Model emitters added to Scene::emitters, moved with this instance.
+    std::size_t emitterFirst = 0;
+    std::size_t emitterCount = 0;
+    std::size_t flareFirst = 0;
+    std::size_t flareCount = 0;
     // Who gets this model's animation events.
     MgObject* owner = nullptr;
     MgGun* gun = nullptr;
@@ -192,6 +210,7 @@ struct MgFollower : MgObject {
     std::array<std::int32_t, 2> soundFrequency{0, 0};
     std::array<std::int32_t, 2> soundFrequencyRandom{0, 0};
     std::array<std::int32_t, 2> soundVolume{127, 127};
+    int engineVoice = -1; // the looping 3D Engine source (0066e900), started by Go (006701c0)
     kotor::Vec3 previousPosition;
     kotor::Vec3 velocity;
 };
@@ -301,7 +320,15 @@ private:
     void updateSpeedAndOffset(float dt);
     void applyBank(float lateral, float dt);
     bool runSlot(ScriptApi api, MgObject& target, std::size_t slot);
-    void playSound(ScriptApi api, const std::string& resref, const kotor::Vec3* where);
+    // group >= 0: a 3D (or 2D when `where` is null) source in that priority group; -1: a plain effect.
+    void playSound(ScriptApi api, const std::string& resref, const kotor::Vec3* where, int group = -1);
+    static int followerGroup(const MgFollower& follower)
+    {
+        // 0x18 - isPlayer (0066e2a0, 0066e900): prioritygroups 23 Default, 24 MiniGame_Enemy.
+        return follower.isPlayer ? 23 : 24;
+    }
+    void startEngineSound(ScriptApi api, MgFollower& target);
+    void stopEngineSound(ScriptApi api, MgFollower& target);
     void destroyInstance(MgInstance& instance);
     void releaseBullet(MgBullet& bullet);
     std::int32_t nextRandom();
@@ -321,6 +348,8 @@ private:
     std::map<std::uint32_t, MgObject*> objects_;
     std::vector<PendingEvent> pending_;
     std::map<std::string, std::vector<std::size_t>> freeBulletMeshes_;
+    // Each pooled bullet mesh's emitters (first, count): MGB_* explode fire.
+    std::map<std::size_t, std::pair<std::size_t, std::size_t>> poolEmitters_;
     std::vector<std::unique_ptr<MgInstance>> retiredInstances_;
     kotor::Mat3 cameraRotation_;
     // retail state at +0xc0: velocity and position of the lateral integrator.
@@ -331,6 +360,7 @@ private:
     bool started_ = false;
     bool fireHeld_ = false;
     bool meshesHidden_ = false;
+    bool lightsLogged_ = false;
     std::size_t bulletsFired_ = 0;
     std::size_t bulletHits_ = 0;
     std::size_t playerBulletsFired_ = 0;

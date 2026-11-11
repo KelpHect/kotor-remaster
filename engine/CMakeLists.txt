@@ -98,6 +98,8 @@ add_library(kotor_data STATIC
     src/kotor/SaveGame.cpp
     src/kotor/Scene.cpp
     src/kotor/Texture.cpp
+    src/kotor/Material.cpp
+    src/kotor/Particles.cpp
     src/kotor/Tlk.cpp
     src/kotor/TwoDa.cpp)
 target_include_directories(kotor_data PUBLIC src)
@@ -111,6 +113,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_library(kotor_audio STATIC
     src/audio/Audio.cpp
+    src/audio/AudioReference.cpp
     src/audio/Output.cpp
     src/audio/Reverb.cpp
     src/audio/ReverbGate.cpp)
@@ -139,20 +142,46 @@ add_executable(kotor_engine
     src/main.cpp
     src/app/Application.cpp
     src/app/Args.cpp
+    src/app/InputScript.cpp
+    src/app/Soak.cpp
     src/core/Log.cpp
+    src/game/Ambience.cpp
+    src/game/AmbienceFamily.cpp
+    src/game/WorldFamily.cpp
+    src/game/TextureAudit.cpp
+    src/game/AnimationFamily.cpp
     src/game/AudioSystem.cpp
     src/game/Chargen.cpp
     src/game/ChargenGui.cpp
     src/game/ChargenPreview.cpp
     src/game/FacialRig.cpp
     src/game/Factions.cpp
+    src/game/FrontEnd.cpp
+    src/game/FrontEndGate.cpp
     src/game/GameSession.cpp
+    src/game/GuiFrame.cpp
+    src/game/GuiPaint.cpp
     src/game/GuiSystem.cpp
+    src/game/Hud.cpp
+    src/game/GameScreens.cpp
+    src/game/GameScreensMore.cpp
+    src/game/GameScreensExtra.cpp
+    src/game/GameScreensPazaak.cpp
+    src/game/UpgradeBench.cpp
+    src/game/DialogueScreen.cpp
+    src/game/MenuScene.cpp
     src/game/Minigames.cpp
     src/game/MiniGame3D.cpp
     src/game/ScriptMiniGame.cpp
     src/game/Rules.cpp
+    src/game/CinemaFamily.cpp
+    src/game/AudioQualityFamily.cpp
+    src/game/Effects.cpp
+    src/game/EffectsFamily.cpp
     src/game/Pathfinding.cpp
+    src/game/QuestGraph.cpp
+    src/game/QuestTrace.cpp
+    src/game/QuestFlow.cpp
     src/game/ScriptActions.cpp
     src/game/ScriptCombat.cpp
     src/game/ScriptEffects.cpp
@@ -162,8 +191,10 @@ add_executable(kotor_engine
     src/game/ScriptObjects.cpp
     src/game/ScriptParty.cpp
     src/game/PartyControl.cpp
+    src/game/ScriptAmbience.cpp
     src/game/ScriptVideoEffect.cpp
     src/game/ScriptWorldState.cpp
+    src/game/EncounterPlanner.cpp
     src/game/VideoEffectController.cpp
     src/game/WorldPersistence.cpp
     src/render/BackendFactory.cpp
@@ -227,6 +258,13 @@ if(KOTOR_ENGINE_BUILD_TESTS)
     add_executable(kotor_tests tests/test_kotor.cpp)
     target_link_libraries(kotor_tests PRIVATE kotor_engine_options kotor_data kotor_script)
     add_test(NAME kotor_formats COMMAND kotor_tests)
+    add_executable(kotor_vm_conformance tests/vm_conformance.cpp)
+    target_link_libraries(kotor_vm_conformance PRIVATE kotor_engine_options kotor_script)
+    add_test(NAME kotor_vm_conformance COMMAND kotor_vm_conformance)
+    # Negative check: with every expected result perturbed, every case must fail.
+    add_test(NAME kotor_vm_conformance_negative COMMAND kotor_vm_conformance --negative)
+    set_tests_properties(kotor_vm_conformance_negative PROPERTIES
+                         PASS_REGULAR_EXPRESSION "VM_CONFORMANCE_NEGATIVE_PASS")
 
     add_test(NAME smoke_null_headless
              COMMAND kotor_engine --headless --frames 5 --seconds 20)
@@ -246,7 +284,8 @@ if(KOTOR_ENGINE_BUILD_TESTS)
         add_test(NAME kotor_scene_stats
                  COMMAND kotor_engine --module end_m01aa --scene-stats --null --headless)
         add_test(NAME kotor_scene_assert
-                 COMMAND kotor_engine --module end_m01aa --scene-assert --null --headless)
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_scene_assert/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_scene_assert/settings.ini"
+                          --module end_m01aa --scene-assert --null --headless)
         add_test(NAME kotor_door_transition
                  COMMAND kotor_engine --module tar_m02af --door-test --null --headless)
         add_test(NAME kotor_taris_transition
@@ -256,41 +295,163 @@ if(KOTOR_ENGINE_BUILD_TESTS)
         add_test(NAME kotor_dialogue
                  COMMAND kotor_engine --module end_m01aa --dialogue-test --null --headless)
         add_test(NAME kotor_family_pathfinding
-                 COMMAND kotor_engine --module end_m01aa --family-test pathfinding --null --headless)
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_pathfinding/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_pathfinding/settings.ini"
+                          --module end_m01aa --family-test pathfinding --null --headless)
         add_test(NAME kotor_family_worldstate
-                 COMMAND kotor_engine --module end_m01aa --family-test worldstate --null --headless)
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_worldstate/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_worldstate/settings.ini"
+                          --module end_m01aa --family-test worldstate --null --headless)
         set_tests_properties(kotor_family_worldstate PROPERTIES TIMEOUT 900)
         add_test(NAME kotor_family_items
-                 COMMAND kotor_engine --module end_m01aa --family-test items --null --headless)
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_items/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_items/settings.ini"
+                          --module end_m01aa --family-test items --null --headless)
         add_test(NAME kotor_family_party
-                 COMMAND kotor_engine --module end_m01aa --family-test party --null --headless)
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_party/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_party/settings.ini"
+                          --module end_m01aa --family-test party --null --headless)
         add_test(NAME kotor_family_companion
-                 COMMAND kotor_engine --module end_m01aa --family-test companion --null --headless)
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_companion/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_companion/settings.ini"
+                          --module end_m01aa --family-test companion --null --headless)
+        add_test(NAME kotor_family_animation
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_animation/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_animation/settings.ini"
+                          --module end_m01aa --family-test animation --null --headless)
+        set_tests_properties(kotor_family_animation PROPERTIES TIMEOUT 900)
         add_test(NAME kotor_family_combat
-                 COMMAND kotor_engine --module end_m01aa --family-test combat --null --headless)
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_combat/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_combat/settings.ini"
+                          --module end_m01aa --family-test combat --null --headless)
         set_tests_properties(kotor_family_combat PROPERTIES TIMEOUT 900)
         add_test(NAME kotor_family_objects
-                 COMMAND kotor_engine --module end_m01aa --family-test objects --null --headless)
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_objects/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_objects/settings.ini"
+                          --module end_m01aa --family-test objects --null --headless)
         add_test(NAME kotor_family_videoeffect
-                 COMMAND kotor_engine --module end_m01aa --family-test videoeffect
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_videoeffect/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_videoeffect/settings.ini"
+                          --module end_m01aa --family-test videoeffect
                          --video-effect-fixtures "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures"
                          --null --headless)
         add_test(NAME kotor_family_endgame
-                 COMMAND kotor_engine --module end_m01aa --family-test endgame --no-movies --null --headless)
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_endgame/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_endgame/settings.ini"
+                          --module end_m01aa --family-test endgame --no-movies --null --headless)
         set_tests_properties(kotor_family_endgame PROPERTIES TIMEOUT 600)
+        add_test(NAME kotor_family_world3d
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_world3d/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_world3d/settings.ini"
+                          --module end_m01aa --family-test world3d --null --headless)
+        set_tests_properties(kotor_family_world3d PROPERTIES TIMEOUT 900
+                             ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}")
+        add_test(NAME kotor_family_worldposes
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_worldposes/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_worldposes/settings.ini"
+                          --module end_m01aa --family-test worldposes --null --headless)
+        set_tests_properties(kotor_family_worldposes PROPERTIES TIMEOUT 1800
+                             ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}")
+        foreach(backend gl vulkan)
+            add_test(NAME kotor_scene_sync_${backend}
+                     COMMAND kotor_engine --${backend} --no-fallback --module end_m01aa --frames 40 --no-movies
+                             --capture-camera creature:0 --capture-action equip:0:w_vbroswrd_001@20)
+            set_tests_properties(kotor_scene_sync_${backend} PROPERTIES TIMEOUT 300
+                                 ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}"
+                                 PASS_REGULAR_EXPRESSION "scene sync: meshes reused [1-9][0-9]* uploaded [1-9]"
+                                 FAIL_REGULAR_EXPRESSION "\\[ERROR\\]")
+        endforeach()
+        # The GL pixel format is fixed at window creation: asking later left a 16-bit depth buffer.
+        add_test(NAME kotor_gl_depth_bits
+                 COMMAND kotor_engine --opengl --no-fallback --module end_m01aa --frames 3 --no-movies)
+        set_tests_properties(kotor_gl_depth_bits PROPERTIES TIMEOUT 120
+                             ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}"
+                             PASS_REGULAR_EXPRESSION "GL depth buffer bits: (24|32)")
+        add_test(NAME kotor_family_materials
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_materials/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_materials/settings.ini"
+                          --module end_m01aa --family-test materials --null --headless)
+        set_tests_properties(kotor_family_materials PROPERTIES TIMEOUT 600
+                             ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}")
+        add_test(NAME kotor_family_worldtextures
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_worldtextures/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_worldtextures/settings.ini"
+                          --module end_m01aa --family-test worldtextures --null --headless)
+        set_tests_properties(kotor_family_worldtextures PROPERTIES TIMEOUT 1800
+                             ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}")
+        add_test(NAME kotor_family_ambience
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_ambience/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_ambience/settings.ini"
+                          --module end_m01aa --family-test ambience --null --headless)
+        set_tests_properties(kotor_family_ambience PROPERTIES TIMEOUT 900
+                             ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}")
+        add_test(NAME kotor_family_audioquality
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_audioquality/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_audioquality/settings.ini"
+                          --module end_m01aa --family-test audioquality --null --headless)
+        set_tests_properties(kotor_family_audioquality PROPERTIES TIMEOUT 1800
+                             ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}")
+        add_test(NAME kotor_family_cinema
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_cinema/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_cinema/settings.ini"
+                          --module end_m01aa --family-test cinema --null --headless)
+        set_tests_properties(kotor_family_cinema PROPERTIES TIMEOUT 900
+                             ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}")
+        add_test(NAME kotor_family_sfx
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_sfx/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_sfx/settings.ini"
+                          --module end_m01aa --family-test sfx --null --headless)
+        set_tests_properties(kotor_family_sfx PROPERTIES TIMEOUT 900
+                             ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}")
         add_test(NAME kotor_family_actions
-                 COMMAND kotor_engine --module end_m01aa --family-test actions --null --headless)
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_actions/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_actions/settings.ini"
+                          --module end_m01aa --family-test actions --null --headless)
         add_test(NAME kotor_family_minigame3d
-                 COMMAND kotor_engine --module end_m01aa --family-test minigame3d --null --headless)
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_minigame3d/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_minigame3d/settings.ini"
+                          --module end_m01aa --family-test minigame3d --null --headless)
         set_tests_properties(kotor_family_minigame3d PROPERTIES TIMEOUT 900)
         foreach(backend gl vulkan)
             foreach(kind swoop turret)
                 add_test(NAME kotor_family_minigame3d_${kind}_${backend}
-                         COMMAND kotor_engine --${backend} --start-minigame ${kind} --no-movies
+                         COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_family_minigame3d_${kind}_${backend}/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_family_minigame3d_${kind}_${backend}/settings.ini"
+                                  --${backend} --no-fallback --start-minigame ${kind} --no-movies
                                  --minigame-render-check --frames 120)
                 set_tests_properties(kotor_family_minigame3d_${kind}_${backend} PROPERTIES TIMEOUT 300)
             endforeach()
         endforeach()
+        # The quest tracer: one process, about 15 minutes. docs/recon/64_QUEST_TRACE.md.
+        add_test(NAME kotor_quest_trace
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_quest_trace/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_quest_trace/settings.ini"
+                         --module end_m01aa --quest-trace "${CMAKE_CURRENT_BINARY_DIR}/quest_trace"
+                         --quest-trace-baseline "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/quest_trace_baseline.tsv"
+                         --no-movies --null --headless)
+        set_tests_properties(kotor_quest_trace PROPERTIES TIMEOUT 1200
+                             ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}")
+        # Negative check: a test-only fault must make the gate fail on engine edges.
+        add_test(NAME kotor_quest_trace_negative
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_quest_trace_negative/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_quest_trace_negative/settings.ini"
+                         --module end_m01aa --quest-trace "${CMAKE_CURRENT_BINARY_DIR}/quest_trace_negative"
+                         --quest-trace-baseline "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/quest_trace_baseline.tsv"
+                         --quest-trace-modules manm27aa --quest-trace-break journal
+                         --no-movies --null --headless)
+        set_tests_properties(kotor_quest_trace_negative PROPERTIES TIMEOUT 300
+                             ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}"
+                             PASS_REGULAR_EXPRESSION "quest trace gate: FAIL engine_fail=[1-9]")
+        # Sequence proofs on one session: docs/recon/64_QUEST_TRACE.md section 9.
+        add_test(NAME kotor_conversation_flow
+                 COMMAND kotor_engine --module end_m01aa --conversation-flow "${CMAKE_CURRENT_BINARY_DIR}/conversation_flow"
+                         --quest-trace-baseline "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/conversation_flow_baseline.tsv"
+                         --no-movies --null --headless)
+        set_tests_properties(kotor_conversation_flow PROPERTIES TIMEOUT 900
+                             ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}")
+        # Negative check: global writes dropped must make the walk see missing effects.
+        add_test(NAME kotor_conversation_flow_negative
+                 COMMAND kotor_engine --module end_m01aa --conversation-flow "${CMAKE_CURRENT_BINARY_DIR}/conversation_flow_negative"
+                         --quest-trace-baseline "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/conversation_flow_baseline.tsv"
+                         --quest-trace-modules end_m01aa,end_m01ab --quest-trace-break globals
+                         --no-movies --null --headless)
+        set_tests_properties(kotor_conversation_flow_negative PROPERTIES TIMEOUT 300
+                             ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}"
+                             PASS_REGULAR_EXPRESSION "conversation flow gate: FAIL fail=[1-9]")
+        add_test(NAME kotor_plot_replay
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_plot_replay/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_plot_replay/settings.ini"
+                         --module end_m01aa --plot-replay "${CMAKE_CURRENT_BINARY_DIR}/plot_replay"
+                         --quest-trace-baseline "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/plot_replay_baseline.tsv"
+                         --no-movies --null --headless)
+        set_tests_properties(kotor_plot_replay PROPERTIES TIMEOUT 900
+                             ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}")
+        # Negative check: a setter the plot needs is never run, so a later step's real condition fails.
+        add_test(NAME kotor_plot_replay_negative
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_plot_replay_negative/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_plot_replay_negative/settings.ini"
+                         --module end_m01aa --plot-replay "${CMAKE_CURRENT_BINARY_DIR}/plot_replay_negative"
+                         --quest-trace-baseline "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/plot_replay_baseline.tsv"
+                         --quest-trace-break K_CAPTURED_LEV
+                         --no-movies --null --headless)
+        set_tests_properties(kotor_plot_replay_negative PROPERTIES TIMEOUT 900
+                             ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}"
+                             PASS_REGULAR_EXPRESSION "plot replay gate: FAIL fail=[1-9]")
         add_test(NAME kotor_world_sim
                  COMMAND kotor_engine --module end_m01aa --world-sim-test --null --headless)
         add_test(NAME kotor_combat
@@ -318,7 +479,8 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                          --delayed-test "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/delay_test.ncs"
                          --null --headless)
         add_test(NAME kotor_combat_force
-                 COMMAND kotor_engine --module end_m01aa --combat-force-test
+                 COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_combat_force/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_combat_force/settings.ini"
+                         --module end_m01aa --combat-force-test
                          --combat-force-script "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/force_script_test.ncs"
                          --null --headless)
         add_test(NAME kotor_animation
@@ -356,9 +518,11 @@ if(KOTOR_ENGINE_BUILD_TESTS)
         set(KOTOR_SAVE_FIXTURE "${CMAKE_SOURCE_DIR}/../artifacts/lanes/06-dynamic/profile/saves/000000 - QUICKSAVE")
         if(EXISTS "${KOTOR_SAVE_FIXTURE}/SAVEGAME.sav")
             add_test(NAME kotor_original_save_load
-                     COMMAND kotor_engine --original-save-load "${KOTOR_SAVE_FIXTURE}" --null --headless)
+                     COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_original_save_load/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_original_save_load/settings.ini"
+                         --original-save-load "${KOTOR_SAVE_FIXTURE}" --null --headless)
             add_test(NAME kotor_original_save_roundtrip
-                     COMMAND kotor_engine --original-save-roundtrip "${KOTOR_SAVE_FIXTURE}"
+                     COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_original_save_roundtrip/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_original_save_roundtrip/settings.ini"
+                         --original-save-roundtrip "${KOTOR_SAVE_FIXTURE}"
                              --original-save-out "${CMAKE_BINARY_DIR}/000009 - ENGINE" --null --headless)
             set_tests_properties(kotor_original_save_load kotor_original_save_roundtrip
                                  PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
@@ -369,7 +533,8 @@ if(KOTOR_ENGINE_BUILD_TESTS)
         set(KOTOR_SAVE_PARTY_FIXTURE "${CMAKE_SOURCE_DIR}/../artifacts/lanes/06-dynamic/profile/saves/000006 - TARISLC")
         if(EXISTS "${KOTOR_SAVE_PARTY_FIXTURE}/SAVEGAME.sav")
             add_test(NAME kotor_original_save_party_roundtrip
-                     COMMAND kotor_engine --original-save-roundtrip "${KOTOR_SAVE_PARTY_FIXTURE}"
+                     COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_original_save_party_roundtrip/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_original_save_party_roundtrip/settings.ini"
+                         --original-save-roundtrip "${KOTOR_SAVE_PARTY_FIXTURE}"
                              --original-save-out "${CMAKE_BINARY_DIR}/000011 - ENGINE" --null --headless)
             set_tests_properties(kotor_original_save_party_roundtrip
                                  PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
@@ -396,7 +561,8 @@ if(KOTOR_ENGINE_BUILD_TESTS)
         set_tests_properties(kotor_bug_parity
                              PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 120)
         add_test(NAME kotor_chargen
-                 COMMAND kotor_engine --module end_m01aa --chargen-test --null --headless)
+                 COMMAND kotor_engine --module end_m01aa --chargen-test --null --headless
+                         --saves-dir "${CMAKE_BINARY_DIR}/chargen/saves" --settings-file "${CMAKE_BINARY_DIR}/chargen/settings.ini")
         set_tests_properties(kotor_chargen
                              PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 120)
         set(KOTOR_CAMPAIGN_SAVES "${CMAKE_SOURCE_DIR}/../artifacts/lanes/06-dynamic/profile/saves")
@@ -412,7 +578,8 @@ if(KOTOR_ENGINE_BUILD_TESTS)
         set_tests_properties(kotor_avatar
                              PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 180)
         add_test(NAME kotor_chargen_gui
-                 COMMAND kotor_engine --module end_m01aa --chargen-gui-test --null --headless)
+                 COMMAND kotor_engine --module end_m01aa --chargen-gui-test --null --headless
+                         --saves-dir "${CMAKE_BINARY_DIR}/chargen_gui/saves" --settings-file "${CMAKE_BINARY_DIR}/chargen_gui/settings.ini")
         set_tests_properties(kotor_chargen_gui
                              PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 180)
         # Pixel gate for the 3D chargen controls: needs a real GL / Vulkan device and fails
@@ -421,24 +588,78 @@ if(KOTOR_ENGINE_BUILD_TESTS)
         add_test(NAME kotor_chargen_preview_gl
                  COMMAND kotor_engine --module end_m01aa --chargen-preview-test --opengl
                          --no-fallback --width 1280 --height 960
-                         --chargen-preview-out "${CMAKE_BINARY_DIR}/chargen_preview/gl")
+                         --chargen-preview-out "${CMAKE_BINARY_DIR}/chargen_preview/gl"
+                         --saves-dir "${CMAKE_BINARY_DIR}/chargen_preview/gl/saves" --settings-file "${CMAKE_BINARY_DIR}/chargen_preview/gl/settings.ini")
         set_tests_properties(kotor_chargen_preview_gl
                              PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
         add_test(NAME kotor_chargen_preview_vulkan
                  COMMAND kotor_engine --module end_m01aa --chargen-preview-test --vulkan
                          --no-fallback --width 1280 --height 960
-                         --chargen-preview-out "${CMAKE_BINARY_DIR}/chargen_preview/vulkan")
+                         --chargen-preview-out "${CMAKE_BINARY_DIR}/chargen_preview/vulkan"
+                         --saves-dir "${CMAKE_BINARY_DIR}/chargen_preview/vulkan/saves" --settings-file "${CMAKE_BINARY_DIR}/chargen_preview/vulkan/settings.ini")
         set_tests_properties(kotor_chargen_preview_vulkan
                              PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+        # Pixel gate for texture wrap: a shipped room triangle whose UVs run past 1 is drawn
+        # with a probe texture under each wrap setting and the frame is measured. Needs a
+        # real GL / Vulkan device; fails (never skips) when the backend cannot start.
+        # Leak gate: sustained growth per cycle after warm-up, this process only (app/Soak.h).
+        set(KOTOR_SOAK_ARGS --module tar_m03aa --fixed-dt 0.0166667 --no-audio
+            --soak-modules danm13,kas_m25aa,sta_m45aa,end_m01aa
+            --soak-out "${CMAKE_CURRENT_BINARY_DIR}/soak")
+        add_test(NAME kotor_soak_idle COMMAND kotor_engine ${KOTOR_SOAK_ARGS} --soak idle --null --headless)
+        add_test(NAME kotor_soak_modules COMMAND kotor_engine ${KOTOR_SOAK_ARGS} --soak modules --null --headless)
+        add_test(NAME kotor_soak_ui COMMAND kotor_engine ${KOTOR_SOAK_ARGS} --soak ui --gui-screen mainmenu --null --headless)
+        set_tests_properties(kotor_soak_idle kotor_soak_modules kotor_soak_ui
+                             PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 600)
+        foreach(backend gl vulkan)
+            add_test(NAME kotor_texture_wrap_${backend}
+                     COMMAND kotor_engine --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_texture_wrap_${backend}/saves" --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_texture_wrap_${backend}/settings.ini"
+                              --module end_m01aa --texture-wrap-check --${backend}
+                             --no-fallback --width 1280 --height 720 --no-movies --frames 3500)
+            set_tests_properties(kotor_texture_wrap_${backend}
+                                 PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+        endforeach()
         # New Game from the main menu through the shipped chargen to end_m01aa, driven by
         # pointer events (starts in end_m01ab so the module change is observable).
         foreach(backend gl vulkan)
             add_test(NAME kotor_new_game_flow_${backend}
                      COMMAND kotor_engine --module end_m01ab --new-game-flow-test --${backend}
                              --no-fallback --width 1280 --height 960
-                             --chargen-preview-out "${CMAKE_BINARY_DIR}/new_game_flow/${backend}")
+                             --chargen-preview-out "${CMAKE_BINARY_DIR}/new_game_flow/${backend}"
+                             --saves-dir "${CMAKE_BINARY_DIR}/new_game_flow/${backend}/saves"
+                             --settings-file "${CMAKE_BINARY_DIR}/new_game_flow/${backend}/settings.ini")
             set_tests_properties(kotor_new_game_flow_${backend}
                                  PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+        endforeach()
+        # The shipped front end (main menu, options, load game, movies) driven by real SDL
+        # pointer, wheel and key events; saves and settings go to the build folder.
+        foreach(backend gl vulkan)
+            add_test(NAME kotor_front_end_${backend}
+                     COMMAND kotor_engine --module end_m01aa --front-end-test --${backend}
+                             --no-fallback --width 1280 --height 720 --no-audio --no-movies --hidden
+                             --saves-dir "${CMAKE_BINARY_DIR}/front_end/${backend}/saves"
+                             --settings-file "${CMAKE_BINARY_DIR}/front_end/${backend}/settings.ini"
+                             --front-end-out "${CMAKE_BINARY_DIR}/front_end/${backend}/frames")
+            set_tests_properties(kotor_front_end_${backend}
+                                 PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+            # The shipped store screen (merchants on tar_m02ac) and the loading screen of a module change.
+            add_test(NAME kotor_front_end_store_${backend}
+                     COMMAND kotor_engine --module tar_m02ac --front-end-test --front-end-scenario store --${backend}
+                             --no-fallback --width 1280 --height 720 --no-audio --no-movies --hidden
+                             --saves-dir "${CMAKE_BINARY_DIR}/front_end_store/${backend}/saves"
+                             --settings-file "${CMAKE_BINARY_DIR}/front_end_store/${backend}/settings.ini"
+                             --front-end-out "${CMAKE_BINARY_DIR}/front_end_store/${backend}/frames")
+            set_tests_properties(kotor_front_end_store_${backend}
+                                 PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+            # The HUD minimap in the running engine over a sample of every planet's modules.
+            add_test(NAME kotor_front_end_maps_${backend}
+                     COMMAND kotor_engine --module end_m01aa --front-end-test --front-end-scenario maps --${backend}
+                             --no-fallback --width 1280 --height 720 --no-audio --no-movies --hidden
+                             --saves-dir "${CMAKE_BINARY_DIR}/front_end_maps/${backend}/saves"
+                             --settings-file "${CMAKE_BINARY_DIR}/front_end_maps/${backend}/settings.ini"
+                             --front-end-out "${CMAKE_BINARY_DIR}/front_end_maps/${backend}/frames")
+            set_tests_properties(kotor_front_end_maps_${backend}
+                                 PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 1200)
         endforeach()
         add_test(NAME kotor_profile_k1
                  COMMAND kotor_engine --profile-info "${KOTOR_TEST_INSTALL}" --null --headless)
@@ -451,7 +672,9 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                      COMMAND kotor_engine --profile-info "${KOTOR2_TEST_INSTALL}" --null --headless)
             add_test(NAME kotor_world_k2
                      COMMAND kotor_engine --install "${KOTOR2_TEST_INSTALL}" --module 001EBO
-                             --k2-test --null --headless)
+                             --k2-test --null --headless
+                             --saves-dir "${CMAKE_BINARY_DIR}/world_k2/saves"
+                             --settings-file "${CMAKE_BINARY_DIR}/world_k2/settings.ini")
             set_tests_properties(kotor_world_k2 PROPERTIES TIMEOUT 300)
         endif()
         set_tests_properties(kotor_scene_stats kotor_scene_assert kotor_door_transition
@@ -512,6 +735,24 @@ if(KOTOR_ENGINE_BUILD_TESTS)
         endif()
 
         if(Python3_Interpreter_FOUND)
+            # GL and Vulkan draw the same world. Fails when either backend cannot start.
+            add_test(NAME kotor_backend_parity_vulkan
+                     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/check_backend_parity.py
+                             --exe $<TARGET_FILE:kotor_engine> --install "${KOTOR_TEST_INSTALL}"
+                             --saves-dir "${CMAKE_BINARY_DIR}/backend_parity/saves"
+                             --settings-file "${CMAKE_BINARY_DIR}/backend_parity/settings.ini")
+            set_tests_properties(kotor_backend_parity_vulkan PROPERTIES TIMEOUT 600)
+            # The mouth on screen changes with the lip shape. Fails when the backend cannot start.
+            foreach(_talk_backend gl vulkan)
+                add_test(NAME kotor_talk_pixels_${_talk_backend}
+                         COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/check_talk_pixels.py
+                                 --exe $<TARGET_FILE:kotor_engine> --backend ${_talk_backend}
+                                 --install "${KOTOR_TEST_INSTALL}"
+                                 --out "${CMAKE_BINARY_DIR}/talk_pixels"
+                                 --saves-dir "${CMAKE_BINARY_DIR}/talk_pixels/${_talk_backend}/saves"
+                                 --settings-file "${CMAKE_BINARY_DIR}/talk_pixels/${_talk_backend}/settings.ini")
+                set_tests_properties(kotor_talk_pixels_${_talk_backend} PROPERTIES TIMEOUT 300)
+            endforeach()
             add_test(NAME kotor_all_modules
                      COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/sweep_modules.py
                              --exe $<TARGET_FILE:kotor_engine>
@@ -535,7 +776,9 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                                  --repo-root "${CMAKE_SOURCE_DIR}/.."
                                  --module-usage "${CMAKE_SOURCE_DIR}/../artifacts/lanes/s1-04-scripts/module_action_usage.csv"
                                  --action-table "${CMAKE_SOURCE_DIR}/src/script/ActionTable.inc"
-                                 --out-dir "${CMAKE_BINARY_DIR}/retail-differential")
+                                 --out-dir "${CMAKE_BINARY_DIR}/retail-differential"
+                                 --saves-dir "${CMAKE_BINARY_DIR}/retail-differential/saves"
+                                 --settings-file "${CMAKE_BINARY_DIR}/retail-differential/settings.ini")
                 set_tests_properties(kotor_retail_differential PROPERTIES TIMEOUT 2400)
             endif()
             add_test(NAME kotor_p6_content
@@ -543,7 +786,9 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                              --exe $<TARGET_FILE:kotor_engine>
                              --install "${KOTOR_TEST_INSTALL}"
                              --baseline "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/p6_content_baseline.json"
-                             --out "${CMAKE_BINARY_DIR}/p6-content.json")
+                             --out "${CMAKE_BINARY_DIR}/p6-content.json"
+                             --saves-dir "${CMAKE_BINARY_DIR}/p6_content/saves"
+                             --settings-file "${CMAKE_BINARY_DIR}/p6_content/settings.ini")
             set_tests_properties(kotor_p6_content PROPERTIES TIMEOUT 900)
         endif()
     endif()

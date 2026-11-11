@@ -5,6 +5,9 @@
 #include "core/Log.h"
 #include "game/GameSession.h"
 #include "game/ScriptHost.h"
+#include "script/Vm.h"
+
+#include <SDL3/SDL_stdinc.h>
 
 #include <algorithm>
 #include <cctype>
@@ -87,7 +90,7 @@ void registerMiniGameActions(HandlerTable& table)
         MG_WORLD(world);
         return ActionCall::retFloat(world->lateralAccel);
     });
-    table.add(563, HANDLER { // 0044f130. The state is kept; no post pass draws the blur yet.
+    table.add(563, HANDLER { // 0044f130 / 00543550. The renderer's speed blur pass reads it.
         MG_WORLD(world);
         world->speedBlur = call.intArg(0) != 0;
         world->speedBlurRatio = static_cast<float>(call.floatArg(1, 0.75));
@@ -120,6 +123,11 @@ void registerMiniGameActions(HandlerTable& table)
             if (call.intArg(3) != 0) {
                 flags |= 0x20u;
             }
+            // Diagnostics only: KOTOR_DEBUG_MG_ANIM logs each SWMG_PlayAnimation with its flags.
+            static const bool trace = SDL_getenv("KOTOR_DEBUG_MG_ANIM") != nullptr;
+            if (trace) {
+                logInfo(concat("mg anim ", target->name, " ", call.stringArg(1), " flags ", flags));
+            }
             world->play(*target, call.stringArg(1), 1.0f, flags);
         }
         return ActionCall::none();
@@ -141,16 +149,16 @@ void registerMiniGameActions(HandlerTable& table)
         const MgObject* self = selfObject(call);
         return ActionCall::retObject(self != nullptr ? self->lastBulletShooter : kInvalid);
     });
-    table.add(590, HANDLER { // nwscript: nAbsolute names the value to set.
+    // 005cb990 (shared with 604) pops the object and nHP only: nAbsolute is never read and stays on the
+    // stack, where the script takes it for the int result (nothing else is pushed). The change is always
+    // relative: 0066e8e0 stores it at +0x19c and runs OnDamage 0066e7a0.
+    table.add(590, HANDLER {
         MG_WORLD(world);
-        MgFollower* target = followerArg(call);
-        if (target == nullptr) {
-            return ActionCall::retInt(0);
+        const std::int64_t leftOver = call.intArg(2);
+        if (MgFollower* target = followerArg(call)) {
+            world->adjustHitPoints(call.api(), *target, static_cast<std::int32_t>(call.intArg(1)));
         }
-        const std::int32_t amount = static_cast<std::int32_t>(call.intArg(1));
-        const bool absolute = call.intArg(2) != 0;
-        world->adjustHitPoints(call.api(), *target, absolute ? amount - target->hitPoints : amount);
-        return ActionCall::retInt(target->hitPoints);
+        return ActionCall::retInt(leftOver);
     });
     table.add(591, HANDLER { // 0066c190(1): the default, from inside a replacing script.
         MG_WORLD(world);
@@ -478,11 +486,28 @@ void registerMiniGameActions(HandlerTable& table)
         return ActionCall::retVector(world->offset);
     });
     table.add(642, HANDLER {
+        // 005cc1e0, shared with 619: it pops an object the nwscript prototype never pushes (005d26a0 needs
+        // an object cell on top, else the run fails with -2001), then reads that object's +0xa0.
+        std::vector<script::Value>& stack = call.vm.stack();
+        if (stack.empty() || stack.back().type != script::ValueType::Object) {
+            throw script::VmError("SWMG_GetPlayerInvincibility pops an object (005cc1e0)");
+        }
+        std::uint32_t object = static_cast<std::uint32_t>(stack.back().integer);
+        stack.pop_back();
         MG_WORLD(world);
-        return ActionCall::retFloat(world->player() != nullptr ? world->player()->invulnerable : 0.0f);
+        object = object == 0 ? call.self() : object;
+        const MgFollower* follower = world->follower(object);
+        return ActionCall::retFloat(follower != nullptr ? follower->invulnerable : 0.0f);
     });
-    table.add(643, HANDLER {
+    table.add(643, HANDLER { // 005ccc60: the player follower's +0x98.
         MG_WORLD(world);
+        // Diagnostics only: KOTOR_DEBUG_MG_SPEED logs the speed state each time a script reads it
+        // (the swoop heartbeat does so once per frame), in the columns of retail's speed log.
+        static const bool trace = SDL_getenv("KOTOR_DEBUG_MG_SPEED") != nullptr;
+        if (trace && world->player() != nullptr) {
+            logInfo(concat("mg speed ", world->player()->speed, " min ", world->minimumSpeed, " max ",
+                           world->maximumSpeed, " accel ", world->acceleration));
+        }
         return ActionCall::retFloat(world->player() != nullptr ? world->player()->speed : 0.0f);
     });
     table.add(644, HANDLER {
@@ -503,13 +528,10 @@ void registerMiniGameActions(HandlerTable& table)
         world->clampOffset();
         return ActionCall::none();
     });
-    table.add(648, HANDLER {
-        MG_WORLD(world);
-        const float value = static_cast<float>(call.floatArg(0));
-        if (world->player() != nullptr && value >= 0.0f) {
-            world->player()->invulnerable = value;
-        }
-        return ActionCall::none();
+    table.add(648, [](ActionCall&) -> Result {
+        // 005cc3c0, shared with 620: it pops an object before the float, and the float is on top, so
+        // 005d26a0 fails and the run ends (-2001). Nothing is set.
+        throw script::VmError("SWMG_SetPlayerInvincibility pops an object (005cc3c0)");
     });
     table.add(649, HANDLER { // 005cce70, 0066c870
         MG_WORLD(world);
@@ -849,6 +871,9 @@ TurretResult playTurret(GameSession& game, int tickLimit)
     const std::string startModule = game.module();
     const float radiansToDegrees = 57.29578f;
     std::size_t initial = game.miniGameView().enemies.size();
+    std::uint32_t chosen = 0; // The fighter being chased: switching mid-turn throws the aim away.
+    bool haveChosen = false;
+    std::map<std::uint32_t, kotor::Vec3> smoothed; // The per-tick velocity is noisy on a curved path.
     for (int tick = 0; tick < tickLimit; ++tick) {
         if (game.module() != startModule || !game.miniGameActive()) {
             result.endModule = game.module();
@@ -856,18 +881,25 @@ TurretResult playTurret(GameSession& game, int tickLimit)
         }
         const MiniGameView view = game.miniGameView();
         const float rate = game.miniGame()->movementPerSec * kTick;
+        const kotor::Vec3 origin = game.miniGame()->origin;
         MiniGameInput input;
         // The lowest angular error among reachable fighters wins.
         float bestScore = 1e9f;
         float headingError = 0.0f;
         float pitchError = 0.0f;
+        std::uint32_t bestObject = 0;
         for (const MiniGameFollowerView& enemy : view.enemies) {
+            const auto known = smoothed.find(enemy.object);
+            kotor::Vec3& average = smoothed.try_emplace(enemy.object, enemy.velocity).first->second;
+            if (known != smoothed.end()) {
+                average = average * 0.9f + enemy.velocity * 0.1f;
+            }
             const kotor::Vec3 to = enemy.position - view.aimOrigin;
             // The intercept converges in a few rounds at the fighters' speeds.
             kotor::Vec3 intercept = to;
             for (int round = 0; round < 3; ++round) {
                 const float flight = kotor::length(intercept) / std::max(view.bulletSpeed, 1.0f);
-                intercept = to + enemy.velocity * flight;
+                intercept = to + average * flight;
             }
             const kotor::Vec3 lead = kotor::normalize(intercept);
             const float wantHeading = std::atan2(lead.x, lead.y) * radiansToDegrees;
@@ -875,12 +907,21 @@ TurretResult playTurret(GameSession& game, int tickLimit)
             const float haveHeading = std::atan2(view.aimDirection.x, view.aimDirection.y) * radiansToDegrees;
             const float havePitch = std::asin(std::clamp(view.aimDirection.z, -1.0f, 1.0f)) * radiansToDegrees;
             const float dh = std::remainder(wantHeading - haveHeading, 360.0f);
-            const float dp = wantPitch - havePitch;
             const float distance = kotor::length(to);
-            const bool reachable = wantPitch >= -5.0f && wantPitch <= 47.0f && distance < view.bulletSpeed * 3.0f;
-            const float score = std::fabs(dh) + std::fabs(dp) + (reachable ? 0.0f : 1000.0f);
+            // The aim can pitch as far as the clamp around the origin allows (0066cb40).
+            const float lowest = havePitch - (view.playerOffset.x - (origin.x + view.tunnelNegative.x));
+            const float highest = havePitch + (origin.x + view.tunnelPositive.x - view.playerOffset.x);
+            // A fighter just outside the pitch range is still hit by a bullet held at the limit: its hit
+            // box is several degrees tall at these distances.
+            const float aimPitch = std::clamp(wantPitch, lowest, highest);
+            const float dp = aimPitch - havePitch;
+            const bool reachable = std::fabs(wantPitch - aimPitch) < 4.0f
+                && distance < view.bulletSpeed * 3.0f;
+            const float score = std::fabs(dh) + std::fabs(dp) + (reachable ? 0.0f : 1000.0f)
+                - (haveChosen && enemy.object == chosen ? 60.0f : 0.0f) + static_cast<float>(enemy.hitPoints) * 0.5f;
             if (score < bestScore) {
                 bestScore = score;
+                bestObject = enemy.object;
                 headingError = dh;
                 pitchError = dp;
             }
@@ -888,7 +929,9 @@ TurretResult playTurret(GameSession& game, int tickLimit)
                 result.damageMultiples = false;
             }
         }
-        if (rate > 0.0f && bestScore < 1000.0f) {
+        chosen = bestObject;
+        haveChosen = bestScore < 500.0f;
+        if (rate > 0.0f && bestScore < 500.0f) {
             // Retail 00671020 does not clamp a mouse delta. The limit is this bot's own: a
             // hand's flick of six times MovementPerSec, not a rule of the game.
             const float flick = 6.0f;
@@ -897,6 +940,7 @@ TurretResult playTurret(GameSession& game, int tickLimit)
             input.fire = true;
         }
         step(game, input);
+        result.ticks = tick + 1;
         result.ticks = tick + 1;
         if (game.gameEnded()) {
             break;
@@ -1046,6 +1090,132 @@ void checkMath(GateLog& log, const std::string& installPath)
         log.check(world->player()->invulnerable > 0.0f, "pad_shipped_script_started_invulnerability");
         log.check(world->acceleration >= accelBefore, "pad_acceleration_not_reduced");
     }
+
+    // Overlays (SWMG_PlayAnimation with its overlay argument) on the model with the timer
+    // digits and start lights. Past the countdown, the shipped heartbeat plays no light clip.
+    setGlobal(game, "MIN_RACE_GEAR", 1);
+    MgInstance* lamps = nullptr;
+    for (const std::unique_ptr<MgInstance>& created : world->player()->models) {
+        if (created->model->hasAnimationAnyCase("MilSecOne0") && created->model->hasAnimationAnyCase("S3")) {
+            lamps = created.get();
+        }
+    }
+    log.check(lamps != nullptr, "overlay_timer_model");
+    if (lamps != nullptr) {
+        constexpr unsigned kOverlayLoop = 8u;    // retail 005cb730: overlay, looping.
+        constexpr unsigned kOverlayOneShot = 9u; // overlay, played once.
+        const auto topName = [&lamps]() {
+            return lamps->overlays.empty() ? std::string{} : lowerName(lamps->overlays.back().name);
+        };
+        // retail 00485bd0: a clip played again moves to the top, so the latest digit shows.
+        world->removeAnimation(*world->player(), "MilSecOne3");
+        world->removeAnimation(*world->player(), "MilSecOne7");
+        world->play(*world->player(), "MilSecOne3", 1.0f, kOverlayLoop);
+        world->play(*world->player(), "MilSecOne7", 1.0f, kOverlayLoop);
+        world->play(*world->player(), "MilSecOne3", 1.0f, kOverlayLoop);
+        log.check(topName() == "milsecone3", "overlay_replayed_clip_moves_to_top");
+        // retail 00486670: a one-shot overlay's last frame stays once its entry is freed.
+        world->play(*world->player(), "S3", 1.0f, kOverlayOneShot);
+        const float lightClip = lamps->model->animationDurationAnyCase("S3");
+        for (int i = 0; i * kTick < lightClip + 0.5f; ++i) {
+            step(game, {});
+        }
+        bool overlayGone = true;
+        for (const MgAnim& overlay : lamps->overlays) {
+            overlayGone = overlayGone && lowerName(overlay.name) != "s3";
+        }
+        bool lastFrameKept = false;
+        for (const kotor::MdlAnimLayer& layer : lamps->layers()) {
+            lastFrameKept = lastFrameKept || (lowerName(layer.animation) == "s3" && layer.time == lightClip);
+        }
+        log.check(overlayGone && lastFrameKept, "overlay_one_shot_keeps_last_frame");
+        // A light lit by S3 stays lit under a digit overlay played after it: the digit clip does
+        // not animate the lamps' self-illumination or alpha.
+        const auto tint = [&lamps](const std::vector<kotor::MdlAnimLayer>& layers) {
+            float sum = 0.0f;
+            for (const kotor::MdlMeshTriangle& triangle : lamps->model->posedTrianglesLayered(layers, true)) {
+                sum += triangle.selfIllum.x + triangle.selfIllum.y + triangle.selfIllum.z + triangle.alpha;
+            }
+            return sum;
+        };
+        const float digitOnly = tint({{"MilSecOne3", 0.0f}});
+        const float lightThenDigit = tint({{"S3", lightClip * 0.5f}, {"MilSecOne3", 0.0f}});
+        log.check(lightThenDigit != digitOnly, "overlay_tint_from_every_layer");
+        // retail 00486670 / 00485bd0: a one-shot played again every tick (the heartbeat's meter) is
+        // held at its last frame at full weight and never freed: the replay clears its done mark.
+        world->removeAnimation(*world->player(), "meter6");
+        const float meterClip = lamps->model->animationDurationAnyCase("meter6");
+        for (int i = 0; i * kTick < meterClip + 0.5f; ++i) {
+            world->play(*world->player(), "meter6", 1.0f, kOverlayOneShot);
+            step(game, {});
+        }
+        bool heldAtEnd = false;
+        for (const MgAnim& overlay : lamps->overlays) {
+            heldAtEnd = heldAtEnd
+                || (lowerName(overlay.name) == "meter6" && overlay.time == meterClip && overlay.weight == 1.0f);
+        }
+        log.check(heldAtEnd, "overlay_replayed_one_shot_held_at_full_weight");
+    }
+}
+
+// The SWMG handlers that do not do what nwscript.nss says (s08 F6f).
+void checkHandlerQuirks(GateLog& log, const std::string& installPath)
+{
+    GameSession game(installPath, "tar_m03mg");
+    MiniGameWorld* world = game.miniGame();
+    log.check(world != nullptr && world->player() != nullptr, "quirk_world");
+    if (world == nullptr || world->player() == nullptr) {
+        return;
+    }
+    std::vector<std::uint8_t> code;
+    const auto constant = [&](std::uint8_t type, std::uint32_t bits) {
+        code.insert(code.end(), {0x04, type});
+        for (const int shift : {24, 16, 8, 0}) {
+            code.push_back(static_cast<std::uint8_t>(bits >> shift));
+        }
+    };
+    const auto text = [&](const std::string& value) {
+        code.insert(code.end(), {0x04, 0x05, static_cast<std::uint8_t>(value.size() >> 8),
+                                 static_cast<std::uint8_t>(value.size() & 0xFF)});
+        code.insert(code.end(), value.begin(), value.end());
+    };
+    const auto action = [&](std::uint16_t id, std::uint8_t argc) {
+        code.insert(code.end(), {0x05, 0x00, static_cast<std::uint8_t>(id >> 8), static_cast<std::uint8_t>(id & 0xFF), argc});
+    };
+    const auto finish = [&]() {
+        std::vector<std::uint8_t> out{'N', 'C', 'S', ' ', 'V', '1', '.', '0', 0x42};
+        code.insert(code.end(), {0x20, 0x00});
+        const std::uint32_t size = static_cast<std::uint32_t>(13 + code.size());
+        for (const int shift : {24, 16, 8, 0}) {
+            out.push_back(static_cast<std::uint8_t>(size >> shift));
+        }
+        out.insert(out.end(), code.begin(), code.end());
+        code.clear();
+        return out;
+    };
+    const std::uint32_t player = world->player()->object;
+    // 005cc3c0: SWMG_SetPlayerInvincibility pops an object first; the float on top fails the run.
+    world->player()->invulnerable = 0.0f;
+    constant(0x04, 0x40000000u); // 2.0f
+    action(648, 1);
+    log.check(!game.runScriptNcsForTest("quirk_648", finish(), player) && world->player()->invulnerable == 0.0f,
+              "quirk_set_invincibility_fails_the_run");
+    // 005cc1e0: SWMG_GetPlayerInvincibility pops an object no caller pushes; with none on top the run fails.
+    action(642, 0);
+    log.check(!game.runScriptNcsForTest("quirk_642", finish(), player), "quirk_get_invincibility_fails_the_run");
+    // 005cb990: SWMG_AdjustFollowerHitPoints(oPlayer, -5, TRUE) changes by -5 (nAbsolute unread), and the
+    // int the script gets back is the nAbsolute left on the stack.
+    game.declareGlobalForTest("MG_QUIRK");
+    world->player()->hitPoints = 40;
+    constant(0x03, 1u);           // nAbsolute
+    constant(0x03, 0xFFFFFFFBu);  // nHP -5
+    constant(0x06, player);
+    action(590, 3);
+    text("MG_QUIRK");
+    action(581, 2);
+    log.check(game.runScriptNcsForTest("quirk_590", finish(), player) && world->player()->lastHpChange == -5
+                  && game.scriptWorld().getGlobal("MG_QUIRK").integer == 1,
+              "quirk_adjust_hit_points_is_relative");
 }
 
 void checkRace(GateLog& log, const std::string& installPath, const std::string& normalModule,
@@ -1103,6 +1273,30 @@ void checkRace(GateLog& log, const std::string& installPath, const std::string& 
                   tag + "slow_run_shipped_return");
         log.check(race.raceSeconds > firstSeconds, tag + "slow_run_recorded_time_worse");
     }
+    if (timeGlobal == "TAR_SWOOP") {
+        // The shipped heartbeat's fifth race: a time slower than the one to beat plays 01g and ends the
+        // game (EndGame(0)) instead of going back to tar_m03af.
+        GameSession game(installPath, raceModule);
+        setGlobal(game, "Tar_SwoopRaceCounter", 5);
+        setGlobal(game, "TAR_SWOOP_MIN_BEAT", 0);
+        setGlobal(game, "TAR_SWOOP_SEC_BEAT", 1);
+        setGlobal(game, "TAR_SWOOP_MSEC_BEAT", 0);
+        bool lossMovie = false;
+        bool ended = false;
+        for (int tick = 0; tick < 9000 && !ended && game.module() == raceModule; ++tick) {
+            lossMovie = lossMovie || (game.moviePlaying() && lowerName(game.movieName()) == "01g");
+            ended = ScriptApi{game}.sim().ending.pending || ScriptApi{game}.sim().ending.ended;
+            MiniGameInput input;
+            const std::int64_t gear = globalNumber(game, "MIN_RACE_GEAR");
+            input.fire = gear >= 0 && gear < 5 && tick % 8 == 0;
+            step(game, input);
+        }
+        lossMovie = lossMovie || (game.moviePlaying() && lowerName(game.movieName()) == "01g");
+        ended = ended || ScriptApi{game}.sim().ending.pending || ScriptApi{game}.sim().ending.ended;
+        logInfo(concat("minigame3d: ", raceModule, " fifth race too slow: movie01g=", lossMovie ? 1 : 0,
+                       " ended=", ended ? 1 : 0, " module=", game.module()));
+        log.check(lossMovie && ended && game.module() == raceModule, tag + "fifth_race_too_slow_ends_the_game");
+    }
 }
 
 void checkTurret(GateLog& log, const std::string& installPath)
@@ -1132,13 +1326,16 @@ void checkTurret(GateLog& log, const std::string& installPath)
         const float moved = game.miniGameView().playerOffset.z - headingBefore;
         logInfo(concat("minigame3d: turret heading moved=", moved));
         log.check(std::fabs(moved - 50.0f) < 0.5f, "turret_mouse_moves_heading_at_movement_rate");
+        // retail 0066cfd0 makes Start_Offset (pitch 7) the clamp origin, so 0066cb40 holds the
+        // pitch to 7 + 2..45: the turret rests at 9 degrees, as retail's orientation log shows.
+        log.check(game.miniGameView().playerOffset.x == 9.0f, "turret_pitch_rests_at_origin_plus_minimum");
         // Past the pitch limits the tunnel holds.
         MiniGameInput up;
         up.mouseY = -1.0f;
         for (int i = 0; i < 40; ++i) {
             step(game, up);
         }
-        log.check(game.miniGameView().playerOffset.x == 45.0f, "turret_pitch_clamped_by_tunnel");
+        log.check(game.miniGameView().playerOffset.x == 52.0f, "turret_pitch_clamped_by_tunnel");
         // The infinite axis wraps, as a heading.
         MiniGameInput around;
         around.mouseX = 1.0f;
@@ -1276,6 +1473,33 @@ int runMiniGame3DFamilyTest(GameSession& game)
         }
         const std::shared_ptr<kotor::Mdl> fighter = kotor::loadWorldModel(ScriptApi{game}.install(), "mgf_sithfighter");
         log.check(fighter && !fighter->nodeFaces("hitbullet").empty(), "hit_mesh_read");
+        // retail 004ab750 is one-sided: a path through a shipped swoop obstacle's closed hit box hits
+        // once, entering, and a path that starts inside and leaves does not hit. Retail's speed log
+        // shows one x0.7 drop per obstacle; a two-sided test dropped it twice (entry and exit faces).
+        const std::shared_ptr<kotor::Mdl> gate = kotor::loadWorldModel(ScriptApi{game}.install(), "m03mg_mgo01");
+        const std::vector<std::array<kotor::Vec3, 3>> bump =
+            gate ? gate->nodeFaces("hitbump") : std::vector<std::array<kotor::Vec3, 3>>{};
+        float minY = bump.empty() ? 0.0f : bump.front()[0].y;
+        float maxY = minY;
+        float midX = 0.0f;
+        for (const std::array<kotor::Vec3, 3>& face : bump) {
+            for (const kotor::Vec3& v : face) {
+                minY = std::min(minY, v.y);
+                maxY = std::max(maxY, v.y);
+                midX += v.x / static_cast<float>(bump.size() * 3);
+            }
+        }
+        std::size_t passHits = 0;
+        const float step = (maxY - minY) / 8.0f;
+        for (int i = -2; i < 10; ++i) {
+            const kotor::Vec3 from{midX, minY + step * (static_cast<float>(i) + 0.5f), 2.0f};
+            passHits += miniGameSegmentHit(from, from + kotor::Vec3{0.0f, step, 0.0f}, bump) >= 0.0f ? 1u : 0u;
+        }
+        const kotor::Vec3 inside{midX, (minY + maxY) * 0.5f, 2.0f};
+        log.check(!bump.empty() && passHits == 1u
+                      && miniGameSegmentHit(inside, inside + kotor::Vec3{0.0f, maxY - minY, 0.0f}, bump) < 0.0f
+                      && miniGameSegmentHit(inside + kotor::Vec3{0.0f, maxY - minY, 0.0f}, inside, bump) >= 0.0f,
+                  "obstacle_hit_box_one_sided");
         log.check(fighter && fighter->posedTrianglesLayered({}, true).size() < fighter->posedTrianglesLayered({}, false).size(),
                   "hit_mesh_not_drawn");
         log.check(fighter && !fighter->animationEvents("die").empty(), "animation_events_read");
@@ -1289,6 +1513,7 @@ int runMiniGame3DFamilyTest(GameSession& game)
     checkRace(log, install, "manm26ab", "man26_swpreg", "k_pman_swoop42", "manm26mg", "manm26ab", "from26mg",
               "MAN_SWOOP");
     checkTurret(log, install);
+    checkHandlerQuirks(log, install);
 
     logInfo(log.ok ? "minigame3d: PASS" : "minigame3d: FAIL");
     return log.ok ? 0 : 73;

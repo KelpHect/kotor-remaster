@@ -221,12 +221,12 @@ def markdown(s: dict, specs: dict) -> str:
         "against the decoded instruction offsets; the gate requires zero invalid targets.",
         "- Stack offsets use `len(stack) + off/4`; every shipped `MOVSP` is negative and pops "
         "cells (699,919 occurrences checked). `JSR`/`RETN` use a separate return stack with the "
-        "documented recursion limit 8. `SAVEBP`/`RESTOREBP` and `CPTOPBP`/`CPDOWNBP` implement "
+        "JSR depth limit 128 (retail 005d17f0). `SAVEBP`/`RESTOREBP` and `CPTOPBP`/`CPDOWNBP` implement "
         "globals; `DESTRUCT` uses the `(size, offset, keep)` cell counts.",
         "- ACTION mediation uses the 772 typed specs from `action_specs.json`: arguments are "
         "popped by declared width (vector = 3 cells, functor = 0 cells, otherwise 1), and every "
         "non-void action returns a typed default. No engine code is called.",
-        "- A 200,000-instruction per-script budget bounds event loops; `ActionWait` is classified "
+        "- Retail's instruction limit of 131,071 per run (005d2bd0) bounds event loops; `ActionWait` is classified "
         "as `blocked` instead of spinning.",
         "",
         "## Reproduce",
@@ -263,7 +263,7 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--corpus", required=True)
     ap.add_argument("--specs", required=True)
-    ap.add_argument("--budget", type=int, default=200_000)
+    ap.add_argument("--budget", type=int, default=ncs_vm.RETAIL_BUDGET)
     ap.add_argument("--runtime", action="store_true",
                     help="use the stateful action runtime")
     ap.add_argument("--out-json", required=True)

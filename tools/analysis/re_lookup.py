@@ -8,6 +8,10 @@ committed (see tools/README.md). Use the output to cite behaviour, not to copy c
     re_lookup.py action 509                # ... or by action id
     re_lookup.py fn 00544390               # pseudocode by entry address
     re_lookup.py find StartNewModule       # names matching a regex
+
+Unnamed functions take candidate names from artifacts/analysis/names/candidate_names.tsv
+when present (public symbol tables; a trailing '?' means not high confidence). Candidates
+are leads: confirm behaviour in the pseudocode before citing them.
 """
 from __future__ import annotations
 
@@ -33,8 +37,32 @@ def rows(path: Path):
             yield json.loads(line)
 
 
+CANDIDATES = ROOT / "artifacts" / "analysis" / "names" / "candidate_names.tsv"
+
+
+def candidate_names() -> dict[str, str]:
+    """Public symbol candidates (git-ignored local table). Low and medium confidence names carry a '?'."""
+    found: dict[str, str] = {}
+    if not CANDIDATES.exists():
+        return found
+    with CANDIDATES.open(encoding="utf-8") as handle:
+        header = handle.readline().rstrip("\n").split("\t")
+        address, name, confidence = header.index("address"), header.index("name"), header.index("confidence")
+        for line in handle:
+            cells = line.rstrip("\n").split("\t")
+            if len(cells) <= max(address, name, confidence) or not cells[name]:
+                continue
+            entry = cells[address].lower().removeprefix("0x")
+            found[entry] = cells[name] if cells[confidence] == "high" else cells[name] + "?"
+    return found
+
+
 def names() -> dict[str, str]:
-    return {row["entry"].lower(): row["name"] for row in rows(INVENTORY)}
+    labels = {row["entry"].lower(): row["name"] for row in rows(INVENTORY)}
+    for entry, name in candidate_names().items():
+        if labels.get(entry, "FUN_").startswith("FUN_"):
+            labels[entry] = name
+    return labels
 
 
 def pseudocode(entry: str) -> str | None:

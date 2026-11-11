@@ -1,69 +1,51 @@
-# Recon 54 - procedural facial rig from LIP visemes
+# Recon 54 - lip sync from LIP tracks and the talk clip
 
-Status: Sprint 13 implementation note. Target install:
+Status: corrected. The first version of this note said the shipped heads carry no per-shape
+clips, so the mouth had to be procedural, and the engine drove invented jaw rotations. That was
+wrong: the shapes live in one clip, `talk`. Target install:
 `0290889e0cea6ebc00021c1bdb945704fc4c45afaf7fcebabb0e82ba674437e6`.
 
 ## Shipped data
 
-`visemes.2da` has 16 rows. The shipped table is slightly non-standard: its
-header is `viseme`, `animname`, `visemeid`, the row labels are `1`..`16`, and
-the parsed cells arrive as `["Silence", "", "0"]` - `animname` is shifted into
-the first data column. `FacialRig::load` handles this by falling back to
-column 0 for the name and the row label - 1 for the id if `visemeid` is absent.
+- `lips/*_loc.mod` hold 18206 LIP resources. All of them are `LIP V1.0`, a 16-byte header (magic,
+  float duration, u32 count) and 5-byte keys (float seconds, u8 shape). Every first key is at 0,
+  every last key at the duration, and the shapes are 0..15.
+- `visemes.2da` names the 16 shapes (`Silence`, `Eat`, `If`, `Ox`, `Oat`, `Wet`, `Size`, `Church`,
+  `Fave`, `Though`, `Told`, `Bump`, `New`, `Roar`, `Cage`, `Earth`). Its `animname` column is empty
+  and the name sits in the first data column, which `FacialRig::load` allows for.
+- The `talk` clip (on `S_Male02`, reached through a head's supermodel chain) lasts 0.5 s and has 16
+  keys, 1/30 s apart. It animates only `f_um_g`, `f_lmc_g`, `f_rmc_g`, `f_jaw_g`, `f_Rlm_g`,
+  `f_Llm_g` and `f_tonguetip_g`.
+- Head models name `neck_g` as their head root in the model header (file offset 0xB4). A head has
+  its own `pause1`, with the blink, eye and neck motion.
 
-Rows: `Silence`, `Eat`, `If`, `Ox`, `Oat`, `Wet`, `Size`, `Church`, `Fave`,
-`Though`, `Told`, `Bump`, `New`, `Roar`, `Cage`, `Earth`.
+## Retail (traced in the executable)
 
-Heads are GFF-free MDL models with facial bones: `f_jaw_g`, `f_lmc_g`,
-`f_rmc_g`, `f_um_g`, `f_lbrw_g`, `f_rbrw_g`, `tongue`, `Head`, `head_g`.
-Across all **107** `heads.2da` rows (**106** parsed models) there are **0**
-viseme-named animation clips and no morph-target arrays. The original facial
-deformation is therefore not shipped as per-viseme clips; Sprint 13 applies a
-procedural channel rig instead of inventing data.
+- `00616310` loads the LIP and turns each key into a normalized time and a value of
+  (shape + 1) / 16.
+- `006994a0` and `0069d540` forward that track, with the clip name `talk`, to the body and head
+  models. `00485130` resolves the clip through the supermodel chain and turns each value into a
+  clip time.
+- `00486670` finds the two keys around the channel's progress and has `00483d80` blend the clip's
+  pose at those two times. So a shape is a pose at one moment of `talk`, and between keys the mouth
+  blends two poses rather than sweeping through the clip. After the last key the pose fades over
+  half a second.
+- `006993b0` plays a clip on the body and on the head under the same name.
 
-## Channels and bones
+## Engine
 
-| Viseme | jawOpen | mouthWide | lipRound | browRaise |
-|---|---:|---:|---:|---:|
-| Silence | 0.00 | 0.00 | 0.00 | 0.00 |
-| Eat | 0.35 | 0.15 | 0.25 | 0.00 |
-| If | 0.18 | 0.65 | 0.10 | 0.10 |
-| Ox | 0.55 | -0.35 | 0.80 | 0.00 |
-| Oat | 0.62 | -0.20 | 0.70 | 0.00 |
-| Wet | 0.22 | 0.45 | 0.20 | 0.05 |
-| Size | 0.12 | 0.75 | 0.10 | 0.15 |
-| Church | 0.30 | 0.15 | 0.55 | 0.00 |
-| Fave | 0.20 | 0.50 | 0.15 | 0.00 |
-| Though | 0.32 | 0.25 | 0.30 | 0.00 |
-| Told | 0.40 | -0.10 | 0.50 | 0.00 |
-| Bump | 0.00 | 0.00 | 0.40 | 0.00 |
-| New | 0.30 | -0.20 | 0.35 | 0.00 |
-| Roar | 0.85 | 0.35 | 0.15 | 0.20 |
-| Cage | 0.50 | 0.40 | 0.20 | 0.00 |
-| Earth | 0.35 | 0.25 | 0.20 | 0.00 |
+`FacialRig::facePose` gives the two clip fractions, the blend and the fade weight for a moment of
+a track. `GameSession::updateFacialMeshes` puts that on the line's speaker (the entry's Speaker
+object, or the stand-in of a cutscene conversation). `Mdl::poseWorld` samples `talk` twice and
+mixes them over the nodes the clip animates. `posedHeadTriangles` poses a separate head with its
+own clip and the track, on the body's hook as the body is posed this frame, blend included.
 
-`FacialRig::rotations(id)` returns local rotations:
+## Inferred or chosen here
 
-- `f_jaw_g`, `tongue`: X rotation from `jawOpen`;
-- `f_lmc_g` / `f_rmc_g`: opposite Z rotations from `mouthWide`;
-- `f_um_g`: X rotation from `lipRound`;
-- `f_lbrw_g` / `f_rbrw_g`: X rotation from `browRaise`.
-
-`Mdl::poseWorld` accepts extra local rotations and
-`Mdl::posedTrianglesRigged` applies them before skinning. On `p_CarthH`, the
-Roar viseme moves head vertices by **0.470906** model units; Silence produces
-an exact bind-pose match (0.0).
-
-## Runtime
-
-`GameSession` owns a `FacialRig`, loads `visemes.2da` at startup, and each
-update sets the viseme from `LipSync::visemeAt(lipTime)` while a dialogue LIP
-is active (otherwise Silence). `--facial-demo <0-15>` injects a two-second
-synthetic LIP and shows the rig panel; `docs/evidence/s13/facial-roar.png`
-shows viseme 13 with a -26 degree jaw.
-
-## Limits
-
-The scene does not yet attach separate `heads.2da` models to creature bodies;
-the rig is proven against the shipped head geometry and in the debug rig view.
-Head attachment and per-vertex scene rendering are a separate renderer step.
+- Keeping a head's clips to its head root and below is inferred from the header field; the routine
+  that would state it was not traced to that detail.
+- The track clock uses the real frame time rather than the simulation's capped one, so a long frame
+  cannot put the mouth behind the voice. Retail's channel clock is game time; this is a choice.
+- Whether a body talk clip (`tlknorm` and its neighbours, ids 0x2736..0x273a) plays by default for
+  each line is not determined. Their callers are `00611700`, `00611850`, `006306e0`, `006313a0`,
+  `0063e930` and `006655e0`. The engine plays none unless a script or the conversation asks.

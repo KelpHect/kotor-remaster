@@ -24,6 +24,7 @@ struct InventoryItem {
     std::int32_t slot = -1; // baseitems.2da equipableslots bit index, -1 = carried
     bool equipped = false;
     bool identified = true;
+    std::uint32_t upgrades = 0; // installed upgrades: bit N is upgrade.2da row N (the save's Upgrades field)
     // The script-world item object that stands for this entry (0 until the item
     // model in ScriptItems.cpp links it). The two are one model: this row is the
     // PC-facing view, the object carries tag, plot, stolen and charges.
@@ -57,6 +58,7 @@ struct CharacterSheet {
     std::int32_t skillPoints = 0;
     std::int32_t featPoints = 0;
     std::int32_t attributePoints = 0;
+    std::int32_t powerPoints = 0; // Force powers to pick at level-up (classpowergain.2da)
     std::vector<InventoryItem> inventory;
     std::vector<kotor::ActiveEffect> effects;
     float forceSuppressedTimer = 0.0f;
@@ -98,6 +100,7 @@ struct MerchantState {
 struct EncounterState {
     bool spawned = false;
     bool exhausted = false;
+    bool wiped = false;     // the last spawned creature died (00594310): inactive until the reset time has run
     bool triggered = false; // the PC has entered and the wave was spawned
     bool inside = false;    // PC was inside the volume on the last tick
     std::int32_t spawnedCount = 0;
@@ -149,12 +152,35 @@ public:
     std::string featName(std::int32_t featId) const;
     std::string powerName(std::int32_t powerId) const;
     std::string animationName(std::int32_t animationId) const;
+    // combatanimations.2da hit1 of an attack clip in ms (retail 005b4f30 GetWeaponImpactTime, row
+    // = the clip's animations.2da row), or -1 when the clip has no row or no hit.
+    // 005b4f30: column subAttack+1 of the clip's combatanimations row (hit1, hit2, hit3).
+    std::int32_t attackImpactMs(const std::string& clip, int subAttack = 0) const;
     bool animationLooping(std::int32_t animationId) const;
     bool animationStationary(std::int32_t animationId) const;
+    // A DLG AnimList id that names a dialoganimations.2da row (the id itself below 1200, or
+    // id - 10000), as the model animation to play ("" when the row has no name or the id is a
+    // cutscene clip). The 2DA holds labels (Talk_Normal); the shipped creature models name
+    // the clips tlknorm, tlkplead and so on, so the label is mapped (inferred, matched
+    // against the animation names in the shipped models).
+    std::string dialogAnimationName(std::int32_t animationId) const;
+    bool dialogAnimationLooping(std::int32_t animationId) const;
     std::int32_t featCount() const {
         return feat_ ? static_cast<std::int32_t>(feat_->rowCount()) : 0;
     }
     std::optional<ForcePowerInfo> forcePower(std::int32_t powerId) const;
+    // retail 0059b8a0 CSWSpell::GetAdjustedForcePoints: party members (creature +0xa88)
+    // pay spells.2da forcepoints x forceadjust.2da (row goodEvil/10, GoodCost for 'G',
+    // EvilCost for 'E', 1.0 otherwise), truncated; everyone else pays the flat byte.
+    std::int32_t adjustedForceCost(std::int32_t powerId, std::int32_t goodEvil, bool partyMember) const;
+    // spells.2da conjtime / casttime / catchtime in milliseconds (retail CSWSpell +0x40,
+    // +0xa8, +0xec, read by 00514af0 CSWSCreature::AIActionCastSpell).
+    struct SpellTimes {
+        std::int32_t conjure = 0;
+        std::int32_t cast = 0;
+        std::int32_t catchTime = 0;
+    };
+    SpellTimes spellTimes(std::int32_t powerId) const;
     std::int32_t maxForcePoints(std::int32_t classId, std::int32_t level,
                                 std::int32_t wisdom, std::int32_t charisma) const;
     std::int32_t forcePowerSaveDC(const CharacterSheet& sheet) const;
@@ -187,6 +213,14 @@ public:
     bool canEquip(const CharacterSheet& sheet, const InventoryItem& item) const;
 
     std::int32_t armorClass(const CharacterSheet& sheet) const;
+    // One hand's to-hit (005a7770 melee, 005a7b60 ranged) and damage range (005a9e10), as the
+    // equip screen shows them (006b9970). offhand: the left weapon slot.
+    // doubleWeapon (005a7770 param 5): the right hand's weaponwield 3 weapon serves both columns.
+    std::int32_t handAttackBonus(const CharacterSheet& sheet, bool offhand, bool doubleWeapon = false) const;
+    void handDamageRange(const CharacterSheet& sheet, bool offhand, std::int32_t& low, std::int32_t& high,
+                         bool doubleWeapon = false) const;
+    // To-hit and damage the equipped weapon's own item properties add (004f3fe0 effect bonuses).
+    void weaponPropertyBonus(const InventoryItem& item, std::int32_t& attack, std::int32_t& damage) const;
     std::int32_t attackBonus(const CharacterSheet& sheet) const;
     std::int32_t damageBonus(const CharacterSheet& sheet) const;
     std::int32_t initiativeBonus(const CharacterSheet& sheet) const;
@@ -221,6 +255,26 @@ public:
     // Feats the class receives automatically at `level` (feat.2da <prefix>_list == 3
     // with no recommendation rank and <prefix>_granted <= level).
     std::vector<std::int32_t> grantedFeats(std::int32_t classId, std::int32_t level) const;
+    // What the shipped tables recommend for a class (the character generation's Recommended button):
+    // classes.2da str..cha are a full 30-point spend (checked against the point costs for the three
+    // base classes), skills.2da <prefix>_reco and feat.2da <prefix>_recom are 1-based priorities
+    // (0: not recommended). Ability order is STR DEX CON INT WIS CHA.
+    std::array<std::int32_t, 6> recommendedAbilities(std::int32_t classId) const;
+    std::int32_t skillRecommendRank(std::int32_t classId, std::int32_t skillIndex) const;
+    std::int32_t featRecommendRank(std::int32_t classId, std::int32_t featId) const;
+    // The row a class recommends at `rank` (1 upward): the row whose rank is `rank`, else the
+    // (rank+1)th row with no rank at all, else -1. Retail 005be430 (skills), 005be3c0 (feats) and
+    // 005be6d0 (powers, light_recom or dark_recom by alignment).
+    std::int32_t skillForRecommendRank(std::int32_t classId, std::int32_t rank) const;
+    std::int32_t featForRecommendRank(std::int32_t classId, std::int32_t rank) const;
+    std::int32_t powerForRecommendRank(bool darkSide, std::int32_t rank) const;
+    // classes.2da primaryabil as a sheet index (STR DEX CON INT WIS CHA), -1 when none. Retail 006f7390.
+    std::int32_t primaryAbility(std::int32_t classId) const;
+    // classpowergain.2da: Force powers a Jedi class picks at `level`, 0 for the others (retail 00649070).
+    std::int32_t powersForLevel(std::int32_t classId, std::int32_t level) const;
+    // What the level-up power list may offer: the row is a learnable power, every prerequisite of its
+    // `_`-separated list is known, and the class has reached the power's level (retail 00649b50, 006497a0).
+    bool canLearnPowerAtLevelUp(const CharacterSheet& sheet, std::int32_t powerId) const;
     // Skill points at character creation (retail doubles-and-quadruples rule).
     std::int32_t chargenSkillPoints(std::int32_t classId, std::int32_t intelligence) const;
     // Highest rank for a skill at a level and the cost of one rank.
@@ -269,15 +323,21 @@ private:
     std::optional<kotor::TwoDa> baseitems_;
     std::optional<kotor::TwoDa> featgain_;
     std::optional<kotor::TwoDa> spells_;
+    std::optional<kotor::TwoDa> classPowerGain_;
     std::optional<kotor::TwoDa> animations_;
+    std::optional<kotor::TwoDa> combatAnimations_;
+    std::optional<kotor::TwoDa> dialogAnimations_;
     std::optional<kotor::TwoDa> xptable_;
     std::optional<kotor::TwoDa> npc_;
     std::optional<kotor::TwoDa> ranges_;
     std::optional<kotor::TwoDa> acbonus_;
     std::optional<kotor::TwoDa> difficultyopt_;
+    std::optional<kotor::TwoDa> forceadjust_;
     std::optional<kotor::TwoDa> costTables_;
     kotor::Install* install_ = nullptr;
     // iprp_* cost tables and item templates are read on demand and never change.
+    const kotor::TwoDa* propertyCostTable(const kotor::ItemTemplate::Property& property) const;
+    std::int32_t propertyCostValue(const kotor::ItemTemplate::Property& property) const;
     mutable std::map<std::string, std::optional<kotor::TwoDa>> propertyTables_;
     mutable std::map<std::string, std::optional<kotor::ItemTemplate>> itemTemplates_;
     std::map<std::string, kotor::TwoDa> attackTables_;

@@ -4,7 +4,7 @@
 Executes the documented NWScript stack machine:
 
 * 4-byte typed stack cells, stack offsets ``len(stack) + off/4``;
-* a separate JSR/RETN return stack (recursion limit 8);
+* a separate JSR/RETN return stack (limit 128);
 * ``SAVEBP``/``RESTOREBP`` globals and ``CPTOPBP``/``CPDOWNBP``;
 * all ``0x01-0x2D`` opcodes, including ``DESTRUCT`` and ``STORESTATE``;
 * ACTION mediation: every action id resolves to a typed default, so no engine
@@ -24,6 +24,7 @@ import argparse
 import glob
 import json
 import os
+import struct
 import sys
 from collections import Counter
 from dataclasses import dataclass
@@ -40,6 +41,8 @@ TYPE_BY_QUAL = {
 QUAL_TYPE = {0x20: "int", 0x21: "float", 0x22: "object", 0x23: "string"}
 STRUCT_SLOTS = {"vector": 3}
 OBJECT_INVALID = 0x7F000000
+# Retail fails a run once its instruction counter would reach 0x20000 (005d2bd0).
+RETAIL_BUDGET = 0x1FFFF
 
 
 class VMError(RuntimeError):
@@ -88,16 +91,44 @@ def default_cells(typ: str) -> list[Value]:
     return [Value("int", 0)]
 
 
-def _idiv(a: int, b: int) -> int:
-    if b == 0:
-        return 0
-    q = abs(a) // abs(b)
-    return -q if (a < 0) != (b < 0) else q
+def _i32(value: int) -> int:
+    """The retail cell is 32 bits: integers wrap (005d2bd0)."""
+    value &= 0xFFFFFFFF
+    return value - 0x100000000 if value & 0x80000000 else value
+
+
+def _f32(value: float) -> float:
+    """The retail cell is single precision (005d2bd0)."""
+    try:
+        return struct.unpack("<f", struct.pack("<f", value))[0]
+    except OverflowError:
+        return float("inf") if value > 0 else float("-inf")
+
+
+def _bits(cell: "Value") -> int:
+    """What EQUAL compares for int, float and object cells (005d2bd0)."""
+    if cell.typ == "float":
+        return struct.unpack("<I", struct.pack("<f", cell.as_float()))[0]
+    if cell.typ == "string":
+        return -1
+    return int(cell.value or 0) & 0xFFFFFFFF
+
+
+def _cell_offset(offset: int) -> int:
+    """`SP - ((-offset) >> 2)` in retail."""
+    return -((-offset) >> 2)
+
+
+def _cell_count(size: int) -> int:
+    """A signed 16-bit byte count, shifted (005d2bd0)."""
+    if size >= 0x8000:
+        size -= 0x10000
+    return size >> 2
 
 
 class VM:
     def __init__(self, instructions: list[ncs.Instruction], specs: dict,
-                 budget: int = 200_000, blocking_actions=(202,), runtime=None):
+                 budget: int = RETAIL_BUDGET, blocking_actions=(202,), runtime=None):
         self.ins = instructions
         self.specs = {a["id"]: a for a in specs["actions"]}
         self.budget = budget
@@ -129,6 +160,21 @@ class VM:
         del self.stack[-n:]
         return out
 
+    def _pop_int(self) -> int:
+        if not self.stack or self.stack[-1].typ != "int":
+            raise VMError("stack or type check failed")
+        return _i32(int(self.stack.pop().value or 0))
+
+    def _pop_float(self) -> float:
+        if not self.stack or self.stack[-1].typ != "float":
+            raise VMError("stack or type check failed")
+        return float(self.stack.pop().value or 0)
+
+    def _pop_str(self) -> str:
+        if not self.stack or self.stack[-1].typ != "string":
+            raise VMError("stack or type check failed")
+        return self.stack.pop().value
+
     def _peek(self, n: int = 1) -> list[Value]:
         if len(self.stack) < n:
             raise VMError(f"stack underflow: need {n}, have {len(self.stack)}")
@@ -153,15 +199,21 @@ class VM:
             raise VMError(f"unknown action id {aid}")
         params = spec["params"]
         args: list[list[Value]] = []
-        for k in range(argc):
-            typ = params[k]["type"] if k < len(params) else "int"
+        # Handlers pop what they declare; a cell pushed beyond that stays (005473e0).
+        for k in range(min(argc, len(params))):
+            typ = params[k]["type"]
             if typ == "action":
                 # Functors are created by STORESTATE and are not stack cells.
                 args.append([])
                 self.pending_functor = False
                 continue
             width = STRUCT_SLOTS.get(typ, 1)
-            args.append(self._pop(width))
+            cells = self._pop(width)
+            wanted = {"int": "int", "float": "float", "vector": "float", "string": "string", "object": "object"}.get(typ)
+            if wanted is not None and any(cell.typ != wanted for cell in cells):
+                self.notes["action_arg_type"] += 1
+                raise VMError("stack or type check failed")
+            args.append(cells)
         if argc < len(params):
             self.notes["action_missing_args"] += 1
         elif argc > len(params):
@@ -186,14 +238,16 @@ class VM:
         q = ins.qualifier
         next_ip = self.ip + 1
 
-        if name == "NOP" or name == "STORESTATEALL":
+        if name == "NOP":
+            raise VMError("unknown opcode")  # Past the dispatch bound at 005d2c45.
+        if name == "STORESTATEALL":
             return next_ip
         if name == "STORESTATE":
             self.pending_functor = True
             return next_ip
         if name == "CPTOPSP":
             off, size = ins.ops[0][1], ins.ops[1][1]
-            idx, count = len(self.stack) + off // 4, size // 4
+            idx, count = len(self.stack) + _cell_offset(off), _cell_count(size)
             if count <= 0:
                 return next_ip
             if idx < 0 or idx + count > len(self.stack):
@@ -202,7 +256,7 @@ class VM:
             return next_ip
         if name == "CPDOWNSP":
             off, size = ins.ops[0][1], ins.ops[1][1]
-            idx, count = len(self.stack) + off // 4, size // 4
+            idx, count = len(self.stack) + _cell_offset(off), _cell_count(size)
             if count <= 0:
                 return next_ip
             if len(self.stack) < count or idx < 0 or idx + count > len(self.stack):
@@ -211,7 +265,7 @@ class VM:
             return next_ip
         if name == "CPTOPBP":
             off, size = ins.ops[0][1], ins.ops[1][1]
-            idx, count = self.bp + off // 4, size // 4
+            idx, count = self.bp + _cell_offset(off), _cell_count(size)
             if count <= 0:
                 return next_ip
             if idx < 0 or idx + count > len(self.stack):
@@ -220,7 +274,7 @@ class VM:
             return next_ip
         if name == "CPDOWNBP":
             off, size = ins.ops[0][1], ins.ops[1][1]
-            idx, count = self.bp + off // 4, size // 4
+            idx, count = self.bp + _cell_offset(off), _cell_count(size)
             if count <= 0:
                 return next_ip
             if len(self.stack) < count or idx < 0 or idx + count > len(self.stack):
@@ -228,8 +282,12 @@ class VM:
             self.stack[idx:idx + count] = self.stack[-count:]
             return next_ip
         if name == "RSADD":
-            typ = TYPE_BY_QUAL.get(q, "int")
-            self._push_default(typ)
+            if q in (0x03, 0x04, 0x05, 0x06):
+                self._push_default(TYPE_BY_QUAL[q])
+            elif 0x10 <= q <= 0x19:
+                self._push_default("effect")
+            else:
+                raise VMError("bad operand form")
             return next_ip
         if name == "CONST":
             if q == 0x03:
@@ -237,7 +295,8 @@ class VM:
             elif q == 0x04:
                 self.stack.append(Value("float", ins.ops[0][1]))
             elif q == 0x05:
-                self.stack.append(Value("string", ins.ops[0][1].decode("latin-1")))
+                # Built as a C string, so a NUL ends it (005e5680).
+                self.stack.append(Value("string", ins.ops[0][1].split(b"\0")[0].decode("latin-1")))
             elif q == 0x06:
                 self.stack.append(Value("object", ins.ops[0][1]))
             else:
@@ -258,29 +317,32 @@ class VM:
             return next_ip
         if name == "MOVSP":
             off = ins.ops[0][1]
+            # Only ever shrinks: 005d21f0 ignores a target at or above SP.
             if off < 0:
-                n = (-off) // 4
+                n = -_cell_offset(off)
                 if n:
                     self._pop(n)
-            elif off > 0:
-                self.stack.extend(Value("int", 0) for _ in range(off // 4))
             return next_ip
         if name in ("INCSP", "DECSP"):
             off = ins.ops[0][1]
-            idx = len(self.stack) + off // 4
+            if q != 0x03:
+                return next_ip
+            idx = len(self.stack) + _cell_offset(off)
             if idx < 0 or idx >= len(self.stack):
                 raise VMError(f"{name} outside stack ({off}) sp={len(self.stack)}")
             self._incdec(self.stack[idx], 1 if name == "INCSP" else -1)
             return next_ip
         if name in ("INCBP", "DECBP"):
             off = ins.ops[0][1]
-            idx = self.bp + off // 4
+            if q != 0x03:
+                return next_ip
+            idx = self.bp + _cell_offset(off)
             if idx < 0 or idx >= len(self.stack):
                 raise VMError(f"{name} outside globals ({off}) bp={self.bp}")
             self._incdec(self.stack[idx], 1 if name == "INCBP" else -1)
             return next_ip
         if name == "DESTRUCT":
-            size, offset, keep = (v // 4 for _, v in ins.ops)
+            size, offset, keep = (_cell_count(v) for _, v in ins.ops)
             if size < 0 or offset < 0 or keep < 0 or offset + keep > size:
                 raise VMError(f"DESTRUCT invalid ({size},{offset},{keep})")
             if size:
@@ -293,8 +355,10 @@ class VM:
         if name == "JMP":
             return self._target(ins)
         if name == "JSR":
-            if len(self.call_stack) >= 8:
-                raise VMError("recursion limit 8 exceeded")
+            # retail 005d17f0: a 128-entry return stack that fails once it holds 128, counting
+            # the run's own sentinel (005d4270). 8 (005d2260) limits nested runs.
+            if len(self.call_stack) + 2 >= 128:
+                raise VMError("recursion limit 128 exceeded")
             self.call_stack.append(next_ip)
             return self._target(ins)
         if name == "RETN":
@@ -303,98 +367,136 @@ class VM:
             self.status = "returned"
             return None
         if name in ("JZ", "JNZ"):
-            cond = self._pop(1)[0].truthy()
+            cond = self._pop_int() != 0
             take = cond if name == "JNZ" else not cond
             return self._target(ins) if take else next_ip
         if name in ("LOGAND", "LOGOR"):
-            b = self._pop(1)[0].truthy()
-            a = self._pop(1)[0].truthy()
+            if q != 0x20:
+                raise VMError("bad operand form")
+            b = self._pop_int() != 0
+            a = self._pop_int() != 0
             val = (a and b) if name == "LOGAND" else (a or b)
             self.stack.append(Value("int", 1 if val else 0))
             return next_ip
         if name in ("BOOLAND", "INCOR", "EXCOR"):
-            b = self._pop(1)[0].as_int()
-            a = self._pop(1)[0].as_int()
-            if name == "BOOLAND":
-                val = a & b
-            elif name == "INCOR":
-                val = a | b
-            else:
-                val = a ^ b
-            self.stack.append(Value("int", val))
+            if q != 0x20:
+                raise VMError("bad operand form")
+            b = self._pop_int()
+            a = self._pop_int()
+            val = a & b if name == "BOOLAND" else a | b if name == "INCOR" else a ^ b
+            self.stack.append(Value("int", _i32(val)))
             return next_ip
         if name in ("SHLEFT", "SHRIGHT", "USHRIGHT"):
-            b = self._pop(1)[0].as_int() & 31
-            a = self._pop(1)[0].as_int()
+            if q != 0x20:
+                raise VMError("bad operand form")
+            b = self._pop_int() & 31
+            a = self._pop_int()
             if name == "SHLEFT":
-                val = (a << b) & 0xFFFFFFFF
+                val = _i32(a << b)
             elif name == "USHRIGHT":
-                val = (a & 0xFFFFFFFF) >> b
+                val = a >> b  # `sar`, not `shr` (005d36da).
+            elif a < 0:
+                val = _i32(-(_i32(-a) >> b))  # Rounds toward zero (005d2bd0).
             else:
                 val = a >> b
             self.stack.append(Value("int", val))
             return next_ip
         if name in ("ADD", "SUB", "MUL", "DIV", "MOD"):
-            bv = self._pop(1)[0]
-            av = self._pop(1)[0]
-            qt = QUAL_TYPE.get(q, "int")
-            if name == "ADD" and (qt == "string" or av.typ == "string" or bv.typ == "string"):
-                self.stack.append(Value("string", av.as_str() + bv.as_str()))
-            elif qt == "float" or av.typ == "float" or bv.typ == "float":
-                a, b = av.as_float(), bv.as_float()
+            if name == "MOD" and q != 0x20:
+                raise VMError("bad operand form")
+            if q == 0x20:
+                b = self._pop_int()
+                a = self._pop_int()
                 if name == "ADD":
                     val = a + b
                 elif name == "SUB":
                     val = a - b
                 elif name == "MUL":
                     val = a * b
-                elif name == "DIV":
-                    val = 0.0 if b == 0.0 else a / b
                 else:
-                    val = 0.0 if b == 0.0 else a - _idiv(int(a), int(b)) * b
-                self.stack.append(Value("float", val))
+                    if b == 0:
+                        raise VMError("divide by zero")
+                    if a == -0x80000000 and b == -1:
+                        raise VMError("integer divide overflow")
+                    quotient = abs(a) // abs(b)
+                    quotient = -quotient if (a < 0) != (b < 0) else quotient
+                    val = quotient if name == "DIV" else a - quotient * b
+                self.stack.append(Value("int", _i32(val)))
+            elif q in (0x21, 0x25, 0x26):
+                b = _f32(float(self._pop_int())) if q == 0x26 else self._pop_float()
+                a = _f32(float(self._pop_int())) if q == 0x25 else self._pop_float()
+                if name == "ADD":
+                    val = a + b
+                elif name == "SUB":
+                    val = a - b
+                elif name == "MUL":
+                    val = a * b
+                else:
+                    if b == 0.0:
+                        raise VMError("divide by zero")
+                    val = a / b
+                self.stack.append(Value("float", _f32(val)))
+            elif q == 0x23:
+                b = self._pop_str()
+                a = self._pop_str()
+                if name == "ADD":
+                    self.stack.append(Value("string", a + b))
+            elif q == 0x3A:
+                bz, by, bx = self._pop_float(), self._pop_float(), self._pop_float()
+                az, ay, ax = self._pop_float(), self._pop_float(), self._pop_float()
+                if name == "ADD":
+                    self.stack.extend(Value("float", _f32(v)) for v in (ax + bx, ay + by, az + bz))
+                elif name == "SUB":
+                    self.stack.extend(Value("float", _f32(v)) for v in (ax - bx, ay - by, az - bz))
+            elif q in (0x3B, 0x3C):
+                if q == 0x3B:
+                    scalar = self._pop_float()
+                    vz, vy, vx = self._pop_float(), self._pop_float(), self._pop_float()
+                else:
+                    vz, vy, vx = self._pop_float(), self._pop_float(), self._pop_float()
+                    scalar = self._pop_float()
+                if name == "MUL":
+                    self.stack.extend(Value("float", _f32(scalar * v)) for v in (vx, vy, vz))
+                elif name == "DIV":
+                    if scalar == 0.0:
+                        raise VMError("divide by zero")
+                    inverse = _f32(1.0 / scalar)
+                    self.stack.extend(Value("float", _f32(inverse * v)) for v in (vx, vy, vz))
             else:
-                a, b = av.as_int(), bv.as_int()
-                if name == "ADD":
-                    val = a + b
-                elif name == "SUB":
-                    val = a - b
-                elif name == "MUL":
-                    val = a * b
-                elif name == "DIV":
-                    val = _idiv(a, b)
-                else:
-                    val = a - _idiv(a, b) * b
-                self.stack.append(Value("int", val))
+                raise VMError("bad operand form")
             return next_ip
         if name in ("EQ", "EQUAL", "NEQ", "NEQUAL"):
-            if q == 0x24 and ins.ops:
-                n = ins.ops[0][1] // 4
-                if n <= 0:
-                    n = 1
-                b = self._pop(n)
-                a = self._pop(n)
-                equal = [x.value for x in a] == [x.value for x in b]
-            else:
-                b = self._pop(1)[0]
-                a = self._pop(1)[0]
-                if a.typ == "string" and b.typ == "string":
-                    # KotOR tag/dialogue comparisons are case-insensitive.
-                    equal = a.as_str().casefold() == b.as_str().casefold()
+            if not (0x20 <= q <= 0x24 or 0x30 <= q <= 0x39):
+                raise VMError("bad operand form")
+            n = _cell_count(ins.ops[0][1]) if q == 0x24 and ins.ops else 1
+            if len(self.stack) < n * 2:
+                raise VMError("stack or type check failed")
+            equal = True
+            for i in range(1, n + 1):
+                right = self.stack[-i]
+                left = self.stack[-i - n]
+                if right.typ == "string":
+                    # 005e6450: ASCII case-insensitive.
+                    same = left.typ == "string" and left.as_str().lower() == right.as_str().lower()
+                elif right.typ == "engine":
+                    same = left.value == right.value
                 else:
-                    equal = a.value == b.value
+                    same = _bits(left) == _bits(right)
+                equal = equal and same
+            if n > 0:
+                del self.stack[-n * 2:]
             val = equal if name in ("EQ", "EQUAL") else not equal
             self.stack.append(Value("int", 1 if val else 0))
             return next_ip
         if name in ("GEQ", "GT", "LT", "LEQ"):
-            b = self._pop(1)[0]
-            a = self._pop(1)[0]
-            if a.typ == "string" or b.typ == "string":
-                x, y = a.as_str().casefold(), b.as_str().casefold()
-            elif a.typ == "float" or b.typ == "float" or QUAL_TYPE.get(q) == "float":
-                x, y = a.as_float(), b.as_float()
+            if q == 0x20:
+                y = self._pop_int()
+                x = self._pop_int()
+            elif q == 0x21:
+                y = self._pop_float()
+                x = self._pop_float()
             else:
-                x, y = a.as_int(), b.as_int()
+                raise VMError("bad operand form")
             if name == "GEQ":
                 val = x >= y
             elif name == "GT":
@@ -406,32 +508,36 @@ class VM:
             self.stack.append(Value("int", 1 if val else 0))
             return next_ip
         if name == "NEG":
-            v = self._pop(1)[0]
-            if v.typ == "float":
-                self.stack.append(Value("float", -v.as_float()))
+            if q == 0x03:
+                self.stack.append(Value("int", _i32(-self._pop_int())))
+            elif q == 0x04:
+                self.stack.append(Value("float", -self._pop_float()))
             else:
-                self.stack.append(Value("int", -v.as_int()))
+                raise VMError("bad operand form")
             return next_ip
         if name == "COMP":
-            v = self._pop(1)[0]
-            self.stack.append(Value("int", (~v.as_int()) & 0xFFFFFFFF))
+            if q != 0x03:
+                raise VMError("bad operand form")
+            self.stack.append(Value("int", ~self._pop_int()))
             return next_ip
         if name == "NOT":
-            v = self._pop(1)[0]
-            self.stack.append(Value("int", 0 if v.truthy() else 1))
+            if q != 0x03:
+                raise VMError("bad operand form")
+            self.stack.append(Value("int", 1 if self._pop_int() == 0 else 0))
             return next_ip
         raise VMError(f"unsupported opcode 0x{ins.opcode:02X} {name}")
 
     @staticmethod
     def _incdec(v: Value, delta: int) -> None:
-        if v.typ == "float":
-            v.value = v.as_float() + delta
-        else:
-            v.value = v.as_int() + delta
+        # INC/DEC only touch an int cell (005d16c0).
+        if v.typ == "int":
+            v.value = _i32(v.as_int() + delta)
 
     def run(self) -> dict:
         try:
-            while self.ip is not None and self.ip < len(self.ins):
+            while self.ip is not None:
+                if self.ip >= len(self.ins):
+                    raise VMError("ran past the end of the code")  # retail -0x6b
                 if self.steps >= self.budget:
                     self.status = "budget"
                     break
@@ -451,6 +557,9 @@ class VM:
             self.error_ip = self.current_ins.offset if self.current_ins else None
         if self.status is None:
             self.status = "returned"
+        # A failed run takes nothing back but its stack (005d4270).
+        if self.status in ("error", "budget"):
+            self.stack.clear()
         return self.result()
 
     def result(self) -> dict:
@@ -492,7 +601,7 @@ def validate_control_flow(instructions: list[ncs.Instruction]) -> list[dict]:
     return bad
 
 
-def run_file(path: str, specs: dict, budget: int = 200_000,
+def run_file(path: str, specs: dict, budget: int = RETAIL_BUDGET,
              runtime_factory=None) -> dict:
     data = Path(path).read_bytes()
     try:

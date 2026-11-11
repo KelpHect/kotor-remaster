@@ -148,7 +148,7 @@ CorpusRun runNcsCorpus(const std::filesystem::path& directory, bool functional,
                             runtime->setContextObject("self", target);
                             runtime->setContextObject("speaker", target);
                         }
-                        Vm functorVm(functor.instructions, runtime.get(), 200000);
+                        Vm functorVm = Vm::shared(functor.program, runtime.get(), 200000);
                         functorVm.setEntry(functor.ip, functor.stack, functor.bp);
                         functorVm.run();
                     };
@@ -215,7 +215,9 @@ CorpusRun runNcsCorpus(const std::filesystem::path& directory, bool functional,
         case VmStatus::Budget: ++run.budget; break;
         case VmStatus::Error:
             if (!result.decodeError) {
-                ++run.vmErrors;
+                const bool retailStop =
+                    result.vm.error == "divide by zero" || result.vm.error == "stack or type check failed";
+                ++(retailStop ? run.retailRunErrors : run.vmErrors);
             }
             break;
         case VmStatus::Running: break;

@@ -17,7 +17,7 @@ namespace ke::script {
 
 struct Functor {
     std::int64_t id = -1;
-    std::vector<Instruction> instructions;
+    ProgramPtr program; // null for a closure read from a save until its script is rebound
     std::size_t ip = 0;
     std::vector<Value> stack;
     std::int64_t bp = 0;

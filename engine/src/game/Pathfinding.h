@@ -12,6 +12,7 @@
 
 #include "kotor/Formats.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <map>
@@ -48,6 +49,7 @@ struct Tri {
     int linkCount = 0;
     int room = 0;
     bool fromCut = false;
+    std::uint8_t seamEdges = 0; // Bit i: the edge from v[i] leads into another room.
 };
 
 enum class PathStatus {
@@ -75,14 +77,44 @@ struct RayResult {
     kotor::Vec3 edge;  // Direction of the edge that stopped it.
 };
 
+// Retail 005d0840 detours a creature round whatever it bumped by a hexagon about the blocker (005cf1f0): the
+// walker's route is cut where it enters and leaves the hexagon and the way round (005cf7a0 forward, 005cf650
+// backward) is spliced in (005cecc0).
+struct HexCrossing {
+    std::size_t segment = 0; // Index of the route point that ends the crossed segment.
+    int edge = 0;            // Hexagon edge i runs from vertex i to vertex i + 1.
+    kotor::Vec3 point;
+};
+
+struct Hexagon {
+    std::array<kotor::Vec3, 6> vertex;
+
+    // 005cfc70: on the inner side of every edge.
+    bool contains(kotor::Vec3 point) const;
+    // Where the polyline enters and leaves, in route order (005d0160, with both crossings of one segment kept).
+    std::vector<HexCrossing> crossings(const std::vector<kotor::Vec3>& polyline) const;
+    // 005cfae0.
+    int nearestVertex(kotor::Vec3 point) const;
+    // 005d0690: the points of the way round from the entry to the exit.
+    std::vector<kotor::Vec3> arc(const HexCrossing& entry, const HexCrossing& exit, bool forward) const;
+};
+
+// The first vertex lies on the walker's side of the blocker and the others follow clockwise (the sixth turn is
+// 60 degrees); the inscribed circle has the given radius.
+Hexagon makeHexagon(kotor::Vec3 centre, float walkerFacing, float apothem);
+
 class NavMesh {
 public:
-    NavMesh(const kotor::Scene& scene, std::vector<DoorLine> doors);
+    // `walls` are the non-walkable faces of the placeable walkmeshes (retail 00506650 NoNonWalkPolysDetailed,
+    // 00585350 CSWSPlaceable::NoNonWalkPolys). They do not touch the mesh: a step is tested against them
+    // (stepAgainstWalls), as retail tests each step of a creature.
+    NavMesh(const kotor::Scene& scene, std::vector<DoorLine> doors, std::vector<DoorLine> walls = {});
 
     bool empty() const { return tris_.empty(); }
     const std::vector<Tri>& tris() const { return tris_; }
     const std::vector<Link>& links() const { return links_; }
     const std::vector<DoorLine>& doors() const { return doors_; }
+    const std::vector<DoorLine>& walls() const { return walls_; }
     float walkableArea() const;
 
     // The triangle under (x, y) closest in height to z, or -1.
@@ -96,6 +128,12 @@ public:
                   const std::vector<char>& closed) const;
     PathResult findPath(kotor::Vec3 from, kotor::Vec3 to, float radius,
                         const std::vector<char>& closed) const;
+    // ray() for a body of `radius`: the step also stops where the body would touch a placeable's non-walk
+    // face (00506650 tests the step segment with the creature's radius against those faces). A body
+    // already closer than its radius may move parallel to the face or away, not closer. With `slide`
+    // the rest of the step continues along the face. `edge` is the face's direction when it stopped the step.
+    RayResult stepAgainstWalls(kotor::Vec3 from, int fromTri, kotor::Vec3 to, float radius,
+                               const std::vector<char>& closed, bool slide) const;
 
 private:
     void cutAlong(const DoorLine& door);
@@ -111,6 +149,7 @@ private:
     std::vector<Tri> tris_;
     std::vector<Link> links_;
     std::vector<DoorLine> doors_;
+    std::vector<DoorLine> walls_;
     float gridMinX_ = 0.0f;
     float gridMinY_ = 0.0f;
     int gridW_ = 0;
@@ -124,9 +163,17 @@ struct ActorPath {
     std::size_t next = 1;
     kotor::Vec3 target;
     std::uint64_t doorVersion = 0;
-    float contact = 0.0f;
-    float ghost = 0.0f;
+    // Time left on the pathfinding wait a walker stands out at a door that is not open yet.
+    float waitLeft = 0.0f;
     bool valid = false;
+    // Retail CSWSCreature path data: +0x268 bump counter, +0x254 and +0x258 the creature and spot of the last bump,
+    // +0x244 which way round a blocker the next detour goes first (005d0840).
+    int bumps = 0;
+    bool hasLastBump = false;
+    std::uint32_t lastBump = 0;
+    kotor::Vec3 lastBumpPosition;
+    bool detourToggle = false;
+    float abortLogLeft = 0.0f; // Quiet time before the next abort is logged.
 };
 
 // Per-session navigation state. Meshes are built on first use, per module, and

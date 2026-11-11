@@ -10,6 +10,12 @@
 
 namespace ke {
 
+// The body every chargen model wears: retail 006dc3c0 builds each classsel creature with the first short of
+// its body struct set to 0x0102 (body variation 2, texture variation 1) before 006134c0 makes the model, and
+// that creature is the one carried through the rest of chargen (portcust, MAINCG 006ea9f0 copy it unchanged).
+// The same pair as g_a_clothes01's BodyVariation 2 / TextureVar 1: the class's own clothes, model column b.
+inline kotor::BodyVariant chargenBodyVariant() { return kotor::BodyVariant{2, 1}; }
+
 // Deterministic KotOR 1 character-generation state machine. The UI and the
 // headless gate drive the same object; finishing it produces a CharacterSheet
 // plus the portrait/appearance used by the player avatar.
@@ -20,6 +26,9 @@ public:
     explicit Chargen(const Rules& rules);
 
     void reset();
+    // Scores back to 8 and no skills or feats, class, gender and portrait kept (retail 006eb010:
+    // the hub going back to Quick or Custom, or the custom steps back to the first).
+    void resetBuild();
     Step step() const { return step_; }
     bool next();
     bool back();
@@ -50,8 +59,14 @@ public:
 
     std::int32_t featPointsRemaining() const { return featPool_ - static_cast<std::int32_t>(feats_.size()); }
     bool featSelected(std::int32_t featId) const { return feats_.contains(featId); }
+    const std::set<std::int32_t>& ownedFeats() const { return base_.feats; }
+    const std::set<std::int32_t>& selectedFeats() const { return feats_; }
     std::vector<std::int32_t> availableFeats() const;
     bool toggleFeat(std::int32_t featId);
+    // The Recommended button of the abilities, skills and feats steps: the class's own row of the shipped
+    // tables (Rules::recommendedAbilities and the two recommend ranks). Skill ranks go to the highest priority
+    // skill until it can take no more, then the next (retail 006491a0: by rank 1.., 00648d50 until false).
+    bool applyRecommended(Step step);
 
     // Portraits offered to this gender (Sex == gender, ForPC == 1); the index is a
     // position in that list.

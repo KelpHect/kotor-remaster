@@ -8,7 +8,8 @@ Status: **closed** — 8,666/8,666 unique shipped NCS for build SHA-256 `0290889
 |---|---|
 | Unique NCS decoded from entry | **8,666/8,666** |
 | Decode errors | **0** |
-| VM faults | **0** |
+| VM faults other than a retail stop | **0** |
+| Retail stops (divide by zero, typed pop), held file by file to the oracle | 36 |
 | Unknown action ids | **0** |
 | Invalid jump/STORESTATE targets | **0** |
 | Action specs available | **772/772** |
@@ -18,10 +19,10 @@ Status: **closed** — 8,666/8,666 unique shipped NCS for build SHA-256 `0290889
 
 | status | files | meaning |
 |---|---:|---|
-| returned | 8,184 | reached RETN with an empty return stack |
+| returned | 8,148 | reached RETN with an empty return stack |
 | blocked | 472 | stopped at `ActionWait` (event-driven script) |
-| budget | 10 | hit the 200,000-step ceiling (loop without a wait) |
-| error | 0 | VM fault |
+| budget | 10 | hit the 131,071-step ceiling, retail's limit at 005d2bd0 (loop without a wait) |
+| error | 36 | 33 divide by a mocked zero, 3 fail a typed pop; retail stops the same way (005d2bd0) |
 | decode_error | 0 | malformed NCS |
 
 Decoded instructions: **4,703,036**; executed: **3,895,590**; ACTION calls: **306,116**; unique action ids used: **345**; maximum stack: **217** cells.
@@ -57,24 +58,24 @@ Decoded instructions: **4,703,036**; executed: **3,895,590**; ACTION calls: **30
 
 Budget stops:
 
-- `k_man_com43__2fe941d24eb8414e.ncs` — 200,000 steps
-- `k_pdan_fragvalid__d2b80032b5269dbe.ncs` — 200,000 steps
-- `k_pdan_fragvalix__aa269d4db3968fbc.ncs` — 200,000 steps
-- `k_pdan_mineset1__1fc6fb55b4a6ced4.ncs` — 200,000 steps
-- `k_pman_minecheck__f8d2fdcff1b82d22.ncs` — 200,000 steps
-- `k_psta_bastend__c8129360c18d5292.ncs` — 200,000 steps
-- `k_psta_saber__4d2ed58838fec230.ncs` — 200,000 steps
-- `k_ptat_minetake__ca011cb405e0a369.ncs` — 200,000 steps
-- `k_sta_bastatt__4a0faa11ae492db5.ncs` — 200,000 steps
-- `k_tat_compart__75a3b57002500a46.ncs` — 200,000 steps
+- `k_man_com43__2fe941d24eb8414e.ncs` — 131,071 steps
+- `k_pdan_fragvalid__d2b80032b5269dbe.ncs` — 131,071 steps
+- `k_pdan_fragvalix__aa269d4db3968fbc.ncs` — 131,071 steps
+- `k_pdan_mineset1__1fc6fb55b4a6ced4.ncs` — 131,071 steps
+- `k_pman_minecheck__f8d2fdcff1b82d22.ncs` — 131,071 steps
+- `k_psta_bastend__c8129360c18d5292.ncs` — 131,071 steps
+- `k_psta_saber__4d2ed58838fec230.ncs` — 131,071 steps
+- `k_ptat_minetake__ca011cb405e0a369.ncs` — 131,071 steps
+- `k_sta_bastatt__4a0faa11ae492db5.ncs` — 131,071 steps
+- `k_tat_compart__75a3b57002500a46.ncs` — 131,071 steps
 
 ## Method
 
 - `tools/vm/ncs_vm.py` decodes the shipped NCS V1.0 stream with the independent `tools/scripts/ncs.py` codec and executes the stack machine from offset 0.
 - Control-flow parity: every `JMP`/`JSR`/`JZ`/`JNZ` and `STORESTATE` target is checked against the decoded instruction offsets; the gate requires zero invalid targets.
-- Stack offsets use `len(stack) + off/4`; every shipped `MOVSP` is negative and pops cells (699,919 occurrences checked). `JSR`/`RETN` use a separate return stack with the documented recursion limit 8. `SAVEBP`/`RESTOREBP` and `CPTOPBP`/`CPDOWNBP` implement globals; `DESTRUCT` uses the `(size, offset, keep)` cell counts.
+- Stack offsets use `len(stack) + off/4`; every shipped `MOVSP` is negative and pops cells (699,919 occurrences checked). `JSR`/`RETN` use a separate return stack of 128 entries (retail `005d17f0`). `SAVEBP`/`RESTOREBP` and `CPTOPBP`/`CPDOWNBP` implement globals; `DESTRUCT` uses the `(size, offset, keep)` cell counts.
 - ACTION mediation uses the 772 typed specs from `action_specs.json`: arguments are popped by declared width (vector = 3 cells, functor = 0 cells, otherwise 1), and every non-void action returns a typed default. No engine code is called.
-- A 200,000-instruction per-script budget bounds event loops; `ActionWait` is classified as `blocked` instead of spinning.
+- A 131,071-instruction budget, shared across nested runs (005d2bd0, 005d45d0), bounds event loops; `ActionWait` is classified as `blocked` instead of spinning.
 
 ## Reproduce
 

@@ -23,11 +23,15 @@ Cells executeScript(ActionCall& call)
         api.sim().runScriptVar = static_cast<std::int32_t>(call.intArg(2));
     }
     const std::string script = call.stringArg(0);
+    // Retail passes the object straight to the run (005d0fc0), so an invalid target still
+    // runs the script, with OBJECT_SELF invalid.
     const std::uint32_t target = call.objectArg(1);
-    if (!script.empty() && call.world.get(target) != nullptr) {
+    if (!script.empty()) {
         ScriptContext context = api.context();
         context.erase("self");
+        api.sim().executeNested = true;
         api.runScript(script, target, context);
+        api.sim().executeNested = false;
     }
     return ActionCall::none();
 }
@@ -156,26 +160,44 @@ void tickEvents(ScriptApi api)
     }
 }
 
-// Retail runs one heartbeat per object every six seconds, not all at once. The
-// phase comes from the object id so the order is deterministic.
+// Heartbeat intervals from the retail AI updates.
+// - Creatures, CSWSCreature::SpawnInHeartbeatPerception 004eb6e0: the first update runs
+//   OnSpawn and then OnHeartbeat at once; after that a heartbeat runs once the time since
+//   the last one reaches an interval drawn again each time as 3000 + rand() % 1200 ms
+//   (3.0 to 4.199 s). The draw here is a hash of the object and the time, not the CRT
+//   generator, so it does not disturb script dice (engine choice; the range is retail).
+// - Placeables 005849d0, doors 005889c0, triggers 0058d760, encounters 00593fb0, area
+//   objects 00595d10: every 6000 ms, and the first is only a time stamp, so the first
+//   script run comes 6 s after the object starts updating.
+std::uint32_t creatureHeartbeatMs(std::uint32_t object, std::int64_t nowMs)
+{
+    std::uint64_t h = (static_cast<std::uint64_t>(object) << 32) ^ static_cast<std::uint64_t>(nowMs);
+    h ^= h >> 33;
+    h *= 0xff51afd7ed558ccdULL;
+    h ^= h >> 33;
+    return 3000u + static_cast<std::uint32_t>(h % 1200u);
+}
+
 void tickHeartbeats(ScriptApi api, float dt)
 {
     (void)dt;
     WorldSim& sim = api.sim();
     const double now = api.world().time;
+    const std::int64_t nowMs = api.world().nowMs();
     for (std::size_t i = 0; i < api.scene().entities.size(); ++i) {
+        const std::uint32_t object = api.objectFor(i);
+        const bool creature = api.isCreature(object);
         if (sim.heartbeatDue.size() <= i) {
-            const std::uint32_t object = api.objectFor(i);
-            sim.heartbeatDue.push_back(now + kHeartbeatSeconds * ((object % 60u) + 1.0) / 60.0);
+            sim.heartbeatDue.push_back(creature ? now : now + kHeartbeatSeconds);
         }
         if (sim.heartbeatDue[i] > now) {
             continue;
         }
-        sim.heartbeatDue[i] = now + kHeartbeatSeconds;
+        sim.heartbeatDue[i] = creature ? now + creatureHeartbeatMs(object, nowMs) / 1000.0 : now + kHeartbeatSeconds;
         if (api.scene().entities[i].dead) {
             continue;
         }
-        api.dispatchHook(api.objectFor(i), "Heartbeat", {});
+        api.dispatchHook(object, "Heartbeat", {});
     }
 }
 

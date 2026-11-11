@@ -167,19 +167,20 @@ struct ItemOps {
 
     const kotor::ItemTemplate* templateFor(const std::string& resref) const
     {
-        static std::set<std::string> missing;
-        const std::string key = lowerStr(resref);
+        // A resref holds 16 characters: longer names are cut, not refused (retail 00406290).
+        const std::string key = lowerStr(resref).substr(0, 16);
         const auto it = s.itemTemplates_.find(key);
         if (it != s.itemTemplates_.end()) {
             return &it->second;
         }
-        if (key.empty() || missing.contains(key)) {
+        if (key.empty()) {
             return nullptr;
         }
+        // Not remembered when absent: templates ship per module, so one missing here may
+        // be present in the next module.
         if (auto loaded = kotor::loadItemTemplate(s.install_, key); loaded.has_value()) {
             return &s.itemTemplates_.emplace(key, std::move(*loaded)).first->second;
         }
-        missing.insert(key);
         return nullptr;
     }
 
@@ -258,6 +259,7 @@ struct ItemOps {
         row.slot = s.rules_.loaded() ? s.rules_.equipSlotFor(row.baseItem) : -1;
         row.equipped = false;
         row.identified = attrInt(item, "item_identified", 1) != 0;
+        row.upgrades = static_cast<std::uint32_t>(attrInt(item, "item_upgrades", 0));
         row.object = item.id;
         return row;
     }
@@ -295,6 +297,7 @@ struct ItemOps {
             item->baseItem = row.baseItem;
             setInt(*item, "item_stack", row.stack);
             setInt(*item, "item_identified", row.identified ? 1 : 0);
+            setInt(*item, "item_upgrades", static_cast<std::int64_t>(row.upgrades));
             setInt(*item, "item_value", row.cost);
             if (!row.name.empty()) {
                 item->attrs["item_name"] = row.name;
@@ -662,6 +665,17 @@ struct ItemOps {
         if (held == nullptr || !held->valid || !hasItemShape(*held) || kind == Kind::None) {
             return script::kObjectInvalid;
         }
+        // CItemRepository::AddItem 0055d330: a Pazaak card never enters the party's inventory; it becomes
+        // a PARTYTABLE count and the item is deleted, with no acquire event.
+        if (kind == Kind::Party && held->baseItem == 86) {
+            const std::int32_t cards = static_cast<std::int32_t>(attrInt(*held, "item_stack", 1));
+            const std::string resref = attrStr(*held, "item_resref");
+            detach(item);
+            held->valid = false;
+            setInt(*held, "destroyed", 1);
+            s.absorbPazaakCard(resref, 86, cards);
+            return item;
+        }
         const std::uint32_t holder = inventoryHolder(holderArg);
         const std::uint32_t previous = ownerOf(item);
         const bool wasParty = previous != 0 && kindOf(previous) == Kind::Party;
@@ -874,6 +888,13 @@ struct ItemOps {
         if (occupant != script::kObjectInvalid) {
             unequipTo(creature, occupant);
         }
+        // A double weapon (weaponwield 3) in the right hand takes both hands: retail frame
+        // req_eq_b_dblsword has the left slot cleared after ActionEquipItem with a Long Sword worn there.
+        if (slot == 4 && s.rules_.baseItemInt(base, "weaponwield", 0) == 3) {
+            if (const std::uint32_t offhand = wornIn(creature, 5); offhand != script::kObjectInvalid) {
+                unequipTo(creature, offhand);
+            }
+        }
         if (slotOf(item) >= 0 && ownerOf(item) == (creature == pc() ? pc() : creature)) {
             // Moving between slots: just relabel.
         }
@@ -923,22 +944,39 @@ struct ItemOps {
     // runtime model in the existing pipeline.
     void refreshModel(std::uint32_t creature) const
     {
-        const std::size_t index = api().entityFor(creature);
+        const std::size_t index = s.bodyOfObject(creature);
         if (index == kNone || index >= s.scene_.entities.size()) {
             return;
         }
-        const auto modelOf = [&](std::uint32_t item) -> std::string {
+        const auto handOf = [&](std::uint32_t item, std::int32_t& wield) -> std::string {
+            wield = 0;
             const script::GameObject* gear = object(item);
-            if (gear == nullptr || !s.rules_.loaded()) {
+            const std::shared_ptr<const kotor::TwoDa> baseitems = s.install_.table("baseitems");
+            if (gear == nullptr || !s.rules_.loaded() || baseitems == nullptr) {
                 return {};
             }
-            return s.rules_.baseItemString(static_cast<std::int32_t>(gear->baseItem), "defaultmodel");
+            const std::int32_t baseItem = static_cast<std::int32_t>(gear->baseItem);
+            wield = std::atoi(s.rules_.baseItemString(baseItem, "weaponwield").c_str());
+            const kotor::ItemTemplate* templ = templateFor(attrStr(*gear, "item_resref"));
+            return kotor::itemHandModel(s.install_, *baseitems, baseItem,
+                                        templ != nullptr ? templ->modelVariation : 0);
         };
         kotor::Entity& entity = s.scene_.entities[index];
-        const std::string right = modelOf(wornIn(creature, 4));
-        const std::string left = modelOf(wornIn(creature, 5));
-        entity.weaponModel = right == "I_Null" ? std::string{} : right;
-        entity.offhandModel = left == "I_Null" ? std::string{} : left;
+        std::int32_t rightWield = 0;
+        std::int32_t leftWield = 0;
+        const std::string wantRight = handOf(wornIn(creature, 4), rightWield);
+        const std::string wantLeft = handOf(wornIn(creature, 5), leftWield);
+        // The head slot (0) item hangs on the head's GoggleHook (retail 006964c0).
+        std::int32_t headWield = 0;
+        const std::string wantHead = handOf(wornIn(creature, 0), headWield);
+        entity.rightWield = rightWield;
+        entity.leftWield = leftWield;
+        if (wantRight != entity.weaponModel || wantLeft != entity.offhandModel || wantHead != entity.headItemModel) {
+            entity.weaponModel = wantRight;
+            entity.offhandModel = wantLeft;
+            entity.headItemModel = wantHead;
+            kotor::rebuildEntityWeapons(s.scene_, s.install_, index);
+        }
     }
 };
 
@@ -953,6 +991,10 @@ std::uint32_t GameSession::giveItem(const std::string& resref, std::uint32_t hol
         return script::kObjectInvalid;
     }
     const std::uint32_t result = ops.addTo(made, holder, from);
+    if (result != script::kObjectInvalid && (holder == scriptWorld_.pc || holder == script::kObjectInvalid)) {
+        statusFeedback(7, 0); // retail status row 7
+        newItems_.insert(result);
+    }
     if (result == script::kObjectInvalid) {
         // Retail destroys an item that has nowhere to go (0052f570).
         if (script::GameObject* orphan = ops.object(made); orphan != nullptr) {
@@ -992,6 +1034,18 @@ std::uint32_t GameSession::itemPossessor(std::uint32_t item)
 std::vector<std::uint32_t> GameSession::itemsOf(std::uint32_t holder)
 {
     return ItemOps(*this).carried(holder);
+}
+
+std::vector<std::uint32_t> GameSession::itemsWornBy(std::uint32_t creature)
+{
+    ItemOps ops(*this);
+    std::vector<std::uint32_t> out;
+    for (std::int32_t slot = 0; slot < kSlotCount; ++slot) {
+        if (const std::uint32_t item = ops.wornIn(creature, slot); item != script::kObjectInvalid) {
+            out.push_back(item);
+        }
+    }
+    return out;
 }
 
 std::uint32_t GameSession::inventoryObject(std::size_t index)
@@ -1040,6 +1094,16 @@ bool GameSession::equipItemObject(std::uint32_t creature, std::uint32_t item, st
     return ItemOps(*this).equip(creature, item, slot);
 }
 
+void GameSession::refreshHeldItems(std::uint32_t creature)
+{
+    ItemOps(*this).refreshModel(creature);
+}
+
+std::uint32_t GameSession::wornItemObject(std::uint32_t creature, std::int32_t slot)
+{
+    return ItemOps(*this).wornIn(creature, slot);
+}
+
 bool GameSession::unequipItemObject(std::uint32_t creature, std::uint32_t item)
 {
     return ItemOps(*this).unequip(creature, item);
@@ -1064,6 +1128,16 @@ void GameSession::addCreatureGold(std::uint32_t creature, std::int32_t amount)
     switch (ops.kindOf(creature)) {
     case ItemOps::Kind::Party:
         gold_ = std::max<std::int32_t>(0, gold_ + amount);
+        statusFeedback(1, amount); // ACT_322, ACT_444
+        if (amount != 0 && localization_) {
+            // 42437 "Credits Received: <CUSTOM0>" / 42627 "Credits Lost: <CUSTOM0>".
+            std::string text = localization_->tlk().text(amount > 0 ? 42437 : 42627);
+            const std::size_t at = text.find("<CUSTOM0>");
+            if (at != std::string::npos) {
+                text.replace(at, 9, std::to_string(amount > 0 ? amount : -amount));
+            }
+            feedback(text);
+        }
         break;
     case ItemOps::Kind::Creature:
         if (script::GameObject* found = ops.object(creature); found != nullptr) {
@@ -1096,6 +1170,12 @@ bool GameSession::addInventoryItem(const std::string& resref, std::int32_t baseI
     return true;
 }
 
+void GameSession::syncInventoryObjects()
+{
+    ItemOps ops(*this);
+    ops.syncPc();
+}
+
 bool GameSession::removeInventoryItem(const std::string& resref, std::int32_t stack)
 {
     ItemOps ops(*this);
@@ -1105,6 +1185,7 @@ bool GameSession::removeInventoryItem(const std::string& resref, std::int32_t st
             continue;
         }
         const std::uint32_t object = row.object;
+        statusFeedback(8, 0); // retail status row 8
         if (stack > 0 && row.stack > stack) {
             ops.setStack(object, row.stack - stack);
             return true;
@@ -1185,6 +1266,7 @@ bool GameSession::openLoot(std::size_t entityIndex)
         lootItems_.push_back(ops.toInventory(*ops.object(id)));
     }
     scene_.entities[entityIndex].open = true;
+    playAnimation(entityIndex, "close2open", false); // retail 0057e8c0: the open state, row 312.
     setUiPanel(UiPanel::Loot);
     ops.api().raiseHook(container, "OnOpen", {{"lastOpenedBy", scriptWorld_.pc}});
     logEvent("loot " + scene_.entities[entityIndex].tag + " x" + std::to_string(lootItems_.size()));
@@ -1205,6 +1287,20 @@ bool GameSession::takeLootItem(std::size_t index)
         return false;
     }
     const std::string resref = lootItems_[index].resref;
+    if (const script::GameObject* item = ops.object(id); item != nullptr && attrInt(*item, "item_gold") > 0) {
+        // A body bag's credits (00588690) are taken as party gold. ENGINE READING: the retail take
+        // path for the credits item was not traced.
+        const std::int32_t amount = static_cast<std::int32_t>(attrInt(*item, "item_gold"));
+        ops.destroy(id);
+        addCreatureGold(scriptWorld_.pc, amount);
+        lootItems_.erase(lootItems_.begin() + static_cast<std::ptrdiff_t>(index));
+        logEvent("take " + resref + " " + std::to_string(amount) + " credits");
+        if (lootItems_.empty()) {
+            closeLoot();
+            setUiPanel(UiPanel::None);
+        }
+        return true;
+    }
     const std::uint32_t moved = ops.addTo(id, scriptWorld_.pc, container);
     if (moved == script::kObjectInvalid) {
         return false;
@@ -1223,11 +1319,229 @@ void GameSession::closeLoot()
 {
     if (lootEntity_ >= 0 && static_cast<std::size_t>(lootEntity_) < scene_.entities.size()) {
         scene_.entities[static_cast<std::size_t>(lootEntity_)].open = false;
+        playAnimation(static_cast<std::size_t>(lootEntity_), "open2close", false); // retail 004fab0d
         ScriptApi{*this}.raiseHook(objectForEntity(static_cast<std::size_t>(lootEntity_)),
                                    "OnClosed", {{"lastClosedBy", scriptWorld_.pc}});
     }
     lootItems_.clear();
     lootEntity_ = -1;
+}
+
+// ---- body bags (W038) -----------------------------------------------------------
+//
+// Death path (004e0e2e..004e0f8a): a dead creature outside the party gets a destroy event
+// (0x7441e0) after appearance.2da DestroyObjectDelay seconds, 3.0 (0x740c84) when the cell is
+// blank, x 1000 (0x73d6fc) into the game-time event queue. The creature event handler for it
+// (004ff1a4..004ff436): when the creature is not the PC (+0x9d4), is destroyable (+0xec, set by
+// SetIsDestroyable at 00542e6c) and +0xa88 is clear, it spawns a body bag (004ce220), then
+// leaves the area lists and deletes itself (vtable[0] at 004ff436). The client keeps the dead
+// body on screen (FadeDelayOnDeath, 004ff263: a blank cell keeps it).
+
+// FadeDelayOnDeath (004ff263): -1 for a blank cell (the body stays), else the seconds.
+float GameSession::fadeDelayOnDeath(const kotor::Entity& creature)
+{
+    if (appearanceRows()) {
+        const int column = appearanceHeads_->columnIndex("fadedelayondeath");
+        if (column >= 0 && creature.appearance < appearanceHeads_->rowCount()) {
+            const std::string cell = appearanceHeads_->cell(static_cast<std::size_t>(creature.appearance),
+                                                            static_cast<std::size_t>(column));
+            if (!cell.empty() && cell != "****") {
+                return std::max(0.0f, static_cast<float>(std::atof(cell.c_str())));
+            }
+        }
+    }
+    return -1.0f;
+}
+
+float GameSession::destroyObjectDelay(const kotor::Entity& creature)
+{
+    if (appearanceRows()) {
+        const int column = appearanceHeads_->columnIndex("destroyobjectdelay");
+        if (column >= 0 && creature.appearance < appearanceHeads_->rowCount()) {
+            const std::string cell = appearanceHeads_->cell(static_cast<std::size_t>(creature.appearance),
+                                                            static_cast<std::size_t>(column));
+            if (!cell.empty() && cell != "****") {
+                return static_cast<float>(std::atof(cell.c_str()));
+            }
+        }
+    }
+    return 3.0f;
+}
+
+// 004ce220: the bag row is the creature's BodyBag byte (+0x9da, UTC BodyBag), else the appearance
+// BODY_BAG cell. With bodybag.2da Corpse set the bag is the body (a placeable model of it) and is
+// made whatever the creature carries; otherwise only when the creature has droppable items or
+// gold (004f3770, 004edd60). The bag is a placeable of the bodybag appearance, named by its Name
+// strref, at the creature's position and facing; IsBodyBag (+0x440) = 1, the creature at +0x448.
+// 00588690 (droppable only) moves the 14 worn slots and the inventory items whose Dropable flag
+// (+0x288 bit 8) is set, and the gold as g_i_credits001.
+std::uint32_t GameSession::spawnBodyBag(std::size_t creatureIndex)
+{
+    if (creatureIndex >= scene_.entities.size()) {
+        return script::kObjectInvalid;
+    }
+    const kotor::Entity creature = scene_.entities[creatureIndex];
+    const std::uint32_t creatureObject = objectForEntity(creatureIndex);
+    int row = 0;
+    if (auto data = install_.find(creature.templateResref, 2027); data.has_value()) {
+        try {
+            const kotor::Gff utc = kotor::Gff::parse(std::move(*data), creature.templateResref);
+            if (const kotor::GffField* field = utc.field(utc.rootIndex(), "BodyBag"); field != nullptr) {
+                row = static_cast<int>(utc.number(*field));
+            }
+        } catch (const kotor::FormatError&) {
+        }
+    }
+    if (row == 0 && appearanceRows()) {
+        const int column = appearanceHeads_->columnIndex("body_bag");
+        if (column >= 0 && creature.appearance < appearanceHeads_->rowCount()) {
+            row = std::atoi(appearanceHeads_->cell(static_cast<std::size_t>(creature.appearance),
+                                                   static_cast<std::size_t>(column)).c_str());
+        }
+    }
+    const std::shared_ptr<const kotor::TwoDa> bags = install_.table("bodybag");
+    if (bags == nullptr) {
+        return script::kObjectInvalid;
+    }
+    const std::string rowLabel = std::to_string(row);
+    const bool corpse = std::atoi(bags->cell(rowLabel, "corpse").c_str()) != 0;
+    ItemOps ops(*this);
+    std::vector<std::uint32_t> dropped;
+    ops.ensureLoaded(creatureObject);
+    if (const script::GameObject* holder = ops.object(creatureObject); holder != nullptr) {
+        for (const std::uint32_t id : holder->inventory) {
+            const script::GameObject* item = ops.object(id);
+            if (item != nullptr && item->valid && attrInt(*item, "item_droppable") != 0) {
+                dropped.push_back(id);
+            }
+        }
+    }
+    // 004edd60: the creature's gold (+0x9d0) also makes a bag.
+    const std::int32_t gold = creatureGold(creatureObject);
+    if (!corpse && dropped.empty() && gold <= 0) {
+        return script::kObjectInvalid;
+    }
+    const std::string appearanceCell = bags->cell(rowLabel, "appearance");
+    const std::shared_ptr<const kotor::TwoDa> placeables = install_.table("placeables");
+    const std::string model = placeables != nullptr && !appearanceCell.empty()
+        ? placeables->cell(appearanceCell, "modelname")
+        : std::string{};
+    std::size_t index = model.empty() || model == "****"
+        ? static_cast<std::size_t>(-1)
+        : kotor::spawnModelEntity(scene_, install_, model, creature.position, creature.bearing);
+    if (index == static_cast<std::size_t>(-1)) {
+        kotor::Entity empty;
+        empty.kind = kotor::EntityKind::Placeable;
+        empty.position = creature.position;
+        empty.bearing = creature.bearing;
+        scene_.entities.push_back(std::move(empty));
+        index = scene_.entities.size() - 1;
+    }
+    kotor::Entity& bag = scene_.entities[index];
+    bag.appearance = static_cast<std::uint32_t>(std::max(0, std::atoi(appearanceCell.c_str())));
+    bag.tag = "BodyBag";
+    const std::int64_t strref = std::atoll(bags->cell(rowLabel, "name").c_str());
+    bag.name = strref > 0 && localization_ != nullptr && localization_->loaded()
+        ? localization_->tlk().text(static_cast<std::uint32_t>(strref))
+        : std::string{};
+    bag.hasInventory = true;
+    bag.useable = true;
+    script::GameObject& object = scriptWorld_.addObject(bag.tag, 100, 0, true);
+    object.position = {bag.position.x, bag.position.y, bag.position.z};
+    object.attrs["object_type"] = static_cast<std::int64_t>(64);
+    object.attrs["inv_loaded"] = static_cast<std::int64_t>(1);
+    object.attrs["is_body_bag"] = static_cast<std::int64_t>(1);
+    object.attrs["body_bag_creature"] = static_cast<std::int64_t>(creatureObject);
+    const std::uint32_t id = object.id;
+    entityObjects_.resize(scene_.entities.size(), 0);
+    entityObjects_[index] = id;
+    for (const std::uint32_t item : dropped) {
+        ops.addTo(item, id, creatureObject);
+    }
+    if (gold > 0) {
+        // 00588690: a new g_i_credits001 carries the gold (item +0x28c), the creature's gold goes
+        // to 0 (004edd90), and the item goes into the bag.
+        const std::uint32_t credits = ops.makeItem("g_i_credits001", 1, true);
+        if (script::GameObject* item = ops.object(credits); item != nullptr) {
+            item->attrs["item_gold"] = static_cast<std::int64_t>(gold);
+            ops.addTo(credits, id, script::kObjectInvalid);
+            addCreatureGold(creatureObject, -gold);
+        }
+    }
+    logEvent("body bag " + creature.tag + " x" + std::to_string(dropped.size())
+             + (corpse ? " corpse" : ""));
+    if (corpse) {
+        // The bag shows the body; the creature's own model goes with it.
+        scene_.entities[creatureIndex].hitPoints = std::max(scene_.entities[creatureIndex].hitPoints, 1);
+    }
+    return id;
+}
+
+void GameSession::updateCorpses(float dt)
+{
+    ScriptApi api{*this};
+    for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+        if (scene_.entities[i].kind != kotor::EntityKind::Creature) {
+            continue;
+        }
+        const std::uint32_t object = objectForEntity(i);
+        script::GameObject* found = scriptWorld_.get(object);
+        // A dead creature's script object is already marked invalid here (syncEntityToScriptWorld);
+        // only the destroy marker ends it.
+        if (found == nullptr) {
+            continue;
+        }
+        if (found->attrs.contains("destroyed")) {
+            // 004ff263 -> 004ce8a0 / 004ce9a0: a set FadeDelayOnDeath clears the client's keep flag
+            // (+0x208) and arms its delay (+0x20c); the body leaves the screen when it runs out.
+            ActorState& gone = api.actor(object);
+            if (gone.bodyFadeDue >= 0.0f) {
+                gone.bodyFadeDue -= dt;
+                if (gone.bodyFadeDue <= 0.0f) {
+                    gone.bodyFadeDue = -1.0f;
+                    scene_.entities[i].hitPoints = std::max(scene_.entities[i].hitPoints, 1); // dead, not drawn
+                    ++animationRevision_;
+                }
+            }
+            continue;
+        }
+        ActorState& state = api.actor(object);
+        if (state.destroyDue < 0.0f) {
+            continue;
+        }
+        if (!scene_.entities[i].dead || scene_.entities[i].partyAvatar) {
+            state.destroyDue = -1.0f; // Raised before the event fired, or joined the party.
+            continue;
+        }
+        state.destroyDue -= dt;
+        if (state.destroyDue > 0.0f) {
+            continue;
+        }
+        state.destroyDue = -1.0f;
+        if (!state.destroyable) {
+            continue;
+        }
+        spawnBodyBag(i);
+        found = scriptWorld_.get(object);
+        if (found == nullptr) {
+            continue;
+        }
+        found->valid = false;
+        found->attrs["destroyed"] = static_cast<std::int64_t>(1);
+        if (const float fade = fadeDelayOnDeath(scene_.entities[i]); fade >= 0.0f) {
+            api.actor(object).bodyFadeDue = fade;
+            if (fade <= 0.0f) {
+                scene_.entities[i].hitPoints = std::max(scene_.entities[i].hitPoints, 1); // dead, not drawn
+                api.actor(object).bodyFadeDue = -1.0f;
+                ++animationRevision_;
+            }
+        }
+        std::erase(scriptWorld_.tags[found->tag], found->id);
+        if (combatTarget_ == i) {
+            combatTarget_ = UINT32_MAX;
+        }
+        logEvent("destroyed " + scene_.entities[i].tag + " after death");
+    }
 }
 
 // ---- item use --------------------------------------------------------------------
@@ -1356,6 +1670,26 @@ bool GameSession::useItem(std::uint32_t item, std::uint32_t user, std::uint32_t 
     }
     logEvent("use item " + templ->resref);
     return true;
+}
+
+bool GameSession::itemUsable(std::uint32_t item)
+{
+    ItemOps ops(*this);
+    if (!ops.isItem(item)) {
+        return false;
+    }
+    ops.syncPc();
+    const script::GameObject& gear = *ops.object(item);
+    const kotor::ItemTemplate* templ = ops.templateFor(attrStr(gear, "item_resref"));
+    if (templ == nullptr) {
+        return false;
+    }
+    for (const kotor::ItemTemplate::Property& property : templ->properties) {
+        if (property.name == kItemPropertyActivateItem && property.useable) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // ---- handlers ------------------------------------------------------------------
@@ -1949,6 +2283,8 @@ int runItemsFamilyTest(GameSession& game)
     const std::size_t pcCountBefore = countIn(resref);
     game.scene().scripts["Mod_OnAcquirItem"] = "items_acquired";
     game.scene().scripts["Mod_OnUnAqreItem"] = "items_lost";
+    game.declareGlobalForTest("ITEMS_ACQ");
+    game.declareGlobalForTest("ITEMS_LOST");
     game.addScriptForTest("items_acquired",
                           GateScript().constInt(1).constString("ITEMS_ACQ").action(581, 2).bytes());
     game.addScriptForTest("items_lost",

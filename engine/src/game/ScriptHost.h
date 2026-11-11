@@ -150,6 +150,7 @@ struct ActorAction {
     ActorActionKind kind = ActorActionKind::Wait;
     std::uint32_t object = script::kObjectInvalid;
     kotor::Vec3 point;
+    kotor::Vec3 centre;       // RandomWalk: where 0052d440 queued it (+0x90 then).
     std::optional<float> facingDegrees;
     bool run = false;
     bool force = false;       // ActionForceMove*: jump when the timeout expires.
@@ -165,6 +166,7 @@ struct ActorAction {
     std::int32_t animation = 0;
     std::int32_t spell = -1;   // CastSpell: spells.2da row. Attack: combat feat, or -1.
     bool fake = false;         // ActionCastFakeSpell*: no cost, no impact script.
+    bool impacted = false;     // CastSpell: the impact ran (retail creature +0x1cc, 0x73*4).
     std::int64_t location = 0; // CastSpell at a location: the LocationData record.
     std::int32_t result = 0;   // CutsceneAttack: ATTACK_RESULT_*. EquipMostDamaging: 1 ranged.
     std::int32_t amount = 0;   // CutsceneAttack: damage. UseSkill: sub-skill.
@@ -191,6 +193,7 @@ struct ActorCombat {
     float roundTimer = 0.0f;
     std::vector<float> attackTimes;
     std::size_t nextAttack = 0;
+    bool swingStarted = false; // the round's swing began at round start (005bb890)
     std::uint32_t roundTarget = script::kObjectInvalid;
     std::int32_t roundFeat = -1;
     std::uint32_t attemptedTarget = script::kObjectInvalid;  // +0x504
@@ -223,6 +226,18 @@ struct ActorState {
     std::vector<AppliedEffect> effects;
     std::size_t effectCursor = 0;              // GetFirstEffect / GetNextEffect
     std::map<std::uint32_t, std::uint8_t> perceived; // bit 0 seen, bit 1 heard. retail 00517a20
+    // Position at the last perception pass, for the stationary terms of 004f1fd0.
+    kotor::Vec3 perceivePosition;
+    bool perceivePositionKnown = false;
+    bool stationary = true;
+    // retail 004eb6e0: this creature's own visible-list pass (UpdateVisibleList) is due when this
+    // reaches 0; the first update runs one at once.
+    float perceptionDue = 0.0f;
+    bool perceptionStarted = false;
+    // retail 004fa390 UpdateMineCheck cadence (100 ms still, 3000 ms moving).
+    kotor::Vec3 mineCheckPosition;
+    bool mineCheckPositionKnown = false;
+    float mineCheckTimer = 0.0f;
     // Movement memory scripts read back. retail creature +0x33c, +0x508.
     std::uint32_t blockingDoor = script::kObjectInvalid;
     std::uint32_t blockingCreature = script::kObjectInvalid;
@@ -230,6 +245,8 @@ struct ActorState {
     bool blockedRaised = false; // One OnBlocked per episode of being stopped.
     // SetIsDestroyable
     bool destroyable = true;
+    float destroyDue = -1.0f; // Seconds to the death destroy event (004e0e2e); -1 none.
+    float bodyFadeDue = -1.0f; // Seconds until a destroyed body leaves the screen (FadeDelayOnDeath, 004ff263); -1 kept.
     bool raiseable = true;
     bool selectableWhenDead = false;
     // SetLightsaberPowered
@@ -237,7 +254,9 @@ struct ActorState {
     bool saberPowered = true;
 };
 
-enum class ActorStep { Arrived, Moving, Blocked };
+// Aborted: retail 00516630 ended the walk (six bumps, the same creature at the same spot, totally blocked); the
+// action is over without arriving.
+enum class ActorStep { Arrived, Moving, Blocked, Aborted };
 
 // ---- events ----------------------------------------------------------------
 
@@ -259,6 +278,7 @@ struct JournalCategory {
     std::string tag;
     std::int32_t plotIndex = -1;
     std::int32_t xp = 0;
+    std::uint32_t nameStrref = UINT32_MAX; // the quest's title in the journal screen
     std::map<std::int32_t, JournalEntryRecord> entries;
 };
 
@@ -294,6 +314,7 @@ struct TimerSnapshot {
 };
 
 struct ModuleSnapshot {
+    bool areaUnescapable = false; // Belongs to the area: retail 005424e0 writes area +0x2ac.
     std::vector<EntitySnapshot> entities;
     std::map<std::uint32_t, script::GameObject> objects;
     std::vector<MerchantState> merchants;
@@ -436,7 +457,8 @@ struct ScriptApi {
     kotor::Vec3 position(std::uint32_t object) const;
     float facing(std::uint32_t object) const;
     void setPosition(std::uint32_t object, kotor::Vec3 position) const;
-    void setPosition(std::uint32_t object, kotor::Vec3 position, float facing) const;
+    void setPosition(std::uint32_t object, kotor::Vec3 position, float facing,
+                     bool turnCamera = true) const;
 
     // Per-object action queue.
     ActorState& actor(std::uint32_t object) const;
@@ -534,6 +556,7 @@ enum class UseOutcome {
 
 // Per-tick drivers, called from GameSession::update.
 void tickWorldState(ScriptApi api, float dt);
+void advanceFade(ScriptApi api, float dt); // the global fade, which runs on real time (also while paused)
 // The world-state family gate, behind --family-test worldstate.
 int runWorldStateFamilyTest(GameSession& game);
 // The items and stores family gate, behind --family-test items.
@@ -578,11 +601,19 @@ bool equipMostDamaging(GameSession& session, std::uint32_t creature, bool ranged
 void healCreature(ScriptApi api, std::uint32_t object, std::int32_t amount);
 void killCreature(ScriptApi api, std::uint32_t object, std::uint32_t killer);
 void resurrectCreature(ScriptApi api, std::uint32_t object);
+// A creature that dies leaves combat at once, paused or not (the combat tick does it only when it runs).
+void leaveCombatOnDeath(ScriptApi api, std::uint32_t object);
+// retail 004b6da0: downed party members stand up 5 s after no hostile perceives the party.
+void tickTempDeathRecovery(ScriptApi api, float dt);
 void changeForcePoints(ScriptApi api, std::uint32_t object, std::int32_t delta);
 // Sum of arg 0 of every held effect of `type` (arg `arg` for two-argument ones).
 std::int32_t effectTotal(ScriptApi api, std::uint32_t object, std::int32_t type,
                          std::size_t arg = 0);
 bool hasEffectOfType(ScriptApi api, std::uint32_t object, std::int32_t type);
+// ApplyEffectToObject's core (ScriptEffects.cpp): durationType 1 temporary, 2 permanent.
+void applyEffectRecord(ScriptApi api, std::int32_t durationType, std::int64_t id,
+                       std::uint32_t target, float duration, std::uint32_t creator,
+                       std::int32_t spellId);
 // The combat family gate, behind --family-test combat.
 int runCombatFamilyTest(GameSession& game);
 
@@ -620,6 +651,7 @@ struct PresentationState {
     bool holdFadeInForDialog = false;
     std::int32_t lastBarkStrref = -1;
     std::uint32_t lastBarkSpeaker = script::kObjectInvalid;
+    std::uint32_t barkSerial = 0; // one more for every bark, so the bark bubble (Hud) sees a repeat
     bool scriptPaused = false;
     std::int32_t buttonMashCheck = 0;
     float musicVolume = 1.0f;
@@ -640,6 +672,13 @@ void tickEnding(ScriptApi api, float dt);
 int runEndgameFamilyTest(GameSession& game);
 // The gate for the last shipped-script actions, behind --family-test actions.
 int runRemainingActionsFamilyTest(GameSession& game);
+// Movies, the queue and skip rules, the held world and cutscenes: --family-test cinema.
+int runCinemaFamilyTest(GameSession& game);
+// Decoders against FFmpeg, mixer output against the source, final-mix noise measures
+// (AudioQualityFamily.cpp, --family-test audioquality).
+int runAudioQualityFamilyTest(GameSession& game);
+// Gameplay sound and visual effects at the mixer and the scene: --family-test sfx.
+int runEffectsFamilyTest(GameSession& game);
 // --action-coverage: per-action handler status. Returns 0 when every action a shipped
 // script uses has a handler or a documented no-op.
 int runActionCoverage(GameSession& game, const std::string& corpusDir, const std::string& outPath);
@@ -682,14 +721,21 @@ struct WorldSim {
     std::vector<double> heartbeatDue;
 
     int scriptDepth = 0;
+    // The retail VM frame count and shared counters of the current outermost run.
+    int retailRuns = 0;
+    script::VmCounters vmCounters;
+    bool executeNested = false; // The next script run is an ExecuteScript inside this one.
     float perceptionTimer = 0.0f;
+    // retail 004b6da0 TempDeathUpdate: +0x100d0 scan clock, +0x100d4 unseen clock.
+    float tempDeathScan = 0.0f;
+    float tempDeathClock = 0.0f;
     std::string pendingLinkedTo;
     std::vector<std::string> pendingMovies;
     bool dialoguePaused = false;
     bool noStartLink = false;
     bool restoringSave = false;
 
-    std::map<std::string, std::shared_ptr<const std::vector<script::Instruction>>> decoded;
+    std::map<std::string, script::ProgramPtr> decoded;
     std::map<std::string, std::vector<std::uint8_t>> injectedScripts;
 
     GameEndingState ending;

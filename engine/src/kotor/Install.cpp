@@ -78,6 +78,52 @@ std::filesystem::path Install::overlayPath(const std::string& relative) const
     return root_ / relative;
 }
 
+void Install::dropResolvedCaches()
+{
+    tables_.clear();
+    models_.clear();
+    supermodels_.clear();
+}
+
+std::shared_ptr<const Tlk> Install::dialogTlk()
+{
+    if (dialogTlkRead_) {
+        return dialogTlk_;
+    }
+    dialogTlkRead_ = true;
+    std::ifstream file(root_ / "dialog.tlk", std::ios::binary | std::ios::ate);
+    if (!file) {
+        return nullptr;
+    }
+    const std::streamoff size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
+    if (!bytes.empty() && !file.read(reinterpret_cast<char*>(bytes.data()), size)) {
+        return nullptr;
+    }
+    try {
+        dialogTlk_ = std::make_shared<const Tlk>(Tlk::parse(std::move(bytes), "dialog.tlk"));
+    } catch (const FormatError&) {
+    }
+    return dialogTlk_;
+}
+
+std::shared_ptr<const TwoDa> Install::table(const std::string& name)
+{
+    if (const auto it = tables_.find(name); it != tables_.end()) {
+        return it->second;
+    }
+    std::shared_ptr<const TwoDa> table;
+    if (auto data = find(name, resType(ResType::TwoDa)); data.has_value()) {
+        try {
+            table = std::make_shared<const TwoDa>(TwoDa::parse(std::move(*data), name));
+        } catch (const FormatError&) {
+        }
+    }
+    tables_.emplace(name, table);
+    return table;
+}
+
 const BifFile& Install::bif(std::uint32_t index)
 {
     if (const auto it = bifs_.find(index); it != bifs_.end()) {
@@ -112,6 +158,7 @@ void Install::addLayer(int pass, int order, const std::filesystem::path& path,
         layer.archive = Archive::open(path);
         layers_.push_back(std::move(layer));
         sortLayers();
+        dropResolvedCaches();
     } catch (const FormatError&) {
     }
 }
@@ -172,12 +219,14 @@ void Install::setOverlayRoot(std::filesystem::path root)
 {
     overlayRoot_ = std::move(root);
     rebuildLooseIndex();
+    dropResolvedCaches();
 }
 
 void Install::bindModule(const std::string& stem)
 {
     layers_.clear();
     nextSequence_ = 0;
+    dropResolvedCaches();
 
     // Pass 3: active module RIMs. `rims/global.rim` is not mounted for area
     // loads: the retail global copy contains 2DA revisions that reference
@@ -202,6 +251,12 @@ void Install::bindModule(const std::string& stem)
     if (layers_.empty()) {
         throw FormatError("no module archive for " + stem);
     }
+}
+
+void Install::addRim(const std::string& stem)
+{
+    addLayer(3, 8, root_ / "rims" / (stem + "dx.rim"), "rims/" + stem + "dx.rim");
+    addLayer(3, 9, root_ / "rims" / (stem + ".rim"), "rims/" + stem + ".rim");
 }
 
 void Install::addPacks()

@@ -1,0 +1,7 @@
+# kotor_quest_trace baseline: tags, resrefs, numeric IDs and counts only. See docs/recon/64_QUEST_TRACE.md.
+# pass_floor: a full run below this many passing edges fails the gate. The search budget counts work, not time, so runs agree edge for edge and this is the exact count.
+# edge <id> <reason>: an edge allowed to fail.
+# nav <module> <subject> <reason>: a main-path object allowed to have no walking route.
+pass_floor	8409
+nav	korr_m35aa	kor35_sithduel	stands on a walled 35-triangle pocket no arrival or door joins; 4 m past reach from the walkable floor; the room links in the WOK do not join it; how the duel gets there is not traced
+nav	lev_m40ac	lev40_hangartalk	an invisible conversation speaker on a 3-triangle pocket 31 m from the walkable floor; not walked to

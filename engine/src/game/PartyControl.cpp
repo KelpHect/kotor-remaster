@@ -680,6 +680,8 @@ int runCompanionFamilyTest(GameSession& game)
                 centre.z = mesh->height(tri, centre.x, centre.y);
             }
             // What a trigger script sees: the entering object, and whether it is the player.
+            game.declareGlobalForTest("CC_ENTER");
+            game.declareGlobalForTest("CC_ISPC");
             game.addScriptForTest("cc_enter",
                                   ProbeScript()
                                       .action(25, 0).action(272, 1).constString("CC_ENTER").action(160, 2)

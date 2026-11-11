@@ -42,7 +42,36 @@ struct VideoEffectState {
     std::array<float, 3> noiseScale{0.02f, 0.02f, 0.02f};
     std::array<float, 3> noiseTranslate{0.0f, 0.0f, 0.0f};
 
+    // The options' Frame Buffer box (CB_FRAMEBUFF; retail 0061d750 sets 0078d98c, the gate at the top of
+    // FrameBufferModifications 00437520 / 00435bd0). Off: neither pass below draws.
+    bool frameBuffer = true;
+    // Speed blur (FrameBufferModifications flag 0x10; RenderAccumulationBlur 00433da0 NV / 00433970 ATI):
+    // out = ratio x the last blurred frame + (1 - ratio) x this frame, kept for the next frame. The first
+    // frame after it starts (007a698d clear) is only kept.
+    bool speedBlur = false;
+    float speedBlurRatio = 0.98f;
+    // ProgFX 1800 (flag 0x20; RenderForceDistortion 004331d0 NV / 00432d70 ATI): these entities draw
+    // no colour; where they cover the frame it shows the frame moved by the ring texture. The phase
+    // is RingDistortTextureController's (00460a90).
+    std::vector<std::uint32_t> distortEntities;
+    float distortPhase = 0.0f;
+    // Stencil shadows (kotor::buildShadowFrame), handed over with the effect each frame: the
+    // options' Shadows box (0078e3a8) and the scene focus (scene +0xa8).
+    bool shadows = false;
+    std::array<float, 3> shadowFocus{0.0f, 0.0f, 0.0f};
+
     bool active() const { return saturation || scanNoise; }
+    bool blurring() const { return frameBuffer && speedBlur; }
+    bool distorting() const { return frameBuffer && !distortEntities.empty(); }
+    bool hides(std::uint32_t entity) const
+    {
+        for (const std::uint32_t one : distortEntities) {
+            if (one == entity) {
+                return true;
+            }
+        }
+        return false;
+    }
     bool operator==(const VideoEffectState&) const = default;
 };
 

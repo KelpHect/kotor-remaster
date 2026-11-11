@@ -166,7 +166,7 @@ void writeObject(std::ostream& file, const std::string& module, const script::Ga
 void writeSnapshot(std::ostream& file, const std::string& module, const ModuleSnapshot& snapshot)
 {
     const std::string m = esc(module);
-    file << "snapshot=" << m << "|" << snapshot.areaObject << "|" << snapshot.moduleObject << "\n";
+    file << "snapshot=" << m << "|" << snapshot.areaObject << "|" << snapshot.moduleObject << "|" << (snapshot.areaUnescapable ? 1 : 0) << "\n";
     for (const auto& [id, object] : snapshot.objects) {
         writeObject(file, module, object);
     }
@@ -331,6 +331,7 @@ bool parseWorldStateLine(const std::string& key, const std::string& value, Loade
             ModuleSnapshot& snapshot = out.snapshots[unesc(p[0])];
             snapshot.areaObject = static_cast<std::uint32_t>(std::stoul(p[1]));
             snapshot.moduleObject = static_cast<std::uint32_t>(std::stoul(p[2]));
+            snapshot.areaUnescapable = p.size() > 3 && p[3] == "1";
         }
     } else if (key == "sobj") {
         const std::vector<std::string> p = fields(value, '|');
@@ -575,6 +576,7 @@ ModuleSnapshot GameSession::captureModuleSnapshot(bool leaving) const
 {
     ModuleSnapshot snapshot;
     snapshot.areaObject = sim_->areaObject;
+    snapshot.areaUnescapable = sim_->areaUnescapable;
     snapshot.moduleObject = sim_->moduleObject;
     const std::map<std::uint32_t, script::GameObject> carried = collectCarried();
     for (const auto& [id, object] : scriptWorld_.objects) {
@@ -644,6 +646,7 @@ void GameSession::applyModuleSnapshot(const ModuleSnapshot& snapshot)
         scriptWorld_.restoreObject(object);
     }
     sim_->areaObject = snapshot.areaObject;
+    sim_->areaUnescapable = snapshot.areaUnescapable;
     sim_->moduleObject = snapshot.moduleObject;
     entityObjects_.assign(scene_.entities.size(), 0);
     std::map<std::size_t, std::size_t> remap;
@@ -665,6 +668,7 @@ void GameSession::applyModuleSnapshot(const ModuleSnapshot& snapshot)
         entity.tag = record.tag;
         entity.dead = record.dead;
         entity.open = record.open;
+        applyObjectStateClip(index);
         entity.locked = record.locked;
         entity.hostile = record.hostile;
         entity.hostileOverride = record.hostileOverride;
@@ -702,13 +706,13 @@ void GameSession::applyModuleSnapshot(const ModuleSnapshot& snapshot)
         if (saved.functor == nullptr) {
             continue;
         }
-        if (saved.functor->instructions.empty()) {
+        if (saved.functor->program == nullptr || saved.functor->program->code.empty()) {
             const auto decoded = decodedScript(saved.functor->script);
             if (decoded == nullptr) {
                 scriptLog_.push_back("snapshot: dropped timer from " + saved.functor->script);
                 continue;
             }
-            saved.functor->instructions = *decoded;
+            saved.functor->program = decoded;
         }
         script::Timer timer;
         timer.due = scriptWorld_.time + saved.remaining;

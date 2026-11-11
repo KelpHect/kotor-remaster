@@ -3,6 +3,7 @@
 #include "render/Bmp.h"
 #include "render/VulkanScene.h"
 #include "render/VulkanPost.h"
+#include "render/VulkanUiShaders.h"
 #include "core/Log.h"
 
 #include "imgui.h"
@@ -32,6 +33,145 @@ namespace ke {
 namespace {
 
 constexpr std::uint32_t kMaxFramesInFlight = 2;
+
+// The UI's additive pipeline. ImGui owns its main pipeline and pipeline layout, so the additive
+// twin is built the first time a draw callback runs (the layout is only handed out then) from the
+// same vertex layout, descriptor layout and render target format. Blend (SRC_ALPHA, ONE) is retail's
+// `blending additive` (0047af70, factor table at 0073f270).
+struct UiAdditive {
+    VkDevice device = VK_NULL_HANDLE;
+    VkFormat format = VK_FORMAT_UNDEFINED;
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    bool failed = false;
+} g_uiAdditive;
+
+VkPipeline createUiAdditivePipeline(VkDevice device, VkFormat format, VkPipelineLayout layout)
+{
+    VkShaderModuleCreateInfo moduleInfo{};
+    moduleInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    moduleInfo.codeSize = sizeof(kUiVertSpv);
+    moduleInfo.pCode = kUiVertSpv;
+    VkShaderModule vertex = VK_NULL_HANDLE;
+    VkShaderModule fragment = VK_NULL_HANDLE;
+    if (vkCreateShaderModule(device, &moduleInfo, nullptr, &vertex) != VK_SUCCESS) {
+        return VK_NULL_HANDLE;
+    }
+    moduleInfo.codeSize = sizeof(kUiFragSpv);
+    moduleInfo.pCode = kUiFragSpv;
+    if (vkCreateShaderModule(device, &moduleInfo, nullptr, &fragment) != VK_SUCCESS) {
+        vkDestroyShaderModule(device, vertex, nullptr);
+        return VK_NULL_HANDLE;
+    }
+
+    VkPipelineShaderStageCreateInfo stages[2]{};
+    stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    stages[0].module = vertex;
+    stages[0].pName = "main";
+    stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    stages[1].module = fragment;
+    stages[1].pName = "main";
+
+    VkVertexInputBindingDescription binding{};
+    binding.stride = sizeof(ImDrawVert);
+    binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    VkVertexInputAttributeDescription attributes[3]{};
+    attributes[0] = {0, 0, VK_FORMAT_R32G32_SFLOAT, static_cast<std::uint32_t>(offsetof(ImDrawVert, pos))};
+    attributes[1] = {1, 0, VK_FORMAT_R32G32_SFLOAT, static_cast<std::uint32_t>(offsetof(ImDrawVert, uv))};
+    attributes[2] = {2, 0, VK_FORMAT_R8G8B8A8_UNORM, static_cast<std::uint32_t>(offsetof(ImDrawVert, col))};
+    VkPipelineVertexInputStateCreateInfo vertexInput{};
+    vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vertexInput.vertexBindingDescriptionCount = 1;
+    vertexInput.pVertexBindingDescriptions = &binding;
+    vertexInput.vertexAttributeDescriptionCount = 3;
+    vertexInput.pVertexAttributeDescriptions = attributes;
+
+    VkPipelineInputAssemblyStateCreateInfo assembly{};
+    assembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    assembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    VkPipelineViewportStateCreateInfo viewportState{};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.viewportCount = 1;
+    viewportState.scissorCount = 1;
+    VkPipelineRasterizationStateCreateInfo raster{};
+    raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    raster.polygonMode = VK_POLYGON_MODE_FILL;
+    raster.cullMode = VK_CULL_MODE_NONE;
+    raster.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    raster.lineWidth = 1.0f;
+    VkPipelineMultisampleStateCreateInfo multisample{};
+    multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisample.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+    VkPipelineDepthStencilStateCreateInfo depth{};
+    depth.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+
+    VkPipelineColorBlendAttachmentState attachment{};
+    attachment.blendEnable = VK_TRUE;
+    attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+    attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE;
+    attachment.colorBlendOp = VK_BLEND_OP_ADD;
+    attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+    attachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT
+        | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    VkPipelineColorBlendStateCreateInfo blend{};
+    blend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    blend.attachmentCount = 1;
+    blend.pAttachments = &attachment;
+
+    const VkDynamicState dynamicStates[2] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dynamic{};
+    dynamic.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamic.dynamicStateCount = 2;
+    dynamic.pDynamicStates = dynamicStates;
+
+    VkPipelineRenderingCreateInfo rendering{};
+    rendering.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+    rendering.colorAttachmentCount = 1;
+    rendering.pColorAttachmentFormats = &format;
+
+    VkGraphicsPipelineCreateInfo create{};
+    create.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    create.pNext = &rendering;
+    create.stageCount = 2;
+    create.pStages = stages;
+    create.pVertexInputState = &vertexInput;
+    create.pInputAssemblyState = &assembly;
+    create.pViewportState = &viewportState;
+    create.pRasterizationState = &raster;
+    create.pMultisampleState = &multisample;
+    create.pDepthStencilState = &depth;
+    create.pColorBlendState = &blend;
+    create.pDynamicState = &dynamic;
+    create.layout = layout;
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &create, nullptr, &pipeline) != VK_SUCCESS) {
+        pipeline = VK_NULL_HANDLE;
+    }
+    vkDestroyShaderModule(device, vertex, nullptr);
+    vkDestroyShaderModule(device, fragment, nullptr);
+    return pipeline;
+}
+
+void vulkanUiAdditive(const ImDrawList*, const ImDrawCmd*)
+{
+    auto* state = static_cast<ImGui_ImplVulkan_RenderState*>(ImGui::GetPlatformIO().Renderer_RenderState);
+    if (state == nullptr || g_uiAdditive.device == VK_NULL_HANDLE || g_uiAdditive.failed) {
+        return;
+    }
+    if (g_uiAdditive.pipeline == VK_NULL_HANDLE) {
+        g_uiAdditive.pipeline =
+            createUiAdditivePipeline(g_uiAdditive.device, g_uiAdditive.format, state->PipelineLayout);
+        if (g_uiAdditive.pipeline == VK_NULL_HANDLE) {
+            g_uiAdditive.failed = true;
+            logError("Vulkan additive UI pipeline creation failed; additive art draws with straight alpha");
+            return;
+        }
+    }
+    vkCmdBindPipeline(state->CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_uiAdditive.pipeline);
+}
 
 std::string apiVersionString(std::uint32_t version)
 {
@@ -229,7 +369,10 @@ public:
         initInfo.QueueFamily = graphicsFamily_;
         initInfo.Queue = graphicsQueue_;
         initInfo.DescriptorPool = VK_NULL_HANDLE;
-        initInfo.DescriptorPoolSize = 64;
+        // One descriptor set per registered texture: the shipped screens' art (every frame,
+        // icon, portrait and font page the painter caches) outgrows a small pool, after which
+        // AddTexture fails and the art is missing. Sets are small; leave plenty of room.
+        initInfo.DescriptorPoolSize = 2048;
         initInfo.MinImageCount = 2;
         initInfo.ImageCount = static_cast<std::uint32_t>(swapchainImages_.size());
         initInfo.PipelineCache = VK_NULL_HANDLE;
@@ -254,7 +397,15 @@ public:
             return false;
         }
         imguiInitialized_ = true;
+        g_uiAdditive.device = device_;
+        g_uiAdditive.format = format_;
+        g_uiAdditive.failed = false;
         return true;
+    }
+
+    UiDrawCallback uiAdditiveCallback() const override
+    {
+        return imguiInitialized_ ? &vulkanUiAdditive : nullptr;
     }
 
     void newFrame() override
@@ -268,10 +419,26 @@ public:
     {
         scene_ = scene;
         if (scene_ != nullptr && sceneReady_) {
+            // The previous scene's buffers and images may still be in flight.
+            vkDeviceWaitIdle(device_);
             std::string uploadError;
             if (!sceneRenderer_.upload(*scene_, uploadError)) {
                 logError(concat("Vulkan scene upload failed: ", uploadError));
             }
+        }
+    }
+
+    void syncSceneMeshes(const kotor::Scene* scene) override
+    {
+        if (scene == nullptr || scene != scene_ || !sceneReady_) {
+            setScene(scene);
+            return;
+        }
+        // A mesh this drops may still be in flight.
+        vkDeviceWaitIdle(device_);
+        std::string uploadError;
+        if (!sceneRenderer_.syncMeshes(*scene_, uploadError)) {
+            logError(concat("Vulkan scene sync failed: ", uploadError));
         }
     }
 
@@ -280,6 +447,15 @@ public:
     void setVideoEffect(const VideoEffectState& effect) override
     {
         postRenderer_.setEffect(effect);
+        sceneRenderer_.setDistortion(effect.distortEntities, effect.distortPhase);
+        sceneRenderer_.setShadows(effect.shadows, {effect.shadowFocus[0], effect.shadowFocus[1], effect.shadowFocus[2]});
+    }
+
+    void refreshSceneVertices(const kotor::Scene& scene, std::size_t first, std::size_t count) override
+    {
+        if (sceneReady_) {
+            sceneRenderer_.refreshSceneVertices(scene, first, count);
+        }
     }
 
     void refreshEntityMeshes(const kotor::Scene& scene) override
@@ -442,6 +618,9 @@ public:
 
     void releaseMovieFrame(std::uint64_t& textureId) override
     {
+        if (device_ != VK_NULL_HANDLE) {
+            vkDeviceWaitIdle(device_); // frames in flight may still sample the image
+        }
         if (textureId != 0 && imguiInitialized_) {
             ImGui_ImplVulkan_RemoveTexture(
                 reinterpret_cast<VkDescriptorSet>(static_cast<std::uintptr_t>(textureId)));
@@ -655,6 +834,10 @@ public:
             sceneRenderer_.destroyUiImage(entry.second);
         }
         uiImages_.clear();
+        if (g_uiAdditive.pipeline != VK_NULL_HANDLE && device_ != VK_NULL_HANDLE) {
+            vkDestroyPipeline(device_, g_uiAdditive.pipeline, nullptr);
+        }
+        g_uiAdditive = UiAdditive{};
         if (imguiInitialized_) {
             ImGui_ImplVulkan_Shutdown();
             imguiInitialized_ = false;
@@ -1312,11 +1495,16 @@ private:
                              nullptr, 1, &toColor);
         if (sceneReady_) {
             sceneRenderer_.prepareDepth(commandBuffer);
+            sceneRenderer_.updateProceduralTextures(commandBuffer, currentFrame_, kMaxFramesInFlight);
         }
 
         const float pulse = 0.5f + 0.5f * std::sin(static_cast<float>(frameIndex_) * 0.02f);
         VkClearValue clearValue{};
         clearValue.color = {{0.06f, 0.07f + 0.05f * pulse, 0.10f + 0.08f * pulse, 1.0f}};
+        if (sceneRenderer_.hasScene()) {
+            const kotor::Vec3 sky = sceneRenderer_.clearColour();
+            clearValue.color = {{sky.x, sky.y, sky.z, 1.0f}};
+        }
 
         VkRenderingAttachmentInfo colorAttachment{};
         colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -1329,7 +1517,7 @@ private:
         VkRenderingAttachmentInfo depthAttachment{};
         depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         depthAttachment.imageView = sceneRenderer_.depthView();
-        depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
+        depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
         depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
         depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         depthAttachment.clearValue.depthStencil = {1.0f, 0};
@@ -1342,6 +1530,7 @@ private:
         renderingInfo.colorAttachmentCount = 1;
         renderingInfo.pColorAttachments = &colorAttachment;
         renderingInfo.pDepthAttachment = (sceneReady_ && depthAttachment.imageView != VK_NULL_HANDLE) ? &depthAttachment : nullptr;
+        renderingInfo.pStencilAttachment = renderingInfo.pDepthAttachment; // the shadows' stencil
 
         vkCmdBeginRendering(commandBuffer, &renderingInfo);
 
@@ -1361,6 +1550,52 @@ private:
             sceneRenderer_.draw(commandBuffer, camera_, extent_);
         }
 
+        // FrameBufferModifications 00437520 / 00435bd0 order: speed blur (0x10), then distortion (0x20),
+        // then the video effect. Each step ends the pass, copies, and reopens it on the same image.
+        const bool depthOn = sceneReady_ && depthAttachment.imageView != VK_NULL_HANDLE;
+        const auto resumePass = [&](bool withDepth) {
+            VkMemoryBarrier barrier{};
+            barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+            barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
+                | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            vkCmdPipelineBarrier(commandBuffer,
+                                 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+                                 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+                                 0, 1, &barrier, 0, nullptr, 0, nullptr);
+            colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+            depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+            renderingInfo.pDepthAttachment = withDepth && depthOn ? &depthAttachment : nullptr;
+            renderingInfo.pStencilAttachment = renderingInfo.pDepthAttachment; // the shadows' stencil
+            vkCmdBeginRendering(commandBuffer, &renderingInfo);
+            vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+            vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+        };
+        if (sceneReady_ && scene_ != nullptr && postRenderer_.blurReady()) {
+            // ProgFX 1601 speed blur.
+            vkCmdEndRendering(commandBuffer);
+            if (postRenderer_.blurPrimed()) {
+                postRenderer_.recordCopy(commandBuffer, swapchainImages_[imageIndex]);
+                resumePass(false);
+                postRenderer_.recordBlur(commandBuffer);
+                vkCmdEndRendering(commandBuffer);
+            }
+            postRenderer_.recordAccumulate(commandBuffer, swapchainImages_[imageIndex]);
+            resumePass(true);
+        } else {
+            postRenderer_.blurSkipped();
+        }
+        if (sceneReady_ && scene_ != nullptr && depthOn && postRenderer_.copyView() != VK_NULL_HANDLE
+            && postRenderer_.effect().distorting() && sceneRenderer_.distortionVisible()) {
+            // ProgFX 1800 distortion (RenderForceDistortion 004331d0 / 00432d70).
+            vkCmdEndRendering(commandBuffer);
+            postRenderer_.recordCopy(commandBuffer, swapchainImages_[imageIndex]);
+            resumePass(true);
+            sceneRenderer_.drawDistortion(commandBuffer, camera_, extent_, postRenderer_.copyView());
+        }
+        renderingInfo.pDepthAttachment = depthOn ? &depthAttachment : nullptr;
+        renderingInfo.pStencilAttachment = renderingInfo.pDepthAttachment; // the shadows' stencil
+
         // Video effect (ACT_508/510): finish the scene, copy it, then redraw it
         // through the effect before the UI so the HUD is never tinted. Without
         // an active effect the frame stays a single pass.
@@ -1369,6 +1604,7 @@ private:
             postRenderer_.recordCopy(commandBuffer, swapchainImages_[imageIndex]);
             colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
             renderingInfo.pDepthAttachment = nullptr;
+            renderingInfo.pStencilAttachment = renderingInfo.pDepthAttachment; // the shadows' stencil
             vkCmdBeginRendering(commandBuffer, &renderingInfo);
             vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
             vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
@@ -1400,6 +1636,7 @@ private:
                 colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
                 depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
                 renderingInfo.pDepthAttachment = &depthAttachment;
+                renderingInfo.pStencilAttachment = renderingInfo.pDepthAttachment; // the shadows' stencil
                 vkCmdBeginRendering(commandBuffer, &renderingInfo);
                 vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
                 vkCmdSetScissor(commandBuffer, 0, 1, &scissor);

@@ -5,8 +5,10 @@
 // the opcode table is bytecode-format knowledge, not decompiled program text.
 
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace ke::script {
@@ -51,6 +53,16 @@ struct Instruction {
 
 std::vector<Instruction> decodeNcs(const std::vector<std::uint8_t>& data);
 std::vector<Instruction> decodeNcs(const std::uint8_t* data, std::size_t size);
+
+// A decoded script with its jump table. Immutable, so one copy serves every VM and every
+// closure captured from that script.
+struct Program {
+    std::vector<Instruction> code;
+    std::unordered_map<std::uint32_t, std::size_t> byOffset;
+};
+using ProgramPtr = std::shared_ptr<const Program>;
+
+ProgramPtr makeProgram(std::vector<Instruction> code);
 
 struct InvalidJump {
     std::string kind;

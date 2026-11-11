@@ -62,25 +62,30 @@ std::vector<std::string> splitWhitespace(const std::string& line)
 
 } // namespace
 
+void TwoDa::buildIndex()
+{
+    columnIndex_.clear();
+    rowIndex_.clear();
+    columnIndex_.reserve(columns_.size());
+    rowIndex_.reserve(rows_.size());
+    for (std::size_t i = 0; i < columns_.size(); ++i) {
+        columnIndex_.emplace(lower(columns_[i]), static_cast<int>(i));
+    }
+    for (std::size_t i = 0; i < rows_.size(); ++i) {
+        rowIndex_.emplace(lower(rows_[i].label), static_cast<int>(i));
+    }
+}
+
 int TwoDa::columnIndex(const std::string& name) const
 {
-    const std::string wanted = lower(name);
-    for (std::size_t i = 0; i < columns_.size(); ++i) {
-        if (lower(columns_[i]) == wanted) {
-            return static_cast<int>(i);
-        }
-    }
-    return -1;
+    const auto it = columnIndex_.find(lower(name));
+    return it != columnIndex_.end() ? it->second : -1;
 }
 
 int TwoDa::rowIndex(const std::string& label) const
 {
-    for (std::size_t i = 0; i < rows_.size(); ++i) {
-        if (lower(rows_[i].label) == lower(label)) {
-            return static_cast<int>(i);
-        }
-    }
-    return -1;
+    const auto it = rowIndex_.find(lower(label));
+    return it != rowIndex_.end() ? it->second : -1;
 }
 
 std::string TwoDa::cell(std::size_t row, std::size_t column) const
@@ -113,6 +118,7 @@ TwoDa TwoDa::merge(const TwoDa& base, const TwoDa& patch, std::string name)
             continue;
         }
         patchColumnToMerged[column] = merged.columns_.size();
+        merged.columnIndex_.emplace(lower(patch.columns_[column]), static_cast<int>(merged.columns_.size()));
         merged.columns_.push_back(patch.columns_[column]);
         for (Row& row : merged.rows_) {
             row.cells.push_back({});
@@ -126,6 +132,7 @@ TwoDa TwoDa::merge(const TwoDa& base, const TwoDa& patch, std::string name)
             row.cells.assign(merged.columns_.size(), {});
             merged.rows_.push_back(std::move(row));
             existing = static_cast<int>(merged.rows_.size()) - 1;
+            merged.rowIndex_.emplace(lower(patchRow.label), existing);
         }
         Row& target = merged.rows_[static_cast<std::size_t>(existing)];
         for (std::size_t column = 0; column < patchRow.cells.size()
@@ -141,6 +148,13 @@ TwoDa TwoDa::merge(const TwoDa& base, const TwoDa& patch, std::string name)
 }
 
 TwoDa TwoDa::parse(std::vector<std::uint8_t> bytes, std::string name)
+{
+    TwoDa table = parseTable(std::move(bytes), std::move(name));
+    table.buildIndex();
+    return table;
+}
+
+TwoDa TwoDa::parseTable(std::vector<std::uint8_t> bytes, std::string name)
 {
     TwoDa table;
     table.name_ = std::move(name);

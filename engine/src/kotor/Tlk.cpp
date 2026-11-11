@@ -285,6 +285,9 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name, int entryGender
     // QuestEntry, PlotIndex, PlotXPPercentage, Delay, WaitFlags, Listener and
     // Speaker are per-node fields; replies carry the same set in shipped data.
     const auto nodeFields = [&](std::uint32_t s, auto& node) {
+        if (const GffField* v = gff.field(s, "CamFieldOfView"); v != nullptr && gff.number(*v) > 0.0f) {
+            node.camFieldOfView = gff.number(*v);
+        }
         if (const GffField* v = gff.field(s, "Speaker"); v != nullptr) {
             node.speaker = gff.text(*v);
         }
@@ -302,10 +305,45 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name, int entryGender
             node.plotXpPercentage = gff.number(*v);
         }
         if (const GffField* v = gff.field(s, "Delay"); v != nullptr) {
-            node.delay = static_cast<std::uint32_t>(gff.integer(*v));
+            // A DWORD held in the field. Its 0xFFFFFFFF (no Delay) doesn't survive Gff::integer,
+            // which goes through a float.
+            node.delay = v->data;
         }
         if (const GffField* v = gff.field(s, "WaitFlags"); v != nullptr) {
             node.waitFlags = static_cast<std::uint32_t>(gff.integer(*v));
+        }
+        if (const GffField* v = gff.field(s, "VO_ResRef"); v != nullptr) {
+            node.voResRef = gff.text(*v);
+        }
+        if (const GffField* v = gff.field(s, "SoundExists"); v != nullptr) {
+            node.soundExists = static_cast<std::uint32_t>(gff.integer(*v));
+        }
+        if (const GffField* v = gff.field(s, "FadeType"); v != nullptr) {
+            node.fadeType = gff.integer(*v);
+        }
+        if (const GffField* v = gff.field(s, "FadeColor"); v != nullptr) {
+            const Vec3 color = gff.vector3(*v);
+            node.fadeColor[0] = color.x;
+            node.fadeColor[1] = color.y;
+            node.fadeColor[2] = color.z;
+        }
+        if (const GffField* v = gff.field(s, "FadeDelay"); v != nullptr) {
+            node.fadeDelay = gff.number(*v);
+        }
+        if (const GffField* v = gff.field(s, "FadeLength"); v != nullptr) {
+            node.fadeLength = gff.number(*v);
+        }
+        if (const GffField* v = gff.field(s, "AnimList"); v != nullptr) {
+            for (const std::uint32_t item : gff.list(*v)) {
+                DlgAnim anim;
+                if (const GffField* who = gff.field(item, "Participant"); who != nullptr) {
+                    anim.participant = gff.text(*who);
+                }
+                if (const GffField* which = gff.field(item, "Animation"); which != nullptr) {
+                    anim.animation = gff.integer(*which);
+                }
+                node.animList.push_back(std::move(anim));
+            }
         }
     };
     const auto linkActive = [&](std::uint32_t link) -> std::string {
@@ -393,6 +431,27 @@ Dlg Dlg::parse(const Gff& gff, const Tlk* tlk, std::string name, int entryGender
                 }
             }
             dlg.replies.push_back(std::move(reply));
+        }
+    }
+    if (const GffField* v = gff.field(root, "AmbientTrack"); v != nullptr) {
+        dlg.ambientTrack = gff.text(*v);
+    }
+    if (const GffField* v = gff.field(root, "ConversationType"); v != nullptr) {
+        dlg.conversationType = gff.integer(*v);
+    }
+    if (const GffField* v = gff.field(root, "AnimatedCut"); v != nullptr) {
+        dlg.animatedCut = gff.integer(*v) != 0;
+    }
+    if (const GffField* f = gff.field(root, "StuntList"); f != nullptr) {
+        for (const std::uint32_t s : gff.list(*f)) {
+            Dlg::Stunt stunt;
+            if (const GffField* v = gff.field(s, "Participant"); v != nullptr) {
+                stunt.participant = gff.text(*v);
+            }
+            if (const GffField* v = gff.field(s, "StuntModel"); v != nullptr) {
+                stunt.model = gff.text(*v);
+            }
+            dlg.stunts.push_back(std::move(stunt));
         }
     }
     if (const GffField* f = gff.field(root, "StartingList"); f != nullptr) {

@@ -30,6 +30,20 @@ public:
     // Draws the full-screen effect triangle inside an active rendering scope.
     void recordDraw(VkCommandBuffer commandBuffer);
 
+    // ProgFX 1601 speed blur (FrameBufferModifications 00437520 / 00435bd0, flag 0x10). blurReady:
+    // the pass exists and the blur is on; otherwise call blurSkipped, which drops the last frame
+    // as retail clears 007a698d. blurPrimed: a last frame is held, so recordBlur (after recordCopy,
+    // in a rendering scope) draws last x ratio + frame x (1 - ratio). recordAccumulate (outside a
+    // scope) then keeps the swapchain image as the last frame.
+    bool blurReady() const { return pipeline_ != VK_NULL_HANDLE && accum_.view != VK_NULL_HANDLE
+        && effect_.blurring(); }
+    bool blurPrimed() const { return blurPrimed_; }
+    void blurSkipped() { blurPrimed_ = false; }
+    void recordBlur(VkCommandBuffer commandBuffer);
+    void recordAccumulate(VkCommandBuffer commandBuffer, VkImage swapchainImage);
+    // The frame copy recordCopy fills (read-only layout after it); ProgFX 1800 reads it.
+    VkImageView copyView() const { return copy_.view; }
+
 private:
     struct Image {
         VkImage image = VK_NULL_HANDLE;
@@ -43,6 +57,7 @@ private:
     void destroyImage(Image& target);
     bool uploadNoise(std::string& error);
     void updateDescriptor();
+    bool prepareAccum(std::string& error);
 
     VkDevice device_ = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;
@@ -57,6 +72,8 @@ private:
     VkSampler clampSampler_ = VK_NULL_HANDLE;
     VkSampler repeatSampler_ = VK_NULL_HANDLE;
     Image copy_;
+    Image accum_; // the last (blurred) frame, ProgFX 1601
+    bool blurPrimed_ = false;
     VkExtent2D extent_{};
     Image noise_;
     VideoEffectState effect_;

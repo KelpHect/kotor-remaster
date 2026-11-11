@@ -32,6 +32,12 @@ void Chargen::reset()
     refreshDerived(true);
 }
 
+void Chargen::resetBuild()
+{
+    attributes_ = {8, 8, 8, 8, 8, 8};
+    refreshDerived(true);
+}
+
 void Chargen::refreshPortraits()
 {
     portraitRows_ = rules_.pcPortraitRows(gender_);
@@ -245,6 +251,39 @@ bool Chargen::toggleFeat(std::int32_t featId)
     }
     feats_.insert(featId);
     return true;
+}
+
+bool Chargen::applyRecommended(Step step)
+{
+    if (step == Step::Abilities) {
+        attributes_ = rules_.recommendedAbilities(classId_);
+        refreshDerived(false);
+        return true;
+    }
+    if (step == Step::Skills) {
+        // Retail 006f4e20 then 006491a0: rank 1 upward, as many ranks as each row takes.
+        std::fill(skills_.begin(), skills_.end(), 0);
+        for (std::int32_t rank = 1; rank <= static_cast<std::int32_t>(skills_.size()); ++rank) {
+            const std::int32_t index = rules_.skillForRecommendRank(classId_, rank);
+            while (index >= 0 && adjustSkill(index, 1)) {
+            }
+        }
+        return true;
+    }
+    if (step == Step::Feats) {
+        // Retail 006f3a80 then 0064a770: rank 1 upward until the pool is gone, each row checked like a
+        // pick by hand. The picks are what 006cdfc0's popup lists.
+        feats_.clear();
+        const std::vector<std::int32_t> offered = availableFeats();
+        for (std::int32_t rank = 1; rank <= rules_.featCount() && featPointsRemaining() > 0; ++rank) {
+            const std::int32_t id = rules_.featForRecommendRank(classId_, rank);
+            if (id >= 0 && std::find(offered.begin(), offered.end(), id) != offered.end()) {
+                toggleFeat(id);
+            }
+        }
+        return true;
+    }
+    return false;
 }
 
 std::int32_t Chargen::skillRankCap(std::int32_t index) const

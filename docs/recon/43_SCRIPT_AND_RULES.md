@@ -20,7 +20,7 @@ offsets, qualifiers, jump operands, action id/argc, constants, `DESTRUCT` triple
   Sprint 3; `RESTOREBP` restores it;
 - `CPTOPSP`/`CPDOWNSP`/`CPTOPBP`/`CPDOWNBP`, `MOVSP`, `INCSP`/`DECSP`, `INCBP`/`DECBP`,
   `DESTRUCT`, `STORESTATE`/`STORESTATEALL`, and all arithmetic/logic/comparison opcodes;
-- the oracle's numeric rules: truncating integer division, zero divisor -> 0, 32-bit masks for
+- the oracle's numeric rules: truncating integer division, a zero divisor stops the run (005d2bd0, -0x69), 32-bit masks for
   shifts/complement, case-insensitive string equality/order, and 3-cell vector comparisons.
 
 Action mediation has two modes. Typed-default mode (no sink) consumes the declared arguments and

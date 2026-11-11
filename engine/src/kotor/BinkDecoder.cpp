@@ -482,6 +482,11 @@ const BinkAudioTrack& BinkPlayer::audio() const
     return impl_->audio;
 }
 
+std::vector<float> BinkPlayer::takeAudioSamples()
+{
+    return std::exchange(impl_->audio.samples, {});
+}
+
 double BinkPlayer::audioDurationSeconds() const
 {
     return impl_->audio.durationSeconds();

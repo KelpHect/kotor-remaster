@@ -1,9 +1,17 @@
 #include "app/Application.h"
+#include "app/FramePacer.h"
+#include "app/InputScript.h"
+#include "app/Soak.h"
 
 #include "audio/Output.h"
 #include "audio/Reverb.h"
 #include "audio/ReverbGate.h"
 #include "core/Log.h"
+#include "game/QuestGraph.h"
+#include "game/Ambience.h"
+#include "game/AnimationFamily.h"
+#include "game/WorldFamily.h"
+#include "game/TextureAudit.h"
 #include "game/AudioSystem.h"
 #include "game/BugParity.h"
 #include "game/Chargen.h"
@@ -11,7 +19,15 @@
 #include "game/ChargenPreview.h"
 #include "game/Factions.h"
 #include "game/GameSession.h"
+#include "game/GuiFrame.h"
+#include "game/GuiPaint.h"
 #include "game/GuiSystem.h"
+#include "game/DialogueScreen.h"
+#include "game/GameScreens.h"
+#include "game/Hud.h"
+#include "game/FrontEnd.h"
+#include "game/FrontEndGate.h"
+#include "game/MenuScene.h"
 #include "game/Minigames.h"
 #include "game/Pathfinding.h"
 #include "kotor/BinkDecoder.h"
@@ -29,7 +45,9 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <bit>
 #include <cctype>
+#include <chrono>
 #include <array>
 #include <cstdint>
 #include <cstdlib>
@@ -86,6 +104,7 @@ struct RuntimeState {
     BackendKind activeBackend = BackendKind::Null;
     std::unique_ptr<kotor::Install> guiInstall;
     std::unique_ptr<GuiSystem> guiSystem;
+    std::unique_ptr<GuiPainter> guiPainter;
     bool requestChargen = false;
 };
 
@@ -96,6 +115,10 @@ struct ChargenVisuals {
     IRenderBackend* backend = nullptr;
     PortraitImages* portraits = nullptr;
     ChargenPreview* preview = nullptr;
+    MenuScene* menu = nullptr;                      // the main menu's 3D scene
+    FrontEnd* frontEnd = nullptr;                   // menu, options, load/save, movies, credits
+    GameScreens* gameScreens = nullptr;             // inventory, journal, character, store, container...
+    bool menuStaged = false;                        // that scene is the backend's preview scene
     std::map<std::string, std::uint64_t> textures; // resref -> backend UI image id
     std::map<std::string, PreviewRect> rects;       // 3D control tag -> pixels, last frame
     std::uint32_t uploadedRevision = UINT32_MAX;
@@ -150,6 +173,193 @@ struct ChargenVisuals {
 };
 
 ChargenVisuals* gVisuals = nullptr;
+GuiPainter* gGuiPainter = nullptr;
+
+// Retail 00688e10: fnt_d16x16 through 0040b360, which appends 'b' for the shipped Use Small Fonts=0 (GuiPainter::font
+// does that; the retail XP float is 59 px wide at 1024x768, paired burst cb2_003499 - 'a' drew it 33 px), centred in a 200 wide box on the
+// object's projected point, each older line one height up. Retail 00688ff0 counts the time left (+0x140) down and
+// sets the label's alpha (+0x110) to time left / lifetime (+0x144): a straight fade over the whole life.
+void paintFloatingText(GameSession& game, ImDrawList* draw, float width, float height, float scale)
+{
+    const GuiFont* font = gGuiPainter != nullptr ? gGuiPainter->font("fnt_d16x16") : nullptr;
+    if (font == nullptr) {
+        return;
+    }
+    const SceneCamera camera = game.camera();
+    const auto dot = [](const kotor::Vec3& a, const kotor::Vec3& b) { return a.x * b.x + a.y * b.y + a.z * b.z; };
+    const auto unit = [&](kotor::Vec3 v) {
+        const float size = std::sqrt(dot(v, v));
+        return size > 0.0f ? kotor::Vec3{v.x / size, v.y / size, v.z / size} : v;
+    };
+    const kotor::Vec3 forward = unit(camera.forward);
+    const kotor::Vec3 right = unit({forward.y * camera.up.z - forward.z * camera.up.y, forward.z * camera.up.x - forward.x * camera.up.z,
+                                    forward.x * camera.up.y - forward.y * camera.up.x});
+    const kotor::Vec3 up{right.y * forward.z - right.z * forward.y, right.z * forward.x - right.x * forward.z,
+                         right.x * forward.y - right.y * forward.x};
+    const float focal = (height * 0.5f) / std::tan(camera.fovYDegrees * 0.5f * 3.14159265f / 180.0f);
+    const float lineHeight = 16.0f * scale;
+    for (const FloatingText& line : game.floatingTexts()) {
+        kotor::Vec3 at;
+        if (!game.floatingAnchor(line.object, at)) {
+            continue;
+        }
+        const kotor::Vec3 d{at.x - camera.eye.x, at.y - camera.eye.y, at.z - camera.eye.z};
+        const float depth = dot(d, forward);
+        if (depth <= camera.nearClip) {
+            continue;
+        }
+        const float x = width * 0.5f + dot(d, right) / depth * focal;
+        const float y = height * 0.5f - dot(d, up) / depth * focal - static_cast<float>(line.line) * lineHeight;
+        const float alpha = std::clamp((line.seconds - line.age) / line.seconds, 0.0f, 1.0f);
+        const auto channel = [](float v) { return static_cast<unsigned>(std::clamp(v, 0.0f, 1.0f) * 255.0f + 0.5f); };
+        const unsigned color = channel(line.color.x) | channel(line.color.y) << 8 | channel(line.color.z) << 16 | channel(alpha) << 24;
+        // RETAIL-PROVEN (AddFloatyText 0062b080 builds 0068b7c0, whose vtable 00753ea8 takes CSWGuiBlackenedLabel::Draw
+        // 006aeac0 at +0x38): the text is drawn in black four times with its extent moved (-1,+1), (+1,+1), (+1,-1),
+        // (-1,-1) at the same alpha, then once in its own colour. Retail frame burst\cb2_003499_0295798 shows the
+        // magenta "XP 300" with that 1 px black outline.
+        const unsigned black = channel(alpha) << 24;
+        // Retail positions the label by a whole-number extent (00688e10 converts the projected point with ftol), and
+        // the string draw 0045a850 lays its quads out on whole pixels, so the glyphs are crisp. A fractional anchor
+        // made ours bilinear-soft: snap the text block to whole pixels (the same centring, rounded).
+        const float block = (font->height + font->spacingB) * scale;
+        const float textW = font->textWidth(line.text) * scale;
+        const float left = std::round(x - 0.5f * textW);
+        const float top = std::round(y - lineHeight + 0.5f * (lineHeight - block));
+        for (const std::pair<float, float>& shift : {std::pair{-1.0f, 1.0f}, std::pair{1.0f, 1.0f}, std::pair{1.0f, -1.0f},
+                                                      std::pair{-1.0f, -1.0f}}) {
+            const float dx = shift.first * scale;
+            const float dy = shift.second * scale;
+            gGuiPainter->drawText(draw, *font, line.text, left + dx, top + dy, left + textW + dx, top + block + dy, 1, black, scale,
+                                  false);
+        }
+        gGuiPainter->drawText(draw, *font, line.text, left, top, left + textW, top + block, 1, color, scale, false);
+    }
+}
+
+// The pointer's box is the "tooltip" label of tooltip<size>.gui (strings 0074ffd4.., loaded per resolution; the
+// controls match, only the panel size differs): corner confirm5, edge confirm6, fill dialog3, DIMENSION 4,
+// dialogfont16x16 in white, centred. Retail 00624af0 sizes it to the text plus 8 each way and puts it at the
+// pointer plus 15, kept 2 inside the window. Worked in HUD design units (ENGINE CHOICE: scaled with the HUD,
+// 1:1 at 1024x768).
+void paintTooltip(GuiSystem* tooltipGui, const std::string& text, ImDrawList* draw, float width, float height, float scale)
+{
+    if (text.empty() || gGuiPainter == nullptr || tooltipGui == nullptr || scale <= 0.0f) {
+        return;
+    }
+    kotor::GuiScreen* screen = tooltipGui->editableScreen();
+    kotor::GuiControl* box = nullptr;
+    if (screen != nullptr) {
+        for (kotor::GuiControl& control : screen->controls) {
+            if (control.tag == "tooltip") {
+                box = &control;
+            }
+        }
+    }
+    const GuiFont* font = box != nullptr ? gGuiPainter->font(box->font) : nullptr;
+    if (box == nullptr || font == nullptr) {
+        return;
+    }
+    const float areaW = width / scale;
+    const float areaH = height / scale;
+    const int boxWidth = static_cast<int>(std::ceil(font->textWidth(text))) + 8;
+    const int boxHeight = static_cast<int>(std::ceil(font->height)) + 8;
+    const ImVec2 pointer = ImGui::GetIO().MousePos;
+    int x = static_cast<int>(pointer.x / scale) + 15;
+    int y = static_cast<int>(pointer.y / scale) + 15;
+    if (static_cast<float>(x + boxWidth) >= areaW) {
+        x = static_cast<int>(areaW) - boxWidth - 2;
+    }
+    if (static_cast<float>(y + boxHeight) >= areaH) {
+        y = static_cast<int>(areaH) - boxHeight - 2;
+    }
+    box->extent.left = x;
+    box->extent.top = y;
+    box->extent.width = boxWidth;
+    box->extent.height = boxHeight;
+    tooltipGui->setText(box->tag, text);
+    GuiView view = gGuiPainter->layout(*screen, width, height);
+    view.scale = scale;
+    view.offsetX = 0.0f;
+    view.offsetY = 0.0f;
+    view.panelLeft = 0.0f;
+    view.panelTop = 0.0f;
+    view.anchored = false;
+    GuiPaintOptions options;
+    options.view = view;
+    options.opaqueBackdrop = false;
+    options.windowBackdrop = false;
+    options.skipPanelFill = true;
+    options.timeSeconds = ImGui::GetTime();
+    gGuiPainter->paint(*tooltipGui, draw, width, height, options);
+}
+// The bark bubble (barkbubble.gui). 006a9920 sizes the panel to its text: height = the label's text
+// height + 10 (the label's border adds nothing); 006a9ce0 keeps the file's LEFT and TOP (48, 140) and
+// stretches it to the screen less LEFT on each side; 006a9fd0 puts LBL_BARKTEXT 5 inside the panel.
+// NOT TRACED: the TOP offset 006a9ce0 adds when 005ede70 is set (0062f8f0's byte).
+void paintBark(GuiSystem* barkGui, const std::string& text, ImDrawList* draw, float width, float height, float scale)
+{
+    if (text.empty() || gGuiPainter == nullptr || barkGui == nullptr || scale <= 0.0f) {
+        return;
+    }
+    kotor::GuiScreen* screen = barkGui->editableScreen();
+    kotor::GuiControl* label = nullptr;
+    if (screen != nullptr) {
+        for (kotor::GuiControl& control : screen->controls) {
+            if (control.tag == "LBL_BARKTEXT") {
+                label = &control;
+            }
+        }
+    }
+    const GuiFont* font = label != nullptr ? gGuiPainter->font(label->font) : nullptr;
+    if (label == nullptr || font == nullptr) {
+        return;
+    }
+    static constexpr int kLeft = 48;
+    static constexpr int kTop = 140;
+    const int panelWidth = static_cast<int>(width / scale) - 2 * kLeft;
+    const int labelWidth = panelWidth - 10;
+    // The label's text height: its lines, wrapped at word breaks to the label's width.
+    int lines = 1;
+    std::string line;
+    std::size_t at = 0;
+    while (at < text.size()) {
+        const std::size_t next = text.find(' ', at);
+        const std::string word = text.substr(at, next == std::string::npos ? std::string::npos : next - at);
+        const std::string tried = line.empty() ? word : line + " " + word;
+        if (!line.empty() && font->textWidth(tried) > static_cast<float>(labelWidth)) {
+            ++lines;
+            line = word;
+        } else {
+            line = tried;
+        }
+        at = next == std::string::npos ? text.size() : next + 1;
+    }
+    const int panelHeight = lines * static_cast<int>(std::ceil(font->height)) + 10;
+    screen->extent.left = kLeft;
+    screen->extent.top = kTop;
+    screen->extent.width = panelWidth;
+    screen->extent.height = panelHeight;
+    label->extent.left = 5;
+    label->extent.top = 5;
+    label->extent.width = labelWidth;
+    label->extent.height = panelHeight - 10;
+    barkGui->setText(label->tag, text);
+    GuiView view = gGuiPainter->layout(*screen, width, height);
+    view.scale = scale;
+    view.offsetX = 0.0f;
+    view.offsetY = 0.0f;
+    view.panelLeft = static_cast<float>(kLeft);
+    view.panelTop = static_cast<float>(kTop);
+    view.anchored = false;
+    GuiPaintOptions options;
+    options.view = view;
+    options.opaqueBackdrop = false;
+    options.windowBackdrop = false;
+    options.timeSeconds = ImGui::GetTime();
+    gGuiPainter->paint(*barkGui, draw, width, height, options);
+}
+
+LoadScreenProbe* gLoadProbe = nullptr; // the front-end gate's view of the loading screen
 
 // Fills [low, high] with `color` except the rectangles in `holes` (where a 3D model
 // control draws underneath the UI). Horizontal bands keep it to a few quads.
@@ -186,6 +396,524 @@ void fillExcluding(ImDrawList* draw, ImVec2 low, ImVec2 high, ImU32 color,
         }
     }
 }
+
+// --texture-wrap-check: renders one shipped room triangle whose UVs run far past 1 with a
+// probe texture (R = U texel, G = V texel, B constant) under each wrap setting and measures
+// the presented frame. Where a coordinate leaves [0,1] a clamped axis pins its channel to the
+// edge texel (0 or 255); a repeating axis keeps cycling through the whole ramp. The saturated
+// share of the covered pixels is compared with the share the triangle's own UVs predict.
+class TextureWrapGate {
+public:
+    bool finished() const { return phase_ == Phase::Done; }
+    int exitCode() const { return ok_ ? 0 : 67; }
+
+    void step(IRenderBackend& backend, GameSession& game)
+    {
+        if (phase_ == Phase::Done) {
+            return;
+        }
+        ++frames_;
+        backend_ = backend.info().name;
+        CapturedFrame frame;
+        const bool captured = backend.captureFrame(frame);
+        if (frames_ > 3000) {
+            fail("gate_timeout");
+            return;
+        }
+        // The module opens from a black fade and a fade tints every pixel the probe draws.
+        if (game.fade().opacity > 0.0f) {
+            settle_ = 0;
+            return;
+        }
+        if (phase_ == Phase::Select) {
+            if (frames_ < 3) {
+                return; // let the first frames present so the readback is armed
+            }
+            if (!build(game.scene())) {
+                fail("no_tiled_triangle");
+                return;
+            }
+            apply(backend, flagsOrder_[0]);
+            return;
+        }
+        if (++settle_ < 5) {
+            return;
+        }
+        if (!captured || frame.rgba.empty()) {
+            fail("capture");
+            return;
+        }
+        if (variant_ < flagsOrder_.size()) {
+            measure(frame, flagsOrder_[variant_]);
+        } else if (variant_ < flagsOrder_.size() + kBumpVariants) {
+            measureBump(frame);
+        } else if (variant_ < flagsOrder_.size() + kBumpVariants + kProceduralVariants) {
+            measureProcedural(frame);
+        } else {
+            measureSpecular(frame);
+        }
+        ++variant_;
+        if (variant_ >= flagsOrder_.size() + kBumpVariants + kProceduralVariants + kSpecularVariants) {
+            finish(backend);
+            return;
+        }
+        if (variant_ < flagsOrder_.size()) {
+            apply(backend, flagsOrder_[variant_]);
+        } else if (variant_ < flagsOrder_.size() + kBumpVariants) {
+            applyBump(backend, variant_ - flagsOrder_.size());
+        } else if (variant_ < flagsOrder_.size() + kBumpVariants + kProceduralVariants) {
+            applyProcedural(backend, variant_ - flagsOrder_.size() - kBumpVariants);
+        } else {
+            applySpecular(backend, variant_ - flagsOrder_.size() - kBumpVariants - kProceduralVariants);
+        }
+    }
+
+private:
+    enum class Phase { Select, Measure, Done };
+
+    void fail(const char* what)
+    {
+        logError(concat("texture wrap check: ", what, " FAIL"));
+        ok_ = false;
+        phase_ = Phase::Done;
+    }
+
+    void verdict(bool pass, const std::string& what)
+    {
+        logInfo(concat("texture wrap check: ", what, pass ? " PASS" : " FAIL"));
+        ok_ = ok_ && pass;
+    }
+
+    // The room triangle that tiles its texture the most, among textures that repeat.
+    bool build(const kotor::Scene& source)
+    {
+        std::size_t triangles = 0;
+        std::size_t tiled = 0;
+        float bestScore = 0.0f;
+        float bestArea = 0.0f;
+        std::array<std::size_t, 3> best{};
+        std::uint32_t bestTexture = 0;
+        for (const kotor::TextureBatch& batch : source.batches) {
+            if (batch.texture >= source.textures.size()) {
+                continue;
+            }
+            const bool repeats = source.textures[batch.texture].clamp == 0;
+            for (std::uint32_t at = batch.firstIndex; at + 2 < batch.firstIndex + batch.indexCount;
+                 at += 3) {
+                const std::array<std::size_t, 3> v{source.indices[at], source.indices[at + 1],
+                                                   source.indices[at + 2]};
+                float uLow = 1e9f;
+                float uHigh = -1e9f;
+                float vLow = 1e9f;
+                float vHigh = -1e9f;
+                for (const std::size_t index : v) {
+                    uLow = std::min(uLow, source.vertices[index].uv.x);
+                    uHigh = std::max(uHigh, source.vertices[index].uv.x);
+                    vLow = std::min(vLow, source.vertices[index].uv.y);
+                    vHigh = std::max(vHigh, source.vertices[index].uv.y);
+                }
+                ++triangles;
+                const float score = std::min(uHigh - uLow, vHigh - vLow);
+                const float area = 0.5f * kotor::length(kotor::cross(
+                    source.vertices[v[1]].position - source.vertices[v[0]].position,
+                    source.vertices[v[2]].position - source.vertices[v[0]].position));
+                tiled += (uHigh - uLow > 1.0f || vHigh - vLow > 1.0f) ? 1u : 0u;
+                const float longest = std::max({
+                    kotor::length(source.vertices[v[1]].position - source.vertices[v[0]].position),
+                    kotor::length(source.vertices[v[2]].position - source.vertices[v[1]].position),
+                    kotor::length(source.vertices[v[0]].position - source.vertices[v[2]].position)});
+                // Compact (not a sliver), repeating, and not so extreme that float UVs lose
+                // their fraction.
+                if (repeats && area >= 1.0f && area >= 0.15f * longest * longest && score < 200.0f
+                    && (score > bestScore || (score == bestScore && area > bestArea))) {
+                    bestScore = score;
+                    bestArea = area;
+                    best = v;
+                    bestTexture = batch.texture;
+                }
+            }
+        }
+        logInfo(concat("texture wrap check: module=", source.module, " room triangles=", triangles,
+                       " with a UV span above 1=", tiled, " chosen texture=",
+                       source.textures[bestTexture].name, " min UV span=", bestScore,
+                       " area=", bestArea));
+        if (bestScore < 2.0f) {
+            return false;
+        }
+        probe_ = kotor::Scene{};
+        probe_.module = source.module;
+        probe_.ambient = {1.0f, 1.0f, 1.0f};
+        probe_.dynamicAmbient = {1.0f, 1.0f, 1.0f}; // object light starts from it (retail 00451674)
+        probe_.diffuse = {0.0f, 0.0f, 0.0f};
+        probe_.fogColor = {0.0f, 0.0f, 0.0f};
+        probe_.fogNear = 1.0e6f;
+        probe_.fogFar = 2.0e6f;
+        kotor::Texture texture;
+        texture.name = "wrap_probe";
+        texture.image.width = 16;
+        texture.image.height = 16;
+        texture.image.rgba.resize(16u * 16u * 4u);
+        for (int y = 0; y < 16; ++y) {
+            for (int x = 0; x < 16; ++x) {
+                const std::size_t o = static_cast<std::size_t>(y * 16 + x) * 4u;
+                texture.image.rgba[o] = static_cast<std::uint8_t>(x * 17);
+                texture.image.rgba[o + 1] = static_cast<std::uint8_t>(y * 17);
+                texture.image.rgba[o + 2] = kProbeBlue;
+                texture.image.rgba[o + 3] = 255;
+            }
+        }
+        probe_.textures.push_back(std::move(texture));
+        for (int i = 0; i < 3; ++i) {
+            probe_.vertices.push_back(source.vertices[best[static_cast<std::size_t>(i)]]);
+            probe_.indices.push_back(static_cast<std::uint32_t>(i));
+        }
+        kotor::TextureBatch batch;
+        batch.texture = 0;
+        batch.firstIndex = 0;
+        batch.indexCount = 3;
+        probe_.batches.push_back(batch);
+        // Face the triangle head on so its UVs map affinely to the screen.
+        const kotor::Vec3 a = probe_.vertices[0].position;
+        const kotor::Vec3 b = probe_.vertices[1].position;
+        const kotor::Vec3 c = probe_.vertices[2].position;
+        const kotor::Vec3 centre = (a + b + c) * (1.0f / 3.0f);
+        const kotor::Vec3 normal = kotor::normalize(kotor::cross(b - a, c - a));
+        const float edge = std::max({kotor::length(b - a), kotor::length(c - b), kotor::length(a - c)});
+        camera_.eye = centre + normal * (edge * 1.6f);
+        camera_.forward = normal * -1.0f;
+        kotor::Vec3 up = kotor::Vec3{0.0f, 0.0f, 1.0f} - normal * normal.z;
+        if (kotor::length(up) < 0.1f) {
+            up = kotor::Vec3{1.0f, 0.0f, 0.0f} - normal * normal.x;
+        }
+        camera_.up = kotor::normalize(up);
+        camera_.fovYDegrees = 60.0f;
+        camera_.nearClip = 0.05f;
+        camera_.farClip = 500.0f;
+        // Expected clamped shares, by sampling the triangle's own UV area.
+        const float lowEdge = 0.5f / 16.0f;
+        const float highEdge = 15.5f / 16.0f;
+        constexpr int kSteps = 96;
+        std::size_t samples = 0;
+        std::size_t uPinned = 0;
+        std::size_t vPinned = 0;
+        for (int i = 0; i < kSteps; ++i) {
+            for (int j = 0; i + j < kSteps; ++j) {
+                const float s = (static_cast<float>(i) + 0.33f) / kSteps;
+                const float t = (static_cast<float>(j) + 0.33f) / kSteps;
+                const float u = probe_.vertices[0].uv.x * (1.0f - s - t)
+                    + probe_.vertices[1].uv.x * s + probe_.vertices[2].uv.x * t;
+                const float v = probe_.vertices[0].uv.y * (1.0f - s - t)
+                    + probe_.vertices[1].uv.y * s + probe_.vertices[2].uv.y * t;
+                ++samples;
+                uPinned += (u <= lowEdge || u >= highEdge) ? 1u : 0u;
+                vPinned += (v <= lowEdge || v >= highEdge) ? 1u : 0u;
+            }
+        }
+        expectedU_ = static_cast<float>(uPinned) / static_cast<float>(samples);
+        expectedV_ = static_cast<float>(vPinned) / static_cast<float>(samples);
+        logInfo(concat("texture wrap check: UV area outside the texel centres: u=", expectedU_,
+                       " v=", expectedV_));
+        phase_ = Phase::Measure;
+        return true;
+    }
+
+    void apply(IRenderBackend& backend, std::uint8_t flags)
+    {
+        probe_.textures[0].clamp = flags;
+        backend.setScene(&probe_);
+        backend.setCamera(camera_);
+        settle_ = 0;
+    }
+
+    void measure(const CapturedFrame& frame, std::uint8_t flags)
+    {
+        // The probe's blue is constant and the camera centres the triangle, so the most
+        // common blue around the middle of the frame marks the covered pixels, whatever the
+        // backend does to the colour encoding.
+        const std::size_t pixels = frame.rgba.size() / 4u;
+        std::array<std::size_t, 256> blues{};
+        for (int dy = -4; dy <= 4; ++dy) {
+            for (int dx = -4; dx <= 4; ++dx) {
+                const int x = std::clamp(frame.width / 2 + dx, 0, frame.width - 1);
+                const int y = std::clamp(frame.height / 2 + dy, 0, frame.height - 1);
+                ++blues[frame.rgba[(static_cast<std::size_t>(y) * frame.width + x) * 4u + 2u]];
+            }
+        }
+        std::size_t modeBlue = 0;
+        for (std::size_t b = 0; b < 256; ++b) {
+            modeBlue = blues[b] > blues[modeBlue] ? b : modeBlue;
+        }
+        std::size_t covered = 0;
+        std::size_t uPinned = 0;
+        std::size_t vPinned = 0;
+        for (std::size_t i = 0; i < pixels; ++i) {
+            const std::uint8_t* p = &frame.rgba[i * 4u];
+            if (p[2] != modeBlue) {
+                continue;
+            }
+            ++covered;
+            uPinned += (p[0] <= 3 || p[0] >= 252) ? 1u : 0u;
+            vPinned += (p[1] <= 3 || p[1] >= 252) ? 1u : 0u;
+        }
+        const float u = covered > 0 ? static_cast<float>(uPinned) / static_cast<float>(covered) : 0.0f;
+        const float v = covered > 0 ? static_cast<float>(vPinned) / static_cast<float>(covered) : 0.0f;
+        const bool clampU = (flags & 1u) != 0u;
+        const bool clampV = (flags & 2u) != 0u;
+        // A repeating axis pins only where a sample lands on an end texel, a clamped axis
+        // pins wherever the coordinate leaves the texel centres.
+        const bool uOk = clampU ? std::fabs(u - expectedU_) <= 0.08f : u <= 0.06f;
+        const bool vOk = clampV ? std::fabs(v - expectedV_) <= 0.08f : v <= 0.06f;
+        logInfo(concat("texture wrap check: backend=", backend_, " clamp=", static_cast<int>(flags),
+                       " covered=", covered, " u_pinned=", u, " v_pinned=", v));
+        // Some of the frame, but not all of it: a frame the probe did not draw into would pass
+        // the repeat bounds by being empty.
+        verdict(covered >= 2000 && covered * 100 >= pixels && covered * 100 <= pixels * 60,
+                concat("clamp=", static_cast<int>(flags), " covered_pixels"));
+        verdict(uOk, concat("clamp=", static_cast<int>(flags), " u_axis ",
+                            clampU ? "clamped" : "repeats"));
+        verdict(vOk, concat("clamp=", static_cast<int>(flags), " v_axis ",
+                            clampV ? "clamped" : "repeats"));
+        if (flags == 0) {
+            // The streak this gate exists for: with the old clamp-everywhere sampler the
+            // pinned share would sit at the expected value, far above the repeat result.
+            verdict(expectedU_ >= 0.4f || expectedV_ >= 0.4f, "tiling_would_pin_a_clamped_sampler");
+        }
+    }
+
+    // A known wavy surface: map-only reflection of a striped environment (83025c), with a flat
+    // normal map, then with a two-cell ripple atlas at each of its cells.
+    void applyBump(IRenderBackend& backend, std::size_t which)
+    {
+        if (which == 0) {
+            kotor::Texture stripes;
+            stripes.name = "bump_probe_env";
+            stripes.image.width = 128;
+            stripes.image.height = 64;
+            stripes.image.rgba.resize(128u * 64u * 4u);
+            for (int y = 0; y < 64; ++y) {
+                for (int x = 0; x < 128; ++x) {
+                    const std::uint8_t v = ((x / 8) & 1) != 0 ? 240 : 20;
+                    std::uint8_t* out = &stripes.image.rgba[static_cast<std::size_t>(y * 128 + x) * 4u];
+                    out[0] = out[1] = out[2] = v;
+                    out[3] = 255;
+                }
+            }
+            kotor::Texture flat;
+            flat.name = "bump_probe_flat";
+            flat.image.width = 2;
+            flat.image.height = 2;
+            flat.image.rgba.assign(16u, 255u);
+            for (std::size_t i = 0; i < 16u; i += 4u) {
+                flat.image.rgba[i] = 128u;
+                flat.image.rgba[i + 1u] = 128u;
+            }
+            kotor::Texture ripple;
+            ripple.name = "bump_probe_ripple";
+            ripple.image.width = 64;
+            ripple.image.height = 32;
+            ripple.image.rgba.resize(64u * 32u * 4u);
+            for (int y = 0; y < 32; ++y) {
+                for (int x = 0; x < 64; ++x) {
+                    const float phase = static_cast<float>(x % 32) / 32.0f * 6.2831853f + (x >= 32 ? 3.14159265f : 0.0f);
+                    const kotor::Vec3 n = kotor::normalize(kotor::Vec3{0.5f * std::sin(phase), 0.0f, 1.0f});
+                    std::uint8_t* out = &ripple.image.rgba[static_cast<std::size_t>(y * 64 + x) * 4u];
+                    out[0] = static_cast<std::uint8_t>((n.x * 0.5f + 0.5f) * 255.0f);
+                    out[1] = 128u;
+                    out[2] = static_cast<std::uint8_t>((n.z * 0.5f + 0.5f) * 255.0f);
+                    out[3] = 255u;
+                }
+            }
+            probe_.textures.resize(1u);
+            probe_.textures[0].clamp = 0;
+            probe_.textures.push_back(std::move(stripes));
+            probe_.textures.push_back(std::move(flat));
+            probe_.textures.push_back(std::move(ripple));
+        }
+        kotor::TextureBatch& batch = probe_.batches[0];
+        batch.envmap = 1u;
+        batch.envMask = true;
+        batch.envOnlyAlpha = 1.0f;
+        batch.blend = kotor::BlendMode::Alpha;
+        batch.bumpmap = which == 0 ? 2u : 3u;
+        batch.bumpCycleX = which == 0 ? 1 : 2;
+        batch.bumpCycleY = 1;
+        batch.bumpCycleFps = which == 0 ? 0.0f : 1.0f;
+        probe_.clock = which == 2 ? 1.5f : 0.5f;
+        backend.setScene(&probe_);
+        backend.setCamera(camera_);
+        settle_ = 0;
+    }
+
+    void measureBump(const CapturedFrame& frame)
+    {
+        std::vector<std::uint8_t> grey(static_cast<std::size_t>(frame.width) * frame.height);
+        for (std::size_t i = 0; i < grey.size(); ++i) {
+            grey[i] = frame.rgba[i * 4u];
+        }
+        const std::size_t which = variant_ - flagsOrder_.size();
+        std::size_t differing = 0;
+        const std::vector<std::uint8_t>& against = which == 2 ? rippleGrey_ : flatGrey_;
+        for (std::size_t i = 0; i < grey.size() && i < against.size(); ++i) {
+            differing += std::abs(static_cast<int>(grey[i]) - static_cast<int>(against[i])) > 30 ? 1u : 0u;
+        }
+        if (which == 0) {
+            flatGrey_ = std::move(grey);
+        } else if (which == 1) {
+            logInfo(concat("texture wrap check: ripple differs from the flat map on ", differing, " pixels"));
+            verdict(differing > 1000u, "bump_ripple_moves_the_reflection");
+            rippleGrey_ = std::move(grey);
+        } else {
+            logInfo(concat("texture wrap check: bump cells differ on ", differing, " pixels"));
+            verdict(differing > 200u, "bump_cycle_cell_changes_the_frame");
+        }
+    }
+
+    // An animated texture on the probe triangle. The second frame has no setScene before it: only
+    // the backend's per-frame upload can show the new image.
+    void applyProcedural(IRenderBackend& backend, std::size_t which)
+    {
+        if (which == 0) {
+            kotor::Texture stripes;
+            stripes.name = "procedural_probe";
+            stripes.txi = kotor::parseTxi("proceduretype arturo\ndistort 1\narturowidth 16\narturoheight 16\n"
+                                          "distortionamplitude 2\nspeed 6\n");
+            stripes.image.width = 64;
+            stripes.image.height = 64;
+            stripes.image.rgba.resize(64u * 64u * 4u);
+            for (int y = 0; y < 64; ++y) {
+                for (int x = 0; x < 64; ++x) {
+                    const std::uint8_t v = (((x / 2) ^ (y / 2)) & 1) != 0 ? 240 : 20;
+                    std::uint8_t* out = &stripes.image.rgba[static_cast<std::size_t>(y * 64 + x) * 4u];
+                    out[0] = out[1] = out[2] = v;
+                    out[3] = 255;
+                }
+            }
+            probe_.textures.resize(1u);
+            probe_.textures[0] = std::move(stripes);
+            kotor::TextureBatch& batch = probe_.batches[0];
+            batch.envmap = kotor::kNoTexture;
+            batch.envMask = false;
+            batch.envOnlyAlpha = -1.0f;
+            batch.bumpmap = kotor::kNoTexture;
+            batch.bumpCycleX = 1;
+            batch.bumpCycleY = 1;
+            batch.bumpCycleFps = 0.0f;
+            batch.blend = kotor::BlendMode::Opaque;
+            kotor::updateProceduralTextures(probe_, 0.0f);
+            backend.setScene(&probe_);
+            backend.setCamera(camera_);
+        } else {
+            for (int frame = 0; frame < 30; ++frame) {
+                kotor::updateProceduralTextures(probe_, 1.0f / 60.0f);
+            }
+        }
+        settle_ = 0;
+    }
+
+    // Program 830250 on a flat map under one light at the camera: the same frame without and with
+    // the specular term, with texture alpha 0 so that its mask lets it all through.
+    void applySpecular(IRenderBackend& backend, std::size_t which)
+    {
+        if (which == 0) {
+            kotor::Texture dark;
+            dark.name = "specular_probe";
+            dark.image.width = 2;
+            dark.image.height = 2;
+            dark.image.rgba.assign(16u, 0u);
+            kotor::Texture flat;
+            flat.name = "specular_probe_flat";
+            flat.image.width = 2;
+            flat.image.height = 2;
+            flat.image.rgba.assign(16u, 255u);
+            for (std::size_t i = 0; i < 16u; i += 4u) {
+                flat.image.rgba[i] = 128u;
+                flat.image.rgba[i + 1u] = 128u;
+            }
+            // The texture list stays: the backend's per-frame uploads run on the scene it holds.
+            probe_.procedurals.clear();
+            probe_.textures.resize(1u);
+            probe_.textures[0] = std::move(dark);
+            probe_.textures.push_back(std::move(flat));
+            kotor::TextureBatch& batch = probe_.batches[0];
+            batch.lightmap = kotor::kNoTexture;
+            batch.bumpmap = 1u;
+            batch.bakedLight = true;
+            batch.baked = {};
+            batch.baked.lights[0].position = camera_.eye;
+            batch.baked.lights[0].colour = {1.0f, 1.0f, 1.0f};
+            batch.baked.lights[0].quadratic = 0.0f;
+        }
+        probe_.batches[0].bumpSpecular = which == 0 ? 0.0f : 1.0f;
+        backend.setScene(&probe_);
+        backend.setCamera(camera_);
+        settle_ = 0;
+    }
+
+    void measureSpecular(const CapturedFrame& frame)
+    {
+        std::vector<std::uint8_t> grey(static_cast<std::size_t>(frame.width) * frame.height);
+        for (std::size_t i = 0; i < grey.size(); ++i) {
+            grey[i] = frame.rgba[i * 4u];
+        }
+        const std::size_t which = variant_ - flagsOrder_.size() - kBumpVariants - kProceduralVariants;
+        if (which == 0) {
+            proceduralGrey_ = std::move(grey);
+            return;
+        }
+        std::size_t differing = 0;
+        for (std::size_t i = 0; i < grey.size() && i < proceduralGrey_.size(); ++i) {
+            differing += static_cast<int>(grey[i]) - static_cast<int>(proceduralGrey_[i]) > 30 ? 1u : 0u;
+        }
+        logInfo(concat("texture wrap check: specular brightens ", differing, " pixels"));
+        verdict(differing > 200u, "bump_specular_reaches_the_frame");
+    }
+
+    void measureProcedural(const CapturedFrame& frame)
+    {
+        std::vector<std::uint8_t> grey(static_cast<std::size_t>(frame.width) * frame.height);
+        for (std::size_t i = 0; i < grey.size(); ++i) {
+            grey[i] = frame.rgba[i * 4u];
+        }
+        const std::size_t which = variant_ - flagsOrder_.size() - kBumpVariants;
+        if (which == 0) {
+            proceduralGrey_ = std::move(grey);
+            return;
+        }
+        std::size_t differing = 0;
+        for (std::size_t i = 0; i < grey.size() && i < proceduralGrey_.size(); ++i) {
+            differing += std::abs(static_cast<int>(grey[i]) - static_cast<int>(proceduralGrey_[i])) > 30 ? 1u : 0u;
+        }
+        logInfo(concat("texture wrap check: animated texture differs on ", differing, " pixels"));
+        verdict(differing > 200u, "animated_texture_reaches_the_frame");
+    }
+
+    void finish(IRenderBackend& backend)
+    {
+        backend.setScene(nullptr);
+        logInfo(concat("texture wrap check: ", ok_ ? "PASS" : "FAIL"));
+        phase_ = Phase::Done;
+    }
+
+    static constexpr std::uint8_t kProbeBlue = 200;
+    static constexpr std::size_t kBumpVariants = 3;
+    static constexpr std::size_t kProceduralVariants = 2;
+    static constexpr std::size_t kSpecularVariants = 2;
+    std::vector<std::uint8_t> proceduralGrey_;
+    std::vector<std::uint8_t> flatGrey_;
+    std::vector<std::uint8_t> rippleGrey_;
+    Phase phase_ = Phase::Select;
+    bool ok_ = true;
+    int frames_ = 0;
+    int settle_ = 0;
+    std::size_t variant_ = 0;
+    // Both axes repeat, both clamp (the old behaviour), U only, V only.
+    std::array<std::uint8_t, 4> flagsOrder_{0, 3, 1, 2};
+    kotor::Scene probe_;
+    SceneCamera camera_;
+    float expectedU_ = 0.0f;
+    float expectedV_ = 0.0f;
+    std::string backend_;
+};
 
 // --chargen-preview-test: drives the shipped classsel and portcust screens with pointer
 // events through GuiSystem and asserts on the presented frame that each 3D model control
@@ -239,11 +967,60 @@ public:
         case Phase::ClassWait:
             if (frames_ >= 8) {
                 classScreen(backend, visuals);
-                click(gui, "BTN_SEL2");
+                // BTN_SEL1 = male Scoundrel (006dc3c0): the class of the retail walk, so the captured frames pair by class.
+                click(gui, "BTN_SEL1");
                 phase_ = Phase::ClassClick;
             }
             break;
         case Phase::ClassClick:
+            if (clickStep(gui)) {
+                phase_ = Phase::HubChoiceWait;
+                frames_ = 0;
+            }
+            break;
+        case Phase::HubChoiceWait:
+            // Retail 006eb420: the class pick opens MAINCG with Quick or Custom, the portrait, the model
+            // in its smoke, the scores blank and Quick's help (241) in LB_DESC. Fails on the old flow,
+            // which went from the class straight to the portrait screen.
+            if (gui.screenName() == "maincg_qorcpnl" && frames_ >= 12) {
+                CapturedFrame shot;
+                capture(backend, shot, "maincg_choice");
+                const auto& tlk = game.localization().tlk();
+                check(!gui.state("PORTRAIT_LBL").fill.empty(), "hub_portrait");
+                check(gui.state("LBL_CLASS").text == game.rules().className(flow.chargen.classId()), "hub_class_name");
+                check(gui.state("LB_DESC").items.size() == 1 && gui.state("LB_DESC").items[0].text == tlk.text(241),
+                      "hub_quick_help");
+                check(gui.state("STR_AB_LBL").text.empty() && !gui.state("OLD_LBL").visible, "hub_scores_blank");
+                const auto model = visuals.rects.find("MODEL_LBL");
+                check(model != visuals.rects.end() && !shot.rgba.empty() && drawnShare(shot, model->second) > 0.5,
+                      "hub_model_drawn");
+                click(gui, "CUST_CHAR_BTN");
+                phase_ = Phase::HubChoiceClick;
+            } else if (frames_ >= 200) {
+                check(false, "hub_opens_after_class");
+                phase_ = Phase::Done;
+            }
+            break;
+        case Phase::HubChoiceClick:
+            if (clickStep(gui)) {
+                phase_ = Phase::HubCustomWait;
+                frames_ = 0;
+            }
+            break;
+        case Phase::HubCustomWait:
+            if (gui.screenName() == "maincg_custpnl" && frames_ >= 8) {
+                CapturedFrame shot;
+                capture(backend, shot, "maincg_custom");
+                check(flow.customStep == 0 && gui.state("LBL_1").marked && !gui.state("LBL_2").marked,
+                      "hub_custom_first_step_lit");
+                click(gui, "BTN_STEPNAME1");
+                phase_ = Phase::HubCustomClick;
+            } else if (frames_ >= 200) {
+                check(false, "hub_custom_opens");
+                phase_ = Phase::Done;
+            }
+            break;
+        case Phase::HubCustomClick:
             if (clickStep(gui)) {
                 phase_ = Phase::PortraitWait;
                 frames_ = 0;
@@ -289,6 +1066,67 @@ public:
                 check(std::string(done.expectScreen).empty()
                           || gui.screenName() == done.expectScreen,
                       "chain_" + std::to_string(chainIndex_) + "_" + done.tag + "_screen");
+                const std::string shown = done.expectScreen;
+                if (shown == "abchrgen" || shown == "skchrgen" || shown == "ftchrgen") {
+                    // The screen carries the build's numbers (the file's labels are empty).
+                    const GuiControlState points = gui.state(shown == "ftchrgen" ? "STD_REMAINING_SELECTIONS_LBL"
+                                                                                  : "REMAINING_SELECTIONS_LBL");
+                    check(points.hasText && !points.text.empty() && !gui.state("MAIN_TITLE_LBL").text.empty(),
+                          shown + "_shows_points");
+                    CapturedFrame shot;
+                    capture(backend, shot, shown.c_str());
+                }
+                if (shown == "skillinfo") {
+                    CapturedFrame shot;
+                    capture(backend, shot, "feats_granted");
+                }
+                if (shown == "maincg_custpnl") {
+                    // Back on MAINCG: the step after the one accepted is lit, and from the attributes on the
+                    // scores, vitality, defence and saves are shown (006ef500 -> 006eac30).
+                    const int lit = flow.customStep;
+                    check(gui.state("LBL_" + std::to_string(lit + 1)).marked
+                              && !gui.state("LBL_" + std::to_string(lit == 0 ? 2 : lit)).marked,
+                          "hub_step_" + std::to_string(lit + 1) + "_lit");
+                    if (lit >= 2) {
+                        check(!gui.state("STR_AB_LBL").text.empty() && !gui.state("LBL_VIT").text.empty()
+                                  && !gui.state("NEW_REFL_LBL").text.empty(),
+                              "hub_scores_after_attributes");
+                    }
+                    if (lit == 5) {
+                        check(gui.state("LBL_NAME").text == flow.chargen.name(), "hub_shows_name");
+                    }
+                    CapturedFrame shot;
+                    capture(backend, shot, ("maincg_custom_step" + std::to_string(lit + 1)).c_str());
+                }
+                if (shown == "name") {
+                    // The shipped name screen: its box shows the default, and real key and text events
+                    // (SDL, as the keyboard sends them) replace it.
+                    if (!nameTyped_) {
+                        CapturedFrame shot;
+                        capture(backend, shot, "name");
+                        check(gui.state("NAME_BOX_EDIT").text.size() > 3
+                                  && gui.state("NAME_BOX_EDIT").text.rfind("Player", 0) != 0
+                                  && !gui.state("MAIN_TITLE_LBL").text.empty(),
+                              "name_box_shows_a_generated_name");
+                        for (int i = 0; i < 18; ++i) {
+                            SDL_Event key{};
+                            key.type = SDL_EVENT_KEY_DOWN;
+                            key.key.key = SDLK_BACKSPACE;
+                            key.key.scancode = SDL_SCANCODE_BACKSPACE;
+                            SDL_PushEvent(&key);
+                        }
+                        static const char typed[] = "Ney";
+                        SDL_Event text{};
+                        text.type = SDL_EVENT_TEXT_INPUT;
+                        text.text.text = typed;
+                        SDL_PushEvent(&text);
+                        nameTyped_ = true;
+                        frames_ = 0;
+                        break;
+                    }
+                    const std::string boxText = gui.state("NAME_BOX_EDIT").text;
+                    check(boxText.rfind("Ney", 0) == 0 && boxText.size() <= 4, "name_box_shows_the_typed_name");
+                }
                 ++chainIndex_;
                 if (chainIndex_ >= kChain.size()) {
                     phase_ = Phase::ModuleWait;
@@ -302,9 +1140,9 @@ public:
         case Phase::ModuleWait:
             if (lowerCase(game.module()) == "end_m01aa") {
                 check(flow.finished && !flow.active, "flow_finished");
-                check(game.character().classId == 1 && game.character().gender == 0,
+                check(game.character().classId == 2 && game.character().gender == 0,
                       "character_applied");
-                check(game.character().name == "PLAYER", "name_applied");
+                check(game.character().name == "NEY", "name_applied");
                 check(game.playerEntity() != static_cast<std::size_t>(-1), "avatar_in_module");
                 check(!game.scene().entities.empty(), "first_module_scene");
                 phase_ = Phase::Done;
@@ -324,7 +1162,8 @@ public:
 private:
     enum class Phase {
         MenuWait, MenuClick, MenuOpen,
-        ClassWait, ClassClick, PortraitWait, PortraitClick, CycleWait,
+        ClassWait, ClassClick, HubChoiceWait, HubChoiceClick, HubCustomWait, HubCustomClick,
+        PortraitWait, PortraitClick, CycleWait,
         AcceptChain, ChainSettle, ModuleWait, Done
     };
 
@@ -332,9 +1171,15 @@ private:
         const char* tag;
         const char* expectScreen; // screen shown after the click ("" = not checked)
     };
-    static constexpr std::array<ChainStep, 6> kChain{{
-        {"BTN_ACCEPT", "abchrgen"}, {"BTN_ACCEPT", "skchrgen"}, {"BTN_ACCEPT", "ftchrgen"},
-        {"BTN_SELECT", ""}, {"BTN_ACCEPT", "name"}, {"END_BTN", ""}}};
+    // Custom (CUSTPNL): each step screen's Accept goes back to MAINCG with the next step lit, and the
+    // next numbered button opens it; Play (step 6) starts the game.
+    // The feats screen opens under the granted-feats box (006f3460); its OK uncovers the screen.
+    static constexpr std::array<ChainStep, 12> kChain{{
+        {"BTN_ACCEPT", "maincg_custpnl"}, {"BTN_STEPNAME2", "abchrgen"}, {"BTN_ACCEPT", "maincg_custpnl"},
+        {"BTN_STEPNAME3", "skchrgen"}, {"BTN_ACCEPT", "maincg_custpnl"}, {"BTN_STEPNAME4", "skillinfo"},
+        {"BTN_OK", "ftchrgen"},
+        {"BTN_SELECT", ""}, {"BTN_ACCEPT", "maincg_custpnl"}, {"BTN_STEPNAME5", "name"},
+        {"END_BTN", "maincg_custpnl"}, {"BTN_STEPNAME6", ""}}};
 
     static std::string lowerCase(std::string value)
     {
@@ -599,6 +1444,7 @@ private:
 
     std::string outDir_;
     bool fromMenu_ = false;
+    bool nameTyped_ = false; // the name screen has been typed into with real SDL events
     std::size_t chainIndex_ = 0;
     Phase phase_ = Phase::ClassWait;
     int frames_ = 0;
@@ -630,9 +1476,28 @@ void drawPcPortrait(GameSession& game, float size)
     }
 }
 
+// keymap.2da rows 209..216 (retail 00621210 cases 0xd1..0xd8): the page's key opens it, switches to it
+// from another page and closes it on its own page. Refused on other shipped screens (chargen, menus).
+void pageKey(GameSession& game, GuiSystem* gui, GameScreens* screens, UiPanel panel)
+{
+    // The status summary holds the page keys until its OK (0062ef90 adds it with 0040bc70; paired
+    // walk W19: retail's equip..map steps leave it up and open nothing).
+    if (game.statusSummaryOpen()) {
+        return;
+    }
+    if (gui != nullptr && gui->active() && !(screens != nullptr && screens->open())) {
+        if (gui->screenName() != "optionsingame") {
+            return;
+        }
+        gui->close();
+    }
+    game.toggleUiPanel(panel);
+}
+
 bool isPreviewTag(const std::string& tag)
 {
-    return tag == "LBL_HEAD"
+    return tag == "LBL_HEAD" || tag == "LBL_3D" || tag == "LBL_3DCHAR" || tag == "MODEL_LBL" || tag == "3D_PlanetDisplay"
+        || tag == "3D_PlanetModel"
         || (tag.size() == 9 && tag.rfind("3D_MODEL", 0) == 0 && tag[8] >= '1' && tag[8] <= '6');
 }
 
@@ -650,8 +1515,13 @@ SDL_WindowFlags windowFlagsFor(BackendKind kind, const Options& options)
     case BackendKind::Auto:
         break;
     }
+    if (options.fullscreen && !options.hidden && !options.headless && kind != BackendKind::Null) {
+        flags |= SDL_WINDOW_FULLSCREEN; // no mode set: borderless at the desktop size
+    }
     if (options.hidden || options.headless || kind == BackendKind::Null) {
         flags |= SDL_WINDOW_HIDDEN;
+    } else if (options.startMinimized) {
+        flags |= SDL_WINDOW_MINIMIZED;
     }
     return flags;
 }
@@ -733,6 +1603,8 @@ int runImGuiSelfTest()
 
 void destroyRuntime(RuntimeState& state)
 {
+    gGuiPainter = nullptr;
+    state.guiPainter.reset(); // releases its images while the backend is alive
     if (state.backend) {
         state.backend->shutdown();
         state.backend.reset();
@@ -884,22 +1756,7 @@ void drawSystemsUi(GameSession& game)
             }
         }
         break;
-    case UiPanel::Party:
-        ImGui::Text("Party roster: %zu", game.companions().size());
-        ImGui::Separator();
-        for (std::size_t i = 0; i < game.companions().size(); ++i) {
-            const CompanionState& companion = game.companions()[i];
-            ImGui::Text("%s  %s %d  HP %d/%d  XP %d", companion.tag.c_str(),
-                        companion.sheet.name.c_str(), companion.sheet.level,
-                        companion.sheet.hp, companion.sheet.maxHp, companion.sheet.xp);
-            ImGui::SameLine();
-            if (ImGui::Button((std::string("Select##") + std::to_string(i)).c_str())) {
-                game.selectCompanion(static_cast<int>(i));
-            }
-        }
-        if (game.companions().empty()) {
-            ImGui::TextUnformatted("No companions in the party.");
-        }
+    case UiPanel::Party: // the shipped party selection screen (GameScreens::update)
         break;
     case UiPanel::Journal:
         ImGui::Text("Journal entries: %zu", game.journal().size());
@@ -908,51 +1765,7 @@ void drawSystemsUi(GameSession& game)
             ImGui::Text("%s = %d", plot.c_str(), state);
         }
         break;
-    case UiPanel::Merchant:
-        ImGui::Text("Gold: %d", game.gold());
-        ImGui::Separator();
-        for (std::size_t i = 0; i < game.merchants().size(); ++i) {
-            const MerchantState& merchant = game.merchants()[i];
-            ImGui::Text("%s (%s)  stock=%zu", merchant.name.c_str(), merchant.resref.c_str(),
-                        merchant.stock.size());
-            ImGui::SameLine();
-            if (ImGui::Button((std::string("Open##") + std::to_string(i)).c_str())) {
-                game.openStore(merchant.entity);
-            }
-        }
-        if (game.activeMerchant() >= 0) {
-            const MerchantState& merchant =
-                game.merchants()[static_cast<std::size_t>(game.activeMerchant())];
-            ImGui::Separator();
-            ImGui::Text("Buy from %s  (store gold %d)", merchant.resref.c_str(),
-                        merchant.gold);
-            for (std::size_t i = 0; i < merchant.stock.size(); ++i) {
-                const MerchantStockItem& stock = merchant.stock[i];
-                ImGui::Text("%s  %d gp  %s", stock.item.resref.c_str(), game.buyPrice(i),
-                            stock.infinite || stock.remaining > 0 ? "" : "sold");
-                ImGui::SameLine();
-                if (ImGui::Button((std::string("Buy##") + std::to_string(i)).c_str())) {
-                    game.buyMerchantItem(i);
-                }
-            }
-            ImGui::Separator();
-            ImGui::TextUnformatted("Sell");
-            for (std::size_t i = 0; i < game.inventory().size(); ++i) {
-                const InventoryItem& item = game.inventory()[i];
-                ImGui::Text("%s  %d gp%s", item.resref.c_str(), game.sellPrice(i),
-                            item.identified ? "" : "  unidentified");
-                ImGui::SameLine();
-                if (ImGui::Button((std::string("Sell##") + std::to_string(i)).c_str())) {
-                    game.sellInventoryItem(i);
-                }
-                if (!item.identified) {
-                    ImGui::SameLine();
-                    if (ImGui::Button((std::string("Identify##") + std::to_string(i)).c_str())) {
-                        game.identifyInventoryItem(i);
-                    }
-                }
-            }
-        }
+    case UiPanel::Merchant: // the shipped store screen (GameScreens::update)
         break;
     case UiPanel::Loot:
         ImGui::Text("Loot (%zu)", game.loot().size());
@@ -976,69 +1789,208 @@ void drawSystemsUi(GameSession& game)
     ImGui::End();
 }
 
+// A movie owns the whole window: black everywhere, the picture scaled to fit and centred
+// (letterboxed or pillarboxed by its own aspect). It goes on the foreground list so no
+// panel or fade overlay can sit on top of it, and the bars never show the world behind.
 void drawMovieOverlay(const kotor::BinkVideoFrame& frame, std::uint64_t texture)
 {
     const ImGuiIO& io = ImGui::GetIO();
-    ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-    ImGui::SetNextWindowSize(io.DisplaySize);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::Begin("Movie", nullptr,
-                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove
-                     | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground
-                     | ImGuiWindowFlags_NoBringToFrontOnFocus);
-    const float scale = std::min(io.DisplaySize.x / static_cast<float>(frame.width),
-                                 io.DisplaySize.y / static_cast<float>(frame.height));
-    const ImVec2 size(static_cast<float>(frame.width) * scale,
-                      static_cast<float>(frame.height) * scale);
-    ImGui::SetCursorPos(ImVec2((io.DisplaySize.x - size.x) * 0.5f,
-                               (io.DisplaySize.y - size.y) * 0.5f));
-    ImGui::Image(static_cast<ImTextureID>(texture), size);
-    ImGui::End();
-    ImGui::PopStyleVar(2);
+    ImDrawList* draw = ImGui::GetForegroundDrawList();
+    draw->AddRectFilled(ImVec2(0.0f, 0.0f), io.DisplaySize, IM_COL32(0, 0, 0, 255));
+    const kotor::MovieRect fit = kotor::fitMovie(frame.width, frame.height, io.DisplaySize.x,
+                                                 io.DisplaySize.y);
+    draw->AddImage(static_cast<ImTextureID>(texture), ImVec2(fit.x, fit.y),
+                   ImVec2(fit.x + fit.w, fit.y + fit.h));
 }
 
 void drawFacialRigOverlay(const FacialRig& rig)
 {
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 360.0f, 60.0f),
                             ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(340.0f, 310.0f), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(340.0f, 80.0f), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin("Lip sync rig")) {
         ImGui::End();
         return;
     }
-    const VisemePose& pose = rig.currentPose();
     ImGui::Text("viseme %d: %s", rig.viseme(), rig.visemeName(rig.viseme()).c_str());
-    ImGui::Text("jaw %.1f deg  wide %.2f  round %.2f  brow %.2f",
-                rig.jawAngle(rig.viseme()) * 57.29578f, pose.mouthWide,
-                pose.lipRound, pose.browRaise);
-    const ImVec2 origin = ImGui::GetCursorScreenPos();
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    const ImVec2 center(origin.x + 165.0f, origin.y + 120.0f);
-    draw->AddCircleFilled(center, 78.0f, IM_COL32(210, 188, 158, 255));
-    draw->AddCircle(center, 78.0f, IM_COL32(86, 70, 54, 255), 0, 2.0f);
-    const float brow = pose.browRaise * 8.0f;
-    draw->AddLine(ImVec2(center.x - 42.0f, center.y - 38.0f - brow),
-                  ImVec2(center.x - 14.0f, center.y - 44.0f - brow),
-                  IM_COL32(60, 45, 35, 255), 3.0f);
-    draw->AddLine(ImVec2(center.x + 14.0f, center.y - 44.0f - brow),
-                  ImVec2(center.x + 42.0f, center.y - 38.0f - brow),
-                  IM_COL32(60, 45, 35, 255), 3.0f);
-    draw->AddCircleFilled(ImVec2(center.x - 28.0f, center.y - 16.0f), 7.0f,
-                          IM_COL32(40, 30, 24, 255));
-    draw->AddCircleFilled(ImVec2(center.x + 28.0f, center.y - 16.0f), 7.0f,
-                          IM_COL32(40, 30, 24, 255));
-    const float mouthWidth = std::max(10.0f, 30.0f + pose.mouthWide * 26.0f);
-    const float mouthHeight = std::max(2.0f, 3.0f + pose.jawOpen * 34.0f);
-    draw->AddEllipseFilled(ImVec2(center.x, center.y + 38.0f),
-                           ImVec2(mouthWidth, mouthHeight),
-                           IM_COL32(74, 26, 26, 255));
-    draw->AddEllipseFilled(ImVec2(center.x, center.y + 38.0f),
-                           ImVec2(std::max(6.0f, mouthWidth - 4.0f),
-                                  std::max(1.0f, mouthHeight * 0.4f)),
-                           IM_COL32(242, 222, 216, 255));
-    ImGui::Dummy(ImVec2(320.0f, 220.0f));
+    ImGui::Text("talk clip at %.1f%% of its length", FacialRig::clipFraction(rig.viseme()) * 100.0f);
     ImGui::End();
+}
+
+// The loading screen (shipped loadscreen.gui): the image comes from loadscreens.2da row
+// ARE LoadScreenID of the destination area, the hint from loadscreenhints.2da, the music
+// is mus_loadscreen. The load blocks the frame loop, so two frames are presented before
+// it starts. The bar shows only that loading began and is halfway: the load has no
+// measurable progress. Which hint is picked is this engine's choice (not recovered).
+void presentLoadScreen(RuntimeState& state, GameSession& game, GuiSystem& gui, const std::string& next)
+{
+    if (!state.imguiReady || state.backend == nullptr || gGuiPainter == nullptr || !state.guiInstall) {
+        return;
+    }
+    std::int32_t screenId = 0;
+    try {
+        kotor::Install peek(game.installPath(), false);
+        screenId = kotor::readLoadScreenId(peek, next);
+    } catch (const std::exception&) {
+        screenId = -1;
+    }
+    GuiPaintOptions options;
+    options.opaqueBackdrop = true;
+    options.backdropKind = "load"; // 0067a710: the load screen names "<W>x<H>load"
+    std::string hint;
+    if (auto data = state.guiInstall->find("loadscreens", 2017)) {
+        const kotor::TwoDa table = kotor::TwoDa::parse(std::move(*data), "loadscreens");
+        const int row = screenId >= 0 && static_cast<std::size_t>(screenId) < table.rowCount() ? screenId : 0;
+        const int column = table.columnIndex("bmpresref");
+        if (column >= 0) {
+            options.panelFill = table.cell(static_cast<std::size_t>(row), static_cast<std::size_t>(column));
+        }
+    }
+    if (auto data = state.guiInstall->find("loadscreenhints", 2017)) {
+        const kotor::TwoDa table = kotor::TwoDa::parse(std::move(*data), "loadscreenhints");
+        if (table.rowCount() > 0) {
+            const std::size_t hash = std::hash<std::string>{}(next);
+            const int column = table.columnIndex((hash & 1u) != 0 ? "storyhint" : "gameplayhint");
+            if (column >= 0) {
+                const std::string ref = table.cell((hash >> 1) % table.rowCount(), static_cast<std::size_t>(column));
+                if (!ref.empty() && ref != "****") {
+                    hint = game.localization().tlk().text(static_cast<std::uint32_t>(std::strtoul(ref.c_str(), nullptr, 10)));
+                }
+            }
+        }
+    }
+    if (!gui.open("loadscreen")) {
+        return;
+    }
+    gui.setText("LBL_HINT", hint);
+    if (gLoadProbe != nullptr) {
+        CapturedFrame warm;
+        state.backend->captureFrame(warm); // GL arms its pre-swap read here
+    }
+    game.audio().playLoadScreenMusic();
+    logInfo(concat("loading screen: module ", next, " LoadScreenID ", screenId, " image ", options.panelFill));
+    for (int step = 0; step < 2; ++step) {
+        gui.setValue("PB_PROGRESS", step == 0 ? 25.0f : 75.0f);
+        state.backend->newFrame();
+        ImGui_ImplSDL3_NewFrame();
+        ImGui::NewFrame();
+        const ImGuiIO& io = ImGui::GetIO();
+        options.timeSeconds = ImGui::GetTime();
+        gGuiPainter->paint(gui, ImGui::GetBackgroundDrawList(), io.DisplaySize.x, io.DisplaySize.y, options);
+        ImGui::Render();
+        std::string error;
+        state.backend->renderFrame(error);
+        if (gLoadProbe != nullptr && step == 1) {
+            gLoadProbe->module = next;
+            gLoadProbe->image = options.panelFill;
+            gLoadProbe->hint = hint;
+            gLoadProbe->stats = gGuiPainter->stats();
+            state.backend->captureFrame(gLoadProbe->frame);
+            ++gLoadProbe->shown;
+        }
+    }
+    gui.close();
+}
+
+// The map panel's drawing: the area's lbl_map<area> art one texel per design pixel from the
+// control's top left, clipped to the control (440 x 256 in the file, the 512 x 256 art loses its
+// right edge; retail 00694d50 builds the map object at 512 x 256 inside the 440 x 256 view), with
+// the leader's arrow (mm_barrow, 32 x 32 in 00693f60) turned to the facing at the leader's place.
+// The world-to-texel mapping is Minimap::project (fitted, see Formats.h). The turn direction is retail's:
+// 00578ed0's formula against the projection points art-up along the facing in all 91 mapped areas checked.
+// All 117 shipped AREs have MapZoom 1, so one texel per design pixel is retail's zoom as well.
+// Retail 00688100 (minimap) and 006943d0 (map screen): each unseen cell's corner gets "blackdot" (0068c100 at +0xc8c8,
+// 00693f60 at +0x5c), centred, four cells wide (0073f404) and tall. Its soft alpha and blue cross make the retail grid.
+void drawMapFog(GameSession& game, ImDrawList* draw, float left, float top, float scale)
+{
+    const MapFog* fog = game.mapFog();
+    if (fog == nullptr) {
+        return;
+    }
+    const float cellW = kotor::Scene::Minimap::kViewWidth / static_cast<float>(fog->cols) * scale;
+    const float cellH = kotor::Scene::Minimap::kViewHeight / static_cast<float>(fog->rows) * scale;
+    const GuiTexture* dot = gGuiPainter->texture("blackdot");
+    if (dot == nullptr) {
+        return;
+    }
+    for (int row = 0; row <= fog->rows; ++row) {
+        for (int col = 0; col <= fog->cols; ++col) {
+            if (fog->seen[static_cast<std::size_t>(row) * static_cast<std::size_t>(fog->cols + 1) + static_cast<std::size_t>(col)] == 0) {
+                const ImVec2 low(left + static_cast<float>(col) * cellW - cellW * 2.0f, top + static_cast<float>(row) * cellH - cellH * 2.0f);
+                draw->AddImage(static_cast<ImTextureID>(dot->id), low, ImVec2(low.x + cellW * 4.0f, low.y + cellH * 4.0f));
+            }
+        }
+    }
+}
+
+void drawAreaMap(GameSession& game, GameScreens* screens, float x0, float y0, float x1, float y1)
+{
+    const GuiTexture* art = gGuiPainter->texture("lbl_map" + game.scene().area);
+    if (art == nullptr || art->width <= 0 || art->height <= 0) {
+        return;
+    }
+    const float s = (x1 - x0) / kotor::Scene::Minimap::kViewWidth; // pixels per design pixel
+    ImDrawList* draw = ImGui::GetBackgroundDrawList();
+    draw->PushClipRect(ImVec2(x0, y0), ImVec2(x1, y1), true);
+    draw->AddImage(static_cast<ImTextureID>(art->id), ImVec2(x0, y0),
+                   ImVec2(x0 + static_cast<float>(art->width) * s, y0 + static_cast<float>(art->height) * s));
+    drawMapFog(game, draw, x0, y0, s);
+    float px0 = 0.0f;
+    float py0 = 0.0f;
+    float px1 = 0.0f;
+    float py1 = 0.0f;
+    // Retail 00692c70: whitetarget, 14x14 in (0, 0.66, 0.98) and clickable, the selected one 20x20 in
+    // (0.98, 1, 0). The hit test 00693300 is that rectangle.
+    if (const GuiTexture* target = gGuiPainter->texture("whitetarget"); target != nullptr && screens != nullptr) {
+        const std::vector<std::size_t> pins = game.mapPins();
+        for (std::size_t i = 0; i < pins.size(); ++i) {
+            const kotor::Vec3 where = game.scene().entities[pins[i]].position;
+            if (!game.scene().minimap.project(where.x, where.y, px0, py0)) {
+                continue;
+            }
+            const bool picked = static_cast<int>(i) == screens->mapPinSelected();
+            const float half = (picked ? 10.0f : 7.0f) * s;
+            const ImVec2 low(x0 + px0 * s - half, y0 + py0 * s - half);
+            const ImVec2 high(x0 + px0 * s + half, y0 + py0 * s + half);
+            draw->AddImage(static_cast<ImTextureID>(target->id), low, high, ImVec2(0, 0), ImVec2(1, 1),
+                           picked ? IM_COL32(250, 255, 0, 255) : IM_COL32(0, 168, 250, 255));
+            if (!picked && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGui::IsMouseHoveringRect(low, high, false)) {
+                screens->selectMapPin(static_cast<int>(i));
+            }
+        }
+    }
+    // Retail 00693f60: the party's others, lbl_mapcircle at 16x16. Tint inferred: its 007a23f0 is filled at run time.
+    if (const GuiTexture* circle = gGuiPainter->texture("lbl_mapcircle")) {
+        for (const std::uint32_t member : game.scriptWorld().party) {
+            const std::size_t index = ScriptApi{game}.entityFor(member);
+            if (index >= game.scene().entities.size()) {
+                continue;
+            }
+            const kotor::Vec3 where = game.scene().entities[index].position;
+            if (game.scene().minimap.project(where.x, where.y, px0, py0)) {
+                const ImVec2 low(x0 + (px0 - 8.0f) * s, y0 + (py0 - 8.0f) * s);
+                draw->AddImage(static_cast<ImTextureID>(circle->id), low, ImVec2(low.x + 16.0f * s, low.y + 16.0f * s),
+                               ImVec2(0, 0), ImVec2(1, 1), IM_COL32(0, 255, 255, 255));
+            }
+        }
+    }
+    const kotor::Vec3 at = game.position();
+    const float yaw = game.yaw();
+    const GuiTexture* arrow = gGuiPainter->texture("mm_barrow");
+    if (arrow != nullptr && game.scene().minimap.project(at.x, at.y, px0, py0)
+        && game.scene().minimap.project(at.x + std::cos(yaw), at.y + std::sin(yaw), px1, py1)) {
+        const float turn = std::atan2(py1 - py0, px1 - px0) + 1.5707963f;
+        const float cx = x0 + px0 * s;
+        const float cy = y0 + py0 * s;
+        const float half = 16.0f * s;
+        const float c = std::cos(turn);
+        const float sn = std::sin(turn);
+        const auto corner = [&](float lx, float ly) { return ImVec2(cx + lx * c - ly * sn, cy + lx * sn + ly * c); };
+        draw->AddImageQuad(static_cast<ImTextureID>(arrow->id), corner(-half, -half), corner(half, -half),
+                           corner(half, half), corner(-half, half), ImVec2(0, 0), ImVec2(1, 0), ImVec2(1, 1),
+                           ImVec2(0, 1), IM_COL32_WHITE);
+    }
+    draw->PopClipRect();
 }
 
 void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game, bool& requestChargen,
@@ -1046,151 +1998,148 @@ void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game, bool& requestCharge
                           ChargenVisuals* visuals = nullptr)
 {
     const kotor::GuiScreen* screen = gui.screen();
-    if (screen == nullptr) {
+    if (screen == nullptr || gGuiPainter == nullptr) {
         return;
     }
-    ImGui::SetNextWindowFocus();
-    ImGui::SetNextWindowPos(ImVec2(40.0f, 40.0f), ImGuiCond_Once);
-    ImGui::SetNextWindowSize(ImVec2(700.0f, 620.0f), ImGuiCond_Once);
-    // With 3D model controls the window background is drawn by the fills below (which
-    // leave the model rectangles open); the stock window background would cover them.
-    ImGuiWindowFlags guiFlags = ImGuiWindowFlags_NoCollapse;
-    if (visuals != nullptr && visuals->preview != nullptr) {
-        guiFlags |= ImGuiWindowFlags_NoBackground;
+    ImGuiIO& io = ImGui::GetIO();
+    ImDrawList* draw = ImGui::GetBackgroundDrawList();
+    if (visuals != nullptr && visuals->frontEnd != nullptr) {
+        visuals->frontEnd->update(io.DeltaTime);
     }
-    if (!ImGui::Begin("GUI screen", nullptr, guiFlags)) {
-        ImGui::End();
-        return;
-    }
-    ImGui::Text("%s  controls=%zu  hover=%s  action=%s", gui.screenName().c_str(),
-                screen->controlCount,
-                gui.hovered().empty() ? "-" : gui.hovered().c_str(),
-                gui.lastAction().empty() ? "-" : gui.lastAction().c_str());
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    const ImVec2 origin = ImGui::GetCursorScreenPos();
-    constexpr float kScale = 1.0f;
-    // 3D model controls (classsel 3D_MODELn, portcust LBL_HEAD) are drawn by the
-    // backend underneath the UI, so the window fill leaves their rectangles open.
-    std::vector<std::pair<ImVec2, ImVec2>> holes;
+    const GuiView view = gGuiPainter->layout(*screen, io.DisplaySize.x, io.DisplaySize.y);
+    pumpGuiInput(gui, view);
+
+    // 3D model controls (classsel 3D_MODELn, portcust LBL_HEAD) are drawn by the backend
+    // underneath the UI: their rectangles stay open in the backdrop and the controls draw
+    // nothing themselves.
     const bool previewScreen = visuals != nullptr && visuals->preview != nullptr;
+    GuiPaintOptions options;
+    options.timeSeconds = ImGui::GetTime();
+    // An in-game screen is drawn over the world (a container is a popup over it).
+    options.opaqueBackdrop = !(visuals != nullptr && visuals->gameScreens != nullptr && visuals->gameScreens->open());
+    // The surround art each panel class names (0040a900 / its table at 0073ad80): the galaxy map
+    // 00695180, the store 006c1c00 and both Pazaak screens 006808a0 / 00681a90 set their own.
+    {
+        const std::string& name = gui.screenName();
+        if (name == "galaxymap") {
+            options.backdropKind = "map";
+        } else if (name == "store") {
+            options.backdropKind = "store";
+        } else if (name == "pazaakgame" || name == "pazaaksetup" || name == "pazaakwager" || name == "pazaak_notice"
+                   || name == "pazaak_ask" || name == "pazaak_help") {
+            // The Pazaak message boxes are modals over the table: its surround stays (req_pazaak_set_result).
+            // A box is no whole-window panel, so the surround is asked for outright.
+            options.backdropKind = "pazaak";
+            options.opaqueBackdrop = true;
+        }
+    }
     if (previewScreen) {
         visuals->rects.clear();
-        const ImVec2 fb = ImGui::GetIO().DisplayFramebufferScale;
-        std::function<void(const kotor::GuiControl&)> collect =
-            [&](const kotor::GuiControl& control) {
-                if (isPreviewTag(control.tag)
-                    && visuals->preview->entityForTag(control.tag) >= 0) {
-                    const ImVec2 low(origin.x + static_cast<float>(control.extent.left) * kScale,
-                                     origin.y + static_cast<float>(control.extent.top) * kScale);
-                    const ImVec2 high(low.x + static_cast<float>(control.extent.width) * kScale,
-                                      low.y + static_cast<float>(control.extent.height) * kScale);
-                    holes.emplace_back(low, high);
-                    PreviewRect rect;
-                    rect.tag = control.tag;
-                    rect.x = static_cast<int>(std::lround(low.x * fb.x));
-                    rect.y = static_cast<int>(std::lround(low.y * fb.y));
-                    rect.width = static_cast<int>(std::lround((high.x - low.x) * fb.x));
-                    rect.height = static_cast<int>(std::lround((high.y - low.y) * fb.y));
-                    visuals->rects[control.tag] = rect;
-                }
-                for (const kotor::GuiControl& child : control.children) {
-                    collect(child);
-                }
-            };
+    }
+    // The main menu's model scene fills the whole window behind the panel.
+    const bool menuScreen = visuals != nullptr && visuals->menu != nullptr && visuals->menu->ready()
+        && visuals->backend != nullptr && visuals->backend->supportsPreview()
+        && gui.screenName().rfind("mainmenu", 0) == 0;
+    std::vector<PreviewView> menuViews;
+    if (menuScreen) {
+        if (!visuals->menuStaged) {
+            std::string stageError;
+            visuals->backend->setScene(nullptr);
+            if (visuals->backend->setPreviewScene(&visuals->menu->scene(), stageError)) {
+                visuals->menuStaged = true;
+            } else {
+                logWarn(concat("main menu scene upload failed: ", stageError));
+            }
+        }
+        if (visuals->menuStaged) {
+            options.skipPanelFill = true;
+            // The model view is the panel's design rectangle (800x600): the art in the model
+            // lines up with the GUI controls only at that aspect, the rest stays black.
+            options.holes.push_back({std::round(view.pxX(0.0f)), std::round(view.pxY(0.0f)),
+                                     std::round(view.pxX(view.baseWidth)), std::round(view.pxY(view.baseHeight))});
+            if (visuals->menu->advance(io.DeltaTime)) {
+                visuals->backend->refreshPreviewMeshes();
+            }
+        }
+    } else if (visuals != nullptr && visuals->menuStaged) {
+        visuals->menuStaged = false;
+        visuals->uploadedRevision = UINT32_MAX; // the chargen stage uploads its own scene again
+        visuals->backend->setPreviewViews({});
+    }
+    options.controlHook = [&](const kotor::GuiControl& control, float x0, float y0, float x1, float y1) {
+        if (menuScreen && visuals->menuStaged && control.tag == "LBL_3DVIEW") {
+            const ImVec2 fb = io.DisplayFramebufferScale;
+            menuViews.push_back(visuals->menu->view(static_cast<int>(std::lround(x0 * fb.x)),
+                                                    static_cast<int>(std::lround(y0 * fb.y)),
+                                                    static_cast<int>(std::lround((x1 - x0) * fb.x)),
+                                                    static_cast<int>(std::lround((y1 - y0) * fb.y))));
+            return true;
+        }
+        const bool modelControl = previewScreen && isPreviewTag(control.tag)
+            && visuals->preview->entityForTag(control.tag) >= 0;
+        if (modelControl) {
+            const ImVec2 fb = io.DisplayFramebufferScale;
+            PreviewRect rect;
+            rect.tag = control.tag;
+            rect.x = static_cast<int>(std::lround(std::round(x0) * fb.x));
+            rect.y = static_cast<int>(std::lround(std::round(y0) * fb.y));
+            rect.width = static_cast<int>(std::lround(std::round(x1) * fb.x)) - rect.x;
+            rect.height = static_cast<int>(std::lround(std::round(y1) * fb.y)) - rect.y;
+            visuals->rects[control.tag] = rect;
+            return true;
+        }
+        if (visuals != nullptr && visuals->gameScreens != nullptr && control.tag == "LBL_Map"
+            && gui.screenName() == "map") {
+            drawAreaMap(game, visuals->gameScreens, x0, y0, x1, y1);
+            return true;
+        }
+        if (visuals != nullptr && control.tag == "LBL_PORTRAIT") {
+            const std::uint64_t texture = visuals->portraitTexture(visuals->portraitResref);
+            if (texture != 0) {
+                ImGui::GetBackgroundDrawList()->AddImage(static_cast<ImTextureID>(texture),
+                                                         ImVec2(x0, y0), ImVec2(x1, y1));
+                return true;
+            }
+        }
+        return false;
+    };
+    // The holes must be known before the backdrop: collect them with a dry pass.
+    if (previewScreen) {
+        const GuiView* at = &view;
+        std::function<void(const kotor::GuiControl&)> collect = [&](const kotor::GuiControl& control) {
+            if (isPreviewTag(control.tag) && visuals->preview->entityForTag(control.tag) >= 0) {
+                // Whole pixels: the art around a hole is clipped to bands, and a scissor at a fractional
+                // edge loses a row (the world shows through it), and the view below must end at the same row.
+                options.holes.push_back({std::round(at->pxX(static_cast<float>(control.extent.left))),
+                                         std::round(at->pxY(static_cast<float>(control.extent.top))),
+                                         std::round(at->pxX(static_cast<float>(control.extent.left + control.extent.width))),
+                                         std::round(at->pxY(static_cast<float>(control.extent.top + control.extent.height)))});
+            }
+            for (const kotor::GuiControl& child : control.children) {
+                collect(child);
+            }
+        };
         for (const kotor::GuiControl& control : screen->controls) {
             collect(control);
         }
-    }
-    const ImVec2 windowLow = ImGui::GetWindowPos();
-    fillExcluding(draw, windowLow,
-                  ImVec2(windowLow.x + ImGui::GetWindowSize().x,
-                         windowLow.y + ImGui::GetWindowSize().y),
-                  IM_COL32(20, 20, 24, 255), holes);
-    ImGui::InvisibleButton("gui_canvas", ImVec2(640.0f * kScale, 480.0f * kScale));
-    const ImVec2 mouse = ImGui::GetIO().MousePos;
-    const float localX = (mouse.x - origin.x) / kScale;
-    const float localY = (mouse.y - origin.y) / kScale;
-    if (ImGui::IsItemHovered()) {
-        gui.pointerMove(localX, localY);
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-            gui.pointerDown(localX, localY);
+        // A popup over the sheet (the level-up's granted feats, req_levelup_granted) keeps the sheet's model
+        // showing below it: the screens under the popup keep their model holes, in their own layout.
+        for (std::size_t layer = 0; layer < gui.underlayCount(); ++layer) {
+            if (const kotor::GuiScreen* below = gui.underlayScreen(layer)) {
+                const GuiView belowView = gGuiPainter->layout(*below, io.DisplaySize.x, io.DisplaySize.y);
+                at = &belowView;
+                for (const kotor::GuiControl& control : below->controls) {
+                    collect(control);
+                }
+                at = &view;
+            }
         }
     }
-    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-        gui.pointerUp(localX, localY);
-    }
-    std::function<void(const kotor::GuiControl&)> drawControl =
-        [&](const kotor::GuiControl& control) {
-            const GuiControlState state = gui.state(control.key);
-            if (!state.visible) {
-                return;
-            }
-            const ImVec2 low(origin.x + static_cast<float>(control.extent.left) * kScale,
-                             origin.y + static_cast<float>(control.extent.top) * kScale);
-            const ImVec2 high(low.x + static_cast<float>(control.extent.width) * kScale,
-                              low.y + static_cast<float>(control.extent.height) * kScale);
-            // The 3D model controls and the transparent class buttons laid over them
-            // keep the models visible; only the portrait art is a UI image.
-            const bool modelControl = previewScreen && isPreviewTag(control.tag)
-                && visuals->preview->entityForTag(control.tag) >= 0;
-            const bool overModel = previewScreen && control.tag.rfind("BTN_SEL", 0) == 0;
-            if (modelControl || overModel) {
-                if (control.key == gui.hovered()) {
-                    draw->AddRectFilled(low, high, IM_COL32(120, 150, 190, 60));
-                }
-                draw->AddRect(low, high, IM_COL32(120, 130, 150, 160));
-                return;
-            }
-            if (visuals != nullptr && control.tag == "LBL_PORTRAIT") {
-                const std::uint64_t texture = visuals->portraitTexture(visuals->portraitResref);
-                if (texture != 0) {
-                    draw->AddImage(static_cast<ImTextureID>(texture), low, high);
-                    draw->AddRect(low, high, IM_COL32(160, 170, 190, 255));
-                    return;
-                }
-            }
-            ImU32 fill = IM_COL32(40, 46, 58, 180);
-            if (control.type == 6) {
-                fill = state.pressed ? IM_COL32(110, 140, 180, 240)
-                                     : IM_COL32(70, 90, 120, 220);
-            } else if (control.type == 7) {
-                fill = state.selected ? IM_COL32(80, 150, 100, 230)
-                                      : IM_COL32(60, 70, 80, 200);
-            } else if (control.type == 8 || control.type == 9 || control.type == 10) {
-                fill = IM_COL32(50, 60, 72, 200);
-            } else if (control.type == 5 || control.type == 4) {
-                fill = IM_COL32(30, 34, 40, 80);
-            } else if (control.type == 11) {
-                fill = IM_COL32(50, 60, 80, 160);
-            }
-            if (control.key == gui.hovered()) {
-                fill = IM_COL32(120, 150, 190, 230);
-            }
-            // Fills leave the 3D model rectangles open so the backend's models show.
-            fillExcluding(draw, low, high, fill, holes);
-            draw->AddRect(low, high, state.enabled ? IM_COL32(160, 170, 190, 255)
-                                                    : IM_COL32(90, 90, 90, 255));
-            if (control.type == 8 || control.type == 9 || control.type == 10) {
-                const float ratio = control.maxValue > 0.0f
-                    ? std::clamp(state.value / control.maxValue, 0.0f, 1.0f) : 0.0f;
-                const ImVec2 barHigh(control.startFromLeft
-                        ? low.x + (high.x - low.x) * ratio : high.x,
-                    high.y);
-                const ImVec2 barLow(control.startFromLeft ? low.x : low.x + (high.x - low.x) * ratio,
-                    low.y);
-                draw->AddRectFilled(barLow, barHigh, IM_COL32(100, 170, 220, 220));
-            }
-            const std::string label = !control.text.empty() ? control.text : control.tag;
-            if (!label.empty() && control.extent.width > 8 && control.extent.height > 8) {
-                draw->AddText(ImVec2(low.x + 3.0f, low.y + 2.0f),
-                              IM_COL32(235, 235, 240, 255), label.c_str());
-            }
-            for (const kotor::GuiControl& child : control.children) {
-                drawControl(child);
-            }
-        };
-    for (const kotor::GuiControl& control : screen->controls) {
-        drawControl(control);
+    const std::size_t holeCount = options.holes.size();
+    gGuiPainter->paint(gui, draw, io.DisplaySize.x, io.DisplaySize.y, options);
+    (void)holeCount;
+    if (menuScreen && visuals->menuStaged) {
+        visuals->backend->setPreviewViews(menuViews);
     }
     if (previewScreen && visuals->backend != nullptr) {
         std::vector<PreviewRect> rectList;
@@ -1202,20 +2151,26 @@ void drawGuiScreenOverlay(GuiSystem& gui, GameSession& game, bool& requestCharge
     if (!gui.lastAction().empty()) {
         const std::string action = gui.lastAction();
         gui.clearActions();
-        if (actionHandler && actionHandler(action)) {
+        if (gui.screenName() == "optionsingame"
+            && (GameScreens::tabPanel(action) != UiPanel::None || action == "BTN_OPT")) {
+            // The pause menu's own page tabs: another page leaves it, its own does nothing.
+            if (const UiPanel page = GameScreens::tabPanel(action); page != UiPanel::None) {
+                gui.close();
+                game.setUiPanel(page);
+            }
+        } else if (actionHandler && actionHandler(action)) {
             // The chargen flow consumed the control.
+        } else if (visuals != nullptr && visuals->gameScreens != nullptr && visuals->gameScreens->action(action)) {
+            // An in-game shipped screen consumed the control.
+        } else if (visuals != nullptr && visuals->frontEnd != nullptr && visuals->frontEnd->action(action)) {
+            // The shipped front-end screen consumed the control.
         } else if (!game.applyGuiAction(action)) {
-            if (action == "BTN_LOADGAME") {
-                gui.push("loadscreen");
-            } else if (action == "BTN_NEWGAME") {
+            if (action == "BTN_NEWGAME") {
                 gui.close();
                 requestChargen = true;
-            } else if (action == "BTN_MOVIES") {
-                gui.push("credits");
             }
         }
     }
-    ImGui::End();
 }
 
 void drawChargenUi(Chargen& chargen, GameSession& game, bool& active)
@@ -1338,84 +2293,6 @@ void drawChargenUi(Chargen& chargen, GameSession& game, bool& active)
     ImGui::End();
 }
 
-void drawMinigameUi(GameSession& game)
-{
-    if (game.pazaakActive()) {
-        PazaakGame* pazaak = game.pazaak();
-        ImGui::SetNextWindowPos(ImVec2(120.0f, 120.0f), ImGuiCond_FirstUseEver);
-        ImGui::Begin("Pazaak", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-        ImGui::Text("Player %d  Opponent %d   Sets %d - %d",
-                    pazaak->playerTotal(), pazaak->opponentTotal(),
-                    pazaak->playerSets(), pazaak->opponentSets());
-        ImGui::Text("Phase: %s", pazaak->phase() == PazaakGame::Phase::PlayerTurn
-                      ? "your turn" : "opponent");
-        const auto advance = [&]() -> bool {
-            if (pazaak->phase() == PazaakGame::Phase::OpponentTurn) {
-                pazaak->opponentTurn();
-            }
-            game.resolvePazaakIfOver();
-            return game.pazaakActive();
-        };
-        if (pazaak->phase() == PazaakGame::Phase::PlayerTurn) {
-            if (ImGui::Button("Draw")) {
-                pazaak->playerDraw();
-                if (!advance()) { ImGui::End(); return; }
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Stand")) {
-                pazaak->playerStand();
-                if (!advance()) { ImGui::End(); return; }
-            }
-            const std::vector<int>& side = pazaak->playerSide();
-            for (std::size_t i = 0; i < side.size(); ++i) {
-                const std::string label = (side[i] >= 0 ? "+" : "")
-                    + std::to_string(side[i]);
-                if (ImGui::Button((label + "##side" + std::to_string(i)).c_str())) {
-                    pazaak->playerPlaySide(i);
-                    if (!advance()) { ImGui::End(); return; }
-                }
-                if (i + 1 < side.size()) {
-                    ImGui::SameLine();
-                }
-            }
-        } else if (pazaak->phase() == PazaakGame::Phase::OpponentTurn) {
-            if (ImGui::Button("Continue")) {
-                if (!advance()) { ImGui::End(); return; }
-            }
-        } else if (pazaak->phase() == PazaakGame::Phase::MatchOver) {
-            ImGui::Text("Match over: %s", pazaak->playerSets() > pazaak->opponentSets()
-                        ? "you win" : "you lose");
-            if (ImGui::Button("Collect")) {
-                game.resolvePazaakIfOver();
-                ImGui::End();
-                return;
-            }
-        }
-        if (ImGui::Button("Leave")) {
-            game.stopPazaak();
-            ImGui::End();
-            return;
-        }
-        ImGui::End();
-    }
-}
-
-void drawChargenTextOverlay(ChargenGuiState& state)
-{
-    if (!state.active || state.step != 5) {
-        return;
-    }
-    ImGui::SetNextWindowPos(ImVec2(250.0f, 210.0f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(260.0f, 80.0f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Character Name", nullptr, ImGuiWindowFlags_NoCollapse);
-    char buffer[32]{};
-    std::snprintf(buffer, sizeof(buffer), "%s", state.nameBuffer.c_str());
-    if (ImGui::InputText("Name", buffer, sizeof(buffer))) {
-        state.nameBuffer = buffer;
-    }
-    ImGui::End();
-}
-
 // Script-driven fade (SetGlobalFadeOut/In) over the whole screen, and the
 // galaxy map panel ShowGalaxyMap opens. Picking a planet runs the map script.
 void drawWorldStateOverlay(GameSession& game)
@@ -1512,15 +2389,15 @@ void drawSlicePanel(GameSession& game, float fps, const std::string& prompt)
     ImGui::End();
 }
 
-void drawGameUi(GameSession& game, float fps, const std::string& prompt)
+void drawGameUi(GameSession& game, float fps, const std::string& prompt, bool developerPanel)
 {
     // A minigame's HUD is its shipped models: no slice panel or walking crosshair over it.
     const bool miniGame = game.miniGameActive();
-    if (!miniGame) {
+    if (!miniGame && developerPanel) {
         drawSlicePanel(game, fps, prompt);
     }
 
-    if (game.dialogue().active) {
+    if (game.dialogue().active && developerPanel) {
         ImGui::SetNextWindowPos(ImVec2(16.0f, 390.0f), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(760.0f, 0.0f), ImGuiCond_FirstUseEver);
         ImGui::Begin("Dialogue", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
@@ -1543,7 +2420,8 @@ void drawGameUi(GameSession& game, float fps, const std::string& prompt)
     drawSystemsUi(game);
 
     const ImGuiIO& io = ImGui::GetIO();
-    if (!miniGame && io.DisplaySize.x > 0.0f && io.DisplaySize.y > 0.0f) {
+    // The walking crosshair belongs to the developer view; the shipped HUD has none.
+    if (!miniGame && developerPanel && io.DisplaySize.x > 0.0f && io.DisplaySize.y > 0.0f) {
         ImDrawList* draw = ImGui::GetBackgroundDrawList();
         const ImVec2 centre(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f);
         draw->AddLine(ImVec2(centre.x - 6.0f, centre.y), ImVec2(centre.x + 6.0f, centre.y), IM_COL32(235, 235, 235, 160));
@@ -1593,6 +2471,209 @@ void updateFighting(GameSession& game)
     game.update(1.0f / 60.0f, InputState{});
 }
 
+// Dialogue camera gate (--dialogue-test). Three measures on shipped data through the real
+// camera paths; each reports a number and fails below a stated bound.
+//  1. GIT cameras: the fraction of the module's cameras with a creature, placeable or door
+//     within 20 degrees of the forward axis (25 m range). Measured over all 1,120 shipped
+//     cameras of the install with the W-first quaternion: 42% (median best angle 17.5), against
+//     3% when the quaternion is read X-first; in end_m01aa 33 of 40 against 3 of 40.
+//  2. Static-camera dialogue lines (CameraAngle 6) of the module whose speaker stands within
+//     25 m of the camera: the speaker lies inside the view frustum (16:9). Over the whole
+//     install 1,443 of 1,744 resolvable lines are in view (median 8.9 degrees off axis), 8
+//     with the old reading. Lines whose speaker is staged elsewhere by the cutscene script
+//     (camera and speaker 80+ m apart in the GIT) cannot be judged and are counted apart.
+//  3. Camera-model hooks (CameraAngle 4): every CUTnnnW clip of every shipped *_cam model
+//     (236 clips). The hook looks along local -Z with local +Y up: forward is level
+//     (|z| < 0.5) in 91% and up is within 26 degrees of world up in 90%; the old forward
+//     (local +Y) was level in 5%.
+std::string lowerCopy(std::string text)
+{
+    std::transform(text.begin(), text.end(), text.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return text;
+}
+
+int dialogueCameraGate(GameSession& game)
+{
+    int failures = 0;
+    const auto verdict = [&](bool ok, const std::string& what) {
+        logInfo(concat("dialogue camera: ", what, ok ? " PASS" : " FAIL"));
+        failures += ok ? 0 : 1;
+    };
+    constexpr float kRadiansToDegrees = 57.29578f;
+    const auto angleDegrees = [&](kotor::Vec3 a, kotor::Vec3 b) {
+        const float n = kotor::length(a) * kotor::length(b);
+        return n <= 1e-8f ? 180.0f
+                          : std::acos(std::clamp(kotor::dot(a, b) / n, -1.0f, 1.0f)) * kRadiansToDegrees;
+    };
+    const auto headOf = [](const kotor::Entity& entity) {
+        kotor::Vec3 head = entity.position;
+        head.z += entity.kind == kotor::EntityKind::Creature ? 1.5f : 1.0f;
+        return head;
+    };
+    const auto isActor = [](const kotor::Entity& entity) {
+        return entity.kind == kotor::EntityKind::Creature || entity.kind == kotor::EntityKind::Placeable
+            || entity.kind == kotor::EntityKind::Door;
+    };
+
+    // 1. Static cameras aim at someone.
+    std::vector<float> offAxis;
+    for (const kotor::CameraDef& definition : game.scene().cameras) {
+        const SceneCamera camera = game.cinematicCamera(static_cast<std::int32_t>(definition.id));
+        float best = 180.0f;
+        for (const kotor::Entity& entity : game.scene().entities) {
+            if (!isActor(entity)) {
+                continue;
+            }
+            const kotor::Vec3 toward = headOf(entity) - camera.eye;
+            const float range = kotor::length(toward);
+            if (range >= 0.8f && range <= 25.0f) {
+                best = std::min(best, angleDegrees(camera.forward, toward));
+            }
+        }
+        offAxis.push_back(best);
+    }
+    std::size_t aimed = 0;
+    for (const float angle : offAxis) {
+        aimed += angle <= 20.0f ? 1u : 0u;
+    }
+    std::vector<float> sortedAngles = offAxis;
+    std::sort(sortedAngles.begin(), sortedAngles.end());
+    const float median = sortedAngles.empty() ? 180.0f : sortedAngles[sortedAngles.size() / 2];
+    logInfo(concat("dialogue camera: git cameras=", offAxis.size(), " aimed_within_20deg=", aimed,
+                   " median_best_angle=", median));
+    verdict(offAxis.size() >= 20 && aimed * 10 >= offAxis.size() * 7, "git_cameras_aim_at_actors");
+
+    // 2. Static-camera lines frame their speaker.
+    std::size_t measured = 0;
+    std::size_t inView = 0;
+    std::size_t staged = 0;
+    std::size_t framed = 0;
+    std::size_t turnedAroundFramed = 0;
+    float worstAngle = 0.0f;
+    const std::string moduleLower = lowerCopy(game.module());
+    for (const std::string& name : game.install().resourceNames(2029)) {
+        std::string source;
+        const auto data = game.install().find(name, 2029, &source);
+        // Only this module's own dialogues: their CameraIDs index this module's cameras.
+        if (!data.has_value() || lowerCopy(source).find(moduleLower) == std::string::npos) {
+            continue;
+        }
+        kotor::Dlg dlg;
+        try {
+            kotor::Gff gff = kotor::Gff::parse(*data, name + ".dlg");
+            dlg = kotor::Dlg::parse(gff, nullptr, name);
+        } catch (const kotor::FormatError&) {
+            continue;
+        }
+        const std::string conversation = lowerCopy(name);
+        // Replies are the player, whose position is not in the GIT, so only entries count.
+        for (const kotor::DlgEntry& entry : dlg.entries) {
+            if (entry.cameraAngle != 6 || entry.cameraId < 0) {
+                continue;
+            }
+            const std::string speakerTag = lowerCopy(entry.speaker);
+            const kotor::Entity* speaker = nullptr;
+            for (const kotor::Entity& entity : game.scene().entities) {
+                if (isActor(entity)
+                    && (!speakerTag.empty() ? lowerCopy(entity.tag) == speakerTag
+                                            : lowerCopy(entity.conversation) == conversation)) {
+                    speaker = &entity;
+                    break;
+                }
+            }
+            const SceneCamera camera = game.cinematicCamera(entry.cameraId);
+            if (speaker == nullptr || camera.fovYDegrees <= 0.0f) {
+                continue;
+            }
+            const kotor::Vec3 toward = headOf(*speaker) - camera.eye;
+            if (kotor::length(toward) > 25.0f) {
+                ++staged;
+                continue;
+            }
+            ++measured;
+            const kotor::Vec3 right = kotor::normalize(kotor::cross(camera.forward, camera.up));
+            const float depth = kotor::dot(toward, camera.forward);
+            const float tanV = std::tan(camera.fovYDegrees * 0.5f / kRadiansToDegrees);
+            const float tanH = tanV * (16.0f / 9.0f);
+            const bool visible = depth > 0.05f
+                && std::fabs(kotor::dot(toward, right) / depth) <= tanH
+                && std::fabs(kotor::dot(toward, camera.up) / depth) <= tanV;
+            inView += visible ? 1u : 0u;
+            worstAngle = std::max(worstAngle, angleDegrees(camera.forward, toward));
+            // Shipped static shots may show someone other than the speaker (voice-over from a
+            // scene object or an off-screen character), so the shot is judged by whether it
+            // frames any subject. The same camera turned around is the negative check.
+            const auto nearestSubject = [&](kotor::Vec3 forward, std::string* tag) {
+                float nearest = 180.0f;
+                for (const kotor::Entity& entity : game.scene().entities) {
+                    const kotor::Vec3 other = headOf(entity) - camera.eye;
+                    const float range = kotor::length(other);
+                    if (isActor(entity) && range >= 0.8f && range <= 25.0f
+                        && angleDegrees(forward, other) < nearest) {
+                        nearest = angleDegrees(forward, other);
+                        if (tag != nullptr) {
+                            *tag = entity.tag;
+                        }
+                    }
+                }
+                return nearest;
+            };
+            std::string subject;
+            const float subjectAngle = nearestSubject(camera.forward, &subject);
+            const bool subjectFramed = visible || subjectAngle <= 20.0f;
+            framed += subjectFramed ? 1u : 0u;
+            turnedAroundFramed += nearestSubject(camera.forward * -1.0f, nullptr) <= 20.0f ? 1u : 0u;
+            if (!visible) {
+                logInfo(concat("dialogue camera: off-screen speaker dlg=", conversation, " camera=",
+                               entry.cameraId, " speaker=", speaker->tag, " range=", kotor::length(toward),
+                               " angle=", angleDegrees(camera.forward, toward), " frames=", subject,
+                               " at_angle=", subjectAngle));
+            }
+        }
+    }
+    logInfo(concat("dialogue camera: static lines judged=", measured, " speaker_in_view=", inView,
+                   " staged_elsewhere=", staged, " worst_angle=", worstAngle, " subject_framed=", framed,
+                   " turned_around_framed=", turnedAroundFramed));
+    verdict(measured >= 2 && framed == measured && inView * 2 >= measured && turnedAroundFramed < measured,
+            "static_camera_frames_a_subject");
+
+    // 3. Camera-model hooks look along -Z with +Y up.
+    std::size_t clips = 0;
+    std::size_t level = 0;
+    std::size_t upright = 0;
+    std::size_t models = 0;
+    for (const std::string& name : game.install().resourceNames(2002)) {
+        const std::string lowerName = lowerCopy(name);
+        if (lowerName.size() < 5 || lowerName.compare(lowerName.size() - 4, 4, "_cam") != 0) {
+            continue;
+        }
+        std::size_t modelClips = 0;
+        int misses = 0;
+        for (int number = 1; number <= 60 && misses < 8; ++number) {
+            char clip[16]{};
+            std::snprintf(clip, sizeof(clip), "CUT%03dW", number);
+            if (!game.setDialogueCameraAnimationForTest(lowerName, clip)) {
+                ++misses;
+                continue;
+            }
+            misses = 0;
+            const SceneCamera camera = game.camera();
+            ++modelClips;
+            level += std::fabs(camera.forward.z) < 0.5f ? 1u : 0u;
+            upright += camera.up.z > 0.9f ? 1u : 0u;
+        }
+        clips += modelClips;
+        models += modelClips > 0 ? 1u : 0u;
+    }
+    game.endDialogue();
+    logInfo(concat("dialogue camera: hook models=", models, " clips=", clips, " level=", level,
+                   " upright=", upright));
+    verdict(models >= 20 && clips >= 200 && level * 100 >= clips * 85 && upright * 100 >= clips * 85,
+            "camera_hooks_level_and_upright");
+    return failures;
+}
+
 int runDialogueTest(GameSession& game)
 {
     std::size_t index = static_cast<std::size_t>(-1);
@@ -1628,6 +2709,12 @@ int runDialogueTest(GameSession& game)
     logInfo(concat("dialogue test: lines=", lines));
     for (const std::string& line : game.scriptLog()) {
         logInfo(concat("  script: ", line));
+    }
+    if (game.dialogue().active) {
+        game.endDialogue();
+    }
+    if (dialogueCameraGate(game) != 0) {
+        return 12;
     }
     return lines > 0 ? 0 : 11;
 }
@@ -2072,6 +3159,35 @@ int runScriptTest(GameSession& game)
         game.update(0.05f, InputState{});
     }
     check(scriptLogHas(game, "hook ScriptHeartbeat"), "heartbeat_hook_ran");
+    // A creature beats every 3.0 to 4.199 s (004eb6e0: 3000 + rand() % 1200 ms), not every 6 s:
+    // over 30 s the busiest creature with a tag of its own beats 7 to 11 times (6 s would allow 6).
+    {
+        std::map<std::string, int> beats;
+        for (int tick = 0; tick < 600; ++tick) {
+            const std::size_t before = game.scriptLog().size();
+            game.update(0.05f, InputState{});
+            const std::vector<std::string>& log = game.scriptLog();
+            for (std::size_t i = before < log.size() ? before : log.size(); i < log.size(); ++i) {
+                const std::string prefix = "hook ScriptHeartbeat ";
+                if (log[i].rfind(prefix, 0) == 0) {
+                    ++beats[log[i].substr(prefix.size(), log[i].find(" -> ") - prefix.size())];
+                }
+            }
+        }
+        int busiest = 0;
+        for (const auto& entry : beats) {
+            int sharing = 0;
+            for (const kotor::Entity& entity : game.scene().entities) {
+                sharing += entity.tag == entry.first ? 1 : 0;
+            }
+            logInfo(concat("script test: heartbeats ", entry.first, " ", entry.second, " over ", sharing));
+            if (sharing == 1) {
+                busiest = std::max(busiest, entry.second);
+            }
+        }
+        logInfo(concat("script test: busiest creature heartbeat count over 30 s = ", busiest));
+        check(busiest >= 7 && busiest <= 11, "creature_heartbeat_interval");
+    }
 
     // Door interaction hook: end_door16 carries a shipped OnOpen script.
     check(game.runHookForTest("OnOpen", "end_door16"), "door_hook_ran");
@@ -2098,6 +3214,10 @@ int runScriptTest(GameSession& game)
             updateFighting(game);
             ++steps;
         }
+        logInfo(concat("script test: fight steps=", steps, " player_dead=", game.playerDead() ? 1 : 0,
+                       " hostile=", game.scene().entities[hostile].tag,
+                       " hostile_hp=", game.scene().entities[hostile].hitPoints,
+                       " still_hostile=", game.scene().entities[hostile].hostile ? 1 : 0));
         check(game.scene().entities[hostile].dead, "hostile_died");
         check(scriptLogHas(game, "hook ScriptDeath"), "death_hook_ran");
     }
@@ -2449,9 +3569,8 @@ int runEncounterTest(GameSession& game)
         return 9;
     }
     const kotor::EncounterTemplate& data = game.scene().encounters[volumeIndex].templateData;
-    const std::int32_t expected = data.maxCreatures > 0
-        ? std::min(data.recCreatures > 0 ? data.recCreatures : data.maxCreatures, data.maxCreatures)
-        : data.recCreatures;
+    // 005935d0: the budget picks up to MaxCreatures, PadOutCreatureCount (00590b10) tops up to RecCreatures.
+    const std::int32_t expected = data.recCreatures;
     check(enterEncounterVolume(game, volumeIndex), "entry_triggers_spawn");
     std::int32_t total = 0;
     std::size_t firstEntity = static_cast<std::size_t>(-1);
@@ -2463,7 +3582,15 @@ int runEncounterTest(GameSession& game)
     }
     logInfo(concat("encounter test: spawned=", total, " expected=", expected));
     check(total > 0, "creatures_spawned");
-    check(game.encounters()[volumeIndex].spawnedCount == expected, "retail_spawn_count");
+    bool anySingle = false;
+    for (const kotor::EncounterCreature& creature : data.creatures) {
+        anySingle = anySingle || creature.singleSpawn;
+    }
+    check(game.encounters()[volumeIndex].spawnedCount >= 1, "retail_spawn_count");
+    check(anySingle || game.encounters()[volumeIndex].spawnedCount >= expected, "retail_spawn_count_reaches_rec");
+    check(data.maxCreatures <= 0
+              || game.encounters()[volumeIndex].spawnedCount <= std::max(data.maxCreatures, data.recCreatures),
+          "retail_spawn_count_within_max");
     if (firstEntity == static_cast<std::size_t>(-1)
         || firstEntity >= game.scene().entities.size()) {
         logError("encounter test: no spawned entity");
@@ -2507,6 +3634,11 @@ int runEncounterResetTest(GameSession& game)
         logError("encounter reset test: no resettable encounter");
         return 9;
     }
+    // Retail wakes a wiped encounter only for SpawnOption 1 with Reset (00593fb0 reads both); a Reset
+    // encounter of the other option stays inactive for good. Run the timer rule on the real encounter
+    // with that option, and check the other option's wipe on a copy of the state below.
+    const std::int32_t realOption = game.scene().encounters[target].templateData.spawnOption;
+    game.scene().encounters[target].templateData.spawnOption = 1;
     check(!game.encounters()[target].spawned, "idle_until_entry");
     check(enterEncounterVolume(game, target), "entry_spawns");
     const EncounterState before = game.encounters()[target];
@@ -2531,6 +3663,21 @@ int runEncounterResetTest(GameSession& game)
                    after.spawnedCount, " alive=", alive ? 1 : 0));
     check(after.spawnedCount > before.spawnedCount, "respawned");
     check(alive, "respawn_alive");
+    logInfo(concat("encounter reset test: data SpawnOption was ", realOption));
+    // The wipe of an encounter that is not SpawnOption 1: inactive afterwards and never woken.
+    game.scene().encounters[target].templateData.spawnOption = 0;
+    for (const std::size_t entity : after.entities) {
+        if (entity < game.scene().entities.size()) {
+            game.scene().entities[entity].dead = true;
+        }
+    }
+    game.update(0.08f, InputState{});
+    check(!game.scene().encounters[target].templateData.active, "wipe_makes_inactive");
+    const std::int32_t countAtWipe = game.encounters()[target].spawnedCount;
+    for (int i = 0; i < 600; ++i) {
+        game.update(0.08f, InputState{});
+    }
+    check(game.encounters()[target].spawnedCount == countAtWipe, "no_respawn_without_option_1");
     logInfo(ok ? "encounter reset test: PASS" : "encounter reset test: FAIL");
     return ok ? 0 : 10;
 }
@@ -2736,6 +3883,7 @@ int runVmCorpus(const Options& options)
         logInfo(concat("vm corpus: files=", run.files.size(), " returned=", run.returned,
                        " blocked=", run.blocked, " budget=", run.budget,
                        " decode_errors=", run.decodeErrors, " vm_errors=", run.vmErrors,
+                       " retail_run_errors=", run.retailRunErrors,
                        " invalid_jumps=", run.invalidJumpTargets, " steps=", run.totalSteps,
                        " action_calls=", run.totalActionCalls, " max_sp=", run.maxStack,
                        " functional=", options.vmFunctional ? 1 : 0));
@@ -2840,8 +3988,8 @@ int runFactionTest(GameSession& game, const std::string& scriptPath)
     const std::uint32_t pc = game.scriptWorld().pc;
     check(game.runScriptNcsForTest("faction_script_test", scriptBytes, pc),
           "script_ran");
-    check(game.scriptWorld().getLocal(pc, "10").asInt() == 0, "script_before");
-    check(game.scriptWorld().getLocal(pc, "11").asInt() == 25, "script_after");
+    check(game.scriptWorld().localNumber(pc, 0) == 0, "script_before");
+    check(game.scriptWorld().localNumber(pc, 1) == 25, "script_after");
     check(game.reputation(0, 1) == 25, "script_bridge");
     game.setReputation(0, 1, 0);
 
@@ -2965,9 +4113,21 @@ int runSaveMatrixTest(GameSession& base, const std::string& fixtureDirectory)
         return ok ? 0 : 68;
     }
 
+    // Unique per run: kotor_save_matrix and kotor_differential both run this, and a shared
+    // folder lets one run delete or overwrite the other's files.
     const std::filesystem::path scratch =
-        std::filesystem::temp_directory_path() / "kotor-save-matrix";
+        std::filesystem::temp_directory_path()
+        / ("kotor-save-matrix-"
+           + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     std::filesystem::remove_all(scratch, error);
+    struct ScratchCleanup {
+        std::filesystem::path path;
+        ~ScratchCleanup()
+        {
+            std::error_code ignored;
+            std::filesystem::remove_all(path, ignored);
+        }
+    } scratchCleanup{scratch};
     std::size_t loaded = 0;
     std::size_t roundTrips = 0;
     for (const std::filesystem::path& folder : folders) {
@@ -2985,6 +4145,37 @@ int runSaveMatrixTest(GameSession& base, const std::string& fixtureDirectory)
             check(game.gold() == source.gold, "gold_" + name);
             check(game.inventory().size() == source.inventory.size(),
                   "inventory_" + name);
+            // The PC's Equip_ItemList: each worn item keeps its slot (the struct type is the slot mask,
+            // 1 body, 4 right hand, 5 left hand ...), so the body armour drives the model and the weapons
+            // sit in the hands. The retail Taris save wears a long sword, a short vibroblade and armour.
+            for (const kotor::SavedInventoryItem& worn : source.inventory) {
+                if (!worn.equipped) {
+                    continue;
+                }
+                const bool found = std::any_of(game.inventory().begin(), game.inventory().end(),
+                                               [&](const InventoryItem& item) {
+                    return item.equipped && item.resref == worn.resref && item.slot == worn.slot;
+                });
+                check(worn.slot >= 0 && found, "equipped_" + worn.resref + "_" + name);
+                if (worn.slot != 1) {
+                    continue;
+                }
+                // The Body slot's item picks the body model and map (00697610: its UTI's BodyVariation
+                // and TextureVar). Retail's PC loaded from the Taris save wears g_a_class4001 (variation
+                // 3, texture 1: modelc / the c map "01"), not the bare modela, so the avatar carries it.
+                kotor::Install armourInstall(base.installPath(), false);
+                const kotor::BodyVariant want = kotor::armorBodyVariant(armourInstall, worn.resref);
+                check(want.variation >= 1 && game.wornBodyVariant() == want,
+                      "body_variant_" + worn.resref + "_" + name);
+                game.setThirdPerson(true);
+                const kotor::Entity* avatar = nullptr;
+                for (const kotor::Entity& candidate : game.scene().entities) {
+                    if (candidate.tag == "PC") {
+                        avatar = &candidate;
+                    }
+                }
+                check(avatar != nullptr && avatar->bodyVariant == want, "body_avatar_" + worn.resref + "_" + name);
+            }
             check(sameJournal(game.journal(), source.journal), "journal_" + name);
             check(game.partyTags().size() == source.partyTags.size(),
                   "party_" + name);
@@ -3366,6 +4557,9 @@ int runDialogueCorpusTest(GameSession& game)
     camVidDialogue(1, -1, -1);
     check(!game.videoEffect().active(), "camvid_non_static_camera_disables");
     game.endDialogue();
+    camVidDialogue(1, 6, 1);
+    game.clearDialogueForTest();
+    check(!game.videoEffect().active(), "camvid_any_dialogue_exit_disables");
     logInfo(concat("dialogue corpus: dlgs=", dlgs, " entries=", entries,
                    " replies=", replies, " scripts=", scripts,
                    " sounds=", sounds, " cameraModels=", cameraModels,
@@ -3539,6 +4733,32 @@ int runChargenTest(GameSession& game)
           "attributes");
     check(chargen.pointsRemaining() == 23, "points_spent");
 
+    // Recommended (the abilities, skills and feats steps): each base class's own row of the shipped
+    // tables. The class rows of classes.2da are full spends of the 30 points, so the proof is that the
+    // pool lands on 0; the skills and feats then use their pools within the caps.
+    for (int classId = 0; classId < chargen.classCount(); ++classId) {
+        Chargen recommended(game.rules());
+        check(recommended.selectClass(classId), "recommended_select_class");
+        const std::array<std::int32_t, 6> wanted = game.rules().recommendedAbilities(classId);
+        check(recommended.applyRecommended(Chargen::Step::Abilities), "recommended_abilities_apply");
+        bool same = true;
+        for (int i = 0; i < 6; ++i) {
+            same = same && recommended.attribute(i) == wanted[static_cast<std::size_t>(i)];
+        }
+        check(same && recommended.pointsRemaining() == 0, "recommended_abilities_spend_all_30_points");
+        check(recommended.applyRecommended(Chargen::Step::Skills), "recommended_skills_apply");
+        int ranks = 0;
+        bool withinCaps = true;
+        for (int i = 0; i < game.rules().skillCount(); ++i) {
+            ranks += recommended.skillRank(i);
+            withinCaps = withinCaps && recommended.skillRank(i) <= recommended.skillRankCap(i);
+        }
+        check(ranks > 0 && withinCaps && recommended.skillPointsRemaining() >= 0, "recommended_skills_spend_points");
+        check(recommended.applyRecommended(Chargen::Step::Feats), "recommended_feats_apply");
+        check(recommended.featPointsRemaining() >= 0 && recommended.featPointsRemaining() < 2, "recommended_feats_fill_the_pool");
+    }
+    check(!chargen.applyRecommended(Chargen::Step::Portrait), "recommended_only_where_the_screen_has_it");
+
     int awareness = -1;
     for (int i = 0; i < game.rules().skillCount(); ++i) {
         if (game.rules().skillName(i) == "Awareness") {
@@ -3618,6 +4838,41 @@ int runChargenTest(GameSession& game)
     const std::int32_t strBefore = game.character().str;
     check(game.spendAttributePoint(0), "spend_attribute");
     check(game.character().str == strBefore + 1, "attribute_spent");
+
+    {
+        // Retail 006dc3c0 builds the chargen bodies with body variation 2 / texture 1 (the class clothes); the old
+        // preview left classsel and portcust on the row's bare model. 006100f0: the sheet camera rides charrec_light's
+        // camerahook; the retail sheet frames at alignment 10, 50 and 90 (cs_al10, cs_before, cs_al90) keep one framing.
+        ChargenPreview preview(game.install(), game.rules());
+        check(chargenBodyVariant() == kotor::BodyVariant{2, 1}, "chargen_body_clothes");
+        preview.showClassSelection(game.rules());
+        check(preview.bodyVariant() == chargenBodyVariant() && preview.entityForTag("3D_MODEL1") >= 0, "classsel_dressed");
+        const std::int32_t headAppearance = preview.appearanceForTag("3D_MODEL3");
+        preview.showHead(headAppearance, 0);
+        check(preview.bodyVariant() == chargenBodyVariant(), "portcust_dressed");
+        preview.showSheet(headAppearance, chargenBodyVariant(), 50);
+        const float neutral = preview.sheetCamera().eye.z;
+        std::size_t smoke = 0;
+        for (const kotor::EmitterInstance& emitter : preview.scene().emitters) {
+            smoke += emitter.particles.size();
+        }
+        logInfo(concat("chargen: sheet smoke particles at open ", smoke));
+        check(smoke > 50, "sheet_smoke_at_open"); // the hub and the sheet open on smoke, not a black box
+        preview.showSheet(headAppearance, chargenBodyVariant(), 0);
+        const float dark = preview.sheetCamera().eye.z;
+        preview.showSheet(headAppearance, chargenBodyVariant(), 100);
+        const float light = preview.sheetCamera().eye.z;
+        logInfo(concat("chargen: sheet eye z dark ", dark, " neutral ", neutral, " light ", light));
+        // 006100f0 attaches the camera to the hook the clip keys: evil 2.3 m above align11, good 0.77 m below it.
+        check(dark > neutral + 2.0f && light < neutral - 0.7f, "sheet_camera_follows_keyed_hook");
+        // 006100f0 / 0049f4f0: the camera rides the room hook (align11 keys it at -0.817) raised by the body's own
+        // CAMERAHOOK height (006974d0; 1.5 to 1.7 m on the player bodies), not the old fixed 1.767.
+        logInfo(concat("chargen: sheet raise ", preview.sheetRaise(), " eye z ", neutral));
+        check(preview.sheetRaise() > 1.4f && preview.sheetRaise() < 1.75f && std::abs(neutral - (preview.sheetRaise() - 0.817f)) < 0.01f,
+              "sheet_camera_raised_by_body_camerahook");
+        preview.showSheet(headAppearance, chargenBodyVariant(), 50, "T3M4");
+        check(preview.sheetHook() == "camerahookt", "sheet_hook_t3m4");
+    }
 
     logInfo(ok ? "chargen: PASS" : "chargen: FAIL");
     return ok ? 0 : 73;
@@ -3756,6 +5011,7 @@ int chargenVmGender(GameSession& game)
     // reads as OBJECT_INVALID in a compiled script.
     script.constObject(0).action(358, 1);
     script.constString("chargen_gender_out").action(581, 2); // SetGlobalNumber
+    game.declareGlobalForTest("chargen_gender_out");
     game.scriptWorld().setGlobal("chargen_gender_out", script::Value::makeInt(-999));
     const bool ran = game.runScriptNcsForTest("chargen_gender", script.bytes(),
                                               game.scriptWorld().pc);
@@ -3841,6 +5097,24 @@ int runChargenGuiTest(GameSession& game)
         return handleChargenGuiAction(tag, state, gui, game);
     };
 
+    // Paired frame cg_class: the focused slot names gender and class, LBL_DESC gives its line. Hovering
+    // the third slot moves the focus. Fails on a binding that does not run at this step.
+    {
+        const auto& text = game.localization().tlk();
+        bindChargenScreen(gui, state, game);
+        check(gui.state("LBL_DESC").text == text.text(32109), "classsel_desc_first_slot");
+        check(gui.state("LBL_CLASS").text.find(game.rules().className(Chargen::slotClass(0))) != std::string::npos,
+              "classsel_class_first_slot");
+        const kotor::GuiControl* third = gui.control("BTN_SEL3");
+        check(third != nullptr, "classsel_third_slot_exists");
+        if (third != nullptr) {
+            gui.pointerMove(static_cast<float>(third->extent.left + third->extent.width / 2),
+                            static_cast<float>(third->extent.top + third->extent.height / 2));
+            bindChargenScreen(gui, state, game);
+            check(state.classFocus == 2 && gui.state("LBL_DESC").text == text.text(32111), "classsel_hover_moves_focus");
+            gui.pointerMove(-10.0f, -10.0f);
+        }
+    }
     // The six classsel buttons: class and gender per slot (retail 006dc3c0).
     {
         const int expectedClass[6] = {2, 1, 0, 0, 1, 2};
@@ -3862,7 +5136,46 @@ int runChargenGuiTest(GameSession& game)
 
     check(click("BTN_SEL2"), "select_scout");
     check(state.chargen.classId() == 1 && state.chargen.gender() == 0, "class_id");
-    check(state.step == 1 && gui.screenName() == "portcust", "portrait_screen");
+    // Retail 006eb420: the class opens MAINCG with Quick or Custom (QORCPNL laid in at 322,87), not the
+    // portrait screen. Quick's help is up, the scores blank; the old flow fails here.
+    check(state.step == kChargenHub && state.hubPanel == kHubChoice && gui.screenName() == "maincg_qorcpnl",
+          "hub_after_class");
+    bindChargenScreen(gui, state, game);
+    check(gui.control("QUICK_CHAR_BTN") != nullptr && gui.control("QUICK_CHAR_BTN")->extent.left == 322 + 17
+              && gui.control("MAIN_TITLE_LBL") != nullptr,
+          "hub_composite_places_sub_panel");
+    check(!gui.state("PORTRAIT_LBL").fill.empty() && gui.state("STR_AB_LBL").text.empty()
+              && gui.state("LB_DESC").items.size() == 1
+              && gui.state("LB_DESC").items[0].text == game.localization().tlk().text(241),
+          "hub_choice_contents");
+    // Quick: QUICKPNL's show applies the class template (006effd0) and MAINCG shows it (006eac30).
+    check(act("QUICK_CHAR_BTN") && state.hubPanel == kHubQuick && gui.screenName() == "maincg_quickpnl",
+          "hub_quick_opens");
+    bindChargenScreen(gui, state, game);
+    check(state.chargen.pointsRemaining() == 0 && gui.state("DEX_AB_LBL").text == std::to_string(state.chargen.attribute(1))
+              && !gui.state("LBL_DEF").text.empty() && gui.state("LBL_1").marked && !gui.state("LBL_2").marked,
+          "hub_quick_template_shown");
+    check(act("BTN_STEPNAME2") && gui.screenName() == "maincg_quickpnl", "hub_quick_name_locked");
+    check(act("BTN_BACK") && state.hubPanel == kHubChoice && state.chargen.pointsRemaining() == 30,
+          "hub_quick_back_resets");
+    check(act("CUST_CHAR_BTN") && state.hubPanel == kHubCustom && gui.screenName() == "maincg_custpnl"
+              && state.customStep == 0,
+          "hub_custom_opens");
+    // CUSTPNL's LBL_NUMn carry their numbers in the file (TEXT "1".."6"); retail never sets them (006ef730).
+    bindChargenScreen(gui, state, game);
+    {
+        const kotor::GuiControl* number = gui.control("LBL_NUM2");
+        const GuiControlState shown = gui.state("LBL_NUM2");
+        logInfo(concat("chargen_gui: LBL_NUM2 file text '", number != nullptr ? number->text : std::string("<none>"),
+                       "' strref ", number != nullptr ? number->strref : 0u, " state text ", shown.hasText, " '",
+                       shown.text, "' visible ", shown.visible));
+        // The painter prefers a strref over TEXT: the file's 0xFFFFFFFF must survive loading (it read as 0x80000000).
+        check(number != nullptr && shown.visible && number->strref == 0xFFFFFFFFu
+                  && (shown.hasText ? shown.text : number->text) == "2",
+              "hub_custom_numbers");
+    }
+    check(act("BTN_STEPNAME3") && gui.screenName() == "maincg_custpnl", "hub_custom_skills_locked");
+    check(act("BTN_STEPNAME1") && state.step == 1 && gui.screenName() == "portcust", "portrait_screen");
 
     // Portrait control: the texture is the portraits.2da row's art, and cycling changes it.
     std::optional<kotor::TwoDa> portraitTable;
@@ -3914,15 +5227,39 @@ int runChargenGuiTest(GameSession& game)
               && first.appearanceLarge != first.appearance
               && first.appearanceSmall != first.appearance, "appearance_class_columns");
 
-    check(act("BTN_BACK"), "portrait_back");
-    check(state.step == 0 && gui.screenName() == "classsel", "back_to_class");
-    check(click("BTN_SEL2"), "reselect_scout");
-    check(act("BTN_ACCEPT"), "portrait_accept");
+    check(act("BTN_BACK") && state.step == kChargenHub && state.customStep == 0, "portrait_back_to_hub");
+    check(act("BTN_BACK") && state.hubPanel == kHubChoice, "hub_back_to_choice");
+    check(act("BTN_BACK") && state.step == 0 && gui.screenName() == "classsel", "back_to_class");
+    check(click("BTN_SEL2") && act("CUST_CHAR_BTN") && act("BTN_STEPNAME1"), "reselect_scout");
+    check(act("BTN_ACCEPT") && state.step == kChargenHub && state.customStep == 1, "portrait_accept");
+    check(act("BTN_STEPNAME2"), "hub_attributes");
     check(state.step == 2 && gui.screenName() == "abchrgen", "abilities_screen");
     check(act("STR_PLUS_BTN") && act("STR_PLUS_BTN"), "strength_plus");
     check(state.chargen.attribute(0) == 10, "strength_value");
-    check(act("BTN_ACCEPT"), "abilities_accept");
+    // 006f70e0: the first row focused at open, its cost (1 below 14) and modifier ("-" for 0) shown, and the
+    // label over the help keeps the file's "Description". Fails on the old screen, which hid both boxes.
+    bindChargenScreen(gui, state, game);
+    check(gui.state("COST_POINTS_LBL").visible && gui.state("COST_POINTS_LBL").text == "1"
+              && gui.state("LBL_ABILITY_MOD").visible && gui.state("LBL_ABILITY_MOD").text == "-"
+              && gui.state("SUB_TITLE_LBL").text == game.localization().tlk().text(209)
+              && gui.state("DESC_LBL").text == game.localization().tlk().text(217)
+              && !gui.state("LB_DESC").items.empty(),
+          "abilities_cost_modifier_shown");
+    check(act("BTN_ACCEPT") && state.customStep == 2 && state.statsShown, "abilities_accept");
+    bindChargenScreen(gui, state, game);
+    check(gui.state("STR_AB_LBL").text == "10", "hub_shows_scores");
+    check(act("BTN_STEPNAME3"), "hub_skills");
     check(state.step == 3 && gui.screenName() == "skchrgen", "skills_screen");
+    // 006f51d0 / 006f4bf0: the first skill focused at open with its class flag, cost and description.
+    bindChargenScreen(gui, state, game);
+    {
+        const bool classSkill = game.rules().skillIsClassSkill(state.chargen.classId(), 0);
+        check(gui.state("CLASSSKL_LBL").visible
+                  && gui.state("CLASSSKL_LBL").text == game.localization().tlk().text(classSkill ? 38152 : 38153)
+                  && gui.state("COST_POINTS_LBL").text == (classSkill ? "1" : "2")
+                  && !gui.state("LB_DESC").items.empty(),
+              "skills_first_row_described");
+    }
     // Skill points: four times (base/2 + INT mod), at least 4 (INT 8 -> -1).
     const std::int32_t scoutPoints = state.chargen.skillPointsRemaining();
     check(scoutPoints == std::max(4, 4 * (game.rules().classSkillPointBase(1) / 2 - 1)),
@@ -3944,14 +5281,64 @@ int runChargenGuiTest(GameSession& game)
           "cross_class_costs_two");
     check(act("PER_PLUS_BTN") && state.chargen.skillRank(persuade) == 2, "cross_class_rank_two");
     check(act("PER_PLUS_BTN") && state.chargen.skillRank(persuade) == 2, "cross_class_capped");
-    check(act("BTN_ACCEPT"), "skills_accept");
+    check(act("BTN_ACCEPT") && state.customStep == 3, "skills_accept");
+    check(act("BTN_STEPNAME4"), "hub_feats");
+    // 006f3460: the feats screen opens under the box of the feats the class grants at this level (strref 0xa512).
+    check(gui.screenName() == "skillinfo" && gui.state("LB_SKILLS").items.size() >= 3, "feats_granted_box");
+    check(act("BTN_OK"), "feats_granted_box_ok");
     check(state.step == 4 && gui.screenName() == "ftchrgen", "feats_screen");
     act("BTN_SELECT");
     check(state.chargen.featPointsRemaining() == 0, "one_feat_spent");
-    check(act("BTN_ACCEPT"), "feats_accept");
+    check(act("BTN_ACCEPT") && state.customStep == 4, "feats_accept");
+    check(act("BTN_STEPNAME5"), "hub_name");
     check(state.step == 5 && gui.screenName() == "name", "name_screen");
-    state.nameBuffer = "Revan";
-    check(act("END_BTN"), "name_end");
+    // Paired frame cg_name, retail 006f9bf0: a first and last name from the shipped tables, and the
+    // button gives another. Fails on the old "Player" default and the old hidden button.
+    {
+        const std::string opened = state.nameBuffer;
+        check(opened != "Player" && opened.find(' ') != std::string::npos && opened.size() <= 16, "name_generated_on_open");
+        bindChargenScreen(gui, state, game);
+        check(gui.state("BTN_RANDOM").visible && gui.state("BTN_RANDOM").text == game.localization().tlk().text(48579),
+              "name_random_button_labelled");
+        bool changed = false;
+        for (int i = 0; i < 4 && !changed; ++i) {
+            check(act("BTN_RANDOM"), "name_random_handled");
+            changed = state.nameBuffer != opened && !state.nameBuffer.empty();
+        }
+        check(changed, "name_random_draws_another");
+    }
+    // The text box: Backspace clears the default, a blank name is refused with retail's text (42360),
+    // typed characters fill it up to the limit and anything else is ignored.
+    for (std::size_t i = 0; i < kChargenNameMax; ++i) {
+        chargenNameBackspace(state);
+    }
+    check(state.nameBuffer.empty(), "name_cleared_by_backspace");
+    check(act("END_BTN") && !state.finished && state.step == 5 && state.nameRefused, "blank_name_refused");
+    bindChargenScreen(gui, state, game);
+    check(gui.state("SUB_TITLE_LBL").text == game.localization().tlk().text(42360)
+              && gui.state("SUB_TITLE_LBL").text == "You must specify a name.",
+          "blank_name_message_shown");
+    chargenNameInput(state, "Rev");
+    chargenNameInput(state, "an 12!_/\
+");
+    // Retail 004184f0 refuses only control codes, '_', '/' and '\'.
+    check(state.nameBuffer == "Revan 12!" && !state.nameRefused, "typed_name_filters_characters");
+    chargenNameInput(state, "abcdefghijklmnopqrstuvwxyz");
+    check(state.nameBuffer.size() == kChargenNameMax, "typed_name_is_capped");
+    for (std::size_t i = 0; i < kChargenNameMax; ++i) {
+        chargenNameBackspace(state);
+    }
+    chargenNameInput(state, "Revan  ");
+    bindChargenScreen(gui, state, game);
+    check(gui.state("NAME_BOX_EDIT").text.rfind("Revan", 0) == 0,
+          "name_box_shows_the_typing");
+    check(act("END_BTN") && state.step == kChargenHub && state.customStep == 5 && !state.finished, "name_end");
+    bindChargenScreen(gui, state, game);
+    check(gui.state("LBL_NAME").text == state.chargen.name() && !state.chargen.name().empty(), "hub_shows_name");
+    // Cancel after the first step asks first (006ef6a0, strref 48541); No keeps everything.
+    check(act("BTN_CANCEL") && gui.modalActive() && state.cancelConfirm, "hub_cancel_asks");
+    check(act("BTN_CANCEL") && !gui.modalActive() && state.customStep == 5, "hub_cancel_no_keeps");
+    check(act("BTN_STEPNAME6"), "hub_play");
     check(!state.active && state.finished, "flow_finished");
     check(game.character().name == "REVAN", "applied_name");
     check(game.character().classId == 1, "applied_class");
@@ -3963,6 +5350,53 @@ int runChargenGuiTest(GameSession& game)
     const int maleVm = chargenVmGender(game);
     logInfo(concat("chargen_gui: male vm gender value=", maleVm));
     check(maleVm == 0, "male_get_gender_vm");
+
+    // Recommended on the three steps, by pointer on the shipped screens (BTN_RECOMMENDED): the class's
+    // own row of classes.2da (all 30 points), skills.2da <prefix>_reco and feat.2da <prefix>_recom.
+    {
+        ChargenGuiState recommended(game.rules());
+        recommended.chargen.selectClass(2); // Scoundrel: a different spread than the Scout above
+        recommended.step = 2;
+        check(gui.open("abchrgen"), "recommended_abilities_screen");
+        bindChargenScreen(gui, recommended, game);
+        check(gui.state("BTN_RECOMMENDED").visible, "recommended_button_shown");
+        const auto clickIn = [&](ChargenGuiState& target, const std::string& tag) {
+            const kotor::GuiControl* hit = gui.control(tag);
+            if (hit == nullptr) {
+                return false;
+            }
+            const float x = static_cast<float>(hit->extent.left + hit->extent.width / 2);
+            const float y = static_cast<float>(hit->extent.top + hit->extent.height / 2);
+            gui.pointerMove(x, y);
+            gui.pointerDown(x, y);
+            const bool released = gui.pointerUp(x, y);
+            const std::string action = gui.lastAction();
+            gui.clearActions();
+            return released && action == tag && handleChargenGuiAction(action, target, gui, game);
+        };
+        check(clickIn(recommended, "BTN_RECOMMENDED"), "recommended_abilities_click");
+        const std::array<std::int32_t, 6> wanted = game.rules().recommendedAbilities(2);
+        bool same = recommended.chargen.pointsRemaining() == 0;
+        for (int i = 0; i < 6; ++i) {
+            same = same && recommended.chargen.attribute(i) == wanted[static_cast<std::size_t>(i)];
+        }
+        check(same, "recommended_abilities_are_the_class_row");
+        recommended.step = 3;
+        check(gui.open("skchrgen"), "recommended_skills_screen");
+        bindChargenScreen(gui, recommended, game);
+        check(clickIn(recommended, "BTN_RECOMMENDED"), "recommended_skills_click");
+        int ranks = 0;
+        for (int i = 0; i < game.rules().skillCount(); ++i) {
+            ranks += recommended.chargen.skillRank(i);
+        }
+        check(ranks > 0 && recommended.chargen.skillPointsRemaining() >= 0, "recommended_skills_spent");
+        recommended.step = 4;
+        check(gui.open("ftchrgen"), "recommended_feats_screen");
+        bindChargenScreen(gui, recommended, game);
+        check(clickIn(recommended, "BTN_RECOMMENDED"), "recommended_feats_click");
+        check(recommended.chargen.featPointsRemaining() >= 0 && recommended.chargen.featPointsRemaining() < 2,
+              "recommended_feats_taken");
+    }
 
     // Derived statistics against classes.2da / the class tables, for every base class.
     {
@@ -4063,6 +5497,8 @@ int runChargenGuiTest(GameSession& game)
         check(womanAct("BTN_SEL5"), "female_scout_select");
         check(womanState.chargen.classId() == 1 && womanState.chargen.gender() == 1,
               "female_scout_state");
+        // Quick: Portrait, Name, Play (QUICKPNL).
+        check(womanAct("QUICK_CHAR_BTN") && womanAct("BTN_STEPNAME1") && womanState.step == 1, "female_quick_portrait");
         const PortraitInfo woman = womanState.chargen.portrait();
         check(woman.row >= 0 && woman.sex == 1 && woman.row != first.row, "female_portrait_row");
         std::string womanResref;
@@ -4081,12 +5517,13 @@ int runChargenGuiTest(GameSession& game)
             womanAct("BTN_ARRR");
         }
         check(allFemale && womanState.chargen.portraitIndex() == 0, "female_cycle_stays_female");
-        for (const char* step : {"BTN_ACCEPT", "BTN_ACCEPT", "BTN_ACCEPT", "BTN_ACCEPT"}) {
+        for (const char* step : {"BTN_ACCEPT", "BTN_STEPNAME2"}) {
             womanAct(step);
         }
         check(womanState.step == 5, "female_reaches_name");
         womanState.nameBuffer = "Bastila";
-        check(womanAct("END_BTN") && womanState.finished, "female_flow_finished");
+        check(womanAct("END_BTN") && womanState.quickStep == 2 && womanAct("BTN_STEPNAME3") && womanState.finished,
+              "female_flow_finished");
         check(womanGame.character().gender == 1, "female_sheet_gender");
         check(chargenVmGender(womanGame) == 1, "female_get_gender_vm");
         const std::size_t avatar = womanGame.playerEntity();
@@ -4548,14 +5985,19 @@ int runK2Test(GameSession& game)
     // One more than before this wave: the shipped OnEnter script a_bet3m4 calls
     // CreateObject(creature, "c_medbaypc"), which never reached the scene.
     check(scene.entities.size() == 176, "entities");
-    check(scene.entityMeshes.size() == 71, "entity_meshes");
+    // Room loop meshes whose animloop only tints them (controllers 100 selfillumcolor / 132 alpha) are
+    // dynamic too: a controller's type is the byte offset it writes in the part each frame (00483330 writes
+    // *ctrl + part), PartTriMesh starts +0x64 at 0 and +0x84 at 1.0 (ctor 00445840), and the mesh draw reads
+    // +0x64 as its self illumination (00473ba2) and +0x84 as its alpha (0046f460). Seven 001EBO rooms tint:
+    // 33 meshes without that case, 40 with it; batches 246 -> 242 as those meshes leave the static rooms.
+    check(scene.entityMeshes.size() == 40, "entity_meshes");
     check(scene.entities.back().tag == "MEDBAY_PC"
               && scene.entities.back().kind == kotor::EntityKind::Creature,
           "script_created_creature");
     check(scene.triggers.size() == 17, "triggers");
     check(scene.warnings.empty(), "warnings");
     check(scene.vertices.size() > 200'000, "vertices");
-    check(scene.batches.size() == 55, "batches");
+    check(scene.batches.size() == 242, "batches");
     check(!scene.scripts.empty(), "scripts");
     check(scene.area == "001ebo" && game.languageId() == 0, "language");
 
@@ -5079,33 +6521,33 @@ int runMinigameTest(GameSession& game, const std::string& scriptPath)
         ok = ok && condition;
     };
 
-    // Pazaak: deterministic deck, side cards and first-to-two-sets match.
-    const auto playPazaak = [](std::uint32_t seed) {
-        PazaakGame game;
-        game.reset(seed);
+    // Pazaak (Minigames.h): the retail model. Each check names the routine it follows and fails on the
+    // engine's earlier rules (a nine-card win, the opponent opening a set, its own AI, a wager from 1).
+    const auto mainCard = [](int value) { return PazaakCard{17 + value, 0}; }; // kinds 18..27 are 1..10
+    const auto autoplay = [](PazaakGame& match) {
         std::string transcript;
-        for (int step = 0; step < 256
-             && game.phase() != PazaakGame::Phase::MatchOver; ++step) {
-            if (game.phase() == PazaakGame::Phase::PlayerTurn) {
-                if (game.playerTotal() < 17) {
-                    game.playerDraw();
+        for (int step = 0; step < 40000 && match.phase() != PazaakGame::Phase::MatchOver; ++step) {
+            if (match.sequenceState() == 10) {
+                match.acknowledgeSet();
+            } else if (match.awaitingPlayer()) {
+                if (match.playerTotal() < 17) {
+                    match.playerEndTurn();
                 } else {
-                    game.playerStand();
+                    match.playerStand();
                 }
-            } else if (game.phase() == PazaakGame::Phase::OpponentTurn) {
-                game.opponentTurn();
-            } else {
-                break;
             }
-            transcript += std::to_string(static_cast<int>(game.phase())) + "|"
-                + std::to_string(game.playerTotal()) + "|"
-                + std::to_string(game.opponentTotal()) + "|"
-                + std::to_string(game.playerSets()) + "|"
-                + std::to_string(game.opponentSets()) + "|"
-                + std::to_string(game.deckRemaining()) + ";";
+            match.tick(0.1f);
+            transcript += std::to_string(match.sequenceState()) + "|" + std::to_string(match.playerTotal()) + "|"
+                + std::to_string(match.opponentTotal()) + "|" + std::to_string(match.playerSets()) + "|"
+                + std::to_string(match.opponentSets()) + "|" + std::to_string(match.deckRemaining()) + ";";
         }
-        return std::make_tuple(transcript, game.phase(), game.playerSets(),
-                               game.opponentSets());
+        return transcript;
+    };
+    const auto playPazaak = [&](std::uint32_t seed) {
+        PazaakGame match;
+        match.reset(seed);
+        const std::string transcript = autoplay(match);
+        return std::make_tuple(transcript, match.phase(), match.playerSets(), match.opponentSets());
     };
     const auto pazaakA = playPazaak(0x13572468u);
     const auto pazaakB = playPazaak(0x13572468u);
@@ -5113,32 +6555,381 @@ int runMinigameTest(GameSession& game, const std::string& scriptPath)
     check(std::get<0>(pazaakA) == std::get<0>(pazaakB), "pazaak_deterministic");
     check(std::get<0>(pazaakA) != std::get<0>(pazaakC), "pazaak_seed_varies");
     check(std::get<1>(pazaakA) == PazaakGame::Phase::MatchOver, "pazaak_match_over");
-    check(std::get<2>(pazaakA) == 2 || std::get<3>(pazaakA) == 2,
-          "pazaak_two_sets");
-    check(std::get<0>(pazaakA).size() > 32, "pazaak_turns");
+    // HandleEndDialog 0067e9a0: three sets end the match.
+    check(std::get<2>(pazaakA) == 3 || std::get<3>(pazaakA) == 3, "pazaak_three_sets");
 
+    // ChooseSidedeck 006e4580: four of the ten side cards each; the main deck is 40 (ShuffleDeck 006e4730).
     PazaakGame pazaak;
-    pazaak.reset(7u);
-    check(pazaak.deckRemaining() == 40, "pazaak_deck");
-    check(pazaak.playerSide().size() == 4 && pazaak.playerSide()[0] == -1
-              && pazaak.playerSide()[1] == -2 && pazaak.playerSide()[2] == 3
-              && pazaak.playerSide()[3] == 4,
-          "pazaak_side_cards");
-    check(!pazaak.playerStand(), "pazaak_stand_requires_total");
-    check(!pazaak.playerPlaySide(9), "pazaak_side_bounds");
-    check(pazaak.playerPlaySide(3), "pazaak_side_play");
-    check(pazaak.playerTotal() == 4 && pazaak.playerSide().size() == 3,
-          "pazaak_side_total");
-    check(pazaak.playerDraw() && pazaak.deckRemaining() == 39, "pazaak_draw");
-    check(pazaak.playerTotal() >= 5 && pazaak.playerTotal() <= 14,
-          "pazaak_draw_range");
-    check(pazaak.phase() == PazaakGame::Phase::OpponentTurn, "pazaak_turn_order");
-    check(!pazaak.playerDraw(), "pazaak_draw_wrong_phase");
-    check(pazaak.opponentTurn(), "pazaak_opponent");
-    check(pazaak.playerSets() + pazaak.opponentSets() == 1, "pazaak_set_scored");
+    const std::vector<PazaakCard> opponentTen{{0, 0}, {1, 0}, {2, 0}, {3, 0}, {6, 0},
+                                              {7, 0}, {8, 0}, {12, 0}, {13, 0}, {14, 0}};
+    pazaak.reset(7u, PazaakGame::defaultSide(), opponentTen);
+    bool dealtFromTen = pazaak.opponent().handCount() == 4;
+    for (const PazaakCard& card : pazaak.opponent().hand) {
+        dealtFromTen = dealtFromTen
+            && std::any_of(opponentTen.begin(), opponentTen.end(), [&](const PazaakCard& c) { return c.kind == card.kind; });
+    }
+    check(dealtFromTen && pazaak.player().handCount() == 4, "pazaak_four_of_ten_dealt");
+    // DoGameSequence 00680030 states 0..2: the player draws first, after the 0.4 s start-turn wait.
+    pazaak.tick(0.0f);
+    check(pazaak.turnMark() == 1 && pazaak.player().tableCount() == 0 && pazaak.timer() > 0.39f,
+          "pazaak_start_turn_waits");
+    pazaak.tick(0.5f);
+    pazaak.tick(0.0f);
+    check(pazaak.player().tableCount() == 1 && pazaak.opponent().tableCount() == 0 && pazaak.deckRemaining() == 39
+              && pazaak.awaitingPlayer(),
+          "pazaak_player_draws_first");
+    check(!pazaak.playerPlayHand(9), "pazaak_hand_bounds");
+    const int beforePlay = pazaak.playerTotal();
+    const int handValue = pazaak.player().hand[0].value();
+    check(pazaak.playerPlayHand(0) && pazaak.playerTotal() == beforePlay + handValue
+              && pazaak.player().handCount() == 3 && !pazaak.player().hand[0].present() && pazaak.handCardPlayed(),
+          "pazaak_hand_card_plays");
+    check(!pazaak.playerPlayHand(1), "pazaak_one_hand_card_per_turn"); // HandlePlayHandCard 0067ede0: state 3 only
+    check(pazaak.playerEndTurn() && !pazaak.awaitingPlayer(), "pazaak_turn_order");
+    check(!pazaak.playerEndTurn(), "pazaak_end_turn_wrong_phase");
 
-    // Script bridge: the compiled fixture calls PlayPazaak(1, "", 0, FALSE,
-    // OBJECT_SELF); drive the match with the same stand-at-17 policy.
+    // SetCard 0067cd30 / GetTotal 006e4360: a +/- card flips to its minus side; a plain card does not.
+    PazaakGame flipper;
+    flipper.reset(11u, {{14, 0}, {14, 0}, {14, 0}, {14, 0}, {14, 0}, {14, 0}, {14, 0}, {14, 0}, {14, 0}, {14, 0}},
+                  opponentTen);
+    check(flipper.player().hand[0].flip() && flipper.player().hand[0].value() == 3 && flipper.playerFlipHand(0)
+              && flipper.player().hand[0].value() == -3,
+          "pazaak_flip_card_flips");
+    PazaakGame plain;
+    plain.reset(11u, {{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}}, opponentTen);
+    check(!plain.playerFlipHand(0) && plain.player().hand[0].value() == 1, "pazaak_plain_card_does_not_flip");
+
+    // AddGameCard 006e45f0: exactly 20 stands the side at once.
+    {
+        PazaakGame twenty;
+        twenty.reset(3u);
+        PazaakGame::Side me;
+        me.table[0] = mainCard(10);
+        me.table[1] = mainCard(5);
+        me.hand[0] = {4, 0}; // +5
+        PazaakGame::Side them;
+        them.table[0] = mainCard(4);
+        twenty.setForTest(me, them, 3);
+        check(twenty.playerPlayHand(0) && twenty.playerTotal() == 20 && twenty.player().standing
+                  && !twenty.awaitingPlayer(),
+              "pazaak_twenty_stands");
+    }
+    // AddGameCard 006e45f0 + DetermineWinner 006e48a0: the ninth card stands the side; it wins nothing by
+    // itself and the opponent still plays its turn.
+    {
+        PazaakGame nine;
+        nine.reset(5u);
+        PazaakGame::Side me;
+        for (std::size_t i = 0; i < 8; ++i) {
+            me.table[i] = mainCard(1);
+        }
+        me.hand[0] = {0, 0}; // +1
+        PazaakGame::Side them;
+        them.table[0] = mainCard(2);
+        nine.setForTest(me, them, 3);
+        check(nine.playerPlayHand(0), "pazaak_nine_played");
+        nine.tick(0.5f);
+        nine.tick(0.0f);
+        check(nine.player().standing && nine.player().tableCount() == 9 && nine.playerSets() == 0
+                  && nine.phase() == PazaakGame::Phase::OpponentTurn && nine.sequenceState() == 7,
+              "pazaak_nine_cards_do_not_win");
+    }
+    // DoGameSequence state 3 / DetermineWinner: a draw over 20 is not a loss until the turn ends; a hand
+    // card can bring it back.
+    {
+        PazaakGame bust;
+        bust.reset(9u);
+        PazaakGame::Side me;
+        me.table[0] = mainCard(10);
+        me.table[1] = mainCard(10);
+        me.table[2] = mainCard(5);
+        me.hand[0] = {11, 0}; // -6
+        PazaakGame::Side them;
+        them.table[0] = mainCard(3);
+        bust.setForTest(me, them, 3);
+        bust.tick(0.0f);
+        check(bust.awaitingPlayer() && bust.opponentSets() == 0, "pazaak_bust_waits_for_the_player");
+        check(bust.playerPlayHand(0) && bust.playerTotal() == 19 && bust.playerEndTurn(), "pazaak_bust_recovered");
+        bust.tick(0.5f);
+        bust.tick(0.0f);
+        check(bust.opponentSets() == 0 && !bust.player().standing && bust.phase() == PazaakGame::Phase::OpponentTurn,
+              "pazaak_bust_recovered_plays_on");
+    }
+    // PlayAITurn 006e4c60 / FindPotentialSidecardTotal 006e4910: at 16 with +2 and -5 the opponent keeps
+    // the +2 (18 needs the lowest reach over 13) and ends its turn; at 16 with only +1 it stands.
+    {
+        PazaakGame ai;
+        ai.reset(13u);
+        PazaakGame::Side me;
+        me.table[0] = mainCard(10);
+        PazaakGame::Side them;
+        them.table[0] = mainCard(10);
+        them.table[1] = mainCard(6);
+        them.hand[0] = {1, 0};  // +2
+        them.hand[1] = {10, 0}; // -5
+        ai.setForTest(me, them, 7);
+        check(ai.playAITurn(1) == 4 && ai.opponent().handCount() == 2 && ai.opponentTotal() == 16
+                  && !ai.opponent().standing,
+              "pazaak_ai_keeps_its_card");
+        them.hand = {};
+        them.hand[0] = {0, 0}; // +1
+        ai.setForTest(me, them, 7);
+        check(ai.playAITurn(1) == 3 && ai.opponent().standing && ai.opponent().handCount() == 1, "pazaak_ai_stands_at_16");
+        // The player stood on 19: the opponent at 17 does not stand short of it.
+        me.table[1] = mainCard(9);
+        me.standing = true;
+        them.table[1] = mainCard(7);
+        them.hand = {};
+        ai.setForTest(me, them, 7);
+        check(ai.playAITurn(1) == 4 && !ai.opponent().standing, "pazaak_ai_chases_a_standing_player");
+        // A +/- card that reaches 20 is played on the side that does.
+        them.table[1] = mainCard(7);
+        them.hand = {};
+        them.hand[2] = {14, 0}; // +/-3
+        me.standing = false;
+        ai.setForTest(me, them, 7);
+        check(ai.playAITurn(1) == 2 && ai.opponentTotal() == 20 && ai.opponent().standing, "pazaak_ai_plays_to_twenty");
+    }
+    // DoGameSequence state 11 (StartNewGame 0067e770): after any set the player opens the next.
+    {
+        PazaakGame sets;
+        sets.reset(0x51u);
+        bool playerOpened = true;
+        int setsSeen = 0;
+        for (int step = 0; step < 40000 && sets.phase() != PazaakGame::Phase::MatchOver; ++step) {
+            if (sets.sequenceState() == 10) {
+                sets.acknowledgeSet();
+                for (int wait = 0; wait < 100 && sets.phase() != PazaakGame::Phase::MatchOver
+                                   && sets.sequenceState() != 3;
+                     ++wait) {
+                    sets.tick(0.1f);
+                }
+                if (sets.phase() != PazaakGame::Phase::MatchOver) {
+                    ++setsSeen;
+                    playerOpened = playerOpened && sets.player().tableCount() == 1 && sets.opponent().tableCount() == 0;
+                }
+                continue;
+            }
+            if (sets.awaitingPlayer()) {
+                // Stand early so the opponent often takes sets.
+                if (sets.playerTotal() < 14) {
+                    sets.playerEndTurn();
+                } else {
+                    sets.playerStand();
+                }
+            }
+            sets.tick(0.1f);
+        }
+        check(setsSeen >= 2 && playerOpened, "pazaak_player_opens_every_set");
+    }
+    // W178: PlayPazaak's bShowTutorial. CSWGuiTutorial ShowHelp 0067dfc0, ShowMultipleHelp 0067e0b0,
+    // HandleInputEvent 0067d260, HandleTutorialClose 0067ea10, DoGameSequence 00680030, StartNewGame
+    // 0067e770, HandleContinue 0067ec20, HandleStand 0067ed00, HandlePlayHandCard 0067ede0, HandleEndDialog
+    // 0067e9a0.
+    {
+        PazaakGame quiet;
+        quiet.reset(0x77u);
+        check(!quiet.helpOpen() && !quiet.help().enabled(), "pazaak_no_help_without_the_tutorial");
+        PazaakGame tut;
+        tut.reset(0x77u, PazaakGame::defaultSide(), PazaakGame::defaultSide(), true);
+        const PazaakHelp& help = tut.help();
+        check(help.open() && help.message() == 0x96e7 && help.pageCount() == 2 && !help.twoButtons()
+                  && help.okText() == PazaakHelp::kContinue && help.cancelText() == PazaakHelp::kBack,
+              "pazaak_tutorial_rules_pages_at_start");
+        tut.tick(0.1f);
+        check(tut.sequenceState() == 0, "pazaak_tutorial_table_waits_for_help");
+        tut.helpForward();
+        check(help.open() && help.message() == 0x96e8 && help.twoButtons(), "pazaak_tutorial_continue_pages_on");
+        tut.helpBack();
+        check(help.open() && help.message() == 0x96e7 && !help.twoButtons(), "pazaak_tutorial_back_pages_back");
+        tut.helpForward();
+        tut.helpForward();
+        check(!help.open(), "pazaak_tutorial_last_page_closes");
+        for (int i = 0; i < 20 && !help.open(); ++i) {
+            tut.tick(0.1f);
+        }
+        check(help.open() && help.message() == 0x96e9 && help.anchor() == PazaakHelp::Anchor::RightOfPlayerCard
+                  && tut.player().tableCount() == 1,
+              "pazaak_tutorial_first_draw_help");
+        tut.helpForward();
+        check(help.open() && help.message() == 0x96ea && help.pageCount() == 5
+                  && help.anchor() == PazaakHelp::Anchor::AbovePlayerHand,
+              "pazaak_tutorial_hand_pages_follow");
+        for (int i = 0; i < 5; ++i) {
+            tut.helpForward();
+        }
+        check(help.open() && help.message() == 0x96ed && help.pageCount() == 3
+                  && help.anchor() == PazaakHelp::Anchor::AboveEndTurn,
+              "pazaak_tutorial_turn_pages_follow");
+        for (int i = 0; i < 3; ++i) {
+            tut.helpForward();
+        }
+        check(!help.open() && tut.awaitingPlayer(), "pazaak_tutorial_player_turn_after_help");
+        // End Turn at 16 or more asks first; Cancel leaves the turn alone, OK ends it.
+        PazaakGame::Side me = tut.player();
+        PazaakGame::Side them = tut.opponent();
+        me.table = {};
+        me.table[0] = {18 + 9, 0}; // 10
+        me.table[1] = {18 + 6, 0}; // 7
+        tut.setForTest(me, them, 3);
+        tut.playerEndTurn();
+        check(help.open() && help.message() == 0x96f1 && help.twoButtons() && help.okText() == 0x7e4c,
+              "pazaak_tutorial_end_turn_asks_at_16");
+        tut.helpBack();
+        check(!help.open() && tut.sequenceState() == 3, "pazaak_tutorial_end_turn_cancelled");
+        tut.playerEndTurn();
+        tut.helpForward();
+        check(tut.sequenceState() == 5, "pazaak_tutorial_end_turn_confirmed");
+        // Stand at 13 or under asks; OK stands.
+        me.table = {};
+        me.table[0] = {18 + 4, 0}; // 5
+        tut.setForTest(me, them, 3);
+        tut.playerStand();
+        check(help.open() && help.message() == 0x96f0 && help.okText() == 0x7e4d, "pazaak_tutorial_stand_asks_at_13");
+        tut.helpForward();
+        check(tut.player().standing && tut.sequenceState() == 5, "pazaak_tutorial_stand_confirmed");
+        // A hand card at 12 or under asks; OK plays it with no wait.
+        me.standing = false;
+        me.hand = {};
+        me.hand[1] = {1, 0}; // +2
+        tut.setForTest(me, them, 3);
+        tut.playerPlayHand(1);
+        check(help.open() && help.message() == 0x96f2 && help.okText() == 0x7e4a
+                  && tut.player().tableCount() == 1,
+              "pazaak_tutorial_hand_card_asks_at_12");
+        tut.helpForward();
+        check(tut.player().tableCount() == 2 && tut.playerTotal() == 7 && tut.sequenceState() == 4
+                  && tut.timer() < 0.0f,
+              "pazaak_tutorial_hand_card_confirmed");
+        // A bust at the end of the turn: 0x96f7, every time.
+        me.table = {};
+        me.table[0] = {18 + 9, 0};
+        me.table[1] = {18 + 9, 0};
+        me.table[2] = {18 + 1, 0}; // 22
+        tut.setForTest(me, them, 5);
+        tut.tick(0.1f);
+        check(help.open() && help.message() == 0x96f7, "pazaak_tutorial_bust_help");
+        tut.helpForward();
+        for (int i = 0; i < 40 && tut.sequenceState() != 10; ++i) {
+            tut.tick(0.1f);
+        }
+        // Between sets: 0x96f8 with End Tutorial, which ends the match.
+        check(tut.sequenceState() == 10 && tut.acknowledgeSet() && help.open() && help.message() == 0x96f8
+                  && help.twoButtons() && help.cancelText() == PazaakHelp::kEndTutorial
+                  && help.okText() == PazaakHelp::kContinue,
+              "pazaak_tutorial_set_end_offers_end_tutorial");
+        tut.helpBack();
+        check(!help.open() && tut.endDue(), "pazaak_tutorial_end_tutorial_ends_the_match");
+        // Placement: right of the card, centred on it; above a control.
+        const std::array<int, 2> right = PazaakHelp::placeNear(PazaakHelp::Anchor::RightOfPlayerCard, 100, 50, 40, 60, 290, 100);
+        const std::array<int, 2> above = PazaakHelp::placeNear(PazaakHelp::Anchor::AboveEndTurn, 300, 400, 80, 20, 290, 127);
+        check(right[0] == 140 && right[1] == 30 && above[0] == 300 && above[1] == 273, "pazaak_tutorial_placement");
+        // The side deck panel: 0x96e3..0x96e5 when PlayPazaak asks for the tutorial.
+        game.setGoldForTest(0);
+        check(game.startPazaak(2, "", 0, true, 0) && game.pazaakSetupHelp().open()
+                  && game.pazaakSetupHelp().message() == 0x96e3 && game.pazaakSetupHelp().pageCount() == 3,
+              "pazaak_tutorial_side_deck_pages");
+        game.quitPazaak();
+        check(game.startPazaak(2, "", 0, false, 0) && !game.pazaakSetupHelp().open(), "pazaak_side_deck_no_help");
+        game.quitPazaak();
+    }
+
+    // CItemRepository::AddItem 0055d330 / AddPazaakCard 004efb40 and PARTYTABLE ClearTable 00563200: a new
+    // party owns two each of +1..+5, and a card item becomes a count, not an inventory item.
+    check(game.pazaakCardsOwned(0) == 2 && game.pazaakCardsOwned(4) == 2 && game.pazaakCardsOwned(5) == 0,
+          "pazaak_new_party_cards");
+    const auto ncs = [](const std::vector<std::uint8_t>& code) {
+        std::vector<std::uint8_t> out{'N', 'C', 'S', ' ', 'V', '1', '.', '0', 0x42};
+        const std::uint32_t size = static_cast<std::uint32_t>(13 + code.size() + 2);
+        for (const int shift : {24, 16, 8, 0}) {
+            out.push_back(static_cast<std::uint8_t>(size >> shift));
+        }
+        out.insert(out.end(), code.begin(), code.end());
+        out.push_back(0x20); // RETN
+        out.push_back(0x00);
+        return out;
+    };
+    const auto constInt = [](std::vector<std::uint8_t>& code, std::int32_t value, std::uint8_t type = 0x03) {
+        code.push_back(0x04);
+        code.push_back(type);
+        for (const int shift : {24, 16, 8, 0}) {
+            code.push_back(static_cast<std::uint8_t>(static_cast<std::uint32_t>(value) >> shift));
+        }
+    };
+    const auto constString = [](std::vector<std::uint8_t>& code, const std::string& value) {
+        code.push_back(0x04);
+        code.push_back(0x05);
+        code.push_back(static_cast<std::uint8_t>(value.size() >> 8));
+        code.push_back(static_cast<std::uint8_t>(value.size() & 0xFF));
+        code.insert(code.end(), value.begin(), value.end());
+    };
+    const auto action = [](std::vector<std::uint8_t>& code, std::uint16_t id, std::uint8_t argc) {
+        code.push_back(0x05);
+        code.push_back(0x00);
+        code.push_back(static_cast<std::uint8_t>(id >> 8));
+        code.push_back(static_cast<std::uint8_t>(id & 0xFF));
+        code.push_back(argc);
+    };
+    {
+        // SetGlobalNumber("MG_MADE", GetIsObjectValid(CreateItemOnObject("g_i_pazcard_003", GetFirstPC(), 1)))
+        std::vector<std::uint8_t> code;
+        constInt(code, 1);
+        action(code, 548, 0);
+        constString(code, "g_i_pazcard_003");
+        action(code, 31, 3);
+        action(code, 42, 1);
+        constString(code, "MG_MADE");
+        action(code, 581, 2);
+        game.declareGlobalForTest("MG_MADE");
+        const int before = game.pazaakCardsOwned(2);
+        check(game.runScriptNcsForTest("mg_give_card", ncs(code), game.objectForEntityIndex(0)), "pazaak_card_script_ran");
+        const auto& inventory = game.character().inventory;
+        const bool cardItem = std::any_of(inventory.begin(), inventory.end(), [](const InventoryItem& item) {
+            return item.baseItem == 86 || item.resref.rfind("g_i_pazcard", 0) == 0;
+        });
+        const bool sideboard = std::any_of(inventory.begin(), inventory.end(),
+                                           [](const InventoryItem& item) { return item.baseItem == 87; });
+        check(game.pazaakCardsOwned(2) == before + 1 && !cardItem && sideboard, "pazaak_card_item_becomes_a_count");
+    }
+
+    // EndPazaakGame 005f3950: the end script runs on every exit with OBJECT_SELF invalid (RunScript(script,
+    // 0x7f000000)). The fixture end script records GetIsObjectValid(OBJECT_SELF) and that it ran.
+    {
+        std::vector<std::uint8_t> code;
+        constInt(code, 0, 0x06); // OBJECT_SELF
+        action(code, 42, 1);
+        constString(code, "MG_SELF");
+        action(code, 581, 2);
+        constInt(code, 1);
+        constString(code, "MG_RAN");
+        action(code, 581, 2);
+        game.declareGlobalForTest("MG_SELF");
+        game.declareGlobalForTest("MG_RAN");
+        game.addScriptForTest("mg_pazend", ncs(code));
+    }
+    const auto resetEndScript = [&]() {
+        std::vector<std::uint8_t> code;
+        constInt(code, 7);
+        constString(code, "MG_SELF");
+        action(code, 581, 2);
+        constInt(code, 0);
+        constString(code, "MG_RAN");
+        action(code, 581, 2);
+        game.runScriptNcsForTest("mg_pazend_reset", ncs(code), game.objectForEntityIndex(0));
+    };
+    const auto endScriptRanWithoutSelf = [&]() {
+        return game.scriptWorld().getGlobal("MG_RAN").integer == 1 && game.scriptWorld().getGlobal("MG_SELF").integer == 0;
+    };
+    const std::uint32_t opponentObject = game.objectForEntityIndex(0);
+    const auto chooseTen = [&]() {
+        for (int kind = 0; kind < 18 && game.pazaakChosen().size() < GameSession::kPazaakDeckSize; ++kind) {
+            while (game.pazaakChoose(kind)) {
+            }
+        }
+    };
+
+    // Script bridge: the compiled fixture calls PlayPazaak(1, "", 0, FALSE, OBJECT_SELF). With no wager
+    // the start panel 00681a90 opens the side deck screen; the table follows a full ten.
     if (!scriptPath.empty()) {
         std::ifstream scriptFile(scriptPath, std::ios::binary | std::ios::ate);
         std::vector<std::uint8_t> scriptBytes;
@@ -5154,62 +6945,100 @@ int runMinigameTest(GameSession& game, const std::string& scriptPath)
         check(game.runScriptNcsForTest("minigame_script_test", scriptBytes,
                                        game.objectForEntityIndex(0)),
               "pazaak_script_ran");
-        check(game.pazaakActive(), "pazaak_script_start");
-        if (game.pazaakActive()) {
-            for (int step = 0; step < 256
-                 && game.pazaak()->phase() != PazaakGame::Phase::MatchOver; ++step) {
-                if (game.pazaak()->phase() == PazaakGame::Phase::PlayerTurn) {
-                    if (game.pazaak()->playerTotal() < 17) {
-                        game.pazaak()->playerDraw();
-                    } else {
-                        game.pazaak()->playerStand();
-                    }
-                } else if (game.pazaak()->phase() == PazaakGame::Phase::OpponentTurn) {
-                    game.pazaak()->opponentTurn();
-                } else {
-                    break;
-                }
-            }
-            check(game.pazaak()->phase() == PazaakGame::Phase::MatchOver,
-                  "pazaak_script_match_over");
-            const bool playerWon =
-                game.pazaak()->playerSets() > game.pazaak()->opponentSets();
+        check(game.pazaakActive() && game.pazaakStage() == GameSession::PazaakStage::Setup, "pazaak_script_start");
+        check(!game.pazaakPlay(), "pazaak_play_needs_ten"); // ShowDisabledButtons 0067e400
+        chooseTen();
+        check(game.pazaakPlay() && game.pazaakStage() == GameSession::PazaakStage::Game, "pazaak_script_table");
+        if (game.pazaak() != nullptr) {
+            autoplay(*game.pazaak());
+            check(game.pazaak()->phase() == PazaakGame::Phase::MatchOver, "pazaak_script_match_over");
+            const bool playerWon = game.pazaak()->playerWonMatch();
             game.resolvePazaakIfOver();
             check(!game.pazaakActive(), "pazaak_script_resolved");
-            check(game.lastPazaakResult() == (playerWon ? 1 : 0),
-                  "pazaak_script_result");
+            check(game.lastPazaakResult() == (playerWon ? 1 : 0), "pazaak_script_result");
         }
     }
 
-    // Wager settlement through GameSession.
-    const std::int32_t goldBefore = game.gold();
+    // StartPazaakGame 005f3810 / the wager popup 0067f000, 0067e150: the wager is cut to the gold held, the
+    // popup opens at the maximum and moves by one, down to 1.
+    game.setGoldForTest(100);
     check(game.startPazaak(2, "", 25, false, 0), "pazaak_session_start");
-    if (game.pazaakActive()) {
-        for (int step = 0; step < 256
-             && game.pazaak()->phase() != PazaakGame::Phase::MatchOver; ++step) {
-            if (game.pazaak()->phase() == PazaakGame::Phase::PlayerTurn) {
-                if (game.pazaak()->playerTotal() < 17) {
-                    game.pazaak()->playerDraw();
-                } else {
-                    game.pazaak()->playerStand();
-                }
-            } else if (game.pazaak()->phase() == PazaakGame::Phase::OpponentTurn) {
-                game.pazaak()->opponentTurn();
-            } else {
-                break;
+    check(game.pazaakStage() == GameSession::PazaakStage::Wager && game.pazaakMaxWager() == 25
+              && game.pazaakWager() == 25 && game.pazaakWagerStep() == 1,
+          "pazaak_wager_starts_at_the_maximum");
+    check(!game.startPazaak(3, "", 10, false, 0), "pazaak_one_game_at_a_time");
+    game.setPazaakWager(1000);
+    check(game.pazaakWager() == 25, "pazaak_wager_clamped_to_the_maximum");
+    game.setPazaakWager(0);
+    check(game.pazaakWager() == 1, "pazaak_wager_minimum_one");
+    game.setPazaakWager(20);
+    game.confirmPazaakWager();
+    check(game.pazaakStage() == GameSession::PazaakStage::Setup, "pazaak_wager_confirmed");
+    // OnPanelAdded 0067f750: the ten kept in PARTYTABLE are chosen again.
+    check(game.pazaakChosen().size() == GameSession::kPazaakDeckSize, "pazaak_side_list_kept");
+    chooseTen();
+    check(game.pazaakPlay(), "pazaak_setup_plays");
+    check(game.pazaakStage() == GameSession::PazaakStage::Game && game.pazaak() != nullptr, "pazaak_table_stage");
+    if (game.pazaak() != nullptr) {
+        autoplay(*game.pazaak());
+        const bool playerWon = game.pazaak()->playerWonMatch();
+        game.resolvePazaakIfOver();
+        check(game.lastPazaakResult() == (playerWon ? 1 : 0), "pazaak_session_result");
+        check(game.gold() == 100 + (playerWon ? 20 : -20), "pazaak_wager");
+    }
+    game.setGoldForTest(10);
+    game.startPazaak(2, "", 25, false, 0);
+    check(game.pazaakMaxWager() == 10 && game.pazaakWager() == 10, "pazaak_wager_cut_to_gold");
+    // 0067d3d0: leaving before the table loses nothing and still runs the end script, without OBJECT_SELF.
+    game.stopPazaak();
+    resetEndScript();
+    game.setGoldForTest(100);
+    game.startPazaak(2, "mg_pazend", 25, false, opponentObject);
+    game.quitPazaak();
+    check(!game.pazaakActive() && game.gold() == 100 && game.lastPazaakResult() == 0 && endScriptRanWithoutSelf(),
+          "pazaak_quit_runs_the_end_script");
+    // 0067db50: Escape at the table forfeits the wager; the end script runs the same way.
+    resetEndScript();
+    game.startPazaak(2, "mg_pazend", 25, false, opponentObject);
+    game.confirmPazaakWager();
+    chooseTen();
+    game.pazaakPlay();
+    game.forfeitPazaak();
+    check(!game.pazaakActive() && game.gold() == 75 && game.lastPazaakResult() == 0 && endScriptRanWithoutSelf(),
+          "pazaak_forfeit_loses_the_wager");
+    // A won match also runs it without OBJECT_SELF and reports 1.
+    resetEndScript();
+    game.startPazaak(2, "mg_pazend", 0, false, opponentObject);
+    chooseTen();
+    game.pazaakPlay();
+    game.endPazaakGame(true, 0);
+    check(game.lastPazaakResult() == 1 && endScriptRanWithoutSelf(), "pazaak_win_result");
+
+    // PARTYTABLE Save 005648c0 / Load 00565d20: the counts and the side list go through an original save.
+    {
+        const std::filesystem::path saveFolder = std::filesystem::temp_directory_path() / "kotor-pazaak-test-save";
+        std::error_code error;
+        std::filesystem::remove_all(saveFolder, error);
+        const bool saved = game.saveOriginalSave(saveFolder, "Pazaak Test");
+        bool same = false;
+        if (saved) {
+            try {
+                const kotor::OriginalSave written = kotor::readOriginalSave(saveFolder);
+                same = written.pazaakCards == game.partyTable().pazaakCards
+                    && written.pazaakSideList == game.partyTable().pazaakSideList
+                    && written.pazaakSideList[0] >= 0 && written.pazaakCards[2] == game.pazaakCardsOwned(2);
+            } catch (const std::exception&) {
             }
         }
-        check(game.pazaak() != nullptr
-                  && game.pazaak()->phase() == PazaakGame::Phase::MatchOver,
-              "pazaak_session_match_over");
-        const bool playerWon =
-            game.pazaak()->playerSets() > game.pazaak()->opponentSets();
-        game.resolvePazaakIfOver();
-        check(game.lastPazaakResult() == (playerWon ? 1 : 0),
-              "pazaak_session_result");
-        const std::int32_t expected = std::max<std::int32_t>(
-            0, goldBefore + (playerWon ? 25 : -25));
-        check(game.gold() == expected, "pazaak_wager");
+        check(saved && same, "pazaak_lists_saved");
+        std::filesystem::remove_all(saveFolder, error);
+    }
+
+    // CTlkTable::ParseTokens 0041dd30: the swoop help (tutorial.2da) names its keys by token.
+    {
+        const std::string left = game.substituteTokens("<MGActionLeft>");
+        logInfo(concat("minigame test: <MGActionLeft> -> ", left));
+        check(!left.empty() && left.find('<') == std::string::npos, "swoop_help_tokens_resolve");
     }
 
     // The swoop and turret assertions that lived here encoded an invented 3 x 3000 m
@@ -5456,23 +7285,12 @@ int runMediaTest(GameSession& game)
     logInfo(concat("media test: visemes=", visemeRows, " heads=", headRows,
                    " models=", headModels, " visemeClips=", headsWithVisemeClips));
 
-    // Procedural facial rig: visemes.2da channels drive the shipped head bones.
+    // Lip sync: visemes.2da names the shapes, the talk clip on the head's chain poses them.
     const FacialRig& rig = game.facialRig();
     check(rig.loaded(), "facial_rig");
     check(rig.visemeCount() == 16, "facial_visemes");
     check(rig.visemeName(0) == "Silence" && rig.visemeName(13) == "Roar",
           "facial_names");
-    check(rig.pose(0).jawOpen == 0.0f && rig.pose(11).jawOpen == 0.0f,
-          "facial_closed");
-    check(rig.pose(13).jawOpen > 0.8f, "facial_roar");
-    check(std::fabs(rig.jawAngle(13)) > std::fabs(rig.jawAngle(10)),
-          "facial_jaw_order");
-    const auto roarRotations = rig.rotations(13);
-    check(roarRotations.count("f_jaw_g") == 1
-              && roarRotations.count("f_lmc_g") == 1
-              && roarRotations.count("f_rmc_g") == 1
-              && roarRotations.count("f_lbrw_g") == 1,
-          "facial_bones");
     const auto headMdl = headInstall.find("p_CarthH", kotor::resType(kotor::ResType::Mdl));
     const auto headMdx = headInstall.find("p_CarthH", kotor::resType(kotor::ResType::Mdx));
     check(headMdl.has_value() && headMdx.has_value(), "facial_head_model");
@@ -5483,10 +7301,16 @@ int runMediaTest(GameSession& game)
                   "facial_head_bones");
             const std::vector<kotor::MdlMeshTriangle> bind =
                 head.posedTriangles({}, 0.0f);
-            const std::vector<kotor::MdlMeshTriangle> roar =
-                head.posedTrianglesRigged({}, 0.0f, -1.0f, roarRotations);
-            const std::vector<kotor::MdlMeshTriangle> silence =
-                head.posedTrianglesRigged({}, 0.0f, -1.0f, rig.rotations(0));
+            // A head parsed alone has no chain, so these two only pin that an absent clip and an
+            // absent track leave the bind pose alone; kotor_family_animation poses the real chain.
+            kotor::MdlFacePose roarFace;
+            roarFace.fractionA = roarFace.fractionB = FacialRig::clipFraction(13);
+            roarFace.weight = 1.0f;
+            kotor::MdlPoseRequest roarRequest;
+            roarRequest.face = &roarFace;
+            kotor::MdlPoseRequest silentRequest;
+            const std::vector<kotor::MdlMeshTriangle> roar = head.posedTrianglesFor(roarRequest);
+            const std::vector<kotor::MdlMeshTriangle> silence = head.posedTrianglesFor(silentRequest);
             double roarDelta = 0.0;
             double silenceDelta = 0.0;
             if (bind.size() == roar.size() && bind.size() == silence.size()) {
@@ -5504,7 +7328,7 @@ int runMediaTest(GameSession& game)
                     }
                 }
             }
-            check(roarDelta > 1.0e-3, "facial_geometry");
+            check(roarDelta == 0.0, "facial_no_clip_bind");
             check(silenceDelta == 0.0, "facial_silence_bind");
             logInfo(concat("media test: facial jawDelta=", roarDelta,
                            " silenceDelta=", silenceDelta));
@@ -5522,9 +7346,6 @@ int runMediaTest(GameSession& game)
         check(game.facialRig().viseme()
                   == static_cast<int>(game.lipViseme()),
               "facial_lip_drive");
-        check(game.facialRig().currentPose().jawOpen
-                  == game.facialRig().pose(game.facialRig().viseme()).jawOpen,
-              "facial_pose_drive");
         game.clearLipSyncForTest();
     }
 
@@ -5715,10 +7536,87 @@ int runAudioTest(GameSession& game, const std::string& scriptPath)
     }
     check(barkCount >= 3, "creature_barks");
 
-    check(audio.playFootstep(0, 4, {0.0f, 0.0f, 0.0f}), "footstep_stone");
-    check(audio.playFootstep(1, 10, {0.0f, 0.0f, 0.0f}), "footstep_metal");
-    check(audio.playFootstep(2, 5, {0.0f, 0.0f, 0.0f}), "footstep_wood");
+    // Retail 0061a2d0 skips a step further than MaxVolumeDist + 2 from the listener: step on the listener.
+    const kotor::Vec3 stepAt = audio.listenerPosition();
+    check(audio.playFootstep(0, 4, stepAt), "footstep_stone");
+    check(audio.playFootstep(1, 10, stepAt), "footstep_metal");
+    check(audio.playFootstep(2, 5, stepAt), "footstep_wood");
     check(audio.mixer().activeVoices(audio::Bus::Effects) > 0, "footstep_voices");
+
+    // AUDIO: PriorityGroups.2da (005d7bd0) and the retail footstep rules (0061a2d0). Each check fails on
+    // the old model (a soundgain.2da level, footstep rows clamped to 0..3, a mute for movies).
+    {
+        const auto level = [&](int group) { return audio.groupLevel(group); };
+        check(std::fabs(level(AudioSystem::kGroupMusic) - 64.0f / 127.0f) < 1e-5f, "group_music_level_64_of_127");
+        check(std::fabs(level(AudioSystem::kGroupGui) - 1.0f) < 1e-5f, "group_gui_level_127_of_127");
+        check(audio.priorityGroup(AudioSystem::kGroupStinger).maxPlaying == 1
+                  && audio.priorityGroup(AudioSystem::kGroupBark).maxPlaying == 2
+                  && audio.priorityGroup(AudioSystem::kGroupGui).maxPlaying == 2,
+              "group_concurrency_caps");
+        check(AudioSystem::groupBus(AudioSystem::kGroupNonPlayerChat) == audio::Bus::Voice
+                  && AudioSystem::groupBus(AudioSystem::kGroupMusic) == audio::Bus::Music
+                  && AudioSystem::groupBus(AudioSystem::kGroupSpell) == audio::Bus::Effects,
+              "group_bus_is_the_volume_category");
+
+        AudioSystem::FootstepRequest step;
+        step.position = stepAt;
+        step.surface = 4; // Stone
+        std::string picked;
+        step.footstepType = 5; // Stomp: its own footstepsounds row, not row 3
+        const bool stomp = audio.playCreatureFootstep(step, &picked) > 0;
+        check(stomp && !picked.empty(), "footstep_type_5_is_a_real_row");
+        step.footstepType = -1; // blank footsteptype: no sound
+        check(audio.playCreatureFootstep(step, &picked) == 0, "footstep_blank_type_is_silent");
+        step.footstepType = 4; // Shuffle: an empty row
+        check(audio.playCreatureFootstep(step, &picked) == 0, "footstep_empty_row_is_silent");
+        step.footstepType = 8; // Rolling_Droid: Rolling cell filled, no step sounds
+        check(audio.playCreatureFootstep(step, &picked) == 0, "footstep_rolling_row_is_silent");
+        step.footstepType = 0;
+        step.surface = 12; // Swamp: blank surfacemat Name
+        check(audio.playCreatureFootstep(step, &picked) == 0, "footstep_surface_12_swamp_is_silent");
+        step.surface = 13; // Mud: puddles
+        check(audio.playCreatureFootstep(step, &picked) > 0 && !picked.empty(), "footstep_surface_13_mud_is_puddles");
+        step.position = stepAt + kotor::Vec3{500.0f, 0.0f, 0.0f};
+        check(audio.playCreatureFootstep(step, &picked) == 0, "footstep_beyond_hearing_range_is_skipped");
+
+        audio.setMovieMode(true);
+        check(audio.mixer().busPaused(audio::Bus::Music) && audio.mixer().busPaused(audio::Bus::Voice)
+                  && audio.mixer().busVolume(audio::Bus::Music) > 0.0f,
+              "movie_pauses_the_world_buses_without_muting");
+        audio.setMovieMode(false);
+        check(!audio.mixer().busPaused(audio::Bus::Music), "movie_end_resumes_the_world_buses");
+
+        // Retail battle music rule (004f3580 / 004ed110): an excited creature starts it only with an enemy
+        // within 30 m and ExcitedDuration (10 s) later it stops. The old rule followed the combat flag.
+        AreaAmbience& ambience = audio.ambience();
+        ambience.setBattle(false);
+        ambience.exciteTick(990001u, true, 8.0f, false, 0.016f);
+        check(!ambience.battle(), "excited_without_an_enemy_in_30_m_starts_no_battle_music");
+        ambience.exciteTick(990002u, true, 8.0f, true, 0.016f);
+        check(ambience.battle(), "excited_with_an_enemy_in_30_m_starts_battle_music");
+        check(audio.excitedDurationMs(1) == 10000 && audio.excitedDurationMs(2) == 10000, "excitedduration_2da_rows");
+        for (int i = 0; i < 90; ++i) {
+            ambience.exciteTick(990002u, false, 8.0f, true, 0.1f);
+        }
+        check(ambience.battle(), "battle_music_holds_before_the_excited_timer_runs_out");
+        for (int i = 0; i < 20; ++i) {
+            ambience.exciteTick(990002u, false, 8.0f, true, 0.1f);
+        }
+        check(!ambience.battle(), "battle_music_stops_when_the_excited_timer_runs_out");
+        ambience.setBattle(false);
+
+        // 005f5370: the listener sits 0.75 of the way from the camera to the followed creature.
+        const SceneCamera eye = game.camera();
+        const kotor::Vec3 target = game.controlledPosition();
+        game.update(1.0f / 60.0f, InputState{});
+        const kotor::Vec3 heard = audio.listenerPosition();
+        const auto between = [](kotor::Vec3 a, kotor::Vec3 b) {
+            return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z));
+        };
+        const float cameraToTarget = between(eye.eye, target);
+        check(cameraToTarget < 0.1f || std::fabs(between(heard, target) - 0.25f * cameraToTarget) < 0.15f,
+              "listener_is_three_quarters_of_the_way_to_the_followed_creature");
+    }
 
     check(audio.mixer().activeVoices(audio::Bus::Music) > 0, "music_voice");
     check(audio.mixer().activeVoices(audio::Bus::Ambient) > 0, "ambient_voice");
@@ -5852,7 +7750,11 @@ int runAudioTest(GameSession& game, const std::string& scriptPath)
         check(played, "audio_script_play_sound");
         check(game.scene().areaAudio.musicDayId == 3, "audio_script_music");
         check(game.scene().areaAudio.ambientDayId == 32, "audio_script_ambient");
-        check(std::fabs(audio.mixer().busVolume(audio::Bus::Ambient) - 0.4f) < 0.01f,
+        // AmbientSoundSetDayVolume takes the 0..127 byte the area stores (retail
+        // 005d5b50 clamps to 0x7f), so 40 is 40/127 of the ambient loop level, which plays in
+        // priority group 4 (Volume 95 of 127, 0068ea10).
+        check(std::fabs(audio.ambience().ambientLevel()
+                        - 95.0f / 127.0f * 40.0f / 127.0f) < 0.005f,
               "audio_script_ambient_volume");
     }
 
@@ -6128,41 +8030,6 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
             }
         }
         check(parameterAlpha, "fx_param_alpha_curve");
-        const std::vector<kotor::MdlMeshTriangle> fx0 = fxModel->fxTriangles({}, 0.0f);
-        const std::vector<kotor::MdlMeshTriangle> fx1 = fxModel->fxTriangles({}, 1.0f);
-        check(!fx0.empty() && fx0.size() == fx1.size(), "fx_geometry");
-        bool fxFinite = true;
-        std::size_t fxMoved = 0;
-        for (std::size_t i = 0; i < fx0.size() && i < fx1.size(); ++i) {
-            for (int v = 0; v < 3; ++v) {
-                const kotor::Vec3 a = fx0[i].v[v].position;
-                const kotor::Vec3 b = fx1[i].v[v].position;
-                fxFinite = fxFinite && std::isfinite(b.x) && std::isfinite(b.y)
-                    && std::isfinite(b.z);
-                if (std::fabs(a.x - b.x) > 0.0001f || std::fabs(a.y - b.y) > 0.0001f
-                    || std::fabs(a.z - b.z) > 0.0001f) {
-                    ++fxMoved;
-                }
-            }
-        }
-        check(fxFinite, "fx_finite");
-        check(fxMoved > 0, "fx_animated");
-        bool additive = false;
-        bool alpha = false;
-        for (const kotor::MdlMeshTriangle& triangle : fx0) {
-            additive = additive
-                || triangle.blend == kotor::BlendMode::Additive;
-            alpha = alpha || triangle.blend == kotor::BlendMode::Alpha;
-        }
-        check(additive, "fx_additive_batches");
-        check(alpha, "fx_alpha_batches");
-        bool parameterTextures = !fx0.empty();
-        for (const kotor::MdlMeshTriangle& triangle : fx0) {
-            parameterTextures = parameterTextures
-                && triangle.texture.rfind("__fx_", 0) == 0
-                && triangle.texture.size() == 13;
-        }
-        check(parameterTextures, "fx_parameter_textures");
     }
     std::size_t sceneAdditive = 0;
     std::size_t sceneAlpha = 0;
@@ -6176,23 +8043,12 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
             ++sceneOpaque;
         }
     }
-    std::size_t entityAlpha = 0;
-    for (const kotor::EntityMesh& mesh : game.scene().entityMeshes) {
-        if (!mesh.fx) {
-            continue;
-        }
-        for (const kotor::TextureBatch& batch : mesh.batches) {
-            if (batch.blend == kotor::BlendMode::Alpha) {
-                ++entityAlpha;
-            }
-        }
-    }
     logInfo(concat("animation test: blend batches room additive=", sceneAdditive,
                    " alpha=", sceneAlpha, " opaque=", sceneOpaque,
-                   " entity alpha=", entityAlpha));
+                   " emitters=", game.scene().emitters.size()));
     check(sceneAdditive > 0, "scene_additive_batches");
     check(sceneOpaque > 0, "scene_opaque_batches");
-    check(entityAlpha > 0, "entity_alpha_batches");
+    check(!game.scene().emitters.empty(), "scene_model_emitters");
     const std::optional<kotor::Mdl> roomFx = loadModel("m01aa_01a");
     check(roomFx.has_value(), "room_light_loaded");
     if (roomFx.has_value()) {
@@ -6200,7 +8056,6 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
         const std::set<std::int32_t> roomTypes = roomFx->fxControllerTypes();
         check(roomTypes.contains(76) && roomTypes.contains(88) && roomTypes.contains(140),
               "room_light_controllers");
-        check(!roomFx->fxTriangles({}, 0.0f).empty(), "room_light_geometry");
         check(roomFx->fxNodeCount() >= 13, "room_light_param_nodes");
         bool roomParameterFinite = true;
         bool roomParameterStable = true;
@@ -6332,7 +8187,7 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
     }
     check(weaponMesh != nullptr, "weapon_attachment");
     if (weaponMesh != nullptr) {
-        check(weaponMesh->attachNode == "Rhand_g" || weaponMesh->attachNode == "Lhand_g",
+        check(weaponMesh->attachNode == "rhand" || weaponMesh->attachNode == "lhand",
               "weapon_hand_hook");
         check(weaponMesh->model != nullptr && weaponMesh->attachModel != nullptr,
               "weapon_models");
@@ -6398,6 +8253,24 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
         }
     }
 
+    // The follow camera is camerastyle.2da plus the creature's camerahook. Retail measured on
+    // Endar Spire and Taris: 3.2 behind, 2.1297 above pmbal's feet, 7 degrees below level, fovy 55.
+    {
+        const kotor::Scene::CameraStyle& style = game.scene().cameraStyle;
+        check(style.viewAngle > 0.0f && style.distance > 0.0f, "camera_style_loaded");
+        const SceneCamera follow = game.camera();
+        if (const std::size_t led = game.controlledEntity(); led < game.scene().entities.size()
+            && !game.scene().entityMeshes.empty()) {
+            const kotor::Vec3 at = game.scene().entities[led].position;
+            logInfo(concat("animation: follow camera eye height ", follow.eye.z - at.z, " fov ",
+                           follow.fovYDegrees, " style ", style.distance, " ", style.pitch, " ", style.height));
+            check(std::fabs(follow.fovYDegrees - style.viewAngle) < 0.001f, "camera_follow_fov_from_style");
+            check(std::fabs(-std::asin(follow.forward.z) * 180.0f / 3.14159265f - (90.0f - style.pitch)) < 0.01f,
+                  "camera_follow_pitch_from_style");
+            check(follow.eye.z - at.z > style.height + 1.0f, "camera_follow_above_camerahook");
+        }
+    }
+
     check(!game.scene().cameras.empty(), "camera_catalog");
     if (!game.scene().cameras.empty()) {
         const std::uint32_t cameraId = game.scene().cameras.front().id;
@@ -6408,6 +8281,8 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
                   && std::isfinite(cinematic.forward.y) && std::isfinite(cinematic.forward.z),
               "camera_math");
         const kotor::CameraDef& definition = game.scene().cameras.front();
+        check(definition.fov <= 0.0f || std::fabs(cinematic.fovYDegrees - definition.fov) < 0.01f,
+              "camera_static_fov_measured");
         check(std::fabs(cinematic.eye.z - (definition.position.z + definition.height)) < 0.001f,
               "camera_height");
         check(std::fabs(kotor::length(cinematic.forward) - 1.0f) < 0.01f, "camera_forward");
@@ -6459,6 +8334,31 @@ int runAnimationTest(GameSession& game, const std::string& scriptPath)
                           && std::fabs(kotor::length(preset.forward) - 1.0f) < 0.01f,
                       angle == 1 ? "camera_preset_1"
                           : angle == 2 ? "camera_preset_2" : "camera_preset_3");
+            }
+            // Angle 2, over the other's shoulder. Numbers logged at
+            // retail 006bb7b0 with Trask framed and the PC behind: eye 14.834, 20.540, 0.263. Fails
+            // on the old preset (no angle 0, side 1 for angle 1 and -30 degrees only for angle 2).
+            {
+                const kotor::Vec3 trask{16.4923f, 20.2739f, 0.3589f};
+                const kotor::Vec3 pc{15.4447f, 20.1241f, 0.3122f};
+                const SceneCamera shot = game.presetCamera(2, 0.0f, 0.0f, trask, pc, 2);
+                check(std::fabs(shot.eye.x - 14.834f) < 0.002f && std::fabs(shot.eye.y - 20.540f) < 0.002f
+                          && std::fabs(shot.eye.z - 0.2632f) < 0.002f && std::fabs(shot.fovYDegrees - 55.0f) < 0.001f,
+                      "camera_preset_0_over_the_shoulder");
+                const SceneCamera back = game.presetCamera(2, 0.0f, 0.0f, pc, trask, 1);
+                check(std::fabs(back.eye.x - 16.9613f) < 0.002f && std::fabs(back.eye.y - 20.8441f) < 0.002f,
+                      "camera_swapped_pair_keeps_its_side");
+                // Close-ups, measured: Trask framed, side 2, and the PC framed, side 1.
+                const SceneCamera closeNpc = game.presetCamera(1, 0.0f, 0.0f, trask, pc, 2);
+                const SceneCamera closePc = game.presetCamera(1, 0.0f, 0.0f, pc, trask, 1);
+                check(std::fabs(closeNpc.eye.x - 15.832f) < 0.006f && std::fabs(closeNpc.eye.y - 20.437f) < 0.006f
+                          && std::fabs(closePc.eye.x - 16.036f) < 0.006f && std::fabs(closePc.eye.y - 20.465f) < 0.006f
+                          && std::fabs(closePc.eye.z - 0.272f) < 0.002f,
+                      "camera_preset_1_close_up");
+                // Two-shot, logged at 006bb7b0: eye 16.193, 18.628.
+                const SceneCamera two = game.presetCamera(3, 0.0f, 0.0f, trask, pc, 1);
+                check(std::fabs(two.eye.x - 16.1933f) < 0.002f && std::fabs(two.eye.y - 18.6276f) < 0.002f,
+                      "camera_preset_3_two_shot");
             }
             bool camVidDefaults = true;
             for (const kotor::DlgEntry& entry : dlg.entries) {
@@ -6648,18 +8548,12 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     passive.feats.insert(123); // IMPROVED_TOUGHNESS
     check(game.rules().damageReduction(passive) == 2, "damage_reduction_2");
     const std::int32_t baseAc = game.rules().armorClass(passive);
-    passive.feats.insert(104); // SCOUNDRELS_LUCK
-    check(game.rules().armorClass(passive) == baseAc + 2, "scoundrel_luck_2");
-    passive.feats.insert(105); // IMPROVED_SCOUNDRELS_LUCK
-    check(game.rules().armorClass(passive) == baseAc + 4, "scoundrel_luck_4");
-    passive.feats.insert(106); // MASTER_SCOUNDRELS_LUCK
-    check(game.rules().armorClass(passive) == baseAc + 6, "scoundrel_luck_6");
-    passive.feats.insert(107); // JEDI_SENSE
-    check(game.rules().armorClass(passive) == baseAc + 8, "jedi_sense_2");
-    passive.feats.insert(108); // KNIGHT_SENSE
-    check(game.rules().armorClass(passive) == baseAc + 10, "knight_sense_4");
-    passive.feats.insert(109); // MASTER_SENSE
-    check(game.rules().armorClass(passive) == baseAc + 12, "master_sense_6");
+    // retail 004ed1d0 has no feat term for these: Scoundrel's Luck and Jedi Sense are the class
+    // columns of acbonus.2da (scd, jdg, jdc, jds), so the feats alone leave Defense as it is.
+    for (const std::int32_t feat : {104, 105, 106, 107, 108, 109}) {
+        passive.feats.insert(feat);
+    }
+    check(game.rules().armorClass(passive) == baseAc, "luck_and_sense_feats_add_nothing_004ed1d0");
     const std::int32_t baseDc = game.rules().forcePowerSaveDC(passive);
     passive.feats.insert(88); // FORCE_FOCUS
     check(game.rules().forcePowerSaveDC(passive) == baseDc + 1, "force_focus_1");
@@ -6667,6 +8561,17 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     check(game.rules().forcePowerSaveDC(passive) == baseDc + 2, "force_focus_2");
     passive.feats.insert(90); // FORCE_FOCUS_MASTERY
     check(game.rules().forcePowerSaveDC(passive) == baseDc + 4, "force_focus_4");
+    {
+        // Retail 004ef6e0: levels + WIS mod + CHA mod + 5 + focus (old: 10 + level/2 + WIS + focus).
+        CharacterSheet dcSheet = passive;
+        dcSheet.level = 1;
+        dcSheet.secondClassId = -1;
+        dcSheet.wis = 14;
+        dcSheet.cha = 12;
+        check(game.rules().forcePowerSaveDC(dcSheet) == 1 + 2 + 1 + 5 + 4, "force_save_dc_retail_004ef6e0");
+        dcSheet.level = 10;
+        check(game.rules().forcePowerSaveDC(dcSheet) == 10 + 2 + 1 + 5 + 4, "force_save_dc_retail_level10");
+    }
     passive.feats.insert(95); // WOOKIE_ENDURANCE
     check(game.rules().damageReduction(passive) == 2, "wookiee_endurance_dr");
     check(game.rules().toughnessBonus(passive) >= 2 * passive.level, "wookiee_endurance_hp");
@@ -6709,59 +8614,55 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
     target.position.x += 1.0f;
     const std::uint32_t targetObject = game.objectForEntityIndex(hostile);
 
+    // Force powers run through the cast action and the shipped impact script, as in
+    // retail 00514af0 AIActionCastSpell: impact (and the Force point spend) at spells.2da
+    // conjtime, the action ends at conjtime + casttime. The old engine path spent the
+    // points, applied invented effects and shifted alignment +-2 on the spot.
+    const auto runFor = [&](float seconds) {
+        InputState idle;
+        for (float t = 0.0f; t < seconds; t += 0.02f) {
+            game.update(0.02f, idle);
+        }
+    };
+    ScriptApi castApi{game};
+    const auto casting = [&]() {
+        const ActorState& pcState = castApi.actor(castApi.pc());
+        return std::any_of(pcState.queue.begin(), pcState.queue.end(), [](const ActorAction& queued) {
+            return queued.kind == ActorActionKind::CastSpell;
+        });
+    };
+    castApi.clearQueue(castApi.pc());
     const std::int32_t fpBefore = game.forcePoints();
     const std::int32_t hpBefore = target.hitPoints;
+    const Rules::SpellTimes lightningTimes = game.rules().spellTimes(35);
+    check(lightningTimes.conjure == 170 && lightningTimes.cast == 1330, "lightning_spell_times");
     check(game.useForcePower(35, targetObject), "lightning_used");
-    check(game.forcePoints() == fpBefore - 20, "lightning_cost");
-    check(target.hitPoints < hpBefore, "lightning_damage");
-    check(game.alignment() == 48, "lightning_dark_side");
+    check(game.forcePoints() == fpBefore, "lightning_not_instant");
+    runFor(0.1f);
+    check(game.forcePoints() == fpBefore && target.hitPoints == hpBefore, "lightning_conjuring");
+    runFor(0.2f);
+    check(game.forcePoints() == fpBefore - 20, "lightning_cost_at_conjtime");
+    check(target.hitPoints < hpBefore, "lightning_impact_script_damage");
+    check(game.alignment() == 50, "cast_keeps_alignment");
+    check(casting(), "cast_action_runs_casttime");
+    runFor(1.3f);
+    check(!casting(), "cast_action_ends_conj_plus_cast");
 
+    // retail 0059b8a0: forceadjust.2da row goodEvil/10, GoodCost for 'G', EvilCost for 'E',
+    // party members only, truncated. Lightning (E, 20), Stun (G, 20), Push (-, 10?).
+    check(game.rules().adjustedForceCost(35, 0, true) == 10, "force_cost_dark_evil_power");
+    check(game.rules().adjustedForceCost(35, 100, true) == 35, "force_cost_light_evil_power");
+    check(game.rules().adjustedForceCost(46, 100, true) == 10, "force_cost_light_good_power");
+    check(game.rules().adjustedForceCost(46, 0, true) == 35, "force_cost_dark_good_power");
+    check(game.rules().adjustedForceCost(35, 0, false) == 20, "force_cost_npc_flat");
+    check(game.rules().adjustedForceCost(35, 55, true) == 20, "force_cost_neutral");
+
+    game.character().hp = 5;
+    const std::int32_t hpBeforeHeal = game.character().hp;
     check(game.useForcePower(28, 0), "heal_used");
-    check(game.character().hp > 20, "heal_amount");
-    check(game.alignment() == 50, "heal_light_side");
-
-    check(game.useForcePower(17, 0), "armor_used");
-    check(game.forceArmorBonus() > 0, "armor_buff");
-    check(game.alignment() == 52, "armor_light_side");
-
-    check(game.useForcePower(46, targetObject), "stun_used");
-    check(target.stunTimer > 0.0f, "stun_applied");
-    check(game.alignment() == 54, "stun_light_side");
-
-    check(game.useForcePower(20, targetObject), "immunity_used");
-    const auto targetHasImmunity = [&]() {
-        return std::any_of(target.effects.begin(), target.effects.end(),
-                           [](const kotor::ActiveEffect& effect) {
-                               return effect.remaining > 0.0f
-                                   && effect.label.find("FORCE_IMMUNITY") != std::string::npos;
-                           });
-    };
-    check(targetHasImmunity(), "immunity_effect");
-    const std::int32_t fpBeforeImmuneBlock = game.forcePoints();
-    check(!game.useForcePower(35, targetObject), "immunity_blocks_power");
-    check(game.forcePoints() == fpBeforeImmuneBlock, "immunity_no_cost");
-    check(game.useForcePower(19, targetObject), "breach_used");
-    check(!targetHasImmunity(), "breach_removes_immunity");
-    check(game.useForcePower(35, targetObject), "lightning_after_breach");
-
-    check(game.useForcePower(17, 0), "armor_before_suppress");
-    check(game.forceArmorBonus() > 0, "armor_before_suppress_effect");
-    check(game.useForcePower(24, 0), "shield_before_breach");
-    check(game.forceShield() > 0, "shield_effect");
-    check(game.useForcePower(19, 0), "breach_self");
-    check(game.forceArmorBonus() == 0 && game.forceShield() == 0,
-          "breach_removes_buffs");
-    check(game.useForcePower(48, 0), "suppress_used");
-    check(game.forceSuppressed(), "suppress_effect");
-    const std::int32_t fpBeforeSuppressBlock = game.forcePoints();
-    check(!game.useForcePower(35, targetObject), "suppress_blocks_power");
-    check(game.forcePoints() == fpBeforeSuppressBlock, "suppress_no_cost");
-    InputState idle;
-    for (int i = 0; i < 200; ++i) {
-        game.update(0.08f, idle);
-    }
-    check(!game.forceSuppressed(), "suppress_expires");
-    check(game.useForcePower(35, targetObject), "lightning_after_suppress");
+    runFor(2.0f);
+    check(game.character().hp > hpBeforeHeal, "heal_impact_script");
+    check(game.alignment() == 50, "heal_keeps_alignment");
 
     for (std::size_t i = 0; i < game.scene().entities.size(); ++i) {
         if (i != hostile && game.scene().entities[i].hostile) {
@@ -6824,23 +8725,47 @@ int runCombatForceTest(GameSession& game, const std::string& scriptPath)
         check(game.runScriptNcsForTest("force_script_test", scriptBytes,
                                        game.scriptWorld().pc), "force_script_ran");
         const auto scriptLocal = [&](const char* name) {
-            return game.scriptWorld().getLocal(game.scriptWorld().pc, name,
-                                               script::ValueType::Int).asInt();
+            return game.scriptWorld().localNumber(game.scriptWorld().pc, std::strtol(name, nullptr, 10));
+        };
+        // A local number is one byte (retail 00543130): a value outside -128..127 is not stored,
+        // and what is stored reads back unsigned.
+        const auto asLocalByte = [](std::int32_t value) {
+            return value < -128 || value > 127 ? 0 : (value & 0xFF);
         };
         check(scriptLocal("0") == 77, "script_alignment_read");
         check(scriptLocal("1") == 1, "script_has_feat");
         check(scriptLocal("2") == 1, "script_has_spell");
-        check(scriptLocal("3") == fpBeforeScript, "script_force_points");
-        check(scriptLocal("4") == game.maxForcePoints(), "script_max_force_points");
+        check(scriptLocal("3") == asLocalByte(fpBeforeScript), "script_force_points");
+        check(scriptLocal("4") == asLocalByte(game.maxForcePoints()), "script_max_force_points");
         // TalentSpell is TALENT_TYPE_FORCE, 0. retail 00544c70
         check(scriptLocal("5") == 0, "script_talent_type");
         check(scriptLocal("6") == 35, "script_talent_id");
         check(game.combatMode() == CombatMode::PowerAttack, "script_action_feat");
-        check(game.forceArmorBonus() > 0, "script_action_spell");
-        check(game.alignment() == 81, "script_alignment_action");
+        // The feat queued an attack round on the current combat target ahead of the casts;
+        // drop it so the queued casts run inside the window this check gives them.
+        std::erase_if(ScriptApi{game}.actor(game.scriptWorld().pc).queue, [](const ActorAction& action) {
+            return action.kind == ActorActionKind::Attack;
+        });
+        runFor(4.0f);
+        check(ScriptApi{game}.actor(game.scriptWorld().pc).combat.lastForcePower == 17,
+              "script_action_spell");
+        // Casting shifts no alignment in retail (ModifyAlignment 005ae610 callers).
+        check(game.alignment() == 77, "script_alignment_action");
     }
 
-    check(game.useForcePower(17, 0), "persist_effect_added");
+    {
+        // The save round trip of a Force effect on the sheet (the effect itself now comes
+        // from the impact script; this only exercises persistence).
+        kotor::ActiveEffect armor;
+        armor.spellId = 17;
+        armor.label = game.rules().powerName(17);
+        armor.remaining = 30.0f;
+        armor.armorBonus = 5;
+        armor.force = true;
+        armor.dispellable = true;
+        game.character().effects.push_back(armor);
+    }
+    check(game.hasEffect("FORCE_ARMOR"), "persist_effect_added");
     check(game.hasEffect("FORCE_ARMOR"), "persist_effect_live");
     game.setAlignment(20);
     game.adjustAlignment(5);
@@ -6939,11 +8864,11 @@ public:
         constFloat(facing).constFloat(at.x).constFloat(at.y).constFloat(at.z);
         return action(215, 2);
     }
-    // SetLocalNumber(OBJECT_SELF, index, value)
-    NcsFixture& setLocal(std::int32_t index, std::int32_t value)
+    // SetLocalBoolean(OBJECT_SELF, index, TRUE): a flag the checks read back (0..95, World::localBoolean).
+    NcsFixture& setFlag(std::int32_t index)
     {
-        constInt(value).constInt(index).constObject(0);
-        return action(682, 3);
+        constInt(1).constInt(index).constObject(0);
+        return action(680, 3);
     }
     // A compiled action argument: STORESTATE, a JMP over the body, the body.
     template <typename Body>
@@ -7026,6 +8951,36 @@ int runFamilyTest(const std::string& name, GameSession& game)
     if (name == "actions") {
         return runRemainingActionsFamilyTest(game);
     }
+    if (name == "cinema") {
+        return runCinemaFamilyTest(game);
+    }
+    if (name == "audioquality") {
+        return runAudioQualityFamilyTest(game);
+    }
+    if (name == "sfx") {
+        return runEffectsFamilyTest(game);
+    }
+    if (name == "ambience") {
+        return runAmbienceFamilyTest(game);
+    }
+    if (name == "animation") {
+        return runAnimationFamilyTest(game);
+    }
+    if (name == "world3d") {
+        return runWorldFamilyTest(game);
+    }
+    if (name == "worldposes") {
+        return runWorldPoseSurvey(game);
+    }
+    if (name == "worldtextures") {
+        return runWorldTextureAudit(game);
+    }
+    if (name == "textureaudit") {
+        return runTextureAudit(game);
+    }
+    if (name == "materials") {
+        return runMaterialFamilyTest(game);
+    }
     logError(concat("unknown family test: ", name));
     return 2;
 }
@@ -7042,10 +8997,13 @@ int runWorldSimTest(GameSession& game)
             game.update(1.0f / 30.0f, InputState{});
         }
     };
+    // Flags are SetLocalBoolean bits (0..95); numbers are SetLocalNumber bytes (0..7, -128..127),
+    // kept apart as retail's CSWVarTable keeps them (World::localBoolean).
     const auto local = [&](std::uint32_t object, int index) {
-        return game.scriptWorld()
-            .getLocal(object, std::to_string(index), script::ValueType::Int)
-            .asInt();
+        return game.scriptWorld().localBoolean(object, index) != 0 ? 1 : 0;
+    };
+    const auto number = [&](std::uint32_t object, int index) {
+        return game.scriptWorld().localNumber(object, index);
     };
     const auto logged = [&](const char* text) { return scriptLogHas(game, text); };
     const auto flat = [](kotor::Vec3 a, kotor::Vec3 b) {
@@ -7124,10 +9082,13 @@ int runWorldSimTest(GameSession& game)
     game.scriptWorld().setGlobal("End_TraskTalk", script::Value::makeInt(0));
 
     // ---- Dialogue state machine, with fixture conditions on a built DLG.
+    game.declareGlobalForTest("WSIM");
+    game.declareGlobalForTest("WSIM_LEFT");
+    game.declareGlobalForTest("WSIM_EXIT");
     game.addScriptForTest("wsim_cond", NcsFixture().constString("WSIM").action(580, 1).bytes());
-    game.addScriptForTest("wsim_entry", NcsFixture().setLocal(21, 1).bytes());
-    game.addScriptForTest("wsim_end", NcsFixture().setLocal(22, 1).bytes());
-    game.addScriptForTest("wsim_abort", NcsFixture().setLocal(23, 1).bytes());
+    game.addScriptForTest("wsim_entry", NcsFixture().setFlag(21).bytes());
+    game.addScriptForTest("wsim_end", NcsFixture().setFlag(22).bytes());
+    game.addScriptForTest("wsim_abort", NcsFixture().setFlag(23).bytes());
     {
         kotor::Dlg dlg;
         kotor::DlgEntry first;
@@ -7160,7 +9121,7 @@ int runWorldSimTest(GameSession& game)
               "reply_without_links_ends_normally");
 
         game.scriptWorld().setGlobal("WSIM", script::Value::makeInt(1));
-        game.scriptWorld().setLocal(pc, "21", script::Value::makeInt(0));
+        game.scriptWorld().setLocalBoolean(pc, 21, false);
         game.setDialogueForTest(dlg, "wsim", "fixture");
         check(game.dialogue().options.size() == 2, "reply_link_shown_when_true");
         check(local(pc, 21) == 1, "entry_script_runs_each_time_reached");
@@ -7236,16 +9197,16 @@ int runWorldSimTest(GameSession& game)
                                .constInt(0)
                                .location(target, 0.0f)
                                .action(21, 2) // ActionMoveToLocation
-                               .closure([](NcsFixture& body) { body.setLocal(7, 1); })
+                               .closure([](NcsFixture& body) { body.setFlag(7); })
                                .action(294, 1) // ActionDoCommand
                                .constInt(99)
-                               .constInt(8)
+                               .constInt(0)
                                .constObject(0)
-                               .action(682, 3) // Runs now, before anything queued.
+                               .action(682, 3) // SetLocalNumber 0: runs now, before anything queued.
                                .bytes();
         check(game.runScriptNcsForTest("wsim_queue", bytes, npc), "queue_script_ran");
         check(game.actorQueueSize(npc) == 2, "move_and_docommand_queued");
-        check(local(npc, 7) == 0 && local(npc, 8) == 99, "script_continues_past_queued_actions");
+        check(local(npc, 7) == 0 && number(npc, 0) == 99, "script_continues_past_queued_actions");
         game.update(1.0f / 30.0f, InputState{});
         check(local(npc, 7) == 0, "docommand_waits_for_move");
         float travelled = 0.0f;
@@ -7266,7 +9227,7 @@ int runWorldSimTest(GameSession& game)
         const auto wait = NcsFixture()
                               .constFloat(1.0f)
                               .action(202, 1)
-                              .closure([](NcsFixture& body) { body.setLocal(9, 1); })
+                              .closure([](NcsFixture& body) { body.setFlag(9); })
                               .action(294, 1)
                               .bytes();
         game.runScriptNcsForTest("wsim_wait", wait, npc);
@@ -7280,7 +9241,7 @@ int runWorldSimTest(GameSession& game)
                                 .constObject(0)
                                 .constInt(0)
                                 .action(162, 2)
-                                .closure([](NcsFixture& body) { body.setLocal(10, 1); })
+                                .closure([](NcsFixture& body) { body.setFlag(10); })
                                 .action(294, 1)
                                 .constObject(0)
                                 .constInt(1)
@@ -7294,7 +9255,7 @@ int runWorldSimTest(GameSession& game)
         const auto cleared = NcsFixture()
                                  .constFloat(5.0f)
                                  .action(202, 1)
-                                 .closure([](NcsFixture& body) { body.setLocal(11, 1); })
+                                 .closure([](NcsFixture& body) { body.setFlag(11); })
                                  .action(294, 1)
                                  .action(9, 0)
                                  .bytes();
@@ -7308,7 +9269,7 @@ int runWorldSimTest(GameSession& game)
         const auto assign = NcsFixture()
                                 .location(home, 180.0f)
                                 .closure([](NcsFixture& body) {
-                                    body.setLocal(12, 1).copyTop().action(214, 1);
+                                    body.setFlag(12).copyTop().action(214, 1);
                                 })
                                 .constObject(npc)
                                 .action(6, 2)
@@ -7327,24 +9288,24 @@ int runWorldSimTest(GameSession& game)
         entity.scripts["ScriptUserDefine"] = "wsim_ud";
         game.addScriptForTest("wsim_ud", NcsFixture()
                                              .action(247, 0) // GetUserDefinedEventNumber
-                                             .constInt(13)
+                                             .constInt(1)
                                              .constObject(0)
                                              .action(682, 3)
                                              .bytes());
         const auto signal = NcsFixture()
-                                .constInt(1001)
+                                .constInt(101) // a number local holds -128..127
                                 .action(132, 1) // EventUserDefined
                                 .constObject(npc)
                                 .action(131, 2) // SignalEvent
                                 .bytes();
         game.runScriptNcsForTest("wsim_signal", signal, pc);
-        check(local(npc, 13) == 0, "signal_is_deferred");
+        check(number(npc, 1) == 0, "signal_is_deferred");
         tick(0.1f);
-        check(local(npc, 13) == 1001, "signal_reaches_user_defined_as_target");
+        check(number(npc, 1) == 101, "signal_reaches_user_defined_as_target");
         check(logged("hook ScriptUserDefine end_trask -> wsim_ud"), "user_defined_hook_logged");
 
         game.scene().scripts["Mod_OnUsrDefined"] = "wsim_mod";
-        game.addScriptForTest("wsim_mod", NcsFixture().setLocal(14, 1).bytes());
+        game.addScriptForTest("wsim_mod", NcsFixture().setFlag(14).bytes());
         const auto signalModule = NcsFixture()
                                       .constInt(1)
                                       .action(132, 1)
@@ -7359,7 +9320,7 @@ int runWorldSimTest(GameSession& game)
         // leaves the outer script's OBJECT_SELF alone.
         game.addScriptForTest("wsim_inner", NcsFixture()
                                                 .action(565, 0) // GetRunScriptVar
-                                                .constInt(15)
+                                                .constInt(2)
                                                 .constObject(0)
                                                 .action(682, 3)
                                                 .bytes());
@@ -7368,12 +9329,32 @@ int runWorldSimTest(GameSession& game)
                                .action(548, 0) // GetFirstPC: 1 as a constant is OBJECT_INVALID.
                                .constString("wsim_inner")
                                .action(8, 3)
-                               .setLocal(16, 1)
+                               .setFlag(16)
                                .bytes();
         game.runScriptNcsForTest("wsim_outer", outer, npc);
-        check(local(pc, 15) == 77 && local(npc, 15) == 0, "execute_script_on_target_with_var");
+        check(number(pc, 2) == 77 && number(npc, 2) == 0, "execute_script_on_target_with_var");
         check(local(npc, 16) == 1 && local(pc, 16) == 0, "nested_run_keeps_outer_self");
         check(game.runScriptVar() == 77, "run_script_var_is_not_restored");
+    }
+
+    // ---- Local variables as retail's CSWVarTable keeps them (vm_answers Q8): a boolean and a number of
+    // the same index are apart; SetLocalNumber drops a value outside -128..127 and reads -1 back as 255;
+    // GetLocalBoolean gives the raw bit (index 5 reads 32). Fails on the old single-key store.
+    {
+        const auto vars = NcsFixture()
+                              .constInt(-1).constInt(5).constObject(0).action(682, 3)  // SetLocalNumber(self, 5, -1)
+                              .constInt(1).constInt(5).constObject(0).action(680, 3)   // SetLocalBoolean(self, 5, TRUE)
+                              .constInt(200).constInt(6).constObject(0).action(682, 3) // SetLocalNumber(self, 6, 200)
+                              .constInt(5).constObject(0).action(679, 2)               // GetLocalBoolean(self, 5)
+                              .constInt(7).constObject(0).action(682, 3)               // SetLocalNumber(self, 7, that)
+                              .bytes();
+        const std::int32_t number6Before = number(npc, 6);
+        check(game.runScriptNcsForTest("wsim_vars", vars, npc), "local_vars_script_ran");
+        logInfo(concat("world sim: number5=", number(npc, 5), " flag5=", game.scriptWorld().localBoolean(npc, 5),
+                       " number6=", number(npc, 6), " number7=", number(npc, 7)));
+        check(number(npc, 5) == 255 && local(npc, 5) == 1, "proof_local_boolean_and_number_are_apart");
+        check(number(npc, 6) == number6Before, "proof_local_number_drops_values_past_a_byte");
+        check(number(npc, 7) == 32, "proof_local_boolean_reads_the_raw_bit");
     }
 
     // ---- Kill, leave, return.
@@ -7388,7 +9369,7 @@ int runWorldSimTest(GameSession& game)
     const std::uint32_t trigger = static_cast<std::uint32_t>(game.scene().triggers.size());
     {
         game.scene().entities[hostile].scripts["ScriptDeath"] = "wsim_death";
-        game.addScriptForTest("wsim_death", NcsFixture().setLocal(17, 1).bytes());
+        game.addScriptForTest("wsim_death", NcsFixture().setFlag(17).bytes());
         const std::int32_t xpBefore = game.character().xp;
         game.damageEntity(hostile, 100000, pc);
         check(game.scene().entities[hostile].dead, "kill_marks_dead");
@@ -7401,9 +9382,9 @@ int runWorldSimTest(GameSession& game)
     }
     // Object locals, a pending timer, looted items and a created creature all have
     // to come back. The timer is longer than the time spent away.
-    game.scriptWorld().setLocal(npc, "18", script::Value::makeInt(4242));
+    game.scriptWorld().setLocalNumber(npc, 3, 42);
     const auto delayed = NcsFixture()
-                             .closure([](NcsFixture& body) { body.setLocal(19, 1); })
+                             .closure([](NcsFixture& body) { body.setFlag(19); })
                              .constFloat(3.0f)
                              .action(7, 2) // DelayCommand
                              .bytes();
@@ -7419,7 +9400,7 @@ int runWorldSimTest(GameSession& game)
     game.runScriptNcsForTest("wsim_create", create, pc);
     check(game.scene().entities.size() == entitiesBefore + 1, "create_object_spawned");
     const std::uint32_t createdObject = game.objectForEntityIndex(entitiesBefore);
-    game.scriptWorld().setLocal(createdObject, "24", script::Value::makeInt(5));
+    game.scriptWorld().setLocalNumber(createdObject, 4, 5);
 
     const std::size_t locker = game.findEntity("end_locker01");
     std::size_t lootBefore = 0;
@@ -7427,7 +9408,7 @@ int runWorldSimTest(GameSession& game)
         game.scene().entities[locker].scripts["OnInvDisturbed"] = "wsim_disturb";
         game.addScriptForTest("wsim_disturb", NcsFixture()
                                                   .action(352, 0) // GetInventoryDisturbType
-                                                  .constInt(25)
+                                                  .constInt(5)
                                                   .constObject(0)
                                                   .action(682, 3)
                                                   .bytes());
@@ -7435,7 +9416,7 @@ int runWorldSimTest(GameSession& game)
         if (lootBefore > 0 && game.openLoot(locker)) {
             game.takeLootItem(0);
             game.flushScriptEvents();
-            check(local(game.objectForEntityIndex(locker), 25) == 1, "loot_fires_disturbed");
+            check(number(game.objectForEntityIndex(locker), 5) == 1, "loot_fires_disturbed");
         }
     }
 
@@ -7491,7 +9472,7 @@ int runWorldSimTest(GameSession& game)
     check(game.objectForEntityIndex(hostile) == hostileObject, "object_id_stable_across_return");
     check(game.areaObject() == areaBefore, "area_object_stable_across_return");
     check(game.objectForEntityIndex(trask) == npc, "npc_id_stable_across_return");
-    check(local(npc, 18) == 4242, "object_local_survives_return");
+    check(number(npc, 3) == 42, "object_local_survives_return");
     check(flat(game.actorPosition(npc), game.scene().entities[trask].position) < 0.01f,
           "actor_position_is_entity_position");
     check(local(hostileObject, 17) == 1, "dead_creature_local_survives");
@@ -7500,7 +9481,7 @@ int runWorldSimTest(GameSession& game)
     for (std::size_t i = 0; i < game.scene().entities.size(); ++i) {
         if (game.objectForEntityIndex(i) == createdObject) {
             createdBack = true;
-            check(local(createdObject, 24) == 5, "created_object_local_survives");
+            check(number(createdObject, 4) == 5, "created_object_local_survives");
         }
     }
     check(createdBack, "created_object_survives_return");
@@ -7522,7 +9503,7 @@ int runWorldSimTest(GameSession& game)
     // ---- Through a save file. World state round-trips, including a timer.
     {
         const auto timer = NcsFixture()
-                               .closure([](NcsFixture& body) { body.setLocal(26, 1); })
+                               .closure([](NcsFixture& body) { body.setFlag(26); })
                                .constFloat(2.0f)
                                .action(7, 2)
                                .bytes();
@@ -7534,13 +9515,13 @@ int runWorldSimTest(GameSession& game)
             std::filesystem::temp_directory_path() / "kotor_engine_world_sim.save";
         check(game.save(path), "saved");
         // Change the world so a load has something to undo.
-        game.scriptWorld().setLocal(npc, "18", script::Value::makeInt(1));
-        game.scriptWorld().setLocal(pc, "21", script::Value::makeInt(9));
+        game.scriptWorld().setLocalNumber(npc, 3, 1);
+        game.scriptWorld().setLocalBoolean(pc, 21, false);
         check(game.load(path), "loaded");
         check(game.module() == startModule, "save_module");
         check(game.scene().entities[hostile].dead, "save_keeps_dead");
         check(game.objectForEntityIndex(hostile) == hostileObject, "save_keeps_object_id");
-        check(local(npc, 18) == 4242, "save_keeps_object_local");
+        check(number(npc, 3) == 42, "save_keeps_object_local");
         check(local(pc, 21) == 1, "save_keeps_pc_local");
         check(std::fabs(game.scriptWorld().time - worldTime) < 0.01, "save_keeps_world_time");
         check(game.moduleSnapshot(nextModule) != nullptr, "save_keeps_other_module");
@@ -7751,6 +9732,29 @@ int runOriginalSaveGate(const Options& options)
             return 0;
         }
 
+        // Values the writer must carry exactly: a negative global number (retail keeps a signed
+        // byte, 00529680 / 00529240), an item's NewItem bit (0055ccd0 / 0055fcd0) and the area's
+        // explored map words (GIT "AreaMap", 005061d0 / 00505da0).
+        std::string negativeGlobal;
+        for (const ke::kotor::SavedGlobal& value : source.globals) {
+            if (value.type == ke::kotor::SavedGlobal::Type::Number) {
+                negativeGlobal = value.name;
+                break;
+            }
+        }
+        if (!negativeGlobal.empty()) {
+            game.scriptWorld().globals[negativeGlobal] = script::Value::makeInt(-5);
+        }
+        std::size_t newItemIndex = game.inventory().size();
+        for (std::size_t i = 0; i < game.inventory().size(); ++i) {
+            if (game.inventory()[i].object != 0 && !game.inventory()[i].equipped) {
+                game.clearNewItems();
+                game.markNewItem(game.inventory()[i].object);
+                newItemIndex = i;
+                break;
+            }
+        }
+
         std::filesystem::path out = options.originalSaveOut;
         if (out.empty()) {
             out = std::filesystem::temp_directory_path() / "kotor-engine-s9-save";
@@ -7794,6 +9798,76 @@ int runOriginalSaveGate(const Options& options)
             && reloaded.inventory().size() == source.inventory.size()
             && reloaded.journal().size() == source.journal.size()
             && reloaded.companions().size() == source.partyTags.size();
+        bool negativeKept = negativeGlobal.empty();
+        for (const ke::kotor::SavedGlobal& value : written.globals) {
+            if (value.type == ke::kotor::SavedGlobal::Type::Number && value.name == negativeGlobal) {
+                negativeKept = value.number == -5;
+            }
+        }
+        if (!negativeGlobal.empty()) {
+            const auto found = reloaded.scriptWorld().globals.find(negativeGlobal);
+            negativeKept = negativeKept && found != reloaded.scriptWorld().globals.end() && found->second.integer == -5;
+        }
+        std::size_t newItemsWritten = 0;
+        for (const ke::kotor::SavedInventoryItem& item : written.inventory) {
+            newItemsWritten += item.newItem ? 1u : 0u;
+        }
+        const bool newItemKept = newItemIndex == game.inventory().size()
+            || (newItemsWritten == 1 && newItemIndex < written.inventory.size() && written.inventory[newItemIndex].newItem
+                && newItemIndex < reloaded.inventory().size()
+                && reloaded.isNewItem(reloaded.inventory()[newItemIndex].object));
+        // Every explored bit of the save survives (the session may explore more around the player
+        // after the load, as retail does, so the written map can only gain bits).
+        bool areaMapKept = !source.areaMap.present;
+        if (source.areaMap.present && written.areaMap.present && written.areaMap.resX == source.areaMap.resX
+            && written.areaMap.resY == source.areaMap.resY
+            && written.areaMap.words.size() == source.areaMap.words.size()) {
+            areaMapKept = true;
+            for (std::size_t i = 0; i < source.areaMap.words.size(); ++i) {
+                areaMapKept = areaMapKept && (written.areaMap.words[i] & source.areaMap.words[i]) == source.areaMap.words[i];
+            }
+        }
+        // GLOBALVARS keeps retail's field sizes (005299b0): booleans count/8 + 1, a fixed 0x960 location blob.
+        const bool globalLayoutKept = written.globalBooleanBytes == source.globalBooleanBytes
+            && written.globalNumberBytes == source.globalNumberBytes
+            && written.globalLocationBytes == source.globalLocationBytes && written.globalLocationBytes == 0x960u;
+        // Retail 00555790 writes each item's PropertiesList, ChanceAppear included (100 in every shipped UTI).
+        std::size_t sourceProperties = 0;
+        std::size_t writtenProperties = 0;
+        bool chanceAppearKept = true;
+        for (const ke::kotor::SavedInventoryItem& item : source.inventory) {
+            sourceProperties += item.properties.size();
+        }
+        for (const ke::kotor::SavedInventoryItem& item : written.inventory) {
+            writtenProperties += item.properties.size();
+            for (const ke::kotor::ItemTemplate::Property& property : item.properties) {
+                chanceAppearKept = chanceAppearKept && property.chanceAppear == 100;
+            }
+        }
+        const bool propertiesKept = chanceAppearKept && (sourceProperties == 0 || writtenProperties > 0);
+        logInfo(concat("original save roundtrip item properties: source=", sourceProperties,
+                       " written=", writtenProperties, " chance_appear_100=", chanceAppearKept ? 1 : 0,
+                       " kept=", propertiesKept ? 1 : 0));
+        // PT_TUT_WND_SHOWN: the tutorial windows the save has shown survive the load and the write
+        // (00564eaa / 005661df), so a window retail already showed is not shown again.
+        const bool tutorialsKept = written.tutorialShown == source.tutorialShown;
+        int tutorialBits = 0;
+        for (const std::uint8_t byte : source.tutorialShown) {
+            tutorialBits += std::popcount(static_cast<unsigned>(byte));
+        }
+        logInfo(concat("original save roundtrip tutorials shown: source_bits=", tutorialBits, " kept=", tutorialsKept ? 1 : 0));
+        roundtrip = roundtrip && negativeKept && newItemKept && areaMapKept && globalLayoutKept && propertiesKept
+            && tutorialsKept;
+        logInfo(concat("original save roundtrip globals layout: source=", source.globalBooleanBytes, "/",
+                       source.globalNumberBytes, "/", source.globalLocationBytes, " written=", written.globalBooleanBytes,
+                       "/", written.globalNumberBytes, "/", written.globalLocationBytes, " kept=",
+                       globalLayoutKept ? 1 : 0));
+        logInfo(concat("original save roundtrip values: negative_global=", negativeGlobal, " kept=", negativeKept ? 1 : 0,
+                       " new_items_written=", newItemsWritten, " new_item_kept=", newItemKept ? 1 : 0,
+                       " area_map source=", source.areaMap.present ? 1 : 0, " written=", written.areaMap.present ? 1 : 0,
+                       " source_res=", source.areaMap.resX, "x", source.areaMap.resY, " source_words=",
+                       source.areaMap.words.size(), " written_res=", written.areaMap.resX, "x", written.areaMap.resY,
+                       " words=", written.areaMap.words.size(), " kept=", areaMapKept ? 1 : 0));
         logInfo(concat("original save roundtrip: module=", written.module,
                        " gold=", written.gold,
                        " inventory=", written.inventory.size(),
@@ -7806,6 +9880,132 @@ int runOriginalSaveGate(const Options& options)
     } catch (const std::exception& exception) {
         logError(concat("original save gate failed: ", exception.what()));
         return 15;
+    }
+}
+
+// --capture-action: what a gallery shot does to the world on a chosen frame.
+void runCaptureActions(GameSession& game, IRenderBackend& backend, const std::string& actions, std::uint64_t frame)
+{
+    std::size_t start = 0;
+    while (start < actions.size()) {
+        const std::size_t comma = actions.find(',', start);
+        const std::string action = actions.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+        start = comma == std::string::npos ? actions.size() : comma + 1u;
+        const std::size_t at = action.find('@');
+        if (at == std::string::npos || std::strtoull(action.c_str() + at + 1u, nullptr, 10) != frame) {
+            continue;
+        }
+        kotor::Scene& scene = game.scene();
+        const auto nthFromEntry = [&](kotor::EntityKind kind, std::size_t n) {
+            std::vector<std::size_t> found;
+            for (std::size_t i = 0; i < scene.entities.size(); ++i) {
+                if (scene.entities[i].kind == kind && !scene.entities[i].dead) {
+                    found.push_back(i);
+                }
+            }
+            std::stable_sort(found.begin(), found.end(), [&](std::size_t a, std::size_t b) {
+                return kotor::length(scene.entities[a].position - scene.entry)
+                    < kotor::length(scene.entities[b].position - scene.entry);
+            });
+            return n < found.size() ? found[n] : static_cast<std::size_t>(-1);
+        };
+        if (action.rfind("place:", 0) == 0) {
+            // place:<tag or pc>:x:y:z:facing, to stage actors where a paired retail frame has them.
+            const std::size_t tagEnd = action.find(':', 6u);
+            if (tagEnd != std::string::npos && tagEnd < at) {
+                std::string numbers = action.substr(tagEnd + 1u, at - tagEnd - 1u);
+                char* cursor = numbers.data();
+                const float x = std::strtof(cursor, &cursor);
+                const float y = std::strtof(cursor + 1, &cursor);
+                const float z = std::strtof(cursor + 1, &cursor);
+                const float facing = std::strtof(cursor + 1, &cursor);
+                const std::string tag = action.substr(6u, tagEnd - 6u);
+                const std::size_t named = tag == "pc" ? game.controlledEntity() : game.findEntity(tag);
+                if (named < scene.entities.size()) {
+                    scene.entities[named].position = {x, y, z};
+                    scene.entities[named].bearing = facing;
+                    logInfo(concat("capture action: ", action));
+                }
+            }
+        } else if (action.rfind("door:", 0) == 0) {
+            const std::size_t door = nthFromEntry(kotor::EntityKind::Door, std::strtoul(action.c_str() + 5, nullptr, 10));
+            if (door != static_cast<std::size_t>(-1)) {
+                scene.entities[door].locked = false;
+                const auto outcome = game.openDoor(door);
+                logInfo(concat("capture action: ", action, " ", scene.entities[door].tag, " outcome ",
+                               static_cast<int>(outcome), " clip '", game.animationName(door), "'"));
+            }
+        } else if (action.rfind("equip:", 0) == 0) {
+            const std::size_t split = action.find(':', 6u);
+            if (split == std::string::npos || split > at) {
+                continue;
+            }
+            const std::size_t creature = nthFromEntry(kotor::EntityKind::Creature, std::strtoul(action.c_str() + 6, nullptr, 10));
+            if (creature != static_cast<std::size_t>(-1)) {
+                kotor::Entity& entity = scene.entities[creature];
+                entity.weaponModel = action.substr(split + 1u, at - split - 1u);
+                entity.offhandModel.clear();
+                kotor::rebuildEntityWeapons(scene, game.install(), creature);
+                logInfo(concat("capture action: ", action, " on ", entity.tag, " attach '", entity.weaponAttach, "'"));
+            }
+        } else if (action.rfind("equipitem:", 0) == 0) {
+            // equipitem:<resref>: a real equip through the rules, so clips follow the item.
+            const std::string item = action.substr(10u, at - 10u);
+            game.giveItem(item, ScriptApi{game}.pc());
+            const bool done = game.equipItem(item);
+            logInfo(concat("capture action: ", action, done ? " ok" : " FAILED"));
+        } else if (action.rfind("dumpai@", 0) == 0) {
+            // What each creature is doing, to read a paired fight against the retail frames.
+            ScriptApi api{game};
+            logInfo(concat("ai camera yaw ", game.yaw(), " at frame ", frame, " timers ", game.scriptWorld().timers.size(),
+                           " paused ", game.dialoguePaused(), " entry ", game.dialogue().entry, " camera ",
+                           game.dialogue().cameraId, " options ", game.dialogue().options.size(), " age ", game.dialogueEntryAge(),
+                           " auto ", game.dialogueAutoAdvance()));
+            for (std::size_t i = 0; i < scene.entities.size(); ++i) {
+                const kotor::Entity& e = scene.entities[i];
+                if (e.kind != kotor::EntityKind::Creature || e.faction == 5) {
+                    continue;
+                }
+                const std::uint32_t object = game.objectForEntityIndex(i);
+                const ActorState& actor = api.actor(object);
+                logInfo(concat("ai ", e.tag, " at ", e.position.x, ",", e.position.y, " bearing ", e.bearing,
+                               " faction ", e.faction, " hp ", e.hitPoints, " dead ", e.dead,
+                               " queue ", actor.queue.size(), " combat ", actor.combat.inCombat,
+                               " clip '", game.animationName(i), "'"));
+            }
+        } else if (action.rfind("cam@", 0) == 0) {
+            // The camera in force, to read a paired shot against retail's logged eye.
+            const SceneCamera view = game.camera();
+            logInfo(concat("cam ", frame, " eye ", view.eye.x, ",", view.eye.y, ",", view.eye.z, " fwd ",
+                           view.forward.x, ",", view.forward.y, ",", view.forward.z));
+        } else if (action.rfind("notutor@", 0) == 0) {
+            // A retail save has seen its tutorial popups; a fresh run would stop at each.
+            game.setTutorialWindowsEnabledForTest(false);
+            logInfo(concat("capture action: ", action));
+        } else if (action.rfind("store:", 0) == 0) {
+            // store:<tag>@N opens that merchant, as retail's OpenStore on the same store (paired store shots).
+            const bool done = game.openStoreByTag(action.substr(6u, at - 6u));
+            logInfo(concat("capture action: ", action, done ? " ok" : " FAILED"));
+        } else if (action.rfind("galaxy:", 0) == 0) {
+            // galaxy:<planet>@N is ShowGalaxyMap(planet) (paired galaxy shots).
+            game.showGalaxyMap(static_cast<std::int32_t>(std::strtol(action.c_str() + 7, nullptr, 10)));
+            logInfo(concat("capture action: ", action));
+        } else if (action.rfind("align:", 0) == 0) {
+            // align:<0..100>@N sets the PC's alignment (paired character sheet shots).
+            game.setAlignment(static_cast<std::int32_t>(std::strtol(action.c_str() + 6, nullptr, 10)));
+            logInfo(concat("capture action: ", action));
+        } else if (action.rfind("attack@", 0) == 0) {
+            // attack@N, so a paired combat burst can start at a known frame.
+            game.attackNearestHostile();
+            logInfo(concat("capture action: ", action));
+        } else if (runAnimationCaptureAction(game, action.substr(0, at))) {
+            logInfo(concat("capture action: ", action));
+        } else if (action.rfind("fullupload", 0) == 0) {
+            const auto begin = std::chrono::steady_clock::now();
+            backend.setScene(&scene);
+            logInfo(concat("scene upload: ", std::chrono::duration<double, std::milli>(
+                                                 std::chrono::steady_clock::now() - begin).count(), " ms"));
+        }
     }
 }
 
@@ -7877,6 +10077,9 @@ int runApplication(const Options& options)
                 chargen = std::make_unique<Chargen>(game->rules());
             }
             game->setAnimationEnabled(!options.headless && options.backend != BackendKind::Null);
+            // Retail plays movies in a blocking loop: a window holds the world while one plays.
+            // Headless and null runs (the gates) keep ticking it.
+            game->setMovieHoldsWorld(!options.headless && options.backend != BackendKind::Null);
             if (options.thirdPerson) {
                 game->setPlayerAppearance(
                     static_cast<std::uint32_t>(std::max(0, options.playerAppearance)),
@@ -7913,6 +10116,22 @@ int runApplication(const Options& options)
                            ", encounter ", countKind(ke::kotor::EntityKind::Encounter), ")"));
             logInfo(concat("  encounter volumes: ", loaded.encounters.size()));
             logInfo(concat("  entry: ", loaded.entry.x, ", ", loaded.entry.y, ", ", loaded.entry.z));
+            {
+                // A model with no drawable mesh (every slot NULL, or Render off) has nothing to show.
+                std::map<std::string, int> withoutMesh;
+                std::set<std::uint32_t> meshOwners;
+                for (const kotor::EntityMesh& mesh : loaded.entityMeshes) {
+                    meshOwners.insert(mesh.entity);
+                }
+                for (std::size_t i = 0; i < loaded.entities.size(); ++i) {
+                    if (!loaded.entities[i].model.empty() && meshOwners.count(static_cast<std::uint32_t>(i)) == 0u) {
+                        ++withoutMesh[loaded.entities[i].model];
+                    }
+                }
+                for (const auto& [model, count] : withoutMesh) {
+                    logInfo(concat("  model without a mesh: ", model, " x", count));
+                }
+            }
             logInfo(concat("  entity meshes: ", loaded.entityMeshes.size(), " triggers: ",
                            loaded.triggers.size(), " warnings: ", loaded.warnings.size()));
             if (options.thirdPerson) {
@@ -8096,15 +10315,30 @@ int runApplication(const Options& options)
                                high.x, ", ", high.y, ", ", high.z));
             }
             if (options.sceneAssert) {
+                // Counts of the shipped module. Batches are per room and material, textures include
+                // the lightmaps, and an emitter is a particle source instead of an entity mesh.
                 const bool ok = loaded.rooms.size() == 15
-                    && loaded.vertices.size() == 237594
-                    && loaded.indices.size() == 237594
-                    && loaded.batches.size() == 49
-                    && loaded.textures.size() == 88
+                    // 948 vertices left the static rooms for 3 room loop meshes (animloop2 of
+                    // M01aa_07a and animloop2 and 3 of M01aa_07b, retail 00607610): 232140 in all.
+                    && loaded.vertices.size() == 231192
+                    && loaded.indices.size() == 231192
+                    && loaded.batches.size() == 351
+                    // Hand items now use their UTI's ModelVariation (retail 005b30e0), which adds
+                    // w_BlstrRfl_002 and the red blade w_lsabrered01 of w_Lghtsbr_002: 167, Carth's head included.
+                    // The Dark Jedi's and Bandon's heads, dropped by the old head_g skip, add n_sithappren02_h and n_darthband01_h: 169.
+                    // The chunk emitter on plc_footlker loads its piece plc_chunkybit02, whose map fx_ExpParts is the last one: 170.
+                    // Body-part rows draw their rebuilt map on every body node (00697610 -> 006984a3
+                    // -> 0063c0a0, texnames_summary.tsv), so the other maps those models name
+                    // (N_CommM04 on N_RepSold, and the like) are no longer loaded: 162.
+                    // Held items keep their own maps (texnames_summary.tsv: C_DrdWar's w_RptnBlstr_001), which
+                    // the body rule had replaced on body-part owners: w_BlstrCrbn_001, w_BlstrRfl_001,
+                    // w_DsrptRfl_001, w_Vbroswrd_001 (appearance 355), w_BlstrPstl_001 (378), w_Lghtsbr_001,
+                    // w_lsabreblue01 (30) and w_lsabrered01 (41) come back: 170.
+                    && loaded.textures.size() == 170
                     && loaded.collisionVertices.size() == 850
                     && loaded.collision.size() == 1365
                     && loaded.entities.size() == 218
-                    && loaded.entityMeshes.size() == 142
+                    && loaded.entityMeshes.size() == 131
                     && loaded.cameras.size() == 40
                     && loaded.triggers.size() == 13
                     && loaded.warnings.empty();
@@ -8115,11 +10349,111 @@ int runApplication(const Options& options)
                                " collision=", loaded.collision.size(),
                                " entities=", loaded.entities.size(),
                                " meshes=", loaded.entityMeshes.size(),
+                               " emitter_entities=", [&loaded] {
+                                   std::set<std::uint32_t> owners;
+                                   for (const kotor::EmitterInstance& emitter : loaded.emitters) {
+                                       if (emitter.entity != UINT32_MAX) {
+                                           owners.insert(emitter.entity);
+                                       }
+                                   }
+                                   return owners.size();
+                               }(),
                                " cameras=", loaded.cameras.size(),
                                " triggers=", loaded.triggers.size(),
                                " warnings=", loaded.warnings.size(),
                                " ok=", ok ? 1 : 0));
-                return ok ? 0 : 9;
+                // Texture wrap (retail 00424980, 00424dd0): a texture repeats on an axis
+                // unless its TXI `clamp` says otherwise. The shipped rooms tile their art
+                // (UV spans up to 9.5 here), so every room triangle with a UV span above 1
+                // must sit on a repeating texture, and the TXI-clamped art must stay clamped.
+                std::size_t tiledRepeat = 0;
+                std::size_t tiledClamped = 0;
+                for (const ke::kotor::TextureBatch& batch : loaded.batches) {
+                    if (batch.texture >= loaded.textures.size()) {
+                        continue;
+                    }
+                    for (std::uint32_t at = batch.firstIndex; at + 2 < batch.firstIndex + batch.indexCount;
+                         at += 3) {
+                        float uLow = 1e9f;
+                        float uHigh = -1e9f;
+                        float vLow = 1e9f;
+                        float vHigh = -1e9f;
+                        for (std::uint32_t k = 0; k < 3; ++k) {
+                            const ke::kotor::Vec2 uv = loaded.vertices[loaded.indices[at + k]].uv;
+                            uLow = std::min(uLow, uv.x);
+                            uHigh = std::max(uHigh, uv.x);
+                            vLow = std::min(vLow, uv.y);
+                            vHigh = std::max(vHigh, uv.y);
+                        }
+                        if (uHigh - uLow > 1.0f || vHigh - vLow > 1.0f) {
+                            (loaded.textures[batch.texture].clamp == 0 ? tiledRepeat : tiledClamped) += 1;
+                        }
+                    }
+                }
+                std::size_t txiClamped = 0;
+                bool fxClamped = true;
+                for (const ke::kotor::Texture& texture : loaded.textures) {
+                    if (texture.name.rfind("__fx_", 0) == 0) {
+                        fxClamped = fxClamped && texture.clamp == 3;
+                    } else {
+                        txiClamped += texture.clamp != 0 ? 1u : 0u;
+                    }
+                }
+                const auto wrapOf = [&](const std::string& name) {
+                    std::uint32_t type = 0;
+                    const auto data = game->install().findTexture(name, &type);
+                    if (!data.has_value()) {
+                        return -1;
+                    }
+                    const auto txi = game->install().find(name, 2022);
+                    return static_cast<int>(ke::kotor::textureClampFlags(
+                        *data, type, txi.has_value() ? &*txi : nullptr));
+                };
+                const int tiledArt = wrapOf("lhr_wall01"); // tiles up to 9.5 in m01aa_01a
+                const int headArt = wrapOf("pmha01");     // TXI `clamp 3`
+                const bool wrapOk = tiledRepeat >= 1000 && tiledClamped == 0 && fxClamped
+                    && tiledArt == 0 && headArt == 3;
+                logInfo(concat("scene assert: texture wrap tiled_triangles_repeating=", tiledRepeat,
+                               " tiled_triangles_clamped=", tiledClamped,
+                               " txi_clamped_textures=", txiClamped, " lhr_wall01=", tiledArt,
+                               " pmha01=", headArt, " ok=", wrapOk ? 1 : 0));
+                // Every creature whose appearance row names a head and whose body has the hook wears
+                // one (retail 00698219, 0069b0fa). The party templates go through the other spawn path.
+                kotor::Install headInstall(game->installPath());
+                const std::shared_ptr<const kotor::TwoDa> looks = headInstall.table("appearance");
+                for (const char* member : {"p_bastilla", "p_cand", "p_carth", "p_jolee", "p_juhani", "p_mission"}) {
+                    kotor::spawnCreature(game->scene(), headInstall, member, {0.0f, 0.0f, 0.0f}, 0.0f);
+                }
+                std::size_t withHead = 0;
+                std::size_t headless = 0;
+                for (const kotor::EntityMesh& mesh : game->scene().entityMeshes) {
+                    if (mesh.entity >= game->scene().entities.size()) {
+                        continue;
+                    }
+                    const kotor::Entity& owner = game->scene().entities[mesh.entity];
+                    if (owner.kind != kotor::EntityKind::Creature || mesh.attachModel || !mesh.model
+                        || !mesh.model->hasNode("headhook") || looks == nullptr) {
+                        continue;
+                    }
+                    const std::string row = std::to_string(owner.appearance);
+                    const auto named = [&](const char* column) {
+                        const std::string cell = looks->rowIndex(row) >= 0 ? looks->cell(row, column) : std::string{};
+                        return !cell.empty() && cell != "****";
+                    };
+                    if (!named("normalhead") && !named("backuphead")) {
+                        continue;
+                    }
+                    if (mesh.headModel) {
+                        ++withHead;
+                    } else {
+                        ++headless;
+                        logError(concat("scene assert: no head on ", owner.tag, " model ", owner.model));
+                    }
+                }
+                const bool headsOk = headless == 0 && withHead >= 6;
+                logInfo(concat("scene assert: creatures_with_head=", withHead, " headless=", headless,
+                               " ok=", headsOk ? 1 : 0));
+                return ok && wrapOk && headsOk ? 0 : 9;
             }
             if (options.dialogueTest) {
                 return runDialogueTest(*game);
@@ -8132,6 +10466,24 @@ int runApplication(const Options& options)
             }
             if (!options.actionCoverage.empty()) {
                 return runActionCoverage(*game, options.actionCorpus, options.actionCoverage);
+            }
+            if (!options.conversationFlow.empty() || !options.plotReplay.empty()) {
+                quest::FlowOptions flow;
+                flow.outDir = options.conversationFlow.empty() ? options.plotReplay : options.conversationFlow;
+                flow.baseline = options.questBaseline;
+                flow.modules = options.questModules;
+                flow.breakName = options.questBreak;
+                return options.conversationFlow.empty() ? quest::runPlotReplay(*game, flow)
+                                                        : quest::runConversationFlow(*game, flow);
+            }
+            if (!options.questTrace.empty() || !options.questGraph.empty()) {
+                quest::QuestTraceOptions trace;
+                trace.outDir = options.questTrace.empty() ? options.questGraph : options.questTrace;
+                trace.graphOnly = options.questTrace.empty();
+                trace.baseline = options.questBaseline;
+                trace.modules = options.questModules;
+                trace.breakName = options.questBreak;
+                return quest::runQuestTrace(*game, trace);
             }
             if (!options.familyTest.empty()) {
                 return runFamilyTest(options.familyTest, *game);
@@ -8283,7 +10635,11 @@ int runApplication(const Options& options)
                 logInfo(concat("  door test: ", from, " -> ", to, " ok=", ok ? 1 : 0));
                 return ok ? 0 : 9;
             }
-            if (options.demoDialogue) {
+            if (!options.playDialogue.empty()) {
+                if (!ScriptApi{*game}.startConversation(game->controlledObject(), options.playDialogue)) {
+                    logWarn(concat("play dialogue did not start: ", options.playDialogue));
+                }
+            } else if (options.demoDialogue) {
                 const std::size_t index = game->findEntity("end_trask");
                 if (index != static_cast<std::size_t>(-1)) {
                     const kotor::Entity& entity = game->scene().entities[index];
@@ -8347,7 +10703,7 @@ int runApplication(const Options& options)
 
     RuntimeState state;
 
-    if (game && !options.headless) {
+    if (game && !options.headless && !options.noAudio) {
         audioOutput = std::make_unique<audio::Output>(game->audio().mixer());
         if (audioOutput->valid()) {
             logInfo(concat("Audio device: ", audioOutput->device()));
@@ -8356,8 +10712,20 @@ int runApplication(const Options& options)
             audioOutput.reset();
         }
     }
-    if (game && (!options.guiScreen.empty() || options.chargenGui)) {
-        game->stopMovie();
+    if (game && !options.audioCapture.empty()) {
+        if (game->audio().mixer().startCapture(options.audioCapture)) {
+            logInfo(concat("Audio capture: ", options.audioCapture, "_<bus>.wav"));
+        } else {
+            logWarn(concat("Audio capture could not open ", options.audioCapture));
+        }
+    }
+    // The shipped GUI (loading screen, menus, panels) is available in every windowed run;
+    // --gui-screen and --chargen-gui additionally open one screen at start.
+    const bool guiRequested = !options.guiScreen.empty() || options.chargenGui;
+    if (game && (guiRequested || !options.headless)) {
+        if (guiRequested) {
+            game->stopMovie();
+        }
         try {
             state.guiInstall = std::make_unique<kotor::Install>(game->installPath());
             state.guiInstall->bindModule(game->module());
@@ -8367,7 +10735,9 @@ int runApplication(const Options& options)
             if (options.chargenGui) {
                 chargenGui = std::make_unique<ChargenGuiState>(game->rules());
             }
-            if (state.guiSystem->open(screen)) {
+            if (!guiRequested) {
+                // nothing to open yet
+            } else if (state.guiSystem->open(screen)) {
                 logInfo(concat("GUI screen loaded: ", state.guiSystem->screenName(),
                                " controls=", state.guiSystem->screen()->controlCount));
                 if (!options.guiAction.empty()
@@ -8392,6 +10762,17 @@ int runApplication(const Options& options)
                            " decoder=", kotor::BinkPlayer::available() ? "ffmpeg" : "none"));
         } else {
             logWarn(concat("Movie failed to start: ", options.moviePlay));
+        }
+    }
+    if (game) {
+        game->setDialogueAutoAdvance(!options.noAutoAdvance);
+    }
+    if (game && options.startupMovies && !options.noMovies) {
+        if (game->playStartupMovies()) {
+            logInfo(concat("Startup movies: ", game->movieName(), " first, ",
+                           game->queuedMovies(), " queued"));
+        } else {
+            logWarn("Startup movies could not start (leclogo/biologo/legal)");
         }
     }
     if (game && options.facialDemo >= 0) {
@@ -8423,6 +10804,13 @@ int runApplication(const Options& options)
     std::string error;
     for (const BackendKind kind : candidates) {
         logInfo(concat("Trying backend: ", buildLabel(kind)));
+        if (kind == BackendKind::OpenGL) {
+            std::string attributeError;
+            if (!setGlWindowAttributes(attributeError)) {
+                logWarn(concat("SDL_GL_SetAttribute failed: ", attributeError));
+                continue;
+            }
+        }
         state.window = SDL_CreateWindow(options.title.c_str(), options.width, options.height,
                                         windowFlagsFor(kind, options));
         if (state.window == nullptr) {
@@ -8497,17 +10885,50 @@ int runApplication(const Options& options)
     if (game) {
         state.backend->setScene(&game->scene());
         state.backend->setCamera(game->camera());
-        if (!options.headless) {
-            SDL_SetWindowRelativeMouseMode(state.window, true);
-        }
+        // ENGINE CHOICE (pointer in play): the cursor is free, as in retail, so the top menu bar
+        // and every HUD control answer it without a key press. Camera look is taken while the right
+        // mouse button is held (the cursor hides and the motion turns the camera, then the cursor
+        // is free again on release); F1 locks look on for good and releases it again.
+        SDL_SetWindowRelativeMouseMode(state.window, false);
     }
     // Portrait art for the HUD, character panel and chargen, and the chargen 3D stage.
     ChargenVisuals visuals;
     std::unique_ptr<PortraitImages> portraitImages;
     std::unique_ptr<ChargenPreview> chargenPreview;
     std::unique_ptr<ChargenPreviewGate> previewGate;
-    int gateExit = 0;
+    std::unique_ptr<MenuScene> menuScene;
+    std::unique_ptr<UserSettings> userSettings;
+    std::unique_ptr<FrontEnd> frontEnd;
+    std::unique_ptr<GuiSystem> hudGui;
+    std::unique_ptr<GuiSystem> pauseGui; // pause.gui, CSWGuiInGamePause (006c03b0)
+    std::unique_ptr<GuiSystem> tooltipGui; // tooltip<size>.gui, the pointer's box (00624af0)
+    std::unique_ptr<GuiSystem> barkGui;    // barkbubble.gui, BarkString's box (006a9770)
+    int pauseReason = 4;                 // CGuiInGame::SetPaused reason; 4 is the pause key (00621210)
+    std::unique_ptr<GameScreens> gameScreens;
+    std::unique_ptr<GuiSystem> dialogueGui;
+    std::unique_ptr<GuiSystem> computerGui; // the terminal screen of a Computer conversation
+    std::unique_ptr<GuiSystem> computerCameraGui; // its live camera feed (computercamera.gui, 006a95f0)
+    LoadScreenProbe loadScreenProbe;
+    std::unique_ptr<DialogueScreen> dialogueScreen;
+    std::unique_ptr<Hud> hud;
+    std::unique_ptr<GuiSystem> loadScreenGui; // its own screen stack: the hook runs inside update()
+    std::unique_ptr<FrontEndGate> frontEndGate;
+    std::filesystem::path settingsPath;
+    // Window size and fullscreen from the options screen or F11: (width, height, fullscreen).
+    // 0 keeps the size, -1 keeps the fullscreen state.
+    std::function<void(int, int, int)> applyDisplay;
+    std::string hudTooltipShown;
+    GuiPainter::Stats hudStats; // what the HUD's own paint drew (the menu bar paints after it)
+    GuiView hudViewUsed;
+    GuiView hudPickView; // the layout the pointer is tested against (the HUD moves its controls)
+    std::function<std::string(float, float)> hudPickAt; // the HUD button under a window pixel (empty: none)
+    std::unique_ptr<TextureWrapGate> wrapGate;
+    int gateExit = options.textureWrapCheck && !game ? 67 : 0;
+    if (options.textureWrapCheck && game) {
+        wrapGate = std::make_unique<TextureWrapGate>();
+    }
     bool chargenStage = false;
+    bool gamePreviewShown = false; // an in-game 3D frame holds the backend's preview scene
     // New Game from the main menu runs the shipped chargen and then enters the first module.
     bool newGameFlow = false;
     // The 3D stage behind classsel/portcust: only the models, as in retail, no module.
@@ -8533,6 +10954,162 @@ int runApplication(const Options& options)
         visuals.backend = state.backend.get();
         visuals.portraits = portraitImages.get();
         gVisuals = &visuals;
+        if (state.guiSystem && state.guiInstall) {
+            GameSession* session = &*game;
+            state.guiPainter = std::make_unique<GuiPainter>(
+                *state.guiInstall, state.backend.get(),
+                [session](std::uint32_t strref) { return session->localization().tlk().text(strref); });
+            gGuiPainter = state.guiPainter.get();
+            {
+                std::filesystem::path userDir;
+                if (char* pref = SDL_GetPrefPath("kotor-remaster", "engine")) {
+                    userDir = pref;
+                    SDL_free(pref);
+                }
+                settingsPath = options.settingsFile.empty() ? userDir / "settings.ini"
+                                                            : std::filesystem::path(options.settingsFile);
+                const std::filesystem::path savesRoot = options.savesDir.empty()
+                    ? userDir / "saves" : std::filesystem::path(options.savesDir);
+                userSettings = std::make_unique<UserSettings>();
+                if (!userSettings->load(settingsPath)) {
+                    // First run: start from the volumes the install's swkotor.ini carries.
+                    const AudioSystem::UserVolumes& ini = game->audio().userVolumes();
+                    userSettings->set("sound.music", ini.music * 100.0f);
+                    userSettings->set("sound.voice", ini.voice * 100.0f);
+                    userSettings->set("sound.effects", ini.effects * 100.0f);
+                    userSettings->set("sound.movie", ini.movie * 100.0f);
+                    userSettings->dirty = false;
+                }
+                frontEnd = std::make_unique<FrontEnd>(*state.guiSystem, *game, *state.guiPainter,
+                                                      *userSettings, savesRoot);
+                frontEnd->applyAudio();
+                applyDisplay = [&](int width, int height, int fullscreen) {
+                    SDL_Window* window = state.window;
+                    if (window == nullptr || !frontEnd) {
+                        return;
+                    }
+                    if (fullscreen == 1) {
+                        SDL_SetWindowFullscreen(window, true);
+                    } else {
+                        if (fullscreen == 0) {
+                            SDL_SetWindowFullscreen(window, false);
+                        }
+                        if (width > 0 && height > 0) {
+                            SDL_SetWindowSize(window, width, height);
+                            SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+                        }
+                    }
+                    SDL_SyncWindow(window);
+                    int w = 0;
+                    int h = 0;
+                    SDL_GetWindowSizeInPixels(window, &w, &h);
+                    SDL_Rect desktop{};
+                    SDL_GetDisplayBounds(SDL_GetDisplayForWindow(window), &desktop);
+                    const bool full = (SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN) != 0;
+                    frontEnd->setDisplay(w, h, full, desktop.w, desktop.h);
+                    logInfo(concat("Display: ", w, "x", h, full ? " fullscreen" : " windowed", " (desktop ",
+                                   desktop.w, "x", desktop.h, ")"));
+                };
+                applyDisplay(0, 0, -1);
+                if (!options.sizeGiven && !options.hidden && !options.headless) {
+                    // The size the player last chose, unless the command line named one.
+                    if (options.fullscreen || userSettings->get("graphics.fullscreen") != 0.0f) {
+                        applyDisplay(0, 0, 1);
+                    } else if (userSettings->get("graphics.width") >= 640.0f
+                               && userSettings->get("graphics.height") >= 480.0f) {
+                        applyDisplay(static_cast<int>(userSettings->get("graphics.width")),
+                                     static_cast<int>(userSettings->get("graphics.height")), 0);
+                    }
+                }
+                visuals.frontEnd = frontEnd.get();
+                gameScreens = std::make_unique<GameScreens>(*state.guiSystem, *game, *state.guiPainter);
+                visuals.gameScreens = gameScreens.get();
+                loadScreenGui = std::make_unique<GuiSystem>(*state.guiInstall);
+                hudGui = std::make_unique<GuiSystem>(*state.guiInstall);
+                pauseGui = std::make_unique<GuiSystem>(*state.guiInstall);
+                if (!pauseGui->open("pause")) {
+                    pauseGui.reset();
+                }
+                tooltipGui = std::make_unique<GuiSystem>(*state.guiInstall);
+                if (!tooltipGui->open("tooltip8x6")) {
+                    tooltipGui.reset();
+                }
+                barkGui = std::make_unique<GuiSystem>(*state.guiInstall);
+                if (!barkGui->open("barkbubble")) {
+                    barkGui.reset();
+                }
+                {
+                    int windowW = 0;
+                    int windowH = 0;
+                    SDL_GetWindowSizeInPixels(state.window, &windowW, &windowH);
+                    float designW = 0.0f;
+                    float designH = 0.0f;
+                    const std::string layout = Hud::layoutFor(static_cast<float>(windowW), static_cast<float>(windowH), designW, designH);
+                    if (hudGui->open(layout)) {
+                        hud = std::make_unique<Hud>(*hudGui, *game, gameScreens.get());
+                    } else {
+                        logWarn(concat("the HUD screen ", layout, " is missing"));
+                    }
+                }
+                // The HUD's controls move with the window edges, so the pointer is tested against
+                // where the painter put them (window pixels), not against the file's rectangles.
+                hudPickAt = [&hudGui, &hudPickView](float px, float py) -> std::string {
+                    const kotor::GuiScreen* screen = hudGui->screen();
+                    if (screen == nullptr) {
+                        return {};
+                    }
+                    for (auto it = screen->controls.rbegin(); it != screen->controls.rend(); ++it) {
+                        if (it->type != 6 && it->type != 7) {
+                            continue;
+                        }
+                        const GuiControlState controlState = hudGui->state(it->key);
+                        if (!controlState.visible) {
+                            continue;
+                        }
+                        if (guiControlPixels(hudPickView, *it, controlState.offsetX, controlState.offsetY).contains(px, py)) {
+                            return it->key;
+                        }
+                    }
+                    return {};
+                };
+                hudGui->setPicker(hudPickAt);
+                dialogueGui = std::make_unique<GuiSystem>(*state.guiInstall);
+                if (dialogueGui->open("dialog")) {
+                    computerGui = std::make_unique<GuiSystem>(*state.guiInstall);
+                    if (!computerGui->open("computer")) {
+                        logWarn("the terminal screen computer is missing");
+                        computerGui.reset();
+                    }
+                    if (computerGui) {
+                        computerCameraGui = std::make_unique<GuiSystem>(*state.guiInstall);
+                        if (!computerCameraGui->open("computercamera")) {
+                            logWarn("the terminal camera screen computercamera is missing");
+                            computerCameraGui.reset();
+                        }
+                    }
+                    dialogueScreen = std::make_unique<DialogueScreen>(*dialogueGui, *game, state.guiPainter.get(),
+                                                                      computerGui.get(), computerCameraGui.get());
+                } else {
+                    logWarn("the conversation screen dialog is missing");
+                }
+                game->setModuleLoadHook([&](const std::string& next) {
+                    presentLoadScreen(state, *game, *loadScreenGui, next);
+                });
+                if (options.frontEndTest) {
+                    frontEndGate = std::make_unique<FrontEndGate>(options.frontEndOut, savesRoot, state.window,
+                                                                  options.frontEndScenario);
+                    gLoadProbe = &loadScreenProbe;
+                }
+            }
+            if (state.backend->supportsPreview() && state.guiSystem->screenName().rfind("mainmenu", 0) == 0) {
+                menuScene = std::make_unique<MenuScene>(*state.guiInstall);
+                if (menuScene->ready()) {
+                    visuals.menu = menuScene.get();
+                } else {
+                    logWarn(concat("main menu 3D scene unavailable: ", menuScene->error()));
+                }
+            }
+        }
         if (chargenGui) {
             setUpChargenStage();
             if (options.chargenPreviewTest) {
@@ -8558,25 +11135,167 @@ int runApplication(const Options& options)
     }
     bool loggedUiGeometry = false;
     std::uint32_t lastAnimationRevision = UINT32_MAX;
+    bool vfxSpawned = false;
     std::uint64_t movieTexture = 0;
+    double noDeviceMixFrames = 0.0;
+    std::vector<float> noDeviceScratch;
     int uploadedMovieFrame = -1;
+    std::string uploadedMovieName;
     bool movieShotSaved = false;
     bool movieUploadWarned = false;
     bool running = true;
-    bool mouseRelative = game && !options.headless;
+    bool mouseRelative = false; // F1: look stays captured; the right button captures it while held
+    bool lookHeld = false;
+    bool userPause = false; // Space / the pause toggle: the world waits, the HUD stays live
+    bool dialogueEnterConsumed = false; // Enter cancelled a live feed this frame: the terminal behind it must not also take it
+    bool pauseMenuOpen = false; // optionsingame is up: the world update waits
+    bool uiPausePrev = false;
     float mouseDx = 0.0f;
     bool miniGameFireHeld = false;
     bool miniGameFrozen = false;
     int renderCheckExit = options.minigameRenderCheck && !game ? 66 : 0;
+    bool renderCheckMeasured = false; // an exit before the measurement is never a pass
     CapturedFrame renderCheckFull;
     std::string renderedModule = game ? game->module() : std::string{};
+    std::uint64_t moduleArrivalTicks = 0;
+    int moduleArrivalLogs = 10; // the first module is logged by its loader
+    std::size_t renderedMeshKey = game ? game->scene().entityMeshes.size() + game->scene().meshRevision : 0u;
     float mouseDy = 0.0f;
     std::string exitReason = "loop exited";
     double smoothedFrameMs = 0.0;
     const std::uint64_t startTicks = SDL_GetTicksNS();
     std::uint64_t previousTicks = startTicks;
 
+    std::unique_ptr<SoakGate> soak;
+    if (!options.soak.empty() && game) {
+        SoakGate::Settings soakSettings;
+        soakSettings.scenario = options.soak;
+        soakSettings.module = game->module();
+        soakSettings.out = options.soakOut;
+        soakSettings.cycles = options.soakCycles;
+        for (std::size_t start = 0; start < options.soakModules.size();) {
+            const std::size_t comma = options.soakModules.find(',', start);
+            const std::size_t end = comma == std::string::npos ? options.soakModules.size() : comma;
+            soakSettings.modules.push_back(options.soakModules.substr(start, end - start));
+            start = end + 1;
+        }
+        soak = std::make_unique<SoakGate>(std::move(soakSettings));
+    }
+    // A run with its own budget or clock is not paced unless --max-fps says so: see pacedFps.
+    const bool offlineRun = options.frames > 0 || options.fixedDt > 0.0 || soak || wrapGate || frontEndGate
+        || previewGate || options.minigameRenderCheck;
+    const bool windowShown = !options.hidden && !options.headless && state.activeBackend != BackendKind::Null;
+    std::uint64_t paceDeadline = 0;
+    std::uint64_t paceWaits = 0;
+    std::uint64_t paceLateTotal = 0;
+    std::uint64_t paceLateWorst = 0;
+
+    // keymap.2da's icpcgui column is 0 for the world's keys: they do nothing while a screen, a conversation, a movie
+    // or a minigame has the input.
+    const auto worldKeys = [&]() {
+        return game && !game->moviePlaying() && !game->dialogue().active && !game->miniGameActive() && !game->pazaakActive()
+            && !(state.guiSystem && state.guiSystem->active()) && !(gameScreens && gameScreens->open());
+    };
+
+    std::uint64_t feedbackTicks = SDL_GetTicks();
+    // --input-script: the lockstep walk's steps go into SDL's queue before this frame polls it; its
+    // frames are taken after the frame is drawn (below).
+    InputScript inputScript;
+    std::vector<std::string> inputScriptShots;
+    std::uint64_t inputScriptStart = 0;
+    if (!options.inputScript.empty()) {
+        if (!inputScript.load(options.inputScript, options.inputScriptOut)) {
+            logError(concat("input script: ", inputScript.error()));
+            running = false;
+        } else {
+            logInfo(concat("input script: ", inputScript.steps().size(), " steps from ", options.inputScript));
+        }
+    }
     while (running) {
+        if (inputScript.active()) {
+            if (inputScriptStart == 0) {
+                inputScriptStart = SDL_GetTicks();
+                // Arms the pre-swap read: a hidden window's front buffer is black.
+                CapturedFrame warm;
+                state.backend->captureFrame(warm);
+            }
+            // `waitfor` conditions: the walk waits on the game's state instead of a fixed time, so a
+            // slower or faster load keeps ours in step with retail's frames.
+            const auto walkCondition = [&](const std::string& condition) -> bool {
+                std::istringstream words(condition);
+                std::string what;
+                std::string arg;
+                words >> what >> arg;
+                const bool guiUp = state.guiSystem && state.guiSystem->active();
+                const bool talking = game && game->dialogue().active;
+                if (what == "nogui") {
+                    return game && !guiUp;
+                }
+                if (what == "gui") {
+                    return guiUp && state.guiSystem->screenName() == arg;
+                }
+                if (what == "panel") {
+                    return gameScreens && gameScreens->open() && gameScreens->screen() == arg;
+                }
+                if (what == "nopanel") {
+                    return !(gameScreens && gameScreens->open());
+                }
+                if (what == "dialogue") {
+                    return talking;
+                }
+                if (what == "nodialogue") {
+                    return game && !talking;
+                }
+                // The reply list is up as DialogueScreen::update decides: a reply to say, and the entry no
+                // longer being spoken (006a86a0).
+                const auto repliesUp = [&]() {
+                    bool sayable = false;
+                    for (const DialogueOption& option : game->dialogue().options) {
+                        sayable = sayable || (option.reply != UINT32_MAX && option.text != "(Continue)");
+                    }
+                    return sayable && !game->dialogueLineSpeaking();
+                };
+                if (what == "entry") { // the entry's line is on screen
+                    return talking && std::to_string(game->dialogue().entry) == arg && game->dialogueLineShown()
+                        && !repliesUp();
+                }
+                if (what == "replies") { // `replies` or `replies <entry>`: the list is shown
+                    return talking && repliesUp() && (arg.empty() || std::to_string(game->dialogue().entry) == arg);
+                }
+                if (what == "replylist") {
+                    // The reply list is up (the line is over and a reply can be said), as DialogueScreen shows it.
+                    if (!talking || game->dialogueLineSpeaking()) {
+                        return false;
+                    }
+                    for (const DialogueOption& option : game->dialogue().options) {
+                        if (option.reply != UINT32_MAX && option.text != "(Continue)") {
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+                if (what == "status") {
+                    return game && game->statusSummaryOpen();
+                }
+                if (what == "nostatus") {
+                    return game && !game->statusSummaryOpen();
+                }
+                return false;
+            };
+            inputScriptShots = inputScript.advance(SDL_GetTicks() - inputScriptStart, state.window, walkCondition);
+            if (const InputScript::WaitResult waited = inputScript.takeWaitResult(); waited.fresh) {
+                logInfo(concat("input script: waitfor ", waited.condition, waited.timedOut ? " TIMED OUT after " : " met after ",
+                               waited.waitedMs, " ms"));
+            }
+            // The retail walk's override scripts (warps, spawns, removing Trask), run as retail's driver
+            // runs them: no caller object (rs.py passes OBJECT_INVALID).
+            for (const std::string& path : inputScript.takeScripts()) {
+                std::ifstream ncs(path, std::ios::binary);
+                const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(ncs)), std::istreambuf_iterator<char>());
+                const bool ran = game && !bytes.empty() && game->runScriptNcsForTest(path, bytes, 0);
+                logInfo(concat("input script: ran ", path, ran ? "" : " (FAILED)"));
+            }
+        }
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             if (state.imguiReady) {
@@ -8586,22 +11305,101 @@ int runApplication(const Options& options)
                 || event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) {
                 running = false;
                 exitReason = "window closed";
-            } else if (event.type == SDL_EVENT_MOUSE_MOTION && game && mouseRelative) {
+            } else if (event.type == SDL_EVENT_MOUSE_MOTION && game && (mouseRelative || lookHeld) && !uiPausePrev) {
                 mouseDx += event.motion.xrel;
                 mouseDy += event.motion.yrel;
+            } else if (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN && event.button.button == SDL_BUTTON_RIGHT && game
+                       && !uiPausePrev && !(state.guiSystem && state.guiSystem->active())
+                       && !(state.imguiReady && ImGui::GetIO().WantCaptureMouse)) {
+                lookHeld = true;
+                SDL_SetWindowRelativeMouseMode(state.window, true);
+            } else if (event.type == SDL_EVENT_MOUSE_BUTTON_UP && event.button.button == SDL_BUTTON_RIGHT && lookHeld) {
+                lookHeld = false;
+                SDL_SetWindowRelativeMouseMode(state.window, mouseRelative && !uiPausePrev);
+            } else if (chargenGui && chargenNameEditing(*chargenGui)
+                       && (event.type == SDL_EVENT_TEXT_INPUT
+                           || (event.type == SDL_EVENT_KEY_DOWN
+                               && (event.key.key == SDLK_BACKSPACE || event.key.key == SDLK_RETURN
+                                   || event.key.key == SDLK_KP_ENTER)))) {
+                // The name screen's text box: typed characters, Backspace, and Enter for Finish.
+                if (event.type == SDL_EVENT_TEXT_INPUT) {
+                    chargenNameInput(*chargenGui, event.text.text);
+                } else if (event.key.key == SDLK_BACKSPACE) {
+                    chargenNameBackspace(*chargenGui);
+                } else if (state.guiSystem && game) {
+                    handleChargenGuiAction("END_BTN", *chargenGui, *state.guiSystem, *game);
+                }
+            } else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_T && hud) {
+                hud->setInstantToolTips(false); // ToolTips released: 005f4be0(0), 00685710 puts the combat line back
             } else if (event.type == SDL_EVENT_KEY_DOWN
                        && (!state.imguiReady || !ImGui::GetIO().WantCaptureKeyboard)) {
                 if (event.key.key == SDLK_ESCAPE) {
-                    if (game && game->dialogue().active) {
+                    if (game && game->moviePlaying()) {
+                        // Escape cancels a skippable movie (nwscript 769); a movie queued as
+                        // not skippable plays on, and neither case closes the program.
+                        const std::string skipped = game->movieName();
+                        if (game->skipMovie()) {
+                            logInfo(concat("Movie skipped: ", skipped));
+                        }
+                    } else if (state.guiSystem && state.guiSystem->active()) {
+                        // A shipped screen: Escape is its Back button, not the exit key.
+                        if (gameScreens && gameScreens->back()) {
+                            // An in-game screen closed with its panel.
+                        } else if (!guiBack(*state.guiSystem) && state.guiSystem->screenName() == "optionsingame") {
+                            state.guiSystem->close(); // the pause menu resumes the game
+                        }
+                    } else if (game && game->dialogue().active) {
                         game->endDialogue();
                         logInfo("Dialogue closed");
+                    } else if (frontEnd && state.guiSystem && state.imguiReady && game && !game->miniGameActive()
+                               && !game->pazaakActive() && state.guiSystem->open("optionsingame")) {
+                        // The in-game options menu pauses the world and frees the mouse. The
+                        // game frame from just before it opened is what a save made from it
+                        // stores as Screen.tga (retail captures the world, not the menu).
+                        {
+                            CapturedFrame saved;
+                            if (state.backend->captureLatest(saved) && !saved.rgba.empty()) {
+                                game->setSaveScreenshot(kotor::encodeSaveScreenshot(saved.rgba.data(), saved.width, saved.height));
+                            }
+                        }
+                        pauseMenuOpen = true;
+                        SDL_SetWindowRelativeMouseMode(state.window, false);
                     } else {
                         running = false;
                         exitReason = "escape pressed";
                     }
-                } else if (game && event.key.key == SDLK_E) {
+                } else if (game && worldKeys() && event.key.key == SDLK_Q && !event.key.repeat) {
+                    game->cycleCombatTarget(-1); // keymap.2da row 204 SelectPrev
+                } else if (game && worldKeys() && event.key.key == SDLK_E && !event.key.repeat) {
+                    game->cycleCombatTarget(1); // keymap.2da row 205 SelectNext
+                } else if (game && worldKeys() && event.key.key == SDLK_G && !event.key.repeat) {
+                    // keymap.2da row 264 STEALTH.
+                    if (game->stealthActive()) {
+                        game->leaveStealth();
+                    } else {
+                        game->enterStealth();
+                    }
+                } else if (game && worldKeys() && hud && event.key.key == SDLK_T && !event.key.repeat) {
+                    hud->setInstantToolTips(true); // keymap.2da row 225 ToolTips, retail 00621210 case 0xe1
+                } else if (game && worldKeys() && event.key.key == SDLK_V && !event.key.repeat) {
+                    game->setSoloMode(!game->soloMode()); // keymap.2da row 207, strref 48035 Solo Mode
+                } else if (game && worldKeys() && event.key.key == SDLK_Y && !event.key.repeat) {
+                    if (hud) {
+                        hud->activate("BTN_CLEARONE"); // keymap.2da row 245 ClearOneAction
+                    }
+                } else if (game && worldKeys() && hud && !event.key.repeat && event.key.key >= SDLK_1 && event.key.key <= SDLK_7) {
+                    // keymap.2da rows 226-238 by their character column. Retail's slots (0068b9d0): 1 to 3 the target's
+                    // actions, then 4 power (row 32), 5 medical (34), 6 other item (38), 7 mine (36). The middle and
+                    // right target slots are not filled yet.
+                    static const char* const kSlotKeys[] = {"BTN_TARGET0", "BTN_TARGET1", "BTN_TARGET2", "BTN_ACTION0", "BTN_ACTION1", "BTN_ACTION2", "BTN_ACTION3"};
+                    hud->activate(kSlotKeys[event.key.key - SDLK_1]);
+                } else if (game && worldKeys() && event.key.key == SDLK_R && !event.key.repeat) {
+                    // keymap.2da row 239 DefaultAction: what the cursor's target offers, which here is the nearest
+                    // thing to use, else the nearest enemy to fight.
                     const std::string before = game->module();
-                    if (game->interact()) {
+                    if (game->activateSelected()) {
+                        logInfo("Default action on the selected object");
+                    } else if (game->interact()) {
                         if (game->module() != before) {
                             state.backend->setScene(&game->scene());
                             state.backend->setCamera(game->camera());
@@ -8612,24 +11410,34 @@ int runApplication(const Options& options)
                             logInfo("Interaction");
                         }
                     } else {
-                        logInfo("Nothing to interact with");
+                        game->attackNearestHostile();
                     }
                 } else if (game && event.key.key == SDLK_TAB) {
                     // keymap.2da ChangeChar: the next party member takes the controls.
                     if (game->cycleLeader()) {
                         logInfo(concat("Controlling ", game->partyLeaderTag()));
                     }
-                } else if (game && event.key.key == SDLK_F) {
-                    game->attackNearestHostile();
-                } else if (game && event.key.key == SDLK_P) {
-                    game->startPazaak(0, "", 0, false, 0);
+                } else if (game && worldKeys() && event.key.key == SDLK_SPACE && !event.key.repeat) {
+                    userPause = !userPause; // retail's pause key; the HUD's TB_PAUSE shows it
+                    pauseReason = 4;
+                } else if (game && worldKeys() && event.key.key == SDLK_F && !event.key.repeat) {
+                    game->cancelCombat(); // keymap.2da row 240 CancleCombat
+                } else if (game && game->dialogue().active && dialogueScreen && !event.key.repeat
+                           && (event.key.key == SDLK_RETURN || event.key.key == SDLK_KP_ENTER)
+                           && dialogueScreen->cancelFeed()) {
+                    // computercamera's "Press 'Enter' to Cancel Live Feed" (006a7230 inputs 0x27 / 0x2d).
+                    dialogueEnterConsumed = true;
                 } else if (game && game->dialogue().active
                            && event.key.key >= SDLK_1 && event.key.key <= SDLK_9) {
-                    game->chooseDialogueOption(static_cast<std::size_t>(event.key.key - SDLK_1));
-                } else if (game && event.key.key == SDLK_F5) {
+                    // 006a7230: a number picks a reply only from the list on screen (keys 0xfe.. below
+                    // the reply count); while the line is spoken there is none.
+                    if (!dialogueScreen || dialogueScreen->repliesShown()) {
+                        game->chooseDialogueOption(static_cast<std::size_t>(event.key.key - SDLK_1));
+                    }
+                } else if (game && worldKeys() && event.key.key == SDLK_F4) { // keymap.2da row 218 Quicksave
                     logInfo(game->save(savePath) ? concat("Saved player state to ", savePath)
                                                  : concat("Could not save to ", savePath));
-                } else if (game && event.key.key == SDLK_F9) {
+                } else if (game && worldKeys() && event.key.key == SDLK_F5) { // keymap.2da row 263 QUICKLOAD
                     if (game->load(savePath)) {
                         state.backend->setScene(&game->scene());
                         state.backend->setCamera(game->camera());
@@ -8637,22 +11445,72 @@ int runApplication(const Options& options)
                     } else {
                         logWarn(concat("Could not load player state from ", savePath));
                     }
+                } else if (event.key.key == SDLK_F11 && applyDisplay && state.window != nullptr) {
+                    // ENGINE CHOICE: borderless fullscreen toggle (retail had none).
+                    const bool full = (SDL_GetWindowFlags(state.window) & SDL_WINDOW_FULLSCREEN) != 0;
+                    applyDisplay(0, 0, full ? 0 : 1);
+                    if (userSettings) {
+                        userSettings->set("graphics.fullscreen", full ? 0.0f : 1.0f);
+                    }
                 } else if (game && event.key.key == SDLK_F1) {
                     mouseRelative = !mouseRelative;
                     SDL_SetWindowRelativeMouseMode(state.window, mouseRelative);
                     logInfo(mouseRelative ? "Mouse captured" : "Mouse released");
-                } else if (game && event.key.key == SDLK_C) {
-                    game->toggleUiPanel(UiPanel::Character);
-                } else if (game && event.key.key == SDLK_I) {
-                    game->toggleUiPanel(UiPanel::Inventory);
-                } else if (game && event.key.key == SDLK_L) {
-                    game->toggleUiPanel(UiPanel::Party);
-                } else if (game && event.key.key == SDLK_J) {
-                    game->toggleUiPanel(UiPanel::Journal);
-                } else if (game && event.key.key == SDLK_M) {
-                    game->toggleUiPanel(UiPanel::Merchant);
+                } else if (game && !event.key.repeat && event.key.key == SDLK_U) {
+                    pageKey(*game, state.guiSystem.get(), gameScreens.get(), UiPanel::Equipment);
+                } else if (game && !event.key.repeat && event.key.key == SDLK_I) {
+                    pageKey(*game, state.guiSystem.get(), gameScreens.get(), UiPanel::Inventory);
+                } else if (game && !event.key.repeat && event.key.key == SDLK_P) {
+                    pageKey(*game, state.guiSystem.get(), gameScreens.get(), UiPanel::Character);
+                } else if (game && !event.key.repeat && event.key.key == SDLK_K) {
+                    pageKey(*game, state.guiSystem.get(), gameScreens.get(), UiPanel::Abilities);
+                } else if (game && !event.key.repeat && event.key.key == SDLK_J) {
+                    pageKey(*game, state.guiSystem.get(), gameScreens.get(), UiPanel::Messages);
+                } else if (game && !event.key.repeat && event.key.key == SDLK_L) {
+                    pageKey(*game, state.guiSystem.get(), gameScreens.get(), UiPanel::Journal);
+                } else if (game && !event.key.repeat && event.key.key == SDLK_M) {
+                    pageKey(*game, state.guiSystem.get(), gameScreens.get(), UiPanel::Map);
+                } else if (game && !event.key.repeat && event.key.key == SDLK_O && gameScreens) {
+                    if (gameScreens->open()) {
+                        gameScreens->requestOptions();
+                    } else if (state.guiSystem && state.guiSystem->screenName() == "optionsingame"
+                               && state.guiSystem->active()) {
+                        state.guiSystem->close();
+                    } else if (state.guiSystem && !state.guiSystem->active()) {
+                        gameScreens->requestOptions();
+                    }
                 }
             }
+        }
+
+        if (game) {
+            if (userSettings) {
+                std::uint32_t feedback = 0;
+                for (const FeedbackRow& row : FrontEnd::feedbackTable()) {
+                    feedback |= userSettings->get(row.key) != 0.0f ? row.bit : 0u;
+                }
+                game->setFeedbackOptions(feedback);
+                // Autopause (004e0ac0 reason 9 with option bit 0x4000, the Party Killed box; 005fa5a0
+                // reason 1 with bit 0x1000, Enemy Sighted).
+                if (const int reason = game->takeAutoPauseRequest(); reason != 0) {
+                    const bool wanted = (reason == 9 && userSettings->get("autopause.partykilled") != 0.0f)
+                        || (reason == 1 && userSettings->get("autopause.enemysighted") != 0.0f
+                            // ENGINE CHOICE: scripted runs (gate, soak, fixed frames) would stop at every
+                            // enemy; they pause for it only when a check asks for it.
+                            && (!offlineRun || game->enemySightedPauseForTest()));
+                    if (wanted && !userPause) {
+                        userPause = true;
+                        pauseReason = reason;
+                    }
+                }
+            }
+            if (offlineRun) {
+                game->holdStatusSummaryForTest(!(frontEndGate && frontEndGate->statusSummaryLive()));
+            }
+            // Retail's clock here is the frame's own (DAT_0078e574), running through a pause.
+            const std::uint64_t feedbackNow = SDL_GetTicks();
+            game->stepFeedback(static_cast<float>(feedbackNow - feedbackTicks) * 0.001f, !worldKeys());
+            feedbackTicks = feedbackNow;
         }
 
         if (!running) {
@@ -8660,8 +11518,23 @@ int runApplication(const Options& options)
         }
 
         const std::uint64_t now = SDL_GetTicksNS();
-        const double deltaMs = static_cast<double>(now - previousTicks) / 1'000'000.0;
+        const double deltaMs = options.fixedDt > 0.0
+            ? options.fixedDt * 1000.0
+            : static_cast<double>(now - previousTicks) / 1'000'000.0;
         previousTicks = now;
+        if (game && !audioOutput) {
+            // No audio device (--no-audio or --headless): advance the mixer on the
+            // frame clock so voices retire and the bus meters keep moving.
+            noDeviceMixFrames += deltaMs * 48.0;
+            const int whole = static_cast<int>(noDeviceMixFrames);
+            noDeviceMixFrames -= whole;
+            for (int left = whole; left > 0;) {
+                const int chunk = std::min(left, 2048);
+                noDeviceScratch.assign(static_cast<std::size_t>(chunk) * 2, 0.0f);
+                game->audio().mixer().mix(noDeviceScratch.data(), chunk);
+                left -= chunk;
+            }
+        }
         smoothedFrameMs = (smoothedFrameMs <= 0.0) ? deltaMs : (smoothedFrameMs * 0.9 + deltaMs * 0.1);
         const double elapsedSeconds = static_cast<double>(now - startTicks) / 1'000'000'000.0;
 
@@ -8669,13 +11542,18 @@ int runApplication(const Options& options)
         if (game) {
             InputState input;
             if (!chargenActive && !shippedChargen) {
-                const bool* keys = SDL_GetKeyboardState(nullptr);
+                // --input-script holds keys the same way a hand would (InputScript::keyboardState).
+                const bool* keys = inputScript.active() ? inputScript.keyboardState() : SDL_GetKeyboardState(nullptr);
                 input.forward = keys[SDL_SCANCODE_W] != 0;
                 input.back = keys[SDL_SCANCODE_S] != 0;
-                input.left = keys[SDL_SCANCODE_A] != 0;
-                input.right = keys[SDL_SCANCODE_D] != 0;
+                // keymap.2da: Z and C step sideways (rows 281a, 281b), A and D turn the camera (284a, 284b). The
+                // turn's speed is an ENGINE CHOICE, spoken in the mouse's units.
+                input.left = keys[SDL_SCANCODE_Z] != 0;
+                input.right = keys[SDL_SCANCODE_C] != 0;
+                const float keyTurn = static_cast<float>(keys[SDL_SCANCODE_D] != 0) - static_cast<float>(keys[SDL_SCANCODE_A] != 0);
+                mouseDx += keyTurn * static_cast<float>(deltaMs) * 0.5f;
                 input.run = keys[SDL_SCANCODE_LSHIFT] != 0 || keys[SDL_SCANCODE_RSHIFT] != 0;
-                input.jump = keys[SDL_SCANCODE_SPACE] != 0;
+                input.jump = false; // Space is the pause key (retail has no jump key)
                 input.mouseDx = mouseDx;
                 input.mouseDy = mouseDy;
                 if (options.noMovies && game->moviePlaying()) {
@@ -8713,13 +11591,42 @@ int runApplication(const Options& options)
                     miniGameFireHeld = fireKey;
                     game->miniGameSetInput(miniInput);
                 }
-                if (!miniGameFrozen && !game->scriptPauseActive()) {
-                    game->update(static_cast<float>(deltaMs / 1000.0), input);
+                if (pauseMenuOpen && !(state.guiSystem && state.guiSystem->active())) {
+                    pauseMenuOpen = false;
                 }
-                // retail 00602eb0 returns to the main menu. This frontend has none yet.
+                const bool uiPause = pauseMenuOpen || (gameScreens && gameScreens->open());
+                // A shipped screen over the world pauses it; a conversation keeps the world
+                // running but, like a screen, frees the mouse for the panel.
+                const bool mouseFreed = uiPause || (dialogueScreen && game->dialogue().active);
+                if (mouseFreed != uiPausePrev) {
+                    SDL_SetWindowRelativeMouseMode(state.window, mouseFreed ? false : (mouseRelative || lookHeld));
+                    uiPausePrev = mouseFreed;
+                }
+                if (!miniGameFrozen && !game->scriptPauseActive() && !uiPause && !userPause) {
+                    game->update(static_cast<float>(deltaMs / 1000.0), input);
+                } else {
+                    // retail 004babb0 calls TempDeathUpdate (004b6da0) every frame, paused or not.
+                    game->tickWhilePaused(static_cast<float>(deltaMs / 1000.0));
+                }
+                // retail 00602eb0 returns to the main menu. Interactive runs do; the gates that
+                // play the ending to its end still stop here.
                 if (game->gameEnded()) {
-                    logInfo("game ended: leaving the session");
-                    running = false;
+                    if (frontEnd && state.guiSystem && state.imguiReady && !options.headless && options.frames == 0
+                        && options.seconds <= 0.0) {
+                        logInfo("game ended: back to the main menu");
+                        game->acknowledgeGameEnd();
+                        pauseMenuOpen = false;
+                        if (!menuScene) {
+                            menuScene = std::make_unique<MenuScene>(*state.guiInstall);
+                            if (menuScene->ready()) {
+                                visuals.menu = menuScene.get();
+                            }
+                        }
+                        state.guiSystem->open("mainmenu");
+                    } else {
+                        logInfo("game ended: leaving the session");
+                        running = false;
+                    }
                 }
             }
             mouseDx = 0.0f;
@@ -8738,11 +11645,235 @@ int runApplication(const Options& options)
                 // A script's StartNewModule lands here, not through a key press.
                 renderedModule = game->module();
                 state.backend->setScene(&game->scene());
+                renderedMeshKey = game->scene().entityMeshes.size() + game->scene().meshRevision;
+                moduleArrivalTicks = SDL_GetTicksNS();
+                moduleArrivalLogs = 0;
+            }
+            // What the frame loop is doing after a module change, every 2 s for 20 s: the screen
+            // state that can hold a frame black (fade, movie, a GUI screen, minigame, conversation).
+            if (moduleArrivalLogs < 10
+                && SDL_GetTicksNS() - moduleArrivalTicks >= static_cast<std::uint64_t>(moduleArrivalLogs) * 2000000000ull) {
+                ++moduleArrivalLogs;
+                const SceneCamera arrivalCamera = game->camera();
+                const kotor::Vec3 arrivalAt = game->controlledPosition();
+                logInfo(concat("module arrival ", game->module(), " t=", (moduleArrivalLogs - 1) * 2, "s fade=",
+                               static_cast<int>(game->fade().mode), "/", game->fade().opacity, " movie=",
+                               game->moviePlaying() ? 1 : 0, " gui=",
+                               state.guiSystem && state.guiSystem->active() ? state.guiSystem->screenName() : std::string{"-"},
+                               " minigame=", game->miniGameActive() ? 1 : 0, " pazaak=", game->pazaakActive() ? 1 : 0,
+                               " dialogue=", game->dialogue().active ? 1 : 0, " eye=", arrivalCamera.eye.x, ",",
+                               arrivalCamera.eye.y, ",", arrivalCamera.eye.z, " forward=", arrivalCamera.forward.x, ",",
+                               arrivalCamera.forward.y, ",", arrivalCamera.forward.z, " pc=", arrivalAt.x, ",", arrivalAt.y,
+                               ",", arrivalAt.z, " rooms=", game->scene().rooms.size(), " meshes=",
+                               game->scene().entityMeshes.size()));
             }
             if (!miniGameFrozen) {
                 game->bakeMiniGame();
             }
-            state.backend->setCamera(game->camera());
+            if (!options.spawnVfx.empty() && !vfxSpawned) {
+                // --spawn-vfx id[:n]: a held visual effect on the nth creature (gallery shots).
+                vfxSpawned = true;
+                const std::size_t colon = options.spawnVfx.find(':');
+                const int wanted = colon == std::string::npos ? 0 : std::atoi(options.spawnVfx.c_str() + colon + 1);
+                // The same order --capture-camera creature:n uses: alive, nearest the entry first.
+                const kotor::Scene& vfxScene = game->scene();
+                std::vector<std::size_t> creatures;
+                for (std::size_t i = 0; i < vfxScene.entities.size(); ++i) {
+                    if (vfxScene.entities[i].kind == kotor::EntityKind::Creature && !vfxScene.entities[i].dead) {
+                        creatures.push_back(i);
+                    }
+                }
+                std::stable_sort(creatures.begin(), creatures.end(), [&](std::size_t a, std::size_t b) {
+                    return kotor::length(vfxScene.entities[a].position - vfxScene.entry)
+                        < kotor::length(vfxScene.entities[b].position - vfxScene.entry);
+                });
+                if (wanted >= 0 && static_cast<std::size_t>(wanted) < creatures.size()) {
+                    EffectDirector::Spawn request;
+                    request.vfx = std::atoi(options.spawnVfx.c_str());
+                    request.target = creatures[static_cast<std::size_t>(wanted)];
+                    request.targetObject = game->objectForEntityIndex(request.target);
+                    request.permanent = true;
+                    // id:n:s: a beam (--spawn-vfx) coming from the sth creature.
+                    if (const std::size_t beam = options.spawnVfx.find(':', colon == std::string::npos ? colon : colon + 1);
+                        beam != std::string::npos) {
+                        const int source = std::atoi(options.spawnVfx.c_str() + beam + 1);
+                        if (source >= 0 && static_cast<std::size_t>(source) < creatures.size()) {
+                            request.beamSource = creatures[static_cast<std::size_t>(source)];
+                        }
+                    }
+                    game->effects().spawn(request);
+                }
+            }
+            {
+                // Spawned creatures and changed weapons brought geometry the GPU has not seen.
+                runCaptureActions(*game, *state.backend, options.captureAction, frames);
+                const std::size_t meshKey = game->scene().entityMeshes.size() + game->scene().meshRevision;
+                if (meshKey != renderedMeshKey && !chargenStage) {
+                    renderedMeshKey = meshKey;
+                    const auto syncStart = std::chrono::steady_clock::now();
+                    state.backend->syncSceneMeshes(&game->scene());
+                    logInfo(concat("scene sync: ", std::chrono::duration<double, std::milli>(
+                                                       std::chrono::steady_clock::now() - syncStart).count(), " ms"));
+                    lastAnimationRevision = game->animationRevision() - 1u;
+                }
+            }
+            if (!wrapGate || wrapGate->finished()) {
+                SceneCamera frameCamera = game->camera();
+                if (inputScript.active() && inputScript.camera().on) {
+                    // The walk's recorded retail camera (walk.tsv cam_eye/cam_fwd/cam_up/cam_fovy).
+                    const InputScript::Camera& c = inputScript.camera();
+                    frameCamera.eye = {c.eye[0], c.eye[1], c.eye[2]};
+                    frameCamera.forward = {c.forward[0], c.forward[1], c.forward[2]};
+                    frameCamera.up = {c.up[0], c.up[1], c.up[2]};
+                    frameCamera.fovYDegrees = c.fovy;
+                }
+                if (!options.captureCamera.empty()) {
+                    kotor::Vec3 target;
+                    float fov = frameCamera.fovYDegrees;
+                    if (kotor::captureCameraPose(game->scene(), options.captureCamera, frameCamera.eye, target, fov)) {
+                        const kotor::Vec3 toTarget = target - frameCamera.eye;
+                        const float toTargetLength = std::max(kotor::length(toTarget), 0.001f);
+                        frameCamera.forward = {toTarget.x / toTargetLength, toTarget.y / toTargetLength,
+                                               toTarget.z / toTargetLength};
+                        frameCamera.up = {0.0f, 0.0f, 1.0f};
+                        frameCamera.fovYDegrees = fov;
+                        static bool loggedCaptureView = false;
+                        if (!loggedCaptureView) {
+                            loggedCaptureView = true;
+                            const kotor::Scene& shown = game->scene();
+                            // What the middle of the view looks at, nearest first (either winding).
+                            {
+                                const kotor::Vec3 ray = kotor::normalize(target - frameCamera.eye);
+                                struct Hit {
+                                    float distance;
+                                    const kotor::TextureBatch* batch;
+                                    std::uint32_t vertex;
+                                    float u;
+                                    float v;
+                                };
+                                std::vector<Hit> hits;
+                                for (const kotor::TextureBatch& batch : shown.batches) {
+                                    for (std::uint32_t i = 0; i + 2u < batch.indexCount; i += 3u) {
+                                        const kotor::Vec3 v0 = shown.vertices[shown.indices[batch.firstIndex + i]].position;
+                                        const kotor::Vec3 e1 = shown.vertices[shown.indices[batch.firstIndex + i + 1u]].position - v0;
+                                        const kotor::Vec3 e2 = shown.vertices[shown.indices[batch.firstIndex + i + 2u]].position - v0;
+                                        const kotor::Vec3 cp = kotor::cross(ray, e2);
+                                        const float det = kotor::dot(e1, cp);
+                                        if (std::abs(det) < 1e-7f) {
+                                            continue;
+                                        }
+                                        const kotor::Vec3 t0 = frameCamera.eye - v0;
+                                        const float u = kotor::dot(t0, cp) / det;
+                                        const kotor::Vec3 q = kotor::cross(t0, e1);
+                                        const float v = kotor::dot(ray, q) / det;
+                                        const float d = kotor::dot(e2, q) / det;
+                                        if (u >= 0.0f && v >= 0.0f && u + v <= 1.0f && d > 0.0f) {
+                                            hits.push_back({det > 0.0f ? d : -d, &batch, batch.firstIndex + i, u, v});
+                                        }
+                                    }
+                                }
+                                std::sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b) {
+                                    return std::abs(a.distance) < std::abs(b.distance);
+                                });
+                                for (std::size_t i = 0; i < hits.size() && i < 4u; ++i) {
+                                    const kotor::TextureBatch& batch = *hits[i].batch;
+                                    const kotor::SceneVertex& a = shown.vertices[shown.indices[hits[i].vertex]];
+                                    const kotor::SceneVertex& b = shown.vertices[shown.indices[hits[i].vertex + 1u]];
+                                    const kotor::SceneVertex& c = shown.vertices[shown.indices[hits[i].vertex + 2u]];
+                                    const float w = 1.0f - hits[i].u - hits[i].v;
+                                    const float lu = a.uv1.x * w + b.uv1.x * hits[i].u + c.uv1.x * hits[i].v;
+                                    const float lv = a.uv1.y * w + b.uv1.y * hits[i].u + c.uv1.y * hits[i].v;
+                                    int texel = -1;
+                                    if (batch.lightmap < shown.textures.size()) {
+                                        const kotor::Image& image = shown.textures[batch.lightmap].image;
+                                        const int px = std::clamp(static_cast<int>((lu - std::floor(lu)) * static_cast<float>(image.width)), 0, image.width - 1);
+                                        const int py = std::clamp(static_cast<int>((lv - std::floor(lv)) * static_cast<float>(image.height)), 0, image.height - 1);
+                                        texel = image.rgba[static_cast<std::size_t>(py * image.width + px) * 4u];
+                                    }
+                                    logInfo(concat("capture hit uv: lightmap uv ", lu, ",", lv, " texel red ", texel,
+                                                   " corners ", a.uv1.x, ",", a.uv1.y, " ", b.uv1.x, ",", b.uv1.y));
+                                    {
+                                        // Why this pixel looks as it does: texels, self illumination, environment.
+                                        const auto rgbaAt = [&](std::uint32_t index, float x, float y) {
+                                            std::string out = "none";
+                                            if (index < shown.textures.size() && !shown.textures[index].image.rgba.empty()) {
+                                                const kotor::Image& image = shown.textures[index].image;
+                                                const int px = std::clamp(static_cast<int>((x - std::floor(x)) * image.width), 0, image.width - 1);
+                                                const int py = std::clamp(static_cast<int>((y - std::floor(y)) * image.height), 0, image.height - 1);
+                                                const std::size_t at = static_cast<std::size_t>(py * image.width + px) * 4u;
+                                                out = concat(int(image.rgba[at]), ",", int(image.rgba[at + 1]), ",", int(image.rgba[at + 2]), ",", int(image.rgba[at + 3]));
+                                            }
+                                            return out;
+                                        };
+                                        const float du = a.uv.x * w + b.uv.x * hits[i].u + c.uv.x * hits[i].v;
+                                        const float dv = a.uv.y * w + b.uv.y * hits[i].u + c.uv.y * hits[i].v;
+                                        logInfo(concat("capture hit material: diffuse rgba ", rgbaAt(batch.texture, du, dv),
+                                                       " lightmap rgba ", rgbaAt(batch.lightmap, lu, lv),
+                                                       " selfillum ", a.selfIllum.x, ",", a.selfIllum.y, ",", a.selfIllum.z,
+                                                       " env ", batch.envmap < shown.textures.size() ? shown.textures[batch.envmap].name : std::string{"none"},
+                                                       " envMask ", batch.envMask ? 1 : 0, " bump rgba ", rgbaAt(batch.bumpmap, du, dv), " normal ", a.normal.x, ",", a.normal.y, ",", a.normal.z));
+                                    }
+                                    logInfo(concat("capture hit: ", hits[i].distance, " ", shown.textures[batch.texture].name,
+                                                   " lightmap ", batch.lightmap < shown.textures.size() ? shown.textures[batch.lightmap].name : std::string{},
+                                                   " room ", batch.room, " baked ", batch.bakedLight ? 1 : 0, " ambient ", batch.baked.ambient.x,
+                                                   " unlit ", batch.unlit ? 1 : 0, " blend ", static_cast<int>(batch.blend)));
+                                }
+                            }
+                            for (const kotor::TextureBatch& batch : shown.batches) {
+                                if (batch.blend != kotor::BlendMode::Opaque || batch.alphaRef >= 0.0f || batch.envMask) {
+                                    if (kotor::length(batch.center - target) < 25.0f) {
+                                        logInfo(concat("capture batch: ", shown.textures[batch.texture].name, " blend ",
+                                                       static_cast<int>(batch.blend), " ref ", batch.alphaRef, " env ",
+                                                       batch.envMask ? shown.textures[batch.envmap].name : std::string{},
+                                                       " room ", batch.room, " hint ", batch.transparencyHint,
+                                                       " tris ", batch.indexCount / 3u));
+                                    }
+                                }
+                            }
+                            for (const kotor::EntityMesh& mesh : shown.entityMeshes) {
+                                const bool standIn = mesh.entity < shown.entities.size() && mesh.visible
+                                    && kotor::length(shown.entities[mesh.entity].position) < 0.01f;
+                                if (mesh.entity >= shown.entities.size()
+                                    || (!standIn && kotor::length(shown.entities[mesh.entity].position - target) > 9.0f)) {
+                                    continue;
+                                }
+                                std::string textures;
+                                for (const kotor::TextureBatch& batch : mesh.batches) {
+                                    textures += ' ' + shown.textures[batch.texture].name;
+                                }
+                                const kotor::Vec3 litAt = shown.entities[mesh.entity].position + shown.entities[mesh.entity].lightOffset;
+                                const kotor::SampledLight lit = kotor::sampleSceneLight(shown, litAt);
+                                logInfo(concat("capture light: ambient ", lit.ambient.x, ",", lit.ambient.y, ",", lit.ambient.z,
+                                               " lights ", lit.lights[0].colour.x, " ", lit.lights[1].colour.x, " ", lit.lights[2].colour.x));
+                                for (const kotor::SampledLight::Light& one : lit.lights) {
+                                    logInfo(concat("capture light slot: at ", one.position.x, ",", one.position.y, ",", one.position.z,
+                                                   " colour ", one.colour.x, ",", one.colour.y, ",", one.colour.z, " quadratic ", one.quadratic));
+                                }
+                                logInfo(concat("capture view: ", shown.entities[mesh.entity].tag, " at ", shown.entities[mesh.entity].position.x, ",", shown.entities[mesh.entity].position.y, ",", shown.entities[mesh.entity].position.z, " clip '", mesh.animation, "' t ", mesh.animationTime, " visible ", mesh.visible ? 1 : 0, " center ", mesh.center.x, ",", mesh.center.y, ",", mesh.center.z, " ",
+                                               mesh.model ? mesh.model->name() : std::string{}, ":", textures));
+                            }
+                        }
+                    }
+                }
+                kotor::Scene& worldScene = game->scene();
+                // The Taris sky box reaches past the 500 a camera defaults to. Retail's far plane
+                // (0045c540, camera +0x1e0) has a value that was not traced. A minigame keeps its Far_Clip.
+                if (!game->miniGameActive()) {
+                    frameCamera.farClip = std::max(frameCamera.farClip, worldScene.viewExtent);
+                }
+                state.backend->setCamera(frameCamera);
+                kotor::updateVisibleRooms(worldScene, frameCamera.eye);
+                if (options.captureCamera.rfind("novis:", 0) == 0) {
+                    worldScene.visibleRooms.clear(); // Inspecting what the VIS table hides.
+                }
+                kotor::stepParticles(worldScene, std::min(static_cast<float>(deltaMs / 1000.0), 0.08f), frameCamera.eye);
+                kotor::buildParticleMesh(worldScene, frameCamera.eye, frameCamera.forward, frameCamera.up);
+                // Grass wind, once a drawn frame (retail 004a6d30 -> 004a68b0); the blades move in place.
+                const auto grassMoved = kotor::stepGrassWind(worldScene, static_cast<float>(deltaMs / 1000.0), frameCamera.eye);
+                if (grassMoved.second > grassMoved.first) {
+                    state.backend->refreshSceneVertices(worldScene, grassMoved.first, grassMoved.second - grassMoved.first);
+                }
+            }
             if (game->animationRevision() != lastAnimationRevision) {
                 lastAnimationRevision = game->animationRevision();
                 state.backend->refreshEntityMeshes(game->scene());
@@ -8752,38 +11883,543 @@ int runApplication(const Options& options)
         if (state.imguiReady) {
             state.backend->newFrame();
             ImGui_ImplSDL3_NewFrame();
+            if (frontEndGate) {
+                // The gate's pointer, not the real cursor the backend reads while focused.
+                float gateX = 0.0f;
+                float gateY = 0.0f;
+                if (frontEndGate->pointer(gateX, gateY)) {
+                    ImGui::GetIO().AddMousePosEvent(gateX, gateY);
+                }
+            }
             ImGui::NewFrame();
+            if (visuals.menuStaged && game && state.guiSystem && !state.guiSystem->active()) {
+                // The front end closed (resume, a script): the world takes the backend back
+                // from the main menu's model scene.
+                std::string stageError;
+                state.backend->setPreviewViews({});
+                state.backend->setPreviewScene(nullptr, stageError);
+                visuals.menuStaged = false;
+                visuals.uploadedRevision = UINT32_MAX;
+                state.backend->setScene(&game->scene());
+                state.backend->setCamera(game->camera());
+            }
+            if (gameScreens && game && !game->moviePlaying()) {
+                gameScreens->update();
+                if (gameScreens->takeOptionsRequest()) {
+                    SDL_Event escape{};
+                    escape.type = SDL_EVENT_KEY_DOWN;
+                    escape.key.key = SDLK_ESCAPE;
+                    escape.key.down = true;
+                    SDL_PushEvent(&escape); // the pause menu, as the key opens it
+                }
+            }
+            // In-game 3D frames: the party selection's LBL_3D and the character sheet's LBL_3DCHAR
+            // show the member's body through the backend's preview pass, over the world.
+            if (gameScreens && game && !chargenStage && state.backend->supportsPreview()) {
+                const std::string openScreen = gameScreens->open() ? gameScreens->screen() : std::string{};
+                int appearance = -1;
+                kotor::BodyVariant body;
+                // The level-up hub's MODEL_LBL is the same charrec scene (006e8ef0 -> 006100f0).
+                if (openScreen == "character" || openScreen == "maincg_leveluppnl") {
+                    appearance = static_cast<int>(game->playerAppearance());
+                    body = game->wornBodyVariant();
+                }
+                const bool galaxyShown = openScreen == "galaxymap";
+                if (appearance >= 0 || galaxyShown) {
+                    if (!chargenPreview) {
+                        chargenPreview = std::make_unique<ChargenPreview>(game->install(), game->rules());
+                        if (!chargenPreview->ready()) {
+                            logWarn(concat("in-game 3D frames unavailable: ", chargenPreview->error()));
+                        }
+                    }
+                    if (chargenPreview && chargenPreview->ready()) {
+                        visuals.preview = chargenPreview.get();
+                        if (galaxyShown) {
+                            chargenPreview->showGalaxy(gameScreens->previewPlanetModel());
+                        } else {
+                            chargenPreview->showSheet(appearance, body, game->character().alignment);
+                        }
+                        visuals.syncPreviewScene();
+                        if (chargenPreview->advance(static_cast<float>(deltaMs / 1000.0))) {
+                            state.backend->refreshPreviewMeshes();
+                        }
+                        gamePreviewShown = true;
+                    }
+                } else if (gamePreviewShown) {
+                    std::string stageError;
+                    state.backend->setPreviewViews({});
+                    state.backend->setPreviewScene(nullptr, stageError);
+                    visuals.preview = nullptr;
+                    visuals.uploadedRevision = UINT32_MAX;
+                    gamePreviewShown = false;
+                }
+            }
             const bool movieMode = game && game->moviePlaying();
             const bool guiMode = state.guiSystem && state.guiSystem->active();
+            // Retail 0062ef90 adds the status summary as one more panel over the in-game HUD (0040bc70):
+            // the minimap, menu bar, portraits and action bar stay drawn under it (paired walk 0132/0134).
+            const bool summaryOverHud = guiMode && game && game->statusSummaryOpen()
+                && state.guiSystem->screenName() == "statussummary_fit";
             const bool minigameMode = game && game->pazaakActive();
             if (chargenActive && chargen && game) {
                 drawChargenUi(*chargen, *game, chargenActive);
             } else if (!shippedChargen) {
-                if (!movieMode && !guiMode && !minigameMode && !(game && game->miniGameActive())) {
+                if (!movieMode && !guiMode && !minigameMode && !(game && game->miniGameActive())
+                    && (options.debugUi || !hud)) {
                     drawDebugUi(state, frames, smoothedFrameMs, elapsedSeconds, exitReason);
                 }
                 if (game) {
-                    if (!movieMode && !guiMode && !minigameMode) {
+                    if (!movieMode && (!guiMode || summaryOverHud) && !minigameMode) {
                         drawGameUi(*game, smoothedFrameMs > 0.0 ? static_cast<float>(1000.0 / smoothedFrameMs) : 0.0f,
-                                   game->interactionPrompt());
-                        if (options.facialDemo >= 0 || game->lipSyncActive()) {
+                                   game->interactionPrompt(), options.debugUi || !hud);
+                        if (hud && hudGui && gGuiPainter != nullptr && !game->miniGameActive()
+                            && !game->dialogue().active && options.captureCamera.empty()) {
+                            // The shipped HUD over the world: no backdrop, the world is behind it.
+                            const ImGuiIO& hudIo = ImGui::GetIO();
+                            // ENGINE CHOICE: the HUD is not scaled to fit like a menu. The 800x600
+                            // file is drawn at a scale of window height / 720 (at least 1), and each
+                            // control keeps its distance from the window edge it is nearest to (party
+                            // and portraits at the bottom left, action bar at the bottom right,
+                            // minimap at the top left and menu bar at the top right).
+                            float designW = 0.0f;
+                            float designH = 0.0f;
+                            const std::string wantedLayout = Hud::layoutFor(hudIo.DisplaySize.x, hudIo.DisplaySize.y, designW, designH);
+                            if (hudGui->screenName() != wantedLayout) {
+                                hudGui->open(wantedLayout);
+                            }
+                            hud->setView(hudIo.DisplaySize.x, hudIo.DisplaySize.y,
+                                         Hud::layoutScale(hudIo.DisplaySize.x, hudIo.DisplaySize.y), true);
+                            hud->update(ImGui::GetTime(), userPause);
+                            GuiPaintOptions hudOptions;
+                            hudOptions.opaqueBackdrop = false;
+                            hudOptions.timeSeconds = ImGui::GetTime();
+                            const float hudScale = Hud::layoutScale(hudIo.DisplaySize.x, hudIo.DisplaySize.y);
+                            GuiView hudLayout;
+                            hudLayout.scale = hudScale;
+                            hudLayout.baseWidth = designW;
+                            hudLayout.baseHeight = designH;
+                            hudLayout.windowWidth = hudIo.DisplaySize.x;
+                            hudLayout.windowHeight = hudIo.DisplaySize.y;
+                            hudLayout.anchored = true;
+                            hudOptions.view = hudLayout;
+                            hudPickView = hudLayout;
+                            // The pointer drives the HUD while it is free (look not captured).
+                            if (!mouseRelative && !lookHeld && !summaryOverHud) {
+                                // A press that lands on no HUD button is a click on the world (00620350).
+                                if (worldKeys() && hudPickAt && ImGui::IsMousePosValid()
+                                    && ImGui::IsMouseClicked(ImGuiMouseButton_Left)
+                                    && hudPickAt(hudIo.MousePos.x, hudIo.MousePos.y).empty()
+                                    && hudIo.DisplaySize.x > 0.0f && hudIo.DisplaySize.y > 0.0f) {
+                                    game->clickWorld(hudIo.MousePos.x / hudIo.DisplaySize.x * 2.0f - 1.0f,
+                                                     1.0f - hudIo.MousePos.y / hudIo.DisplaySize.y * 2.0f,
+                                                     hudIo.DisplaySize.x / hudIo.DisplaySize.y);
+                                }
+                                pumpGuiPointer(*hudGui);
+                                const std::string hudAction = hudGui->lastAction();
+                                if (!hudAction.empty()) {
+                                    hudGui->clearActions();
+                                    switch (hud->activate(hudAction)) {
+                                    case Hud::Request::Pause: {
+                                        SDL_Event escape{};
+                                        escape.type = SDL_EVENT_KEY_DOWN;
+                                        escape.key.key = SDLK_ESCAPE;
+                                        escape.key.down = true;
+                                        SDL_PushEvent(&escape); // the pause menu, as the key opens it
+                                        break;
+                                    }
+                                    case Hud::Request::TogglePause: userPause = !userPause; pauseReason = 4; break;
+                                    case Hud::Request::Map: game->toggleUiPanel(UiPanel::Map); break;
+                                    case Hud::Request::None: break;
+                                    }
+                                }
+                            }
+                            // The portraits are drawn after the screen: the frame (LBL_BACKn) is
+                            // listed after the portrait control and would cover it.
+                            struct HudPortrait {
+                                std::uint64_t texture;
+                                ImVec2 low;
+                                ImVec2 high;
+                            };
+                            std::vector<HudPortrait> hudPortraits;
+                            std::vector<HudPortrait> hudBadges; // drawn over the portraits
+                            // The minimap: LBL_MAPVIEW is the window, LBL_MAP (512x512 in the
+                            // file) the area's lbl_map<area> texture behind it: one texel per design
+                            // pixel, centred on the leader and clipped to the window, as 0068ab10 does
+                            // it (z = 1 / MapZoom, and MapZoom is 1 in all 117 shipped AREs).
+                            // Retail tiles the 512x256 art and draws the fog of war.
+                            // LBL_MAPVIEW comes after LBL_MAP in the shipped file, so its window is
+                            // taken from where the painter will put it, not from the paint order.
+                            std::array<float, 4> mapWindow = {0.0f, 0.0f, 0.0f, 0.0f};
+                            if (const kotor::GuiControl* mapView = hudGui->control("LBL_MAPVIEW")) {
+                                const GuiPixelRect box = guiControlPixels(hudLayout, *mapView);
+                                mapWindow = {box.x0, box.y0, box.x1, box.y1};
+                            }
+                            hudOptions.controlHook = [&](const kotor::GuiControl& control, float x0, float y0,
+                                                         float x1, float y1) {
+                                if (control.tag == "LBL_ARROW") {
+                                    // The leader's mark turns with the way the leader faces: the
+                                    // arrow art points up, turned to the facing in map space.
+                                    const GuiTexture* art = gGuiPainter->texture(control.border.fill);
+                                    float u0 = 0.0f;
+                                    float v0 = 0.0f;
+                                    float u1 = 0.0f;
+                                    float v1 = 0.0f;
+                                    const kotor::Vec3 at = game->position();
+                                    // Retail 00578ed0 turns the arrow by the camera's forward (the object
+                                    // whose +0x28 also projects to the screen, 00688e10), not the leader's.
+                                    // A walk's recorded camera (the `camera` step) is the one the arrow follows.
+                                    kotor::Vec3 forward = game->camera().forward;
+                                    if (inputScript.active() && inputScript.camera().on) {
+                                        forward = kotor::Vec3{inputScript.camera().forward[0], inputScript.camera().forward[1],
+                                                              inputScript.camera().forward[2]};
+                                    }
+                                    const float yaw = std::atan2(forward.y, forward.x);
+                                    if (art != nullptr
+                                        && game->scene().minimap.project(at.x, at.y, u0, v0)
+                                        && game->scene().minimap.project(at.x + std::cos(yaw), at.y + std::sin(yaw), u1, v1)) {
+                                        const float turn = std::atan2(v1 - v0, u1 - u0) + 1.5707963f; // texel space
+                                        // The HUD constructor overrides the file: 32x32 at (44,44) in the
+                                        // 120x120 LBL_MAPVIEW, its centre.
+                                        const float cx = mapWindow[2] > mapWindow[0] ? 0.5f * (mapWindow[0] + mapWindow[2]) : 0.5f * (x0 + x1);
+                                        const float cy = mapWindow[3] > mapWindow[1] ? 0.5f * (mapWindow[1] + mapWindow[3]) : 0.5f * (y0 + y1);
+                                        const float hx = 0.5f * (x1 - x0);
+                                        const float hy = 0.5f * (y1 - y0);
+                                        const float c = std::cos(turn);
+                                        const float sn = std::sin(turn);
+                                        const auto corner = [&](float lx, float ly) {
+                                            return ImVec2(cx + lx * c - ly * sn, cy + lx * sn + ly * c);
+                                        };
+                                        ImGui::GetBackgroundDrawList()->AddImageQuad(
+                                            static_cast<ImTextureID>(art->id), corner(-hx, -hy), corner(hx, -hy),
+                                            corner(hx, hy), corner(-hx, hy), ImVec2(0, 0), ImVec2(1, 0), ImVec2(1, 1),
+                                            ImVec2(0, 1), IM_COL32_WHITE);
+                                        return true;
+                                    }
+                                    return false;
+                                }
+                                if (control.tag == "LBL_MAP") {
+                                    float u = 0.0f;
+                                    float v = 0.0f;
+                                    const kotor::Vec3 at = game->position();
+                                    const GuiTexture* art = gGuiPainter->texture("lbl_map" + game->scene().area);
+                                    if (art != nullptr && mapWindow[2] > mapWindow[0]
+                                        && game->scene().minimap.project(at.x, at.y, u, v)) {
+                                        ImDrawList* draw = ImGui::GetBackgroundDrawList();
+                                        const float texel = hudScale;
+                                        const float cx = 0.5f * (mapWindow[0] + mapWindow[2]);
+                                        const float cy = 0.5f * (mapWindow[1] + mapWindow[3]);
+                                        // (u, v) are texels of the map art (design pixels): the leader's texel sits
+                                        // at the window's centre.
+                                        const float left = cx - u * texel;
+                                        const float top = cy - v * texel;
+                                        draw->PushClipRect(ImVec2(mapWindow[0], mapWindow[1]),
+                                                           ImVec2(mapWindow[2], mapWindow[3]), true);
+                                        // ENGINE CHOICE: black under the art, so the window past the
+                                        // texture's edge is not the world seen through; the shipped
+                                        // lbl_map textures are black where nothing is drawn.
+                                        draw->AddRectFilled(ImVec2(mapWindow[0], mapWindow[1]),
+                                                            ImVec2(mapWindow[2], mapWindow[3]), IM_COL32(0, 0, 0, 255));
+                                        // Retail 00687e40 clears the control's clamp bits (+0x5e8c): the art repeats past its edge.
+                                        const float artW = static_cast<float>(art->width) * texel;
+                                        const float artH = static_cast<float>(art->height) * texel;
+                                        for (int tileY = -1; tileY <= 1; ++tileY) {
+                                            for (int tileX = -1; tileX <= 1; ++tileX) {
+                                                const ImVec2 low(left + static_cast<float>(tileX) * artW, top + static_cast<float>(tileY) * artH);
+                                                draw->AddImage(static_cast<ImTextureID>(art->id), low, ImVec2(low.x + artW, low.y + artH));
+                                            }
+                                        }
+                                        drawMapFog(*game, draw, left, top, texel);
+                                        draw->PopClipRect();
+                                    }
+                                    return true; // the 512x512 control itself is never stretched
+                                }
+                                if (control.tag.rfind("LBL_LEVELUP", 0) == 0) {
+                                    // The level-up mark goes over the portrait it belongs to.
+                                    if (const GuiTexture* art = gGuiPainter->texture(control.border.fill)) {
+                                        hudBadges.push_back({art->id, ImVec2(x0, y0), ImVec2(x1, y1)});
+                                    }
+                                    return true;
+                                }
+                                const std::string portrait = hud->portraitFor(control.tag);
+                                if (portrait.empty()) {
+                                    return false;
+                                }
+                                const std::uint64_t texture = visuals.portraitTexture(portrait);
+                                if (texture != 0) {
+                                    hudPortraits.push_back({texture, ImVec2(x0, y0), ImVec2(x1, y1)});
+                                }
+                                return true;
+                            };
+                            // The target reticle (0068a310's code-built control +0x5a2c, turned by +0x5aa4).
+                            // NOT TRACED: its draw order against mipc2*.gui; it goes under the HUD here.
+                            // ENGINE CHOICE: its retail pixel sizes are scaled with the HUD (1:1 at 1024x768).
+                            if (const Hud::Reticle& reticle = hud->reticle(); reticle.visible) {
+                                if (const GuiTexture* art = gGuiPainter->texture(reticle.art)) {
+                                    ImDrawList* draw = ImGui::GetBackgroundDrawList();
+                                    const float half = 0.5f * reticle.size * hudScale;
+                                    const float cx = (reticle.x + 0.5f * reticle.size) * hudScale;
+                                    const float cy = (reticle.y + 0.5f * reticle.size) * hudScale;
+                                    const float turn = reticle.angleDegrees * 3.14159265f / 180.0f;
+                                    const float c = std::cos(turn);
+                                    const float s = std::sin(turn);
+                                    const auto corner = [&](float ux, float uy) {
+                                        return ImVec2(cx + ux * c - uy * s, cy + ux * s + uy * c);
+                                    };
+                                    gGuiPainter->beginArt(draw, *art);
+                                    draw->AddImageQuad(static_cast<ImTextureID>(art->id), corner(-half, -half), corner(half, -half),
+                                                       corner(half, half), corner(-half, half));
+                                    gGuiPainter->endArt(draw, *art);
+                                }
+                            }
+                            gGuiPainter->paint(*hudGui, ImGui::GetBackgroundDrawList(), hudIo.DisplaySize.x,
+                                               hudIo.DisplaySize.y, hudOptions);
+                            hudStats = gGuiPainter->stats();
+                            hudViewUsed = gGuiPainter->view();
+                            paintFloatingText(*game, ImGui::GetBackgroundDrawList(), hudIo.DisplaySize.x, hudIo.DisplaySize.y, hudScale);
+                            for (const HudPortrait& portrait : hudPortraits) {
+                                ImGui::GetBackgroundDrawList()->AddImage(static_cast<ImTextureID>(portrait.texture),
+                                                                         portrait.low, portrait.high);
+                            }
+                            for (const HudPortrait& badge : hudBadges) {
+                                ImGui::GetBackgroundDrawList()->AddImage(static_cast<ImTextureID>(badge.texture),
+                                                                         badge.low, badge.high);
+                            }
+                            // The pause panel (CGuiInGame::SetPaused 0062def0 adds pause.gui for reasons 1, 4, 5,
+                            // 7-11). CSWGuiInGamePause::SetPauseReason (006c00c0) picks the line: 1 48212 enemy
+                            // sighted, 5 42432 end of round, 7 42482 menu used, 8 42481 target changed, 9 42397
+                            // party member down, 10 48423 action queued, 11 49118 mine sighted, else 1508 PAUSED;
+                            // LBL_PRESS (48384) shows except for 1 and 11. CGuiInGame::SetupPauseGuiExtent
+                            // (0062b100 -> 00688db0) puts the panel 3 px from the right edge, 3 px under the
+                            // menu bar (or 3 px from the top with the quick menu hidden).
+                            if (userPause && pauseGui && pauseGui->screen() != nullptr) {
+                                std::uint32_t reasonStrref = 1508;
+                                switch (pauseReason) {
+                                case 1: reasonStrref = 48212; break;
+                                case 5: reasonStrref = 42432; break;
+                                case 7: reasonStrref = 42482; break;
+                                case 8: reasonStrref = 42481; break;
+                                case 9: reasonStrref = 42397; break;
+                                case 10: reasonStrref = 48423; break;
+                                case 11: reasonStrref = 49118; break;
+                                default: break;
+                                }
+                                pauseGui->setText("LBL_PAUSEREASON",
+                                                  game->substituteTokens(game->localization().tlk().text(reasonStrref)));
+                                const bool pressShown = pauseReason != 1 && pauseReason != 11;
+                                pauseGui->setVisible("LBL_PRESS", pressShown);
+                                // 006c00c0 sizes the panel to its text: the reason label as tall as its
+                                // wrapped text, LBL_PRESS 2 below it as tall as its own, the panel 5 below
+                                // the last one, BTN_UNPAUSE over the panel (the file's 2 px inset kept).
+                                if (kotor::GuiScreen* pausePanel = pauseGui->editableScreen();
+                                    pausePanel != nullptr && gGuiPainter != nullptr) {
+                                    const GuiFont* pauseFont = gGuiPainter->font("fnt_d16x16");
+                                    kotor::GuiControl* reasonLabel = nullptr;
+                                    kotor::GuiControl* pressLabel = nullptr;
+                                    kotor::GuiControl* unpause = nullptr;
+                                    for (kotor::GuiControl& control : pausePanel->controls) {
+                                        reasonLabel = control.tag == "LBL_PAUSEREASON" ? &control : reasonLabel;
+                                        pressLabel = control.tag == "LBL_PRESS" ? &control : pressLabel;
+                                        unpause = control.tag == "BTN_UNPAUSE" ? &control : unpause;
+                                    }
+                                    const auto textHeight = [&](const std::string& text, int width) {
+                                        // Greedy word wrap at the label's width; each \n starts a line.
+                                        int lines = 0;
+                                        std::size_t start = 0;
+                                        while (start <= text.size()) {
+                                            const std::size_t end = std::min(text.find('\n', start), text.size());
+                                            std::string line;
+                                            int count = 1;
+                                            std::size_t word = start;
+                                            while (word < end) {
+                                                std::size_t next = text.find(' ', word);
+                                                next = next == std::string::npos || next > end ? end : next;
+                                                const std::string piece = text.substr(word, next - word);
+                                                const std::string tried = line.empty() ? piece : line + " " + piece;
+                                                if (!line.empty() && pauseFont->textWidth(tried) > static_cast<float>(width)) {
+                                                    ++count;
+                                                    line = piece;
+                                                } else {
+                                                    line = tried;
+                                                }
+                                                word = next + 1;
+                                            }
+                                            lines += count;
+                                            start = end + 1;
+                                        }
+                                        return static_cast<int>(std::ceil(static_cast<float>(lines) * pauseFont->height));
+                                    };
+                                    if (pauseFont != nullptr && reasonLabel != nullptr && pressLabel != nullptr) {
+                                        reasonLabel->extent.height = textHeight(pauseGui->state("LBL_PAUSEREASON").text,
+                                                                                reasonLabel->extent.width);
+                                        int bottom = reasonLabel->extent.top + reasonLabel->extent.height;
+                                        if (pressShown) {
+                                            pressLabel->extent.top = bottom + 2;
+                                            pressLabel->extent.height = textHeight(
+                                                game->localization().tlk().text(48384), pressLabel->extent.width);
+                                            bottom = pressLabel->extent.top + pressLabel->extent.height;
+                                        }
+                                        pausePanel->extent.height = bottom + 5;
+                                        if (unpause != nullptr) {
+                                            unpause->extent.height = pausePanel->extent.height - 2 * unpause->extent.top;
+                                        }
+                                    }
+                                }
+                                GuiView pauseView = gGuiPainter->layout(*pauseGui->screen(), hudIo.DisplaySize.x,
+                                                                        hudIo.DisplaySize.y);
+                                const float panelW = static_cast<float>(pauseGui->screen()->extent.width);
+                                float top = 3.0f * hudScale;
+                                if ((game->feedbackOptions() & 0x200u) == 0u) {
+                                    if (const kotor::GuiControl* menuBar = hudGui->control("LBL_MENUBG")) {
+                                        top = guiControlPixels(hudLayout, *menuBar).y1 + 2.0f * hudScale;
+                                    }
+                                }
+                                pauseView.scale = hudScale;
+                                pauseView.offsetX = hudIo.DisplaySize.x - (panelW + 3.0f) * hudScale - pauseView.panelLeft * hudScale;
+                                pauseView.offsetY = top - pauseView.panelTop * hudScale;
+                                if (!mouseRelative && !lookHeld) {
+                                    pumpGuiInput(*pauseGui, pauseView);
+                                }
+                                GuiPaintOptions pauseOptions;
+                                pauseOptions.view = pauseView;
+                                pauseOptions.opaqueBackdrop = false;
+                                pauseOptions.timeSeconds = ImGui::GetTime();
+                                gGuiPainter->paint(*pauseGui, ImGui::GetBackgroundDrawList(), hudIo.DisplaySize.x,
+                                                   hudIo.DisplaySize.y, pauseOptions);
+                                if (pauseGui->lastAction() == "BTN_UNPAUSE") { // 006c0350 OnUnpause
+                                    userPause = false;
+                                }
+                                pauseGui->clearActions();
+                            }
+                            // The pointer's box goes over every HUD panel, the pause panel included.
+                            // NOT TRACED: retail's draw order for 00624af0 against pause.gui; a tooltip under
+                            // a panel's text is unreadable, so it is drawn last.
+                            if (!mouseRelative && !lookHeld) {
+                                hudTooltipShown = hud->tooltip();
+                                paintTooltip(tooltipGui.get(), hudTooltipShown, ImGui::GetBackgroundDrawList(), hudIo.DisplaySize.x, hudIo.DisplaySize.y, hudScale);
+                            }
+                            // What E would act on. Retail's HUD has no such line (the in-game panel 00686ba0 and
+                            // its controls carry no prompt text), so it is drawn for the developer view only.
+                            const std::string interact = options.debugUi ? game->interactionPrompt() : std::string{};
+                            if (!interact.empty()) {
+                                if (const GuiFont* promptFont = gGuiPainter->font("fnt_d16x16")) {
+                                    gGuiPainter->drawText(ImGui::GetBackgroundDrawList(), *promptFont, interact,
+                                                          hudIo.DisplaySize.x * 0.5f - 200.0f * hudScale,
+                                                          hudIo.DisplaySize.y - 190.0f * hudScale,
+                                                          hudIo.DisplaySize.x * 0.5f + 200.0f * hudScale,
+                                                          hudIo.DisplaySize.y - 160.0f * hudScale, 18,
+                                                          IM_COL32(255, 220, 90, 255), hudScale, true);
+                                }
+                            }
+                        }
+                        // BarkString's box, over the HUD and over the 3D minigames (the turret's
+                        // "Incoming fighters!"). NOT TRACED: its draw order against the dialog screen.
+                        if (hud && barkGui && gGuiPainter != nullptr && options.captureCamera.empty()) {
+                            const ImGuiIO& barkIo = ImGui::GetIO();
+                            hud->updateBark(ImGui::GetTime());
+                            if (hud->bark().visible) {
+                                paintBark(barkGui.get(), hud->bark().text, ImGui::GetBackgroundDrawList(), barkIo.DisplaySize.x,
+                                          barkIo.DisplaySize.y, Hud::layoutScale(barkIo.DisplaySize.x, barkIo.DisplaySize.y));
+                            }
+                        }
+                        if (dialogueScreen && dialogueGui && gGuiPainter != nullptr && game->dialogue().active
+                            && !options.debugUi && options.captureCamera.empty()) {
+                            // The conversation: the shipped dialog.gui between two letterbox bars.
+                            dialogueScreen->update();
+                            // A Computer conversation is the terminal screen, drawn whole over the world;
+                            // any other is dialog.gui between two letterbox bars.
+                            GuiSystem& panelGui = dialogueScreen->activeGui();
+                            const bool terminal = dialogueScreen->computerShown();
+                            const ImGuiIO& dialogueIo = ImGui::GetIO();
+                            // The live feed (computercamera.gui) takes the window's size (006a95f0).
+                            const bool liveFeed = dialogueScreen->cameraFeedShown();
+                            if (liveFeed) {
+                                dialogueScreen->fitFeed(static_cast<int>(dialogueIo.DisplaySize.x),
+                                                        static_cast<int>(dialogueIo.DisplaySize.y));
+                            }
+                            GuiView dialogueView = gGuiPainter->layout(*panelGui.screen(),
+                                                                       dialogueIo.DisplaySize.x,
+                                                                       dialogueIo.DisplaySize.y);
+                            // RETAIL-PROVEN (006a8b40, 006a78c0): the world shows in a band
+                            // trunc(W*3/7) high, centred; the reply panel sits under it at x 48
+                            // (00409ee0). Paired frame dlg_static: band 165..603 at 1024x768.
+                            const float band = std::trunc(dialogueIo.DisplaySize.x * 3.0f / 7.0f);
+                            const float barTop = std::floor((dialogueIo.DisplaySize.y - band) * 0.5f);
+                            const float barBottom = std::floor((dialogueIo.DisplaySize.y + band) * 0.5f);
+                            if (!terminal && dialogueView.scale == 1.0f) {
+                                dialogueScreen->fitWidth(static_cast<int>(dialogueIo.DisplaySize.x));
+                                dialogueView.offsetX = 48.0f - dialogueView.panelLeft;
+                                dialogueView.offsetY = barBottom - dialogueView.panelTop;
+                            }
+                            if (!dialogueEnterConsumed) {
+                                pumpGuiInput(panelGui, dialogueView);
+                            }
+                            dialogueEnterConsumed = false;
+                            ImDrawList* dialogueDraw = ImGui::GetBackgroundDrawList();
+                            const ImU32 black = IM_COL32(0, 0, 0, 255);
+                            if (!terminal && dialogueView.scale == 1.0f) {
+                                dialogueDraw->AddRectFilled(ImVec2(0.0f, 0.0f),
+                                                            ImVec2(dialogueIo.DisplaySize.x, barTop), black);
+                                dialogueDraw->AddRectFilled(ImVec2(0.0f, barBottom), dialogueIo.DisplaySize, black);
+                            } else if (!terminal) {
+                                dialogueDraw->AddRectFilled(ImVec2(0.0f, 0.0f),
+                                                            ImVec2(dialogueIo.DisplaySize.x,
+                                                                   dialogueView.offsetY
+                                                                       + DialogueScreen::kBarHeight * dialogueView.scale),
+                                                            black);
+                                dialogueDraw->AddRectFilled(ImVec2(0.0f, dialogueView.offsetY
+                                                                             + (dialogueView.baseHeight
+                                                                                - DialogueScreen::kBarHeight)
+                                                                                 * dialogueView.scale),
+                                                            dialogueIo.DisplaySize, black);
+                            }
+                            GuiPaintOptions dialogueOptions;
+                            if (!terminal) {
+                                dialogueOptions.view = dialogueView;
+                            } else if (!liveFeed) {
+                                // 006a6e20: "<W>x<H>comp" plus the conversation's computer type
+                                // (006a8400 via 00628670). Only type 0 is read here: the DLG's
+                                // ComputerType field is not loaded, so an ancient terminal gets comp0.
+                                dialogueOptions.backdropKind = "comp0";
+                            }
+                            dialogueOptions.opaqueBackdrop = false;
+                            // The live feed is the world through the placeable's camera: no surround.
+                            dialogueOptions.windowBackdrop = !liveFeed;
+                            dialogueOptions.timeSeconds = ImGui::GetTime();
+                            gGuiPainter->paint(panelGui, dialogueDraw, dialogueIo.DisplaySize.x,
+                                               dialogueIo.DisplaySize.y, dialogueOptions);
+                            if (!terminal && dialogueView.scale == 1.0f) {
+                                dialogueScreen->paintTop(dialogueDraw, dialogueIo.DisplaySize.x, barTop);
+                            }
+                            // A click is the same skip as Enter: CSWGuiDialog::HandleInputEvent 006a7230 calls
+                            // SkipPastDialog for the Enter keys (0x27, 0x2d) and for input 0x1f9 alike while the line
+                            // plays; retail ccSc_timeline.json shows the feed gone 134 ms after the click mark.
+                            if (liveFeed && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+                                dialogueScreen->cancelFeed();
+                            }
+                            if (!panelGui.lastAction().empty()) {
+                                const std::string dialogueAction = panelGui.lastAction();
+                                panelGui.clearActions();
+                                dialogueScreen->action(dialogueAction);
+                            }
+                        }
+                        // The rig panel is a debugging view, not part of a conversation.
+                        if (options.facialDemo >= 0 || (options.debugUi && game->lipSyncActive())) {
                             drawFacialRigOverlay(game->facialRig());
                         }
                     }
                 }
             }
-            if (!chargenActive && !shippedChargen && minigameMode) {
-                drawMinigameUi(*game);
-            }
             if (game) {
-                if (game->movieFrame() != nullptr) {
-                    if (game->movieFrameIndex() != uploadedMovieFrame) {
+                if (game->moviePlaying() && game->movieFrame() != nullptr) {
+                    if (game->movieFrameIndex() != uploadedMovieFrame
+                        || game->movieName() != uploadedMovieName) {
                         std::string movieError;
                         const kotor::BinkVideoFrame* frame = game->movieFrame();
                         if (state.backend->uploadMovieFrame(
                                 frame->width, frame->height, frame->rgba.data(),
                                 movieTexture, movieError)) {
                             uploadedMovieFrame = game->movieFrameIndex();
+                            uploadedMovieName = game->movieName();
                         } else if (!movieUploadWarned) {
                             logWarn(concat("Movie overlay unavailable: ", movieError));
                             movieUploadWarned = true;
@@ -8794,10 +12430,45 @@ int runApplication(const Options& options)
                     }
                 }
             }
-            if (game && !shippedChargen) {
+            if (game && !shippedChargen && !guiMode && !game->moviePlaying()) {
+                // A movie owns the screen: the world's fade (m01aa starts from solid black)
+                // must not be painted over it.
                 // The module's own fade (m01aa starts from black) is not part of chargen,
                 // which has no module behind it.
                 drawWorldStateOverlay(*game);
+            }
+            if (game && gGuiPainter != nullptr && game->creditsActive() && !game->moviePlaying()
+                && options.captureCamera.empty()) {
+                // The credit sequence (credits.2da pages): one page at a time fading in and out
+                // over the world, the last scrolling up. The text sits where credits.gui puts
+                // its list (140,40, 358x400).
+                const ImGuiIO& creditsIo = ImGui::GetIO();
+                ImDrawList* creditsDraw = ImGui::GetForegroundDrawList();
+                if (!game->creditsTransparent()) {
+                    creditsDraw->AddRectFilled(ImVec2(0.0f, 0.0f), creditsIo.DisplaySize, IM_COL32(0, 0, 0, 255));
+                }
+                const float scale = std::min(creditsIo.DisplaySize.x / 640.0f, creditsIo.DisplaySize.y / 480.0f);
+                const float offsetX = 0.5f * (creditsIo.DisplaySize.x - 640.0f * scale);
+                const float offsetY = 0.5f * (creditsIo.DisplaySize.y - 480.0f * scale);
+                const std::int32_t strref = game->creditsPageStrref();
+                const GuiFont* creditsFont = gGuiPainter->font("fnt_d16x16");
+                if (strref >= 0 && creditsFont != nullptr) {
+                    const std::string page = game->localization().tlk().text(static_cast<std::uint32_t>(strref));
+                    const unsigned alpha = static_cast<unsigned>(std::clamp(game->creditsOpacity(), 0.0f, 1.0f) * 255.0f);
+                    float top = 40.0f;
+                    float bottom = 440.0f;
+                    if (game->creditsOnLastPage()) {
+                        // The page rises from the bottom edge to past the top.
+                        const float rise = game->creditsScrollProgress();
+                        const float lines = std::max(1.0f, creditsFont->height * 40.0f);
+                        top = 440.0f - rise * (400.0f + lines);
+                        bottom = top + lines;
+                    }
+                    gGuiPainter->drawText(creditsDraw, *creditsFont, page, offsetX + 140.0f * scale,
+                                          offsetY + top * scale, offsetX + 498.0f * scale,
+                                          offsetY + bottom * scale, game->creditsOnLastPage() ? 9 : 18,
+                                          IM_COL32(255, 255, 255, alpha == 0 ? 0 : alpha), scale, true);
+                }
             }
             if (chargenStage && chargenGui && !chargenGui->active) {
                 // The flow handed the character to the session: leave the stage.
@@ -8815,7 +12486,8 @@ int runApplication(const Options& options)
                     // Retail enters end_m01aa straight after the name screen; no movie is
                     // played between chargen and the module (nothing in 0067ace0 or the
                     // chargen handlers queues one).
-                    game->requestModule("end_m01aa");
+                    // A new game: the menu's backdrop module is not carried into it.
+                    game->startNewGame("end_m01aa");
                 } else if (state.guiSystem) {
                     // BTN_BACK on classsel returns to the main menu.
                     state.guiSystem->open("mainmenu");
@@ -8827,6 +12499,9 @@ int runApplication(const Options& options)
                     visuals.preview->showClassSelection(game->rules());
                 } else if (chargenGui->step == 1) {
                     visuals.preview->showHead(chargenState.appearanceId(), chargenState.gender());
+                } else if (chargenGui->step == kChargenHub) {
+                    // MAINCG's MODEL_LBL: the body in charrec_light (006eb420 -> 006100f0), as the sheet.
+                    visuals.preview->showSheet(chargenState.appearanceId(), chargenBodyVariant(), chargenState.build().alignment);
                 }
                 visuals.syncPreviewScene();
                 if (visuals.preview->advance(static_cast<float>(deltaMs / 1000.0))) {
@@ -8838,6 +12513,7 @@ int runApplication(const Options& options)
             if (!movieMode && guiMode && game) {
                 std::function<bool(const std::string&)> handler;
                 if (chargenGui) {
+                    bindChargenScreen(*state.guiSystem, *chargenGui, *game);
                     handler = [&](const std::string& action) {
                         return handleChargenGuiAction(action, *chargenGui,
                                                       *state.guiSystem, *game);
@@ -8845,8 +12521,66 @@ int runApplication(const Options& options)
                 }
                 drawGuiScreenOverlay(*state.guiSystem, *game, state.requestChargen, handler,
                                      &visuals);
-                if (chargenGui) {
-                    drawChargenTextOverlay(*chargenGui);
+                if (chargenGui && state.window != nullptr) {
+                    // The name screen is typed into: text input stays on while it is up.
+                    const bool typing = chargenNameEditing(*chargenGui);
+                    if (typing != SDL_TextInputActive(state.window)) {
+                        if (typing) {
+                            SDL_StartTextInput(state.window);
+                        } else {
+                            SDL_StopTextInput(state.window);
+                        }
+                    }
+                }
+            }
+            if (frontEnd && game && state.guiSystem) {
+                FrontEndOutcome outcome = frontEnd->takeOutcome();
+                if (outcome.newGame) {
+                    state.guiSystem->close();
+                    state.requestChargen = true;
+                }
+                if (outcome.quit) {
+                    exitReason = "GUI exit";
+                    running = false;
+                }
+                if (!outcome.playMovie.empty() && game->playMovie(outcome.playMovie)) {
+                    userSettings->seenMovies.insert(outcome.playMovie);
+                    userSettings->dirty = true;
+                }
+                if (!outcome.loadFolder.empty()) {
+                    if (game->loadOriginalSave(outcome.loadFolder, true)) {
+                        // A loaded game is played as the PC: the avatar and its follow camera, as
+                        // after chargen. A session started without --third-person (the walk's
+                        // --module runs, the main menu) otherwise kept the free camera and no PC
+                        // model (WALK_DIFFS W29/W38).
+                        game->setThirdPerson(true);
+                        state.guiSystem->close();
+                        state.backend->setPreviewViews({});
+                        std::string stageError;
+                        state.backend->setPreviewScene(nullptr, stageError);
+                        visuals.menuStaged = false;
+                        state.backend->setScene(&game->scene());
+                        state.backend->setCamera(game->camera());
+                    } else {
+                        logWarn(concat("load failed: ", outcome.loadFolder.string()));
+                    }
+                }
+                if (outcome.resumeGame) {
+                    state.guiSystem->close();
+                }
+                if ((outcome.displayWidth > 0 || outcome.fullscreen >= 0) && applyDisplay) {
+                    applyDisplay(outcome.displayWidth, outcome.displayHeight, outcome.fullscreen);
+                }
+                if (!outcome.saveFolder.empty()) {
+                    if (game->saveOriginalSave(outcome.saveFolder, outcome.saveName)) {
+                        state.guiSystem->pop();
+                    } else {
+                        logWarn(concat("save failed: ", outcome.saveFolder.string()));
+                    }
+                }
+                if (userSettings && userSettings->dirty) {
+                    userSettings->save(settingsPath);
+                    userSettings->dirty = false;
                 }
             }
             if (state.requestChargen && game) {
@@ -8863,7 +12597,33 @@ int runApplication(const Options& options)
                 exitReason = "GUI exit";
                 running = false;
             }
+            if (frontEndGate && !frontEndGate->artProbe().empty() && state.guiPainter) {
+                // The gate's art probe: a bright grey field over everything, then each texture as
+                // the painter draws it, where FrontEndGate::probeCell says.
+                const ImGuiIO& probeIo = ImGui::GetIO();
+                ImDrawList* probeDraw = ImGui::GetForegroundDrawList();
+                probeDraw->AddRectFilled(ImVec2(0.0f, 0.0f), probeIo.DisplaySize,
+                                         IM_COL32(FrontEndGate::kProbeField, FrontEndGate::kProbeField,
+                                                  FrontEndGate::kProbeField, 255));
+                const std::vector<std::string>& probe = frontEndGate->artProbe();
+                for (std::size_t i = 0; i < probe.size(); ++i) {
+                    const GuiTexture* art = state.guiPainter->texture(probe[i]);
+                    if (art == nullptr) {
+                        continue;
+                    }
+                    float cx = 0.0f;
+                    float cy = 0.0f;
+                    FrontEndGate::probeCell(i, probeIo.DisplaySize.x, cx, cy);
+                    const float fit = std::min(1.0f, FrontEndGate::kProbeBox
+                                                         / static_cast<float>(std::max(art->width, art->height)));
+                    state.guiPainter->drawProbe(probeDraw, probe[i], cx, cy, cx + static_cast<float>(art->width) * fit,
+                                                cy + static_cast<float>(art->height) * fit);
+                }
+            }
             ImGui::Render();
+            if (!options.captureCamera.empty() && ImGui::GetDrawData() != nullptr) {
+                ImGui::GetDrawData()->Clear();
+            }
 
             const ImDrawData* drawData = ImGui::GetDrawData();
             if (!loggedUiGeometry && drawData != nullptr && drawData->TotalVtxCount > 0) {
@@ -8896,7 +12656,32 @@ int runApplication(const Options& options)
             }
         }
         if (game) {
-            state.backend->setVideoEffect(game->videoEffect());
+            VideoEffectState effect = game->videoEffect();
+            // Options CB_FRAMEBUFF (0078d98c, set by 0061d750) gates every frame-buffer effect.
+            effect.frameBuffer = !userSettings || userSettings->get("graphics.framebuffer") != 0.0f;
+            // The same gate returns from FrameBufferModifications 00437520 before the video effect's
+            // passes (00432ad0 under 007a6882 and under 007a6883; 00435bd0 on the other route): no effect with it off.
+            if (!effect.frameBuffer) {
+                effect.saturation = false;
+                effect.scanNoise = false;
+            }
+            // One blur flag and ratio (007a6880, 0078d43c), set by ProgFX 1601 or by ACT_563 in a minigame.
+            if (const MiniGameWorld* world = game->miniGame()) {
+                effect.speedBlur = world->speedBlur;
+                effect.speedBlurRatio = world->speedBlurRatio;
+            } else {
+                effect.speedBlur = game->effects().speedBlurOn();
+                effect.speedBlurRatio = game->effects().speedBlurRatio();
+            }
+            effect.distortEntities = game->effects().distortionEntities();
+            effect.distortPhase = game->effects().distortionPhase();
+            // Options CB_SHADOWS: CClientOptions::SetShadows 0061d6b0 sets 0078e3a8, the gate on
+            // Scene::RenderShadows in Scene::Render (00451750). The scene focus (scene +0xa8, set
+            // through 00458ba0) is taken as the controlled creature's place: not proven, RETAIL row 46.
+            effect.shadows = !userSettings || userSettings->get("graphics.shadows") != 0.0f;
+            const kotor::Vec3 focus = game->controlledPosition();
+            effect.shadowFocus = {focus.x, focus.y, focus.z};
+            state.backend->setVideoEffect(effect);
         }
         error.clear();
         const FrameStatus status = state.backend->renderFrame(error);
@@ -8949,9 +12734,43 @@ int runApplication(const Options& options)
                                    state.backend->info().name, " pixels=", pixels, " scene_pixels=",
                                    different, " colours=", colours.size(), pass ? " PASS" : " FAIL"));
                     renderCheckExit = pass ? 0 : 66;
+                    renderCheckMeasured = true;
                 } else {
                     logError("minigame render check: second capture failed");
                 }
+            }
+        }
+        if (wrapGate && game && !wrapGate->finished()) {
+            wrapGate->step(*state.backend, *game);
+            if (wrapGate->finished()) {
+                gateExit = wrapGate->exitCode();
+                exitReason = "texture wrap check finished";
+                running = false;
+            }
+        }
+        if (frontEndGate && frontEnd && state.guiSystem && game) {
+            FrontEndGate::Context context;
+            context.backend = state.backend.get();
+            context.gui = state.guiSystem.get();
+            context.front = frontEnd.get();
+            context.screens = gameScreens.get();
+            context.dialogueGui = dialogueScreen ? &dialogueScreen->activeGui() : dialogueGui.get();
+            context.loadProbe = &loadScreenProbe;
+            context.hudGui = hudGui.get();
+            context.hudStats = &hudStats;
+            context.hudTooltip = hudTooltipShown;
+            context.hudReticle = hud && hud->reticle().visible ? hud->reticle().art : std::string{};
+            context.hudBark = hud && hud->bark().visible ? hud->bark().text : std::string{};
+            context.hudView = &hudViewUsed;
+            context.painter = state.guiPainter.get();
+            context.settings = userSettings.get();
+            context.game = &*game;
+            context.menuStaged = visuals.menuStaged;
+            frontEndGate->step(context);
+            if (frontEndGate->finished()) {
+                gateExit = frontEndGate->exitCode();
+                exitReason = "front end gate finished";
+                running = false;
             }
         }
         if (previewGate && state.guiSystem && game) {
@@ -8961,6 +12780,37 @@ int runApplication(const Options& options)
                 logInfo(gateExit == 0 ? "chargen_preview: PASS" : "chargen_preview: FAIL");
                 exitReason = "chargen preview gate finished";
                 running = false;
+            }
+        }
+        for (const std::string& shot : inputScriptShots) {
+            // Verification tooling: the conversation state each frame shows, so paired walks can
+            // match retail frames by line rather than by clock.
+            if (game) {
+                logInfo(concat("input script: shot ", shot, " t ", game->elapsedSeconds(), " dlg ",
+                               game->dialogue().active ? 1 : 0, " entry ",
+                               game->dialogue().entry, " replies ",
+                               dialogueScreen && dialogueScreen->repliesShown() ? 1 : 0, " pc ", game->position().x, ",",
+                               game->position().y, " fog ", game->mapFog() != nullptr ? game->mapFog()->seenCount() : 0));
+            }
+            CapturedFrame frame;
+            if (!state.backend->captureFrame(frame) || frame.rgba.empty()
+                || !writeBmpTopDown(shot, frame.width, frame.height, frame.rgba)) {
+                logWarn(concat("input script: screenshot failed: ", shot));
+            }
+        }
+        inputScriptShots.clear();
+        if (inputScript.active() && inputScript.finished()) {
+            logInfo("input script: finished");
+            exitReason = "input script finished";
+            running = false;
+        }
+        // shot:<path>@N in --capture-action: a burst of frames from one run, for paired timing.
+        for (std::size_t start = options.captureAction.find("shot:"); start != std::string::npos;
+             start = options.captureAction.find("shot:", start + 5u)) {
+            const std::size_t at = options.captureAction.find('@', start);
+            if (at != std::string::npos
+                && std::strtoull(options.captureAction.c_str() + at + 1u, nullptr, 10) == frames + 1) {
+                state.backend->screenshot(options.captureAction.substr(start + 5u, at - start - 5u));
             }
         }
         if (!options.screenshot.empty() && options.frames > 0
@@ -8982,8 +12832,41 @@ int runApplication(const Options& options)
             running = false;
         }
 
-        if (state.activeBackend == BackendKind::Null && running) {
-            SDL_Delay(1); // avoid a 100% CPU spin in the headless logical loop
+        if (soak && game) {
+            soak->step(*game, state.guiSystem.get());
+            if (soak->takeSceneRebuilt()) {
+                state.backend->setScene(&game->scene());
+                state.backend->setCamera(game->camera());
+                renderedMeshKey = game->scene().entityMeshes.size() + game->scene().meshRevision;
+            }
+            if (soak->finished()) {
+                gateExit = soak->exitCode();
+                exitReason = "soak finished";
+                running = false;
+            }
+        }
+
+        if (running) {
+            const SDL_WindowFlags windowFlags = windowShown ? SDL_GetWindowFlags(state.window) : SDL_WindowFlags{0};
+            const bool background = windowShown
+                && ((windowFlags & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_OCCLUDED)) != 0
+                    || (windowFlags & SDL_WINDOW_INPUT_FOCUS) == 0);
+            const double fps = pacedFps(options.maxFps, options.backgroundFps, offlineRun, background);
+            if (fps > 0.0) {
+                const std::uint64_t paceNow = SDL_GetTicksNS();
+                paceDeadline = nextFrameDeadline(paceDeadline, paceNow,
+                                                 static_cast<std::uint64_t>(1'000'000'000.0 / fps));
+                if (paceDeadline > paceNow) {
+                    SDL_DelayNS(paceDeadline - paceNow);
+                    const std::uint64_t woke = SDL_GetTicksNS();
+                    const std::uint64_t late = woke > paceDeadline ? woke - paceDeadline : 0u;
+                    ++paceWaits;
+                    paceLateTotal += late;
+                    paceLateWorst = std::max(paceLateWorst, late);
+                }
+            } else if (state.activeBackend == BackendKind::Null && !soak) {
+                SDL_Delay(1); // avoid a 100% CPU spin in the headless logical loop
+            }
         }
     }
 
@@ -8992,6 +12875,11 @@ int runApplication(const Options& options)
 
     logInfo(concat("Exit: ", exitReason));
     logInfo(concat("Frames: ", frames, " in ", totalSeconds, " s (avg ", averageMs, " ms/frame)"));
+    if (paceWaits > 0) {
+        logInfo(concat("Frame pacing: ", paceWaits, " waits, late by ",
+                       static_cast<double>(paceLateTotal) / static_cast<double>(paceWaits) / 1000.0,
+                       " us on average, worst ", static_cast<double>(paceLateWorst) / 1000.0, " us"));
+    }
     logInfo(concat("Backend summary: ", state.backend->info().name, " | ",
                    state.backend->info().apiVersion, " | ", state.backend->info().swapchain));
 
@@ -9002,7 +12890,14 @@ int runApplication(const Options& options)
     gVisuals = nullptr;
     destroyRuntime(state);
     audioOutput.reset();
+    if (game) {
+        game->audio().mixer().stopCapture();
+    }
     SDL_Quit();
+    if (options.minigameRenderCheck && !renderCheckMeasured && renderCheckExit == 0) {
+        logError("minigame render check: the run ended before the frames were measured");
+        renderCheckExit = 66;
+    }
     return gateExit != 0 ? gateExit : renderCheckExit;
 }
 

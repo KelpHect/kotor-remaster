@@ -97,7 +97,7 @@ redistribute. The MIT Kaitai specs are the reusable baseline.
   JSR/RETN, DESTRUCT, SAVEBP/RESTOREBP, STORESTATE, …); `0x42` is a size pseudo-op. Type qualifiers:
   3 int, 4 float, 5 string, 6 object, 0x10–0x13 effect/event/location/talent, plus binary and
   engine-struct pairs. Stack slots are 4 bytes; arguments are pushed in reverse; the callee pops
-  them; non-void returns are pushed. Object invalid is `0x7F000000`; recursion limit is 8.
+  them; non-void returns are pushed. Object invalid is `0x7F000000`; JSR depth is limited to 128 (`005d17f0`) and nested script runs to 8 (`005d226c`).
 - There is no VM sleep. `DelayCommand` snapshots a script situation; `ActionWait`/`AssignCommand`
   use the action queue; `ExecuteScript` is nested and depth-limited. Hooks are ResRefs from IFO/ARE
   and object templates, not VM constructs.

@@ -145,22 +145,28 @@ module lists; `final.log` is the console transcript.
 - **MapResX role** — 117/117 AREs carry a `Map` struct. `MapResX` values are small ints
   {0,1,15,16,20,24,25,32,…}; exactly the 26 areas with `MapResX = 0` are the ones with a
   degenerate (zero-world-extent) affine — verified by reading all 117 Map structs. The
-  affine itself uses only `WorldPt1/2`→`MapPt1/2` (recon/12). **Verified in the engine:**
-  `FUN_00508c50` reads `MapResX`, `NorthAxis`, `MapZoom`, `MapPt1/2`, and `WorldPt1/2`,
-  loads the `lbl_map%s` minimap control, and calls `FUN_00578c60`; that function takes
-  `MapResX` as its first parameter (capped at `0x58`), applies `NorthAxis`/`MapZoom`, then
-  computes the per-axis scale and offset from the `MapPt1/2` and `WorldPt1/2` deltas.
-  `MapResX` is therefore the minimap resolution hint, not an affine input.
+  affine itself uses `WorldPt1/2`→`MapPt1/2` (recon/12), with `MapPt1/2` read as fractions of
+  the minimap texture and the axes exchanged when `NorthAxis >= 2` (the swap is fitted from the
+  data, not read from retail: it is the engine's `Scene::Minimap::project`). The retail map
+  panel constructor `FUN_00693650` loads the `lbl_map%s` control for the current area and
+  falls back to `lbl_mapm28aa` when the area has none; `FUN_00508c50` reads `MapResX`,
+  `NorthAxis`, `MapZoom`, `MapPt1/2`, and `WorldPt1/2` and calls `FUN_00578c60`, which takes
+  `MapResX` as its first parameter (capped at `0x58`) and applies `NorthAxis`/`MapZoom`.
   `MapResY` is absent from every label table (recon/03 §3). — verified (data + engine)
-- **Minimap texture semantics** — a full scan of `chitin.key` (26 BIFs, 25,836
-  resources), the 12 global RIMs, `patch.erf`, and all four `TexturePacks/*.erf` finds
-  **no** `<area>`-named TGA/TPC (e.g. no `m01aa` texture anywhere; `m01aa` exists only as
-  LYT 3000 + VIS 3001). **Verified from data alone:** this install ships no per-area
-  minimap bitmap; the map is rasterized from the ARE `Map` affine over area geometry.
-  **Renderer-side confirmed statically:** `FUN_00508c50` loads `lbl_map%s`, reads the
-  `Map` fields, and calls `FUN_00578c60`, which computes the world→map scale/offset from
-  `MapPt1/2` and `WorldPt1/2`; no per-area texture is required. The earlier "lane s1-07"
-  pointer is closed.
+- **Minimap texture semantics (corrected)** — an earlier version of this note searched for a
+  texture named after the area (`m01aa`), found none, and concluded that no per-area minimap
+  bitmap ships. That was the wrong name. The bitmaps ship as `lbl_map<area resref>`
+  (for example `lbl_mapm01aa`) in `swpc_tex_gui.erf`; the retail panel loads them by that name
+  (`FUN_00693650`, string `lbl_map%s`), so the map is a shipped bitmap, not a raster built from
+  the geometry. The `Map` affine places the world on that bitmap. Still a guess in the engine:
+  the exact texel scale of `MapZoom` and the `NorthAxis` axis exchange.
+- **Unescapable and the map panel** — `FUN_00693650` tests the area's Unescapable flag
+  (area object `+0x2ac`): when set it shows strref `0x9633` (38451, "That function is
+  unavailable at this time.") and clears the flag instead of opening the panel; otherwise,
+  when the party must rejoin first, strref `0x9634` (38452, "You must rejoin your party
+  first.") through `FUN_00635350`. The party-selection opener `FUN_0062dd20` refuses in the same
+  way when the area is unescapable and its third parameter is zero. The script action
+  `GetAreaUnescapable` is `FUN_005367b0`.
 - The remaining recon/12 opens (live dialogue-camera object field, supermodel visual
   chain, camera mode `+0x38` live observation) were closed or statically bounded by the
   Sprint-1 closure: supermodel chain verified live (recon/25 §6), camera `+0x38 = 0` on the

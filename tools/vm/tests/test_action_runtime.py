@@ -27,6 +27,10 @@ SPECS = {"actions": [
      "params": [{"type": "object"}, {"type": "int"}]},
     {"id": 682, "name": "SetLocalNumber", "return": "void",
      "params": [{"type": "object"}, {"type": "int"}, {"type": "int"}]},
+    {"id": 679, "name": "GetLocalBoolean", "return": "int",
+     "params": [{"type": "object"}, {"type": "int"}]},
+    {"id": 680, "name": "SetLocalBoolean", "return": "void",
+     "params": [{"type": "object"}, {"type": "int"}, {"type": "int"}]},
     {"id": 168, "name": "GetTag", "return": "string",
      "params": [{"type": "object"}]},
     {"id": 200, "name": "GetObjectByTag", "return": "object",
@@ -84,11 +88,33 @@ class ActionRuntimeTest(unittest.TestCase):
         self.assertEqual(got[0].value, 42)
         self.assertEqual(self.rt.world.globals["g"].value, 42)
 
+    def test_global_names_ignore_case(self):
+        # retail 00529030; a shipped script writes one global in two spellings.
+        self.rt.call(581, [[V("string", "unk_a")], [V("int", 1)]], self.vm)
+        self.rt.call(581, [[V("string", "Unk_a")], [V("int", 2)]], self.vm)
+        got = self.rt.call(580, [[V("string", "UNK_A")]], self.vm)
+        self.assertEqual(got[0].value, 2)
+        self.assertEqual(len(self.rt.world.globals), 1)
+
     def test_local_set_get_by_numeric_index(self):
         oid = self.rt.world.pc.id
         self.rt.call(682, [[V("object", oid)], [V("int", 3)], [V("int", 9)]], self.vm)
         got = self.rt.call(681, [[V("object", oid)], [V("int", 3)]], self.vm)
         self.assertEqual(got[0].value, 9)
+
+    def test_locals_follow_the_retail_var_table(self):
+        # CSWVarTable: booleans and number bytes apart; -1 reads 255; 200 and index 8 are dropped;
+        # GetLocalBoolean gives the raw bit (index 5 reads 32).
+        oid = self.rt.world.pc.id
+        o = [V("object", oid)]
+        self.rt.call(682, [o, [V("int", 5)], [V("int", -1)]], self.vm)
+        self.rt.call(680, [o, [V("int", 5)], [V("int", 1)]], self.vm)
+        self.rt.call(682, [o, [V("int", 6)], [V("int", 200)]], self.vm)
+        self.rt.call(682, [o, [V("int", 8)], [V("int", 3)]], self.vm)
+        self.assertEqual(self.rt.call(681, [o, [V("int", 5)]], self.vm)[0].value, 255)
+        self.assertEqual(self.rt.call(679, [o, [V("int", 5)]], self.vm)[0].value, 32)
+        self.assertEqual(self.rt.call(681, [o, [V("int", 6)]], self.vm)[0].value, 0)
+        self.assertEqual(self.rt.call(681, [o, [V("int", 8)]], self.vm)[0].value, 0)
 
     def test_tag_and_validity(self):
         obj = self.rt.world.add_object("trask", area=100)
