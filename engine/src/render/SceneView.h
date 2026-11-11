@@ -11,7 +11,7 @@ struct SceneCamera {
     float fovYDegrees = 60.0f;
     // Module cameras keep these defaults; a minigame's ARE sets its own clip range.
     float nearClip = 0.1f; // Measured on retail world and dialogue cameras: 0.1.
-    float farClip = 500.0f;
+    float farClip = 10000.0f; // Retail's camera far plane in play and in dialogue: 10000 in all 117 swept modules.
 };
 
 } // namespace ke
