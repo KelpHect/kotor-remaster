@@ -11892,11 +11892,6 @@ int runApplication(const Options& options)
                     }
                 }
                 kotor::Scene& worldScene = game->scene();
-                // The Taris sky box reaches past the 500 a camera defaults to. Retail's far plane
-                // (0045c540, camera +0x1e0) has a value that was not traced. A minigame keeps its Far_Clip.
-                if (!game->miniGameActive()) {
-                    frameCamera.farClip = std::max(frameCamera.farClip, worldScene.viewExtent);
-                }
                 state.backend->setCamera(frameCamera);
                 kotor::updateVisibleRooms(worldScene, frameCamera.eye);
                 if (options.captureCamera.rfind("novis:", 0) == 0) {
