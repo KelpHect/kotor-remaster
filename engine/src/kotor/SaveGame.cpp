@@ -693,6 +693,7 @@ void readObjects(const Gff& gff, OriginalSave& save)
                     object.locals.push_back(std::move(local));
                 }
             }
+            object.effects = readSavedEffects(gff, structure);
             if (const GffField* table = field(gff, structure, "SWVarTable");
                 table != nullptr && table->type == GffType::Struct) {
                 const std::uint32_t at = gff.structIndex(*table);
@@ -1759,6 +1760,98 @@ std::vector<std::uint8_t> makeSaveThumbnail()
         }
     }
     return out;
+}
+
+bool savedEffectApplies(const SavedEffect& effect)
+{
+    return !effect.skipOnLoad && (effect.subType & 7) != 3;
+}
+
+std::int32_t savedEffectScriptType(std::int32_t internalType)
+{
+    // Internal type -> nwscript EFFECT_TYPE_ constant: the straight comparisons of 00503a70.
+    static const std::array<std::pair<std::int32_t, std::int32_t>, 56> kTable = {{
+        {2, 1}, {7, 3}, {12, 7}, {15, 9}, {18, 11}, {21, 13}, {22, 15}, {24, 17}, {25, 18}, {31, 20},
+        {32, 21}, {35, 31}, {5, 32}, {45, 33}, {46, 34}, {1, 36}, {3, 37}, {36, 38}, {37, 39}, {10, 40},
+        {11, 41}, {13, 42}, {14, 43}, {16, 44}, {17, 45}, {48, 46}, {49, 47}, {28, 48}, {29, 49}, {26, 50},
+        {27, 51}, {33, 52}, {34, 53}, {55, 54}, {56, 55}, {47, 56}, {74, 58}, {51, 59}, {61, 60}, {82, 61},
+        {62, 62}, {63, 63}, {72, 64}, {70, 65}, {64, 66}, {73, 67}, {65, 68}, {52, 69}, {71, 70}, {75, 71},
+        {76, 72}, {50, 73}, {101, 74}, {30, 75}, {100, 76}, {102, 77},
+    }};
+    for (const auto& [internal, script] : kTable) {
+        if (internal == internalType) {
+            return script;
+        }
+    }
+    return -1;
+}
+
+std::vector<SavedEffect> readSavedEffects(const Gff& gff, std::uint32_t structure)
+{
+    std::vector<SavedEffect> effects;
+    for (const std::uint32_t entry : list(gff, structure, "EffectList")) {
+        SavedEffect effect;
+        // DWORD fields are read exactly (number() goes through float); the 64-bit Id is not exposed by Gff.
+        const auto exact = [&](const char* label) {
+            const GffField* value = field(gff, entry, label);
+            return value != nullptr ? value->data : 0u;
+        };
+        effect.type = numberInt(gff, entry, "Type", 0);
+        effect.subType = numberInt(gff, entry, "SubType", 0);
+        effect.duration = numberFloat(gff, entry, "Duration", 0.0f);
+        effect.skipOnLoad = numberInt(gff, entry, "SkipOnLoad", 0) != 0;
+        effect.expireDay = exact("ExpireDay");
+        effect.expireTime = exact("ExpireTime");
+        effect.creatorId = exact("CreatorId");
+        effect.spellId = field(gff, entry, "SpellId") != nullptr ? exact("SpellId") : 0xFFFFFFFFu;
+        effect.isExposed = numberInt(gff, entry, "IsExposed", 0) != 0;
+        const std::int32_t count = numberInt(gff, entry, "NumIntegers", 0);
+        std::vector<std::int32_t> saved;
+        for (const std::uint32_t item : list(gff, entry, "IntList")) {
+            saved.push_back(numberInt(gff, item, "Value", 0));
+        }
+        if (effect.type == 35 || effect.type == 38) {
+            // LoadGameEffect pads these two types to 21 integers: entries below NumIntegers - 6 and from the 16th on
+            // come from the list, the ones between are zero.
+            effect.ints.assign(21, 0);
+            std::size_t at = 0;
+            for (std::int32_t step = 0; step < 21; ++step) {
+                if (step < count - 6) {
+                    if (at < saved.size()) {
+                        effect.ints[at] = saved[at];
+                        ++at;
+                    }
+                } else if (step >= 15) {
+                    if (at < saved.size()) {
+                        effect.ints[at] = saved[at];
+                        ++at;
+                    }
+                } else {
+                    effect.ints[at < 21 ? at : 20] = 0;
+                }
+            }
+        } else if (count > 0) {
+            effect.ints = saved;
+        }
+        for (const std::uint32_t item : list(gff, entry, "FloatList")) {
+            if (effect.floats.size() < 4) {
+                effect.floats.push_back(numberFloat(gff, item, "Value", 0.0f));
+            }
+        }
+        for (const std::uint32_t item : list(gff, entry, "StringList")) {
+            if (effect.strings.size() < 6) {
+                effect.strings.push_back(text(gff, item, "Value"));
+            }
+        }
+        for (const std::uint32_t item : list(gff, entry, "ObjectList")) {
+            if (effect.objects.size() < 4) {
+                const GffField* object = field(gff, item, "Value");
+                effect.objects.push_back(object != nullptr ? object->data : 0u);
+            }
+        }
+        effects.push_back(std::move(effect));
+    }
+    return effects;
 }
 
 } // namespace ke::kotor

@@ -1031,6 +1031,17 @@ void addEncounterGeometry(Scene& scene, Install& install, const Gff& git)
             encounter.faction = intField(ute, uteRoot, "Faction", 0);
             encounter.playerOnly = intField(ute, uteRoot, "PlayerOnly", 0) != 0;
             encounter.reset = intField(ute, uteRoot, "Reset", 0) != 0;
+            // A saved encounter also holds its counters (ReadEncounterFromGff 00592430).
+            encounter.started = intField(ute, uteRoot, "Started", 0) == 1;
+            encounter.numberSpawned = intField(ute, uteRoot, "NumberSpawned", 0);
+            encounter.currentSpawns = intField(ute, uteRoot, "CurrentSpawns", 0);
+            encounter.lastSpawnDay = static_cast<std::uint32_t>(intField(ute, uteRoot, "LastSpawnDay", 0));
+            encounter.lastSpawnTime = static_cast<std::uint32_t>(intField(ute, uteRoot, "LastSpawnTime", 0));
+            if (const GffField* list = ute.field(uteRoot, "AreaList"); list != nullptr) {
+                for (const std::uint32_t entry : ute.list(*list)) {
+                    encounter.areaObjects.push_back(static_cast<std::uint32_t>(intField(ute, entry, "AreaObject", 0)));
+                }
+            }
             if (const GffField* list = ute.field(uteRoot, "CreatureList"); list != nullptr) {
                 for (const std::uint32_t creatureStruct : ute.list(*list)) {
                     EncounterCreature creature;

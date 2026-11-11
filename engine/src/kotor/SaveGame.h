@@ -60,6 +60,32 @@ struct SavedResource {
     std::vector<std::uint8_t> data;
 };
 
+// One saved game effect (retail CGameEffect::SaveGameEffect 00503790 / LoadGameEffect 005043a0).
+struct SavedEffect {
+    std::uint64_t id = 0;      // Id (64-bit): not read, Gff exposes no 64-bit value
+    std::int32_t type = 0;     // the internal effect type, not the nwscript EFFECT_TYPE_ constant
+    std::int32_t subType = 0;  // low 3 bits: duration type (1 temporary, 2 permanent, 3 innate); 8 magical flag
+    float duration = 0.0f;
+    bool skipOnLoad = false;
+    std::uint32_t expireDay = 0;
+    std::uint32_t expireTime = 0;
+    std::uint32_t creatorId = 0;
+    std::uint32_t spellId = 0xFFFFFFFFu;
+    bool isExposed = false;
+    std::vector<std::int32_t> ints;
+    std::vector<float> floats;
+    std::vector<std::string> strings;
+    std::vector<std::uint32_t> objects;
+};
+
+// CSWSObject::LoadEffectList 004d1be0: an effect with SkipOnLoad set, or with duration type 3 (innate: the
+// item or feat that gave it applies it again), is dropped; every other one is applied again.
+bool savedEffectApplies(const SavedEffect& effect);
+// CGameEffect::GetEffectTypeScriptConstant 00503a70; -1 for an internal type with no constant.
+std::int32_t savedEffectScriptType(std::int32_t internalType);
+// The EffectList of the GIT struct `structure` (LoadGameEffect field layout).
+std::vector<SavedEffect> readSavedEffects(const Gff& gff, std::uint32_t structure);
+
 struct SavedObjectState {
     enum class Kind { Creature, Door, Placeable, Trigger, Store, Encounter, Waypoint, Sound, Other };
     Kind kind = Kind::Other;
@@ -86,6 +112,7 @@ struct SavedObjectState {
     std::vector<Local> locals;
     std::array<std::uint32_t, 3> localBits{};
     std::array<std::uint8_t, 8> localBytes{};
+    std::vector<SavedEffect> effects; // EffectList (LoadEffectList 004d1be0)
 };
 
 // One available NPC: a PARTYTABLE slot (PT_AVAIL_NPCS entry) plus the stored

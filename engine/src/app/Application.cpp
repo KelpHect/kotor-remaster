@@ -4409,6 +4409,52 @@ int runSaveMatrixTest(GameSession& base, const std::string& fixtureDirectory)
     } else {
         check(false, "rsv_fixture");
     }
+    // EffectList reader (retail LoadEffectList 004d1be0 / LoadGameEffect 005043a0) on a synthetic saved struct.
+    try {
+        const auto makeEffect = [](std::uint32_t type, std::uint32_t subType, std::uint32_t skip, float duration,
+                                   std::int32_t firstInt) {
+            auto effect = std::make_shared<kotor::GffNode>(0);
+            effect->addUInt64("Id", 77);
+            effect->addUInt16("Type", type);
+            effect->addUInt16("SubType", subType);
+            effect->addFloat("Duration", duration);
+            effect->addUInt8("SkipOnLoad", skip);
+            effect->addUInt32("ExpireDay", 0);
+            effect->addUInt32("ExpireTime", 0);
+            effect->addUInt32("CreatorId", 5);
+            effect->addUInt32("SpellId", 0xFFFFFFFFu);
+            effect->addInt32("IsExposed", 1);
+            effect->addInt32("NumIntegers", 2);
+            std::vector<kotor::GffNodePtr> ints;
+            for (const std::int32_t value : {firstInt, 3}) {
+                auto item = std::make_shared<kotor::GffNode>(3);
+                item->addInt32("Value", value);
+                ints.push_back(item);
+            }
+            effect->addList("IntList", std::move(ints));
+            return effect;
+        };
+        kotor::GffNode effectRoot(0);
+        effectRoot.addList("EffectList", {makeEffect(22, 3, 0, 0.0f, 1),     // innate: dropped
+                                    makeEffect(68, 4, 1, 0.0f, 5),     // SkipOnLoad: dropped
+                                    makeEffect(101, 10, 0, 6.0f, 7),   // applied
+                                    makeEffect(9999, 2, 0, 0.0f, 1)});  // applied, no script constant
+        const kotor::Gff gff = kotor::Gff::parse(kotor::writeGff("GIT ", effectRoot), "effects.git");
+        const std::vector<kotor::SavedEffect> effects = kotor::readSavedEffects(gff, gff.rootIndex());
+        check(effects.size() == 4, "effectlist_count");
+        check(effects.size() == 4 && !kotor::savedEffectApplies(effects[0]) && !kotor::savedEffectApplies(effects[1])
+                  && kotor::savedEffectApplies(effects[2]) && kotor::savedEffectApplies(effects[3]),
+              "effectlist_filter");
+        check(effects.size() == 4 && effects[2].type == 101 && effects[2].subType == 10 && effects[2].ints.size() == 2
+                  && effects[2].ints[0] == 7 && std::fabs(effects[2].duration - 6.0f) < 1.0e-4f
+                  && effects[2].creatorId == 5 && effects[2].spellId == 0xFFFFFFFFu,
+              "effectlist_fields");
+        check(kotor::savedEffectScriptType(101) == 74 && kotor::savedEffectScriptType(9999) == -1,
+              "effectlist_type_map");
+    } catch (const std::exception& exception) {
+        logWarn(concat("save matrix: effectlist: ", exception.what()));
+        check(false, "effectlist_exception");
+    }
     std::filesystem::remove_all(scratch, error);
     logInfo(concat("save matrix: fixtures=", folders.size(), " loaded=", loaded,
                    " roundTrips=", roundTrips));

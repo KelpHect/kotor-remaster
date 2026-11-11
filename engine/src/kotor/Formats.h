@@ -1117,6 +1117,13 @@ struct EncounterTemplate {
     bool playerOnly = false;
     bool reset = false;
     bool active = true;
+    // Runtime counters a saved encounter carries (retail ReadEncounterFromGff 00592430); a UTE has none.
+    bool started = false;                // Started (+0x278): the wave was spawned and not yet wiped
+    std::int32_t numberSpawned = 0;      // NumberSpawned (+0x264)
+    std::int32_t currentSpawns = 0;      // CurrentSpawns (+0x2c8): respawns already used
+    std::uint32_t lastSpawnDay = 0;      // LastSpawnDay / LastSpawnTime (+0x270 / +0x274)
+    std::uint32_t lastSpawnTime = 0;
+    std::vector<std::uint32_t> areaObjects; // AreaList.AreaObject: object ids of the creatures it spawned
     std::vector<EncounterCreature> creatures;
 };
 
@@ -1252,6 +1259,7 @@ struct Entity {
     std::string conversation;
     Vec3 position;
     float bearing = 0.0f;
+    std::uint32_t savedObjectId = 0; // ObjectId of a struct read from a save (0 for a module template)
     std::string linkedModule;
     std::string linkedTo;
     std::uint32_t linkedFlags = 0;
