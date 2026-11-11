@@ -72,6 +72,10 @@ std::string panelName(const std::string& screenName)
     if (name.size() > 4 && name.compare(name.size() - 4, 4, ".gui") == 0) {
         name.resize(name.size() - 4);
     }
+    // The engine fits the status summary to the window as `statussummary_fit`; retail's panel is `statussummary`.
+    if (name.size() > 4 && name.compare(name.size() - 4, 4, "_fit") == 0) {
+        name.resize(name.size() - 4);
+    }
     return name;
 }
 
@@ -267,6 +271,15 @@ std::vector<std::filesystem::path> StateTrace::takeShots()
     std::vector<std::filesystem::path> out;
     out.swap(shotsOut_);
     return out;
+}
+
+void StateTrace::noteShot(const std::string& name, const std::string& file)
+{
+    // Called after step() advanced the frame counter: the shot shows the frame just drawn.
+    const auto saved = frame_;
+    frame_ = saved > 0 ? saved - 1 : 0;
+    write("shot", {clean(name), clean(file)});
+    frame_ = saved;
 }
 
 void StateTrace::resetWorld()
@@ -524,6 +537,18 @@ void StateTrace::trackGui(const StateTraceFrame& frame)
             add(frame.menuGui->underlayScreen(i), 0);
         }
         add(frame.menuGui->screen(), frame.menuGui->modalActive() ? 1 : 0);
+    }
+    if (frame.game != nullptr && inPlay_ && frame.pauseGui != nullptr && frame.pauseGui->screen() != nullptr) {
+        const kotor::GuiScreen* screen = frame.pauseGui->screen();
+        Panel panel;
+        panel.name = "pause";
+        panel.mode = 4;
+        panel.x = screen->extent.left;
+        panel.y = screen->extent.top;
+        panel.w = screen->extent.width;
+        panel.h = screen->extent.height;
+        panel.screen = screen;
+        now.push_back(panel);
     }
     if (frame.game != nullptr && !backdrop_ && frame.game->dialogue().active && frame.dialogueGui != nullptr
         && frame.dialogueGui->screen() != nullptr) {

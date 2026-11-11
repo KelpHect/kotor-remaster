@@ -22,6 +22,8 @@
 //                       time waited. Conditions (Application decides them): nogui | gui <screen> |
 //                       panel <screen> | nopanel | dialogue | nodialogue | entry <n> | replies | status |
 //                       nostatus
+//   if <condition> <step>   the step (click, key, shot, ...) runs only if the condition holds when it comes due;
+//                       the conditions are the waitfor ones plus `paused`
 //   end                 quit after this point
 
 #include <SDL3/SDL.h>
@@ -46,6 +48,8 @@ public:
         std::string name;
         std::array<float, 10> camera{}; // eye, forward, up, fovy; fovy <= 0 turns the override off
         std::uint64_t timeoutMs = 60000; // WaitFor
+        int group = 0;                   // `if <condition> <step>`: the steps of one line, run only when the condition holds
+        std::string onlyIf;
     };
     // WaitFor: true once the game is in the named state (the step's name, e.g. "entry 4").
     using Condition = std::function<bool(const std::string&)>;
@@ -99,6 +103,8 @@ private:
     Camera camera_;
     std::uint64_t offsetMs_ = 0;   // added to every step's time: the time spent in WaitFor steps
     bool waiting_ = false;
+    int group_ = 0;        // the `if` line being run or skipped
+    bool groupRun_ = true;
     std::uint64_t waitStartMs_ = 0;
     WaitResult waitResult_;
 };
