@@ -775,6 +775,20 @@ ParseResult parseArguments(int argc, char** argv)
             (script ? result.options.inputScript : result.options.inputScriptOut) = value;
             continue;
         }
+        if (arg == "--state-trace" || arg == "--state-trace-samp") {
+            const bool file = arg == "--state-trace";
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), file ? "--state-trace requires a file" : "--state-trace-samp requires a count");
+            }
+            if (file) {
+                result.options.stateTrace = value;
+            } else {
+                const int samp = std::atoi(value);
+                result.options.stateTraceSamp = samp > 1 ? samp : 1;
+            }
+            continue;
+        }
         if (arg == "--capture-action") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -931,6 +945,7 @@ void printUsage()
         << "  --hidden              Create the window hidden\n"
         << "  --input-script <f>    Play a timed walk of mouse, key and shot steps (app/InputScript.h)\n"
         << "  --input-script-out <d>  Folder for the walk's frames\n"
+        << "  --state-trace <f>     Write the per-frame state trace (game/StateTrace.h); --state-trace-samp <n> sets the cadence\n"
         << "  --headless            Force the SDL dummy video driver\n"
         << "  --frames <n>          Exit after n frames\n"
         << "  --seconds <s>         Exit after s seconds\n"

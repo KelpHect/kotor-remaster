@@ -1,6 +1,7 @@
 #include "game/GameSession.h"
 #include "game/Ambience.h"
 #include "game/Pathfinding.h"
+#include "game/StateTrace.h"
 
 #include "core/Log.h"
 #include "kotor/SaveGame.h"
@@ -957,6 +958,9 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
         }
     }
     initAnimations();
+    if (stateTrace_ != nullptr) {
+        stateTrace_->onModuleReady(*this);
+    }
     return true;
 }
 
@@ -4250,6 +4254,9 @@ void GameSession::showDialogueEntry(std::uint32_t entryIndex)
     dialogueView_.cameraId = entry.cameraId;
     const std::int32_t authoredAngle = entry.cameraAngle;
     dialogueView_.cameraAngle = activeDialogue_->shots.enterEntry(entryIndex, authoredAngle);
+    if (stateTrace_ != nullptr) {
+        stateTrace_->onDialogueLine(*this, entryIndex);
+    }
     dialogueView_.shotOnListener = false;
     dialogueView_.camVidEffect = entry.camVidEffect;
     // Retail 006306e0: an entry's camera set-up applies its video effect on a
@@ -6161,10 +6168,20 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
     return true;
 }
 
+void GameSession::traceRound(std::int32_t number, std::uint32_t owner)
+{
+    if (stateTrace_ != nullptr) {
+        stateTrace_->onRound(*this, number, owner);
+    }
+}
+
 std::optional<std::vector<script::Value>> GameSession::action(
     std::uint16_t actionId, const std::vector<std::vector<script::Value>>& args,
     script::World& world, script::Vm& vm)
 {
+    if (stateTrace_ != nullptr) {
+        stateTrace_->onAction(actionId);
+    }
     if (const ActionHandler handler = sim_->handlers.get(actionId); handler != nullptr) {
         ActionCall call{*this, world, vm, args, actionId};
         if (auto handled = handler(call); handled.has_value()) {

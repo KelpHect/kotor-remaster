@@ -753,6 +753,7 @@ struct CombatOps {
         }
         combat.pendingAction = kActionAttackObject;
         const std::int32_t number = ++a.sim().combatRoundCounter;
+        s.traceRound(number, self);
         if (isPc(self)) {
             s.combatRound_ = number;
             s.logEvent("round " + std::to_string(number) + ": " + nameOf(target));
