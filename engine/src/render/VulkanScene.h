@@ -63,6 +63,17 @@ public:
         shadowsOn_ = enabled;
         shadowFocus_ = focus;
     }
+    // IRenderBackend::requestShadowProbe: the next frame copies its stencil (recordShadowProbe, after
+    // the last pass) and finishShadowProbe counts it once that frame has completed.
+    void requestShadowProbe() { shadowProbeRequested_ = true; shadowProbeReady_ = false; }
+    bool recordShadowProbe(VkCommandBuffer commandBuffer);
+    void finishShadowProbe();
+    bool shadowProbe(std::size_t& covered, std::size_t& total) const
+    {
+        covered = shadowProbeCovered_;
+        total = shadowProbeTotal_;
+        return shadowProbeReady_;
+    }
     bool ready() const { return pipeline_ != VK_NULL_HANDLE; }
 
     // 3D GUI preview support. A preview instance is initialize()d for its pipelines
@@ -160,6 +171,14 @@ private:
     VkDeviceMemory shadowMemory_ = VK_NULL_HANDLE;
     void* shadowMapped_ = nullptr;
     std::uint64_t shadowFrame_ = 0;
+    bool shadowProbeRequested_ = false;
+    bool shadowProbeRecorded_ = false;
+    bool shadowProbeReady_ = false;
+    std::size_t shadowProbeCovered_ = 0;
+    std::size_t shadowProbeTotal_ = 0;
+    VkBuffer shadowProbeBuffer_ = VK_NULL_HANDLE;
+    VkDeviceMemory shadowProbeMemory_ = VK_NULL_HANDLE;
+    VkDeviceSize shadowProbeBytes_ = 0;
 
     VkDevice device_ = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice_ = VK_NULL_HANDLE;

@@ -2008,6 +2008,11 @@ TextureBatch makeMaterialBatch(Scene& scene, Install& install, const MdlMeshTria
 // Order of the blended pass: surfaces that hide what is behind them, then those that let it show,
 // then additive; by transparency hint within those, then far to near.
 bool blendedDrawsBefore(const TextureBatch& a, float distanceA, const TextureBatch& b, float distanceB);
+// A room batch in retail's default blend state whose pixels never let what is behind them show:
+// drawn with the static geometry, in place, so the room depth is complete before RenderShadows
+// (Scene::Render 00451750: RenderStaticGeometry 00450c30, RenderShadows 00451a50, then the dynamic
+// geometry 00450b50). Translucent and additive room parts stay in the sorted blended pass.
+bool drawsWithStaticGeometry(const TextureBatch& batch);
 // The batch state for an emitter's sprites, from its header and the sprite's TXI.
 TextureBatch makeEmitterBatch(const Scene& scene, const MdlEmitter& header, std::uint32_t texture);
 SceneVertex toSceneVertex(const MdlMeshVertex& vertex, const MdlMeshTriangle& triangle);

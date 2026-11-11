@@ -10,6 +10,8 @@ struct Options {
     BackendKind backend = BackendKind::Auto;
     bool headless = false;
     bool hidden = false;
+    // --no-activate: a shown window that never takes focus (Vulkan presents nothing from a hidden one).
+    bool noActivate = false;
     bool validate = false;
     bool vsync = true;
     int maxFps = -1;          // --max-fps N: -1 takes the engine's default, 0 is no cap
@@ -125,6 +127,7 @@ struct Options {
     bool sizeGiven = false;   // --width or --height was passed: a saved size does not override it
     bool fullscreen = false;  // --fullscreen: borderless at the desktop size
     int frames = 0;          // 0 = unlimited
+    int shadowProbeFrame = 0; // --shadow-probe: count the stencil shadow pixels of this frame
     double seconds = 0.0;    // 0 = unlimited
     std::string title = "KotOR Remaster - Engine Scaffold";
     std::string install;
