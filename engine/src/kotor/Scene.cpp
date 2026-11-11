@@ -744,8 +744,10 @@ Vec3 turnBackBy(const Mat3& m, Vec3 v)
 // LightManager::GetShadowLights 004a4b10, mode 2: a light with the shadow flag (+0x5c), not ambient
 // only (+0x68), with a radius of at least 1000 or dynamic type 0 (+0x58, +0x70), the lowest priority
 // below 6 (node +0x90), the first such in the list on a tie. NOT PROVEN to be the light
-// Scene::RenderShadows reads (scene +0x270 -> +0x1c); no writer of that field was found
-// statically. RETAIL row 46 asks for it.
+// Scene::RenderShadows reads (scene +0x270 -> +0x1c, the root gob's light list): no writer of that
+// field was found statically, and GetShadowLights is only called with modes 0 and 1 (00453982,
+// 00453c1b, 00456278), so mode 2 may be dead code. RETAIL row 47 asks for the live light. On the
+// palm spot it picks the light that gives retail's shadow (SC render/palm_gl_pair3.png).
 const Scene::WorldLight* shadowLight(const Scene& scene)
 {
     const Scene::WorldLight* chosen = nullptr;
@@ -762,10 +764,12 @@ const Scene::WorldLight* shadowLight(const Scene& scene)
     return chosen;
 }
 
-// The value at scene +0x270 -> +0x20 that 00450730 halves into the fan's centre alpha. NOT PROVEN:
-// its writer was not found statically (RETAIL row 46); this is the value that matches the paired
-// Taris frame (paired\palm_m41aa_taris_pair.png).
-constexpr float kShadowIntensity = 0.7f;
+// The value at scene +0x270 -> +0x20 that 00450730 halves into the fan's centre alpha. Scene +0x270
+// is the root gob's light list (gob at scene +0xf8, list at gob +0x178); no static writer of its
+// +0x1c / +0x20 was found, so RETAIL row 47 asks for the live value. 1.0 is the fit to the drawn
+// palm pair (SC render/palm_gl_pair3.png): shadowed sand 82..89 in retail against lit 165, i.e. a
+// centre alpha of 127/255 less the fan's fall-off a few metres from the focus.
+constexpr float kShadowIntensity = 1.0f;
 
 } // namespace
 

@@ -1272,6 +1272,8 @@ void GlScene::drawShadows(const SceneCamera& camera, const float* viewProjection
     gl_.Clear(kGlStencilBufferBit);
     // 00451a50: stencil test on, depth and colour writes off, glStencilFunc(GL_ALWAYS, 0xf, 0xf); the
     // depth test stays on. Each part (00426660): GL_CW with depth-fail GL_INCR, then GL_CCW with GL_DECR.
+    // 00426660's two-sided z-pass branch needs 007a68dc, which no code writes, so retail always takes
+    // this one; the cull face it relies on stays on from the static geometry.
     gl_.Enable(kGlStencilTest);
     gl_.DepthMask(0);
     gl_.ColorMask(0, 0, 0, 0);
@@ -1379,7 +1381,8 @@ std::size_t GlScene::drawMeshes(const SceneCamera& camera, float aspect, const P
             if (batch.maxDistance > 0.0f && kotor::length(batch.center - camera.eye) > batch.maxDistance) {
                 continue;
             }
-            if (batch.blend != kotor::BlendMode::Opaque) {
+            if (batch.blend != kotor::BlendMode::Opaque
+                && !(view == nullptr && mesh.entity == UINT32_MAX && kotor::drawsWithStaticGeometry(batch))) {
                 const kotor::Vec3 center = mesh.entity == UINT32_MAX ? batch.center : meshCenter;
                 blended.push_back({&mesh, &batch, model, light, kotor::length(center - camera.eye)});
                 continue;
@@ -1458,6 +1461,19 @@ void GlScene::render(const SceneCamera& camera, int width, int height)
     gl_.Enable(kGlDepthTest);
     gl_.DepthFunc(kGlLequal);
     const std::size_t drawnMeshes = drawMeshes(camera, static_cast<float>(width) / static_cast<float>(height), nullptr);
+    if (shadowProbeRequested_) {
+        // The stencil as the volumes left it: no later pass writes it (stencil writes are masked off
+        // after 00450730's fan).
+        constexpr GlEnum kGlStencilIndex = 0x1901u;
+        std::vector<std::uint8_t> stencil(static_cast<std::size_t>(width) * static_cast<std::size_t>(height), 0u);
+        gl_.PixelStorei(kGlPackAlignment, 1);
+        gl_.ReadPixels(0, 0, width, height, kGlStencilIndex, kGlUnsignedByte, stencil.data());
+        shadowProbeCovered_ = static_cast<std::size_t>(
+            std::count_if(stencil.begin(), stencil.end(), [](std::uint8_t value) { return value >= 0x80u; }));
+        shadowProbeTotal_ = stencil.size();
+        shadowProbeRequested_ = false;
+        shadowProbeReady_ = true;
+    }
     // FrameBufferModifications 00437520 order: the speed blur (0x10) before the distortion (0x20).
     applySpeedBlur(width, height);
     applyDistortion(camera, width, height);

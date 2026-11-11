@@ -156,6 +156,11 @@ public:
     // The frame on screen right now, never a cached one (a save's Screen.tga is taken as the pause
     // menu opens, long after any capture armed earlier).
     virtual bool captureLatest(CapturedFrame& frame) { return captureFrame(frame); }
+    // Stencil shadow check (--shadow-probe): the next rendered frame counts its pixels whose
+    // stencil reached 2^(bits-1) after the volumes, where 00450730's fan darkens. shadowProbe
+    // gives the count once that frame is done; false while pending or when unsupported.
+    virtual void requestShadowProbe() {}
+    virtual bool shadowProbe(std::size_t& covered, std::size_t& total) { (void)covered; (void)total; return false; }
 
     virtual const BackendInfo& info() const = 0;
 };

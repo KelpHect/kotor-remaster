@@ -1521,6 +1521,9 @@ SDL_WindowFlags windowFlagsFor(BackendKind kind, const Options& options)
     }
     if (options.hidden || options.headless || kind == BackendKind::Null) {
         flags |= SDL_WINDOW_HIDDEN;
+    } else if (options.noActivate) {
+        SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0");
+        flags |= SDL_WINDOW_NOT_FOCUSABLE;
     } else if (options.startMinimized) {
         flags |= SDL_WINDOW_MINIMIZED;
     }
@@ -11139,6 +11142,8 @@ int runApplication(const Options& options)
     }
 
     std::uint64_t frames = 0;
+    bool shadowProbeAsked = false;
+    int shadowProbeFrame = options.shadowProbeFrame; // --shadow-probe, 0 once reported
     // Verification only: --video-effect-sequence runs one compiled fixture per
     // frame (row0|row1|row2|off) so the GPU gate can drive the real script path.
     std::vector<std::string> videoEffectSequence;
@@ -12726,6 +12731,19 @@ int runApplication(const Options& options)
             audioOutput.reset();
             SDL_Quit();
             return 6;
+        }
+        if (shadowProbeFrame > 0 && state.backend) {
+            // --shadow-probe: the stencil after the shadow volumes of one frame (00451a50).
+            std::size_t covered = 0;
+            std::size_t total = 0;
+            if (shadowProbeAsked && state.backend->shadowProbe(covered, total)) {
+                logInfo(concat("shadow probe: frame ", frames, " covered ", covered, " of ", total, " pixels"));
+                shadowProbeAsked = false;
+                shadowProbeFrame = 0;
+            } else if (!shadowProbeAsked && frames + 1u >= static_cast<std::uint64_t>(shadowProbeFrame)) {
+                state.backend->requestShadowProbe();
+                shadowProbeAsked = true;
+            }
         }
         if (inEffectSequence && !options.videoEffectShots.empty()) {
             const std::string shot = options.videoEffectShots + "-" + std::to_string(sequenceIndex) + ".bmp";

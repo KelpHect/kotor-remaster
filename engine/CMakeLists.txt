@@ -350,6 +350,19 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                                  PASS_REGULAR_EXPRESSION "scene sync: meshes reused [1-9][0-9]* uploaded [1-9]"
                                  FAIL_REGULAR_EXPRESSION "\\[ERROR\\]")
         endforeach()
+        # Creature stencil shadows (Scene::RenderShadows 00451a50): on unk_m41aa the area light
+        # casts, and frame 30's shadow volumes must leave stencil >= 128 under the PC (third-person camera).
+        foreach(backend gl vulkan)
+            add_test(NAME kotor_shadow_stencil_${backend}
+                     COMMAND kotor_engine --${backend} --no-fallback --module unk_m41aa --frames 40 --no-movies --no-audio
+                             --hidden --third-person --shadow-probe 30
+                             --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_shadow_stencil_${backend}/saves"
+                             --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_shadow_stencil_${backend}/settings.ini")
+            set_tests_properties(kotor_shadow_stencil_${backend} PROPERTIES TIMEOUT 300
+                                 ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}"
+                                 PASS_REGULAR_EXPRESSION "shadow probe: frame [0-9]+ covered [1-9][0-9]* of"
+                                 FAIL_REGULAR_EXPRESSION "\\[ERROR\\]")
+        endforeach()
         # The GL pixel format is fixed at window creation: asking later left a 16-bit depth buffer.
         add_test(NAME kotor_gl_depth_bits
                  COMMAND kotor_engine --opengl --no-fallback --module end_m01aa --frames 3 --no-movies)

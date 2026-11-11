@@ -480,6 +480,70 @@ void VulkanScene::drawShadows(VkCommandBuffer commandBuffer, const SceneCamera& 
               static_cast<std::uint32_t>(frame.volume.size()), 0);
 }
 
+bool VulkanScene::recordShadowProbe(VkCommandBuffer commandBuffer)
+{
+    if (!shadowProbeRequested_ || depthImage_ == VK_NULL_HANDLE || extent_.width == 0 || extent_.height == 0) {
+        return false;
+    }
+    shadowProbeRequested_ = false;
+    const VkDeviceSize bytes = static_cast<VkDeviceSize>(extent_.width) * extent_.height;
+    if (shadowProbeBytes_ < bytes) {
+        if (shadowProbeBuffer_ != VK_NULL_HANDLE) {
+            vkDestroyBuffer(device_, shadowProbeBuffer_, nullptr);
+            vkFreeMemory(device_, shadowProbeMemory_, nullptr);
+            shadowProbeBuffer_ = VK_NULL_HANDLE;
+            shadowProbeMemory_ = VK_NULL_HANDLE;
+        }
+        std::string error;
+        if (!createBuffer(bytes, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                          shadowProbeBuffer_, shadowProbeMemory_, error)) {
+            shadowProbeBytes_ = 0;
+            return false;
+        }
+        shadowProbeBytes_ = bytes;
+    }
+    // The stencil as the frame left it (its attachment is stored); the next frame starts it from
+    // UNDEFINED again (prepareDepth).
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = depthImage_;
+    barrier.subresourceRange = {VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 0, 1, 0, 1};
+    barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0,
+                         0, nullptr, 0, nullptr, 1, &barrier);
+    VkBufferImageCopy region{};
+    region.imageSubresource = {VK_IMAGE_ASPECT_STENCIL_BIT, 0, 0, 1};
+    region.imageExtent = {extent_.width, extent_.height, 1};
+    vkCmdCopyImageToBuffer(commandBuffer, depthImage_, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, shadowProbeBuffer_, 1, &region);
+    shadowProbeRecorded_ = true;
+    return true;
+}
+
+void VulkanScene::finishShadowProbe()
+{
+    if (!shadowProbeRecorded_ || shadowProbeMemory_ == VK_NULL_HANDLE) {
+        return;
+    }
+    shadowProbeRecorded_ = false;
+    void* mapped = nullptr;
+    const VkDeviceSize bytes = static_cast<VkDeviceSize>(extent_.width) * extent_.height;
+    if (vkMapMemory(device_, shadowProbeMemory_, 0, bytes, 0, &mapped) != VK_SUCCESS || mapped == nullptr) {
+        return;
+    }
+    const auto* stencil = static_cast<const std::uint8_t*>(mapped);
+    shadowProbeCovered_ = static_cast<std::size_t>(
+        std::count_if(stencil, stencil + bytes, [](std::uint8_t value) { return value >= 0x80u; }));
+    shadowProbeTotal_ = static_cast<std::size_t>(bytes);
+    vkUnmapMemory(device_, shadowProbeMemory_);
+    shadowProbeReady_ = true;
+}
+
 bool VulkanScene::createPipeline(std::string& error)
 {
     const std::filesystem::path dir = shaderDirectory();
@@ -1150,7 +1214,8 @@ bool VulkanScene::createDepth(std::string& error)
     imageInfo.format = depthFormat_;
     imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    // Transfer source for the stencil probe (recordShadowProbe).
+    imageInfo.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     if (vkCreateImage(device_, &imageInfo, nullptr, &depthImage_) != VK_SUCCESS) {
@@ -1382,7 +1447,8 @@ std::size_t VulkanScene::recordMeshes(VkCommandBuffer commandBuffer, const Scene
             if (batch.maxDistance > 0.0f && kotor::length(batch.center - camera.eye) > batch.maxDistance) {
                 continue;
             }
-            if (batch.blend != kotor::BlendMode::Opaque) {
+            if (batch.blend != kotor::BlendMode::Opaque
+                && !(view == nullptr && mesh.entity == UINT32_MAX && kotor::drawsWithStaticGeometry(batch))) {
                 const kotor::Vec3 center = mesh.entity == UINT32_MAX ? batch.center : meshCenter;
                 blended.push_back({&mesh, &batch, model, light, kotor::length(center - camera.eye)});
                 continue;
@@ -1668,6 +1734,15 @@ void VulkanScene::shutdown()
         vkFreeMemory(device_, shadowMemory_, nullptr);
         shadowMemory_ = VK_NULL_HANDLE;
     }
+    if (shadowProbeBuffer_ != VK_NULL_HANDLE) {
+        vkDestroyBuffer(device_, shadowProbeBuffer_, nullptr);
+        shadowProbeBuffer_ = VK_NULL_HANDLE;
+    }
+    if (shadowProbeMemory_ != VK_NULL_HANDLE) {
+        vkFreeMemory(device_, shadowProbeMemory_, nullptr);
+        shadowProbeMemory_ = VK_NULL_HANDLE;
+    }
+    shadowProbeBytes_ = 0;
     if (shadowVolumePipeline_ != VK_NULL_HANDLE) {
         vkDestroyPipeline(device_, shadowVolumePipeline_, nullptr);
         shadowVolumePipeline_ = VK_NULL_HANDLE;
