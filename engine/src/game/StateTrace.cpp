@@ -316,13 +316,13 @@ void StateTrace::onAction(std::uint16_t actionId)
 
 // A combat round started (TRACE_SPEC 4.11). The engine runs rounds only for creatures that attack; retail starts one for
 // every creature about every 3 s, so this class differs by design. Only the first 8 rounds get an anchor (section 5).
-void StateTrace::onRound(GameSession& game, std::int32_t number, std::uint32_t owner)
+void StateTrace::onRound(GameSession& game, std::int32_t number, std::uint32_t owner, bool ended)
 {
     if (!open_ || backdrop_) {
         return;
     }
-    write("rnd", {"start", std::to_string(number), keyOfObject(game, owner)});
-    if (number <= 8) {
+    write("rnd", {ended ? "end" : "start", std::to_string(number), keyOfObject(game, owner)});
+    if (!ended && number <= 8) {
         schedule(kRoundFrames, "round:" + std::to_string(number));
     }
 }

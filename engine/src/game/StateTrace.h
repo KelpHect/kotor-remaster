@@ -66,7 +66,7 @@ public:
     void onModuleReady(GameSession& game);
     void onDialogueLine(GameSession& game, std::uint32_t entry);
     void onAction(std::uint16_t actionId);
-    void onRound(GameSession& game, std::int32_t number, std::uint32_t owner);
+    void onRound(GameSession& game, std::int32_t number, std::uint32_t owner, bool ended = false);
     // The loading screen the module hook presents: reported as a panel that opens now and closes at `mod ready`.
     void onLoadScreen(const std::string& name, int x, int y, int w, int h);
 

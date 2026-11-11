@@ -157,6 +157,13 @@ public:
     // 005b4f30: column subAttack+1 of the clip's combatanimations row (hit1, hit2, hit3).
     std::int32_t attackImpactMs(const std::string& clip, int subAttack = 0) const;
     bool animationLooping(std::int32_t animationId) const;
+    bool animationFireAndForget(std::int32_t animationId) const;
+    // Script ANIMATION_* constant to clip: action 0x540550 maps it to a server animation id and the switch at 0069f650 to an
+    // animations.2da row (ids still >= 10000 are dialoganimations rows). Returns a row, or an id >= 10000, or the input unchanged.
+    static std::int32_t scriptAnimationTarget(std::int32_t scriptId);
+    std::string scriptAnimationName(std::int32_t scriptId) const;
+    bool scriptAnimationLooping(std::int32_t scriptId) const;
+    bool scriptAnimationFireAndForget(std::int32_t scriptId) const;
     bool animationStationary(std::int32_t animationId) const;
     // A DLG AnimList id that names a dialoganimations.2da row (the id itself below 1200, or
     // id - 10000), as the model animation to play ("" when the row has no name or the id is a

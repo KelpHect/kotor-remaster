@@ -444,6 +444,54 @@ bool Rules::animationLooping(std::int32_t animationId) const
     return cellInt(*animations_, std::to_string(animationId), "looping", 0) != 0;
 }
 
+// animations.2da FireForget column, the one 0063c380 reads (name at 0074bbf8, column found at 005c3451).
+bool Rules::animationFireAndForget(std::int32_t animationId) const
+{
+    if (!animations_) {
+        return false;
+    }
+    return cellInt(*animations_, std::to_string(animationId), "fireforget", 0) != 0;
+}
+
+// Script animation constant 0..120 -> animations.2da row (or dialog id >= 10000), for a creature out of combat stance
+// (flags at +0xc5/+0xc6 of the animation base clear). Derived from action 0x540550 and the switch at 0069f650.
+static const std::int32_t kScriptAnimationTable[121] = {
+    6, 7, 18, 24, 24, 25, 27, 26, 29, 28, 40, 41,
+    14, 15, 32, 44, 53, 54, 74, 270, 270, 77, 76, 79,
+    359, 360, 81, 370, 371, 35, 375, 384, 385, 24, 16, 19,
+    10036, 10037, 25, 27, 26, 29, 28, 10043, 17, 10045, 10046, 10047,
+    10048, 10049, 10050, 10051, 7, 11, 10, 12, 13, 14, 15, 40,
+    41, 70, 10062, 10063, 10064, 10065, 10066, 10067, 10068, 10069, 37, 10071,
+    10072, 10073, 10074, 10075, 10076, 303, 10078, 10079, 10080, 10081, 10082, 10083,
+    10084, 10085, 10086, 10087, 10088, 10089, 10090, 10091, 8, 1, 10094, 10095,
+    10096, 10097, 10098, 10099, 11, 10, 12, 13, 16, 19, 31, 33,
+    17, 17, 17, 10111, 10112, 43, 68, 38, 72, 57, 58, 346,
+    34,
+};
+
+std::int32_t Rules::scriptAnimationTarget(std::int32_t scriptId)
+{
+    return scriptId >= 0 && scriptId <= 120 ? kScriptAnimationTable[scriptId] : scriptId;
+}
+
+std::string Rules::scriptAnimationName(std::int32_t scriptId) const
+{
+    const std::int32_t target = scriptAnimationTarget(scriptId);
+    return target >= 10000 ? dialogAnimationName(target) : animationName(target);
+}
+
+bool Rules::scriptAnimationLooping(std::int32_t scriptId) const
+{
+    const std::int32_t target = scriptAnimationTarget(scriptId);
+    return target >= 10000 ? dialogAnimationLooping(target) : animationLooping(target);
+}
+
+bool Rules::scriptAnimationFireAndForget(std::int32_t scriptId) const
+{
+    const std::int32_t target = scriptAnimationTarget(scriptId);
+    return target >= 10000 ? !dialogAnimationLooping(target) : animationFireAndForget(target);
+}
+
 namespace {
 std::int32_t dialogAnimationRow(std::int32_t animationId)
 {
