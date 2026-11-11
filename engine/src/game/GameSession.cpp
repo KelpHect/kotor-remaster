@@ -4226,7 +4226,10 @@ void GameSession::showDialogueEntry(std::uint32_t entryIndex)
         }
         // A control entry and its textless link walk the shot table like any other
         // (inferred: retail's server path 005a13d0 and 005a1ecc does not look at the text).
-        activeDialogue_->shots.enterEntry(entryIndex, entry.cameraAngle);
+        const std::int32_t passAngle = activeDialogue_->shots.enterEntry(entryIndex, entry.cameraAngle);
+        if (stateTrace_ != nullptr) {
+            stateTrace_->onDialogueControlEntry(*this, entryIndex, passAngle);
+        }
         activeDialogue_->shots.beginReplies();
         activeDialogue_->shots.offerReply(replies.front(), reply.cameraAngle);
         if (traceDialogueTrail_) {

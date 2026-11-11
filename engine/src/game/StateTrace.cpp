@@ -357,6 +357,33 @@ void StateTrace::onDialogueLine(GameSession& game, std::uint32_t entry)
     dlgcamDirty_ = true;
 }
 
+void StateTrace::onDialogueControlEntry(GameSession& game, std::uint32_t entry, std::int32_t cameraAngle)
+{
+    if (!open_ || backdrop_ || !game.activeDialogue_.has_value() || entry >= game.activeDialogue_->dlg.entries.size()) {
+        return;
+    }
+    const kotor::DlgEntry& line = game.activeDialogue_->dlg.entries[entry];
+    ++dlgCount_;
+    // Speaker and Listener name objects by tag, as showDialogueEntry resolves them for an entry with text.
+    std::uint32_t speakerObject = game.activeDialogue_->npcObject;
+    if (!line.speaker.empty()) {
+        const std::size_t at = game.findEntity(line.speaker);
+        if (at != static_cast<std::size_t>(-1)) {
+            speakerObject = game.objectForEntity(at);
+        }
+    }
+    std::string listener = "none";
+    if (!line.listener.empty()) {
+        const std::size_t at = game.findEntity(line.listener);
+        listener = at != static_cast<std::size_t>(-1) ? keyOfObject(game, game.objectForEntity(at)) : keyOfObject(game, game.controlledObject());
+    }
+    write("dlg", {"line", "-", std::to_string(dlgCount_), keyOfObject(game, game.activeDialogue_->npcObject),
+                  keyOfObject(game, speakerObject), listener, std::to_string(cameraAngle), std::to_string(line.cameraId),
+                  std::to_string(line.animList.size()), "-", "-"});
+    schedule(kDialogueFrames, "dlg:-:" + std::to_string(dlgCount_));
+    dlgcamDirty_ = true;
+}
+
 // ---- per frame -------------------------------------------------------------------------------------------------------
 
 void StateTrace::step(const StateTraceFrame& frame)

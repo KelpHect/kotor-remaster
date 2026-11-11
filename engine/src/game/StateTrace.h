@@ -65,6 +65,9 @@ public:
     // ---- hooks called by the session (all on the game thread) ----
     void onModuleReady(GameSession& game);
     void onDialogueLine(GameSession& game, std::uint32_t entry);
+    // An entry with no text that the conversation passes through: retail's client still receives it
+    // (CSWSDialog::SendDialogEntryNode 005a13d0 -> CGuiInGame::HandleDialogEntry 00631d80), so it is a row too.
+    void onDialogueControlEntry(GameSession& game, std::uint32_t entry, std::int32_t cameraAngle);
     void onAction(std::uint16_t actionId);
     void onRound(GameSession& game, std::int32_t number, std::uint32_t owner);
     // The loading screen the module hook presents: reported as a panel that opens now and closes at `mod ready`.
