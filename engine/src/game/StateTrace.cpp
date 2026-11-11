@@ -137,6 +137,10 @@ void StateTrace::attach(GameSession& game, bool menuBackdrop)
         }
         // Behind the main menu the session runs a backdrop world retail has no counterpart for: only the
         // menu's own sounds (the theme and the interface sounds) are reported until a real module is ready.
+        // A movie's audio track is Bink's own output in retail, not a Miles sample or stream.
+        if (info.name->find(".bik") != std::string::npos) {
+            return;
+        }
         if (backdrop_ && info.name->rfind("gui_", 0) != 0 && info.name->rfind("mus_theme", 0) != 0) {
             return;
         }
@@ -196,7 +200,16 @@ void StateTrace::write(const char* kind, const std::vector<std::string>& fields)
         out_ << '\n';
         return;
     }
-    out_ << frame_ << '\t' << (SDL_GetTicks() - startTicks_) << "\t-\t" << kind;
+    // gt: `0:<ms>` of simulated game time since the module became ready (retail's gt reads `0:<ms>` of the module
+    // clock once a module runs), so event times compare without the wall clock of a loaded or fixed-step run.
+    out_ << frame_ << '\t' << (SDL_GetTicks() - startTicks_) << '\t';
+    if (game_ != nullptr) {
+        const double since = std::max(0.0, static_cast<double>(game_->elapsed_) - simBase_);
+        out_ << "0:" << static_cast<std::uint64_t>(since * 1000.0);
+    } else {
+        out_ << '-';
+    }
+    out_ << '\t' << kind;
     for (const std::string& field : fields) {
         out_ << '\t' << field;
     }
@@ -264,9 +277,20 @@ void StateTrace::onModuleReady(GameSession& game)
         loadScreen_.clear();
     }
     if (!reported_.empty()) {
+        // Retail tears the in-game panels down with the module (client_unload) and opens them again once the next one
+        // runs; the engine keeps its HUD up across the transition, so the trace closes and reopens them here.
+        for (const Panel& panel : panels_) {
+            if (panel.name == "mipc210x7" || panel.name == "fade") {
+                write("gui", {"close", clean(panel.name), "-", "-", "-", "-", "-"});
+            }
+        }
+        panels_.erase(std::remove_if(panels_.begin(), panels_.end(), [](const Panel& panel) {
+                          return panel.name == "mipc210x7" || panel.name == "fade";
+                      }), panels_.end());
         write("mod", {"unload", clean(reported_)});
     }
     reported_ = game.module_;
+    simBase_ = static_cast<double>(game.elapsed_);
     backdrop_ = false;
     resetWorld();
     write("mod", {"ready", clean(reported_)});
@@ -311,17 +335,21 @@ void StateTrace::onDialogueLine(GameSession& game, std::uint32_t entry)
     const kotor::DlgEntry& line = game.activeDialogue_->dlg.entries[entry];
     ++dlgCount_;
     // TRACE_SPEC 4.9: dlgResref reads empty in retail, so it is `-` here too and the anchor is dlg:-:n. The text is
-    // only hashed (FNV-1a 32 over the line as the UI holds it, after token substitution), never written.
+    // only hashed (FNV-1a 32 over the first 96 bytes of the line as the UI holds it, after token substitution), never written.
     std::uint32_t hash = 2166136261u;
-    for (const char c : game.dialogueView_.text) {
-        hash = (hash ^ static_cast<unsigned char>(c)) * 16777619u;
+    // The retail recorder reads at most 96 bytes of the entry text (trace.js exo()), so the hash covers the same prefix.
+    const std::string& shown = game.dialogueView_.text;
+    for (std::size_t i = 0; i < shown.size() && i < 96; ++i) {
+        hash = (hash ^ static_cast<unsigned char>(shown[i])) * 16777619u;
     }
     char hashText[16];
     std::snprintf(hashText, sizeof hashText, "%08x", hash);
     const DialogueView& view = game.dialogueView_;
     const std::string owner = keyOfObject(game, game.activeDialogue_->npcObject);
     const std::string speaker = keyOfObject(game, view.speakerObject);
-    const std::string listener = keyOfObject(game, view.listenerObject);
+    // The server sends the none sentinel when the DLG entry names no Listener; the engine's effective listener (the PC)
+    // is a default it fills in, so the raw entry decides here.
+    const std::string listener = line.listener.empty() ? std::string("none") : keyOfObject(game, view.listenerObject);
     write("dlg", {"line", "-", std::to_string(dlgCount_), owner, speaker, listener, std::to_string(view.cameraAngle),
                   std::to_string(view.cameraId), std::to_string(line.animList.size()), view.text.empty() ? "-" : hashText,
                   "-"});
@@ -486,11 +514,13 @@ void StateTrace::trackGui(const StateTraceFrame& frame)
     state("gui_stack", "", {clean(stack)});
 }
 
-// TRACE_SPEC 4.10: a record identical in (op, kind, resref, position) to one written in the last 1000 ms of wall time
+// TRACE_SPEC 4.10: a record identical in (op, kind, resref, position) to one written in the last 1000 ms
 // is dropped; ambient 3D emitters restart many times a second and the trace is a record of distinct starts and stops.
 void StateTrace::writeSound(const std::vector<std::string>& fields)
 {
-    const std::uint64_t now = SDL_GetTicks();
+    // The 1000 ms rule runs on simulated game time, so a fixed-step or loaded run writes the same records as a real-time one.
+    const std::uint64_t now = game_ != nullptr ? static_cast<std::uint64_t>(static_cast<double>(game_->elapsed_) * 1000.0)
+                                               : static_cast<std::uint64_t>(SDL_GetTicks());
     std::string key;
     for (std::size_t i = 0; i < 6 && i < fields.size(); ++i) {
         key += fields[i];
@@ -579,7 +609,9 @@ void StateTrace::sampleState(const StateTraceFrame& frame)
 
     state("area", "", {clean(lowered(scene.areaTag))});
 
-    const bool scriptPause = g.scriptPauseActive() || g.dialoguePaused();
+    // A conversation waits the world in the engine but retail writes no pause row for it (TRACE: none across 4 Taris
+    // cutscene lines), so only the script pause counts here.
+    const bool scriptPause = g.scriptPauseActive();
     const std::uint32_t bits = (frame.userPause ? 1u : 0u) | ((scriptPause || frame.uiPause) ? 2u : 0u);
     state("pause", "", {bits != 0 ? "1" : "0", hex(bits)});
 
@@ -598,6 +630,10 @@ void StateTrace::sampleState(const StateTraceFrame& frame)
         const bool placeable = entity.kind == kotor::EntityKind::Placeable;
         const bool door = entity.kind == kotor::EntityKind::Door;
         if (!creature && !placeable && !door) {
+            continue;
+        }
+        // A scene entity tagged with a model file name is the engine's own dialogue stunt actor, not a game object.
+        if (entity.tag.size() > 4 && lowered(entity.tag.substr(entity.tag.size() - 4)) == ".mdl") {
             continue;
         }
         std::uint32_t id = 0;

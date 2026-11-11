@@ -212,6 +212,28 @@ def main() -> int:
             else:
                 print("negative check ok:", hit.group(0)[:160])
 
+    # The segment-aligned divergence report (state_trace_diff.py): a trace against itself has no divergence class, and the
+    # hit-point edit shows up as one obj hp class.
+    diff_tool = Path(__file__).resolve().parent / "state_trace_diff.py"
+    if not diff_tool.exists():
+        failures.append(f"diff script missing: {diff_tool}")
+    else:
+        same_out = out / "diff_same"
+        done = subprocess.run([sys.executable, "-I", str(diff_tool), str(traces[0]), str(traces[0]), "--sample", "same", "--out", str(same_out)],
+                              capture_output=True, text=True, timeout=300)
+        if done.returncode != 0 or "0 divergence classes" not in done.stdout:
+            failures.append("state_trace_diff.py of the trace with itself reports divergence classes: " + done.stdout[-400:])
+        edited = out / "edited.tsv"
+        if edited.exists():
+            edit_out = out / "diff_edit"
+            subprocess.run([sys.executable, "-I", str(diff_tool), str(traces[0]), str(edited), "--sample", "edit", "--out", str(edit_out)],
+                           capture_output=True, text=True, timeout=300)
+            table = (edit_out / "DIFF.tsv").read_text(encoding="utf-8") if (edit_out / "DIFF.tsv").exists() else ""
+            if not re.search(r"^\d+\tobj\thp\t", table, re.M):
+                failures.append("state_trace_diff.py did not report the edited hit points as an obj hp class")
+            else:
+                print("diff negative check ok: obj hp class reported")
+
     if failures:
         for text in failures:
             print("FAIL:", text)

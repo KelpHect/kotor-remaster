@@ -137,6 +137,7 @@ private:
     std::vector<Voice> voices_;
     std::unordered_map<std::string, std::uint64_t> soundWritten_; // snd dedupe key -> SDL ticks of the last write
     bool attached_ = false;
+    double simBase_ = 0.0; // GameSession::elapsed_ when the module became ready
 };
 
 } // namespace ke
