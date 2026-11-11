@@ -34,6 +34,7 @@ struct StateTraceFrame {
     const GuiSystem* menuGui = nullptr;     // the menu / game screens' GuiSystem (state.guiSystem)
     const GuiSystem* dialogueGui = nullptr; // the conversation panel's GuiSystem
     const GuiSystem* hudGui = nullptr;      // the HUD's GuiSystem (its screen lists the HUD controls)
+    const GuiSystem* pauseGui = nullptr;    // pause.gui while the pause panel is shown (retail lists it as `pause`)
     std::string hudLayout;                  // the HUD layout drawn this frame; empty when no HUD was drawn
     bool userPause = false;
     bool uiPause = false;                   // pause menu or a game screen over the world
@@ -61,6 +62,9 @@ public:
     void step(const StateTraceFrame& frame);
     // Screenshot files due this frame, taken after step(); the caller writes them (BMP).
     std::vector<std::filesystem::path> takeShots();
+    // A frame the input script took (--input-script shot): written as a `shot` row named like the retail driver's
+    // (`settle_vis`, `walk`), so the pair lines up by the state at that frame. No file is taken here.
+    void noteShot(const std::string& name, const std::string& file);
 
     // ---- hooks called by the session (all on the game thread) ----
     void onModuleReady(GameSession& game);

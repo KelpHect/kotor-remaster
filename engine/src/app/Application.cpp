@@ -11309,6 +11309,9 @@ int runApplication(const Options& options)
                     }
                     return false;
                 }
+                if (what == "paused") {
+                    return game && userPause;
+                }
                 if (what == "status") {
                     return game && game->statusSummaryOpen();
                 }
@@ -12841,6 +12844,7 @@ int runApplication(const Options& options)
             traceFrame.hudGui = hudGui.get();
             traceFrame.hudLayout = traceHudLayout;
             traceFrame.userPause = userPause;
+            traceFrame.pauseGui = userPause && pauseGui && pauseGui->screen() != nullptr ? pauseGui.get() : nullptr;
             traceFrame.uiPause = pauseMenuOpen || (gameScreens && gameScreens->open());
             if (state.window != nullptr) {
                 SDL_GetWindowSizeInPixels(state.window, &traceFrame.windowWidth, &traceFrame.windowHeight);
@@ -12873,6 +12877,17 @@ int runApplication(const Options& options)
             if (!state.backend->captureFrame(frame) || frame.rgba.empty()
                 || !writeBmpTopDown(shot, frame.width, frame.height, frame.rgba)) {
                 logWarn(concat("input script: screenshot failed: ", shot));
+            }
+            if (stateTrace) {
+                const std::filesystem::path shotFile(shot);
+                const std::string stem = shotFile.stem().string();
+                const auto endsWith = [&](const char* tail) {
+                    const std::string t(tail);
+                    return stem.size() > t.size() && stem.compare(stem.size() - t.size(), t.size(), t) == 0;
+                };
+                if (endsWith("_settle") || endsWith("_walk")) {
+                    stateTrace->noteShot(endsWith("_walk") ? "walk" : "settle_vis", shotFile.filename().string());
+                }
             }
         }
         inputScriptShots.clear();

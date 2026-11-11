@@ -623,6 +623,17 @@ VERDICTS = [
     ("pause", None, None, "real engine difference", "app/Application.cpp (autopause timing: enemy-sighted pause fires at a different time)"),
     ("timing", None, "dialogue", "real engine difference", "game/GameSession.cpp (conversation start time)"),
     ("timing", None, "round", "real engine difference", "game/ScriptCombat.cpp (first combat round)"),
+    ("obj", "appearance", None, "real engine difference",
+     "kotor/Entities.cpp, Chargen (PC appearance after chargen with the same picks: retail 160, engine 136; stunt actors such as Bastila read 375 on retail, 4 on the engine: retail runs module scripts that change appearance)"),
+    ("obj", "clip", None, "real engine difference",
+     "game/Animation*.cpp (idle clip choice: retail starts the walk / cwalk loop of ambient creatures, the engine a pause1 / cpause1 idle)"),
+    ("obj", "visible", None, "real engine difference", "game/GameSession.cpp (minigame modules: the PC is visible on retail, hidden on the engine)"),
+    ("party", None, None, "real engine difference",
+     "game/GameSession.cpp (party table at the HUD anchor: retail has none until the module settles, the engine lists the PC at once)"),
+    ("shot", "anchor", None, "recorder/emitter mismatch", "game/StateTrace.cpp (no HUD panel opened in that module, so no anchor shot)"),
+    ("gui", "open", "pause", "real engine difference", "app/Application.cpp (pause panel opened on one side only: enemy-sighted autopause)"),
+    ("ctl", "panel", "pause", "real engine difference", "app/Application.cpp (the pause panel and its controls exist on one side only)"),
+    ("ctl", "panel", "loadscreen", "real engine difference", "app/Application.cpp (the engine loading screen is not a GUI panel with controls)"),
     ("mod", None, None, "state mismatch", "module sequence differs between the two runs"),
 ]
 
