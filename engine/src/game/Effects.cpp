@@ -675,6 +675,11 @@ bool EffectDirector::speak(std::size_t entity, int slot, VoiceKind kind)
     }
     AudioSystem::SoundSetVoice who;
     who.isPlayer = isLeader;
+    if (!isLeader) {
+        const std::uint32_t object = session_.objectForEntityIndex(static_cast<std::uint32_t>(entity));
+        const std::vector<std::uint32_t> party = session_.partyObjects();
+        who.isParty = object != 0 && std::find(party.begin(), party.end(), object) != party.end();
+    }
     who.sizeCategory = e.sizeCategory;
     who.dead = e.dead;
     const bool played = audio->playSoundSetSlot(static_cast<std::uint32_t>(entity), slot, who);

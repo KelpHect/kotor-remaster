@@ -464,6 +464,22 @@ int runAudioQualityFamilyTest(GameSession& game)
             mixer.mix(block.data(), 1600);
         }
         AreaAmbience& amb = audioSystem.ambience();
+        // The world's own events may still be changing the music (end_m01aa: the opening duel starts the battle
+        // track and its stinger, then the area track returns). The bus is compared against one voice, so run on
+        // until the music bus has held one voice, the same one, for a second; the checks themselves are unchanged.
+        {
+            constexpr int kSettleTicks = 30;
+            constexpr int kSettleLimit = 30 * 60;
+            int stable = 0;
+            int lastVoice = 0;
+            for (int tick = 0; tick < kSettleLimit && stable < kSettleTicks; ++tick) {
+                game.update(1.0f / 30.0f, InputState{});
+                mixer.mix(block.data(), 1600);
+                const int voice = amb.musicVoice();
+                stable = (mixer.activeVoices(audio::Bus::Music) <= 1 && voice == lastVoice) ? stable + 1 : 0;
+                lastVoice = voice;
+            }
+        }
         struct Tracked {
             int voice = 0;
             std::string resource;

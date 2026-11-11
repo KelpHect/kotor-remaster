@@ -186,6 +186,7 @@ private:
     void updateEmitter(Emitter& emitter, float dt);
     bool startEmitterSound(Emitter& emitter);
     void shuffle(Emitter& emitter);
+    void rollInitialIntervals();
     float distanceTo(const kotor::Vec3& at) const;
     std::int32_t musicIdFor(MusicLayer layer, bool night) const;
     Rng rng() { return Rng{&rngState_}; }
@@ -224,6 +225,8 @@ private:
     std::int32_t forcedAmbientRow_ = -1;
     int ambientVoice_ = 0;
     std::string ambientResource_;
+    bool initialIntervalsRolled_ = true;
+    int ambientTagVolume_ = -1; // the area volume (0..127) the live ambient voice was started with
     float roomScale_ = 1.0f;
     float roomScaleTarget_ = 1.0f;
 

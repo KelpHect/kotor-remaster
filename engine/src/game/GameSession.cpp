@@ -3073,10 +3073,12 @@ bool GameSession::lineOfSight(kotor::Vec3 from, kotor::Vec3 to) const
     return !wallBlocked(scene_, from, to, 0.15f);
 }
 
-float GameSession::soundObstruction(kotor::Vec3 from, kotor::Vec3 to) const
+float GameSession::soundObstruction(kotor::Vec3 from, kotor::Vec3 to)
 {
     float total = 0.0f;
     kotor::Vec3 start = from;
+    const std::vector<SoundFacet>& objectFacets = soundObjectFacets();
+    std::vector<std::uint32_t> hitObjects; // 0050c330 skips the object the previous cast hit.
     for (int pass = 0; pass < 100; ++pass) {
         const kotor::Vec3 d{to.x - start.x, to.y - start.y, to.z - start.z};
         float nearest = 2.0f;
@@ -3119,10 +3121,49 @@ float GameSession::soundObstruction(kotor::Vec3 from, kotor::Vec3 to) const
                 nearest = t;
             }
         }
-        if (nearest > 1.0f) {
+        // Doors and placeables on the line (00506650 -> 004bbe20); an open door has no closed walkmesh to hit.
+        float objectNearest = 2.0f;
+        const SoundFacet* objectHit = nullptr;
+        for (const SoundFacet& facet : objectFacets) {
+            const kotor::Entity& owner = scene_.entities[facet.entity];
+            if (owner.dead || (facet.door && owner.open)
+                || std::find(hitObjects.begin(), hitObjects.end(), facet.entity) != hitObjects.end()) {
+                continue;
+            }
+            const kotor::Vec3 e1{facet.b.x - facet.a.x, facet.b.y - facet.a.y, facet.b.z - facet.a.z};
+            const kotor::Vec3 e2{facet.c.x - facet.a.x, facet.c.y - facet.a.y, facet.c.z - facet.a.z};
+            const kotor::Vec3 p{d.y * e2.z - d.z * e2.y, d.z * e2.x - d.x * e2.z, d.x * e2.y - d.y * e2.x};
+            const float det = e1.x * p.x + e1.y * p.y + e1.z * p.z;
+            if (std::fabs(det) < 1.0e-9f) {
+                continue;
+            }
+            const kotor::Vec3 s{start.x - facet.a.x, start.y - facet.a.y, start.z - facet.a.z};
+            const float u = (s.x * p.x + s.y * p.y + s.z * p.z) / det;
+            if (u < 0.0f || u > 1.0f) {
+                continue;
+            }
+            const kotor::Vec3 q{s.y * e1.z - s.z * e1.y, s.z * e1.x - s.x * e1.z, s.x * e1.y - s.y * e1.x};
+            const float v = (d.x * q.x + d.y * q.y + d.z * q.z) / det;
+            if (v < 0.0f || u + v > 1.0f) {
+                continue;
+            }
+            const float t = (e2.x * q.x + e2.y * q.y + e2.z * q.z) / det;
+            if (t > 1.0e-6f && t <= 1.0f && t < objectNearest) {
+                objectNearest = t;
+                objectHit = &facet;
+            }
+        }
+        if (nearest > 1.0f && objectNearest > 1.0f) {
             return total;
         }
-        total += 0.4f;
+        if (objectNearest < nearest) {
+            // GetObstructionFactor 0050ccf0: a placeable adds 0.4 (_DAT_0073e320), a door 0.55 (_DAT_00747b84).
+            total += objectHit->door ? 0.55f : 0.4f;
+            hitObjects.push_back(objectHit->entity);
+            nearest = objectNearest;
+        } else {
+            total += 0.4f;
+        }
         if (total > 1.0f) {
             return 1.0f;
         }
