@@ -512,10 +512,13 @@ Scene loadModule(Install& install, const std::string& moduleStem)
         Mdl mdl = Mdl::parse(std::move(*mdlData), std::move(*mdxData), room.room + ".mdl");
         roomScript.push_back(mdl.markRoomScriptMeshes());
         roomLoopClip.push_back(mdl.markRoomLoopMeshes());
+        const std::string roomKey = std::to_string(roomIndex) + "#";
         std::vector<MdlMeshTriangle> triangles = mdl.roomTriangles(room.origin);
+        for (MdlMeshTriangle& triangle : mdl.roomTriangles(room.origin, true)) {
+            byReference[roomKey + "a#" + materialKey(triangle)].push_back(std::move(triangle));
+        }
         grassWalkmesh[static_cast<std::uint32_t>(roomIndex)] = mdl.walkmeshTriangles(room.origin);
         sourceBytes += static_cast<std::uint32_t>(triangles.size() * 32u);
-        const std::string roomKey = std::to_string(roomIndex) + "#";
         for (MdlMeshTriangle& triangle : triangles) {
             byMaterial[roomKey + materialKey(triangle)].push_back(std::move(triangle));
         }
@@ -603,6 +606,7 @@ Scene loadModule(Install& install, const std::string& moduleStem)
     for (const auto& [key, triangles] : groups) {
         TextureBatch batch = makeMaterialBatch(scene, install, triangles.front());
         batch.room = std::stoi(key.substr(0, key.find('#')));
+        batch.roomObject = asObject;
         batch.firstIndex = static_cast<std::uint32_t>(scene.indices.size());
         Vec3 sum{};
         for (const MdlMeshTriangle& triangle : triangles) {

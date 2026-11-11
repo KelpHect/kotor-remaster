@@ -1391,6 +1391,8 @@ std::size_t VulkanScene::recordMeshes(VkCommandBuffer commandBuffer, const Scene
         float distance;
     };
     std::vector<Pending> blended;
+    // Room objects (reference models, "<model>a" parts) solid enough to draw in place: after the shadows.
+    std::vector<const kotor::TextureBatch*> roomObjects;
     std::size_t drawnMeshes = 0;
     const std::vector<std::uint8_t>* rooms = scene_ != nullptr && view == nullptr && !scene_->visibleRooms.empty()
         ? &scene_->visibleRooms : nullptr;
@@ -1453,12 +1455,23 @@ std::size_t VulkanScene::recordMeshes(VkCommandBuffer commandBuffer, const Scene
                 blended.push_back({&mesh, &batch, model, light, kotor::length(center - camera.eye)});
                 continue;
             }
+            if (view == nullptr && mesh.entity == UINT32_MAX && batch.roomObject) {
+                roomObjects.push_back(&batch);
+                continue;
+            }
             drawBatch(commandBuffer, batch, push, light, true);
         }
         ++drawnMeshes;
         // Scene::Render: RenderStaticGeometry, then RenderShadows, then the dynamic geometry.
         if (view == nullptr && &mesh == &meshes_.front()) {
             drawShadows(commandBuffer, camera, viewProjection.m);
+            if (!roomObjects.empty()) {
+                vkCmdBindVertexBuffers(commandBuffer, 0, 1, &mesh.vertexBuffer, &offset);
+                vkCmdBindIndexBuffer(commandBuffer, mesh.indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+                for (const kotor::TextureBatch* batch : roomObjects) {
+                    drawBatch(commandBuffer, *batch, push, light, true);
+                }
+            }
         }
     }
     std::stable_sort(blended.begin(), blended.end(), [](const Pending& a, const Pending& b) {

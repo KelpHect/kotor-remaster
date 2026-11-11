@@ -381,7 +381,7 @@ TextureBatch makeMaterialBatch(Scene& scene, Install& install, const MdlMeshTria
 bool drawsWithStaticGeometry(const TextureBatch& batch)
 {
     return batch.blend == BlendMode::Alpha && !batch.showsBehind && batch.envOnlyAlpha < 0.0f && batch.shell == 0u
-        && batch.transparencyHint == 0.0f;
+        && batch.transparencyHint == 0.0f && !batch.roomObject;
 }
 
 bool blendedDrawsBefore(const TextureBatch& a, float distanceA, const TextureBatch& b, float distanceB)

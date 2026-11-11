@@ -577,7 +577,11 @@ public:
                                                   float blend, float danglyTime = -1.0f) const;
     bool hasFxNodes() const;
     // Renderable triangles in world space for a room placed at `origin` (Render flag set).
-    std::vector<MdlMeshTriangle> roomTriangles(Vec3 origin) const;
+    // gobParts false: the room's static parts. true: the parts under the room's "<model>a" node, which
+    // retail draws as their own object after the static geometry, lit by the object binder 004a3f70
+    // (RETAIL row 41, palm_order_m41aa: every M41aa_*a palm part draws at 0047409f after a 004a3f70
+    // ShadowAurora bind; every other part at 00455824 in the static pass).
+    std::vector<MdlMeshTriangle> roomTriangles(Vec3 origin, bool gobParts = false) const;
     // The AABB (walkmesh) node's faces of a room placed at `origin`, with their surfaces, lightmap and
     // lightmap uvs: what retail grows grass on (00456f30 bins the part answering vtable +0x48).
     std::vector<MdlMeshTriangle> walkmeshTriangles(Vec3 origin) const;
@@ -1415,6 +1419,9 @@ struct TextureBatch {
     float maxDistance = 0.0f; // > 0: not drawn when the camera is farther than this (grass)
     // A room batch without a lightmap has no per-entity light to read: filled at load.
     bool bakedLight = false;
+    // Part of a model retail draws as its own object after RenderShadows (a reference node's model, or
+    // a room's "<model>a" parts): not drawn with the static geometry, so the shadow fan stays off it.
+    bool roomObject = false;
     SampledLight baked;
 };
 
