@@ -89,6 +89,9 @@ public:
         int depthBits = 0;
         SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &depthBits);
         logInfo(concat("GL depth buffer bits: ", depthBits));
+        int stencilBits = 0;
+        SDL_GL_GetAttribute(SDL_GL_STENCIL_SIZE, &stencilBits);
+        logInfo(concat("GL stencil buffer bits: ", stencilBits));
         if (!SDL_GL_SetSwapInterval(options.vsync ? 1 : 0)) {
             logWarn(concat("SDL_GL_SetSwapInterval failed (continuing): ", SDL_GetError()));
         }
@@ -352,6 +355,12 @@ public:
         frame.width = width;
         frame.height = height;
         return true;
+    }
+
+    void requestShadowProbe() override { sceneRenderer_.requestShadowProbe(); }
+    bool shadowProbe(std::size_t& covered, std::size_t& total) override
+    {
+        return sceneRenderer_.shadowProbe(covered, total);
     }
 
     bool captureLatest(CapturedFrame& frame) override

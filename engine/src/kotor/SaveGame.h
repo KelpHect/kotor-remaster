@@ -73,6 +73,19 @@ struct SavedObjectState {
     bool open = false;
     bool locked = false;
     std::vector<std::string> loot;
+    // The object's script variables (retail 004d1cf0 LoadObjectState -> 0059aa80 CSWSScriptVarTable and
+    // 0059b0f0 CSWVarTable): "VarTable" entries by name (type 1 int, 2 float, 3 string) and the SWVarTable
+    // bit words (booleans 0..95) and bytes (numbers 0..7).
+    struct Local {
+        std::string name;
+        std::int32_t type = 0;
+        std::int32_t integer = 0;
+        float number = 0.0f;
+        std::string text;
+    };
+    std::vector<Local> locals;
+    std::array<std::uint32_t, 3> localBits{};
+    std::array<std::uint8_t, 8> localBytes{};
 };
 
 // One available NPC: a PARTYTABLE slot (PT_AVAIL_NPCS entry) plus the stored
@@ -90,6 +103,7 @@ struct SavedNpc {
     std::int32_t xp = 0;
     std::int32_t hp = 1;
     std::int32_t maxHp = 1;
+    std::int32_t baseHp = -1;  // the stored HitPoints (retail stats +0xe0); -1 derives it from maxHp
     std::int32_t forcePoints = 0;
     std::int32_t maxForcePoints = 0;
     std::int32_t str = 10;
@@ -165,6 +179,7 @@ struct OriginalSave {
     std::map<std::string, std::int32_t> journal;
     std::vector<SavedGlobal> globals;
     std::vector<SavedObjectState> objects;
+    std::vector<std::uint8_t> gitBytes; // the module GIT as the save holds it (every object whole)
     SavedAreaMap areaMap;
     // Saved GITs are flattened snapshots: the writer removes UseTemplates and
     // readers must not re-template GIT objects.

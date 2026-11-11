@@ -403,6 +403,7 @@ void sectionLoad(Gate& g, GameSession& game, float& masterFactor)
     std::size_t inactive = 0;
     std::size_t positionalActive = 0;
     std::size_t globalActive = 0;
+    std::size_t sampleActive = 0;
     std::size_t withoutSounds = 0;
     for (const kotor::SoundEmitter& e : scene.soundEmitters) {
         if (e.sounds.empty()) {
@@ -412,6 +413,8 @@ void sectionLoad(Gate& g, GameSession& game, float& masterFactor)
             ++inactive;
         } else if (e.positional) {
             ++positionalActive;
+            // Looping positional sounds are streams (0066b420): they never take one of the 16 Miles 3D voices.
+            sampleActive += e.looping ? 0u : 1u;
         } else {
             ++globalActive;
         }
@@ -434,6 +437,7 @@ void sectionLoad(Gate& g, GameSession& game, float& masterFactor)
     audio.setListener(at, 0.0f);
     const std::size_t after = voicesOn(audio, Bus::Effects);
     std::size_t positionalPlaying = 0;
+    std::size_t samplePlaying = 0;
     std::size_t globalPlaying = 0;
     std::size_t inactivePlaying = 0;
     std::size_t audible = 0;
@@ -449,6 +453,7 @@ void sectionLoad(Gate& g, GameSession& game, float& masterFactor)
         }
         if (e.positional) {
             ++positionalPlaying;
+            samplePlaying += e.looping ? 0u : 1u;
             const float dx = info.lastPosition.x - at.x;
             const float dy = info.lastPosition.y - at.y;
             const float dz = info.lastPosition.z - at.z;
@@ -479,9 +484,9 @@ void sectionLoad(Gate& g, GameSession& game, float& masterFactor)
                   positionalPlaying, " global_playing=", globalPlaying, " audible=", audible));
     g.check(after > 0, "load_effects_voices_after_listener_gt_0");
     g.check(globalPlaying == globalActive, "load_every_active_global_emitter_plays");
-    g.check(positionalPlaying == std::min<std::size_t>(positionalActive, AreaAmbience::kMax3dVoices),
+    g.check(samplePlaying == std::min<std::size_t>(sampleActive, AreaAmbience::kMax3dVoices),
             "load_positional_voices_capped_at_16");
-    g.check(amb.activeSoundVoices() == positionalPlaying, "load_budget_counter_matches");
+    g.check(amb.activeSoundVoices() == samplePlaying, "load_budget_counter_matches");
     g.check(after == positionalPlaying + globalPlaying, "load_effects_voices_are_the_emitters");
     g.check(inactivePlaying == 0, "load_inactive_emitters_silent");
     g.check(gainsMatch, "load_positional_gain_matches_distance_formula");
@@ -1107,9 +1112,16 @@ void sectionBudget(Gate& g, GameSession& game, const Pool& pool)
     AudioSystem& audio = game.audio();
     AreaAmbience& amb = audio.ambience();
     std::vector<kotor::SoundEmitter> list;
+    // One-shot samples that outlast the section take the 16 voices; looping ones are streams and take none.
+    std::size_t longest = 0;
+    for (std::size_t i = 1; i < pool.durations.size(); ++i) {
+        if (pool.durations[i] > pool.durations[longest]) {
+            longest = i;
+        }
+    }
     for (int i = 0; i < 24; ++i) {
-        kotor::SoundEmitter e = fixtureEmitter(2000 + static_cast<std::uint32_t>(i), {pool.names.front()});
-        e.looping = true;
+        kotor::SoundEmitter e = fixtureEmitter(2000 + static_cast<std::uint32_t>(i), {pool.names[longest]});
+        e.looping = false;
         e.position = {3.0f * static_cast<float>(i), 0.0f, 0.0f};
         e.maxDistance = 200.0f;
         list.push_back(e);

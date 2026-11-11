@@ -378,6 +378,12 @@ TextureBatch makeMaterialBatch(Scene& scene, Install& install, const MdlMeshTria
     return batch;
 }
 
+bool drawsWithStaticGeometry(const TextureBatch& batch)
+{
+    return batch.blend == BlendMode::Alpha && !batch.showsBehind && batch.envOnlyAlpha < 0.0f && batch.shell == 0u
+        && batch.transparencyHint == 0.0f && !batch.roomObject;
+}
+
 bool blendedDrawsBefore(const TextureBatch& a, float distanceA, const TextureBatch& b, float distanceB)
 {
     // Blended surfaces write depth (0047af70), so a scorch mark drawn before the floor under it

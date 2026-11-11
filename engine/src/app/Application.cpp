@@ -30,6 +30,7 @@
 #include "game/MenuScene.h"
 #include "game/Minigames.h"
 #include "game/Pathfinding.h"
+#include "game/StateTrace.h"
 #include "kotor/BinkDecoder.h"
 #include "kotor/Formats.h"
 #include "kotor/GffWrite.h"
@@ -1520,6 +1521,9 @@ SDL_WindowFlags windowFlagsFor(BackendKind kind, const Options& options)
     }
     if (options.hidden || options.headless || kind == BackendKind::Null) {
         flags |= SDL_WINDOW_HIDDEN;
+    } else if (options.noActivate) {
+        SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0");
+        flags |= SDL_WINDOW_NOT_FOCUSABLE;
     } else if (options.startMinimized) {
         flags |= SDL_WINDOW_MINIMIZED;
     }
@@ -2866,7 +2870,6 @@ int runPlaythrough(GameSession& game)
         const bool opened = play(30.0f, [&] { return bulkheadOpen() && !game.dialogue().active; });
         logInfo(concat("playthrough: end_door01 opened=", opened ? 1 : 0, " stage=", trainingStage()));
         ok = ok && opened;
-
         kotor::Vec3 centre{};
         float count = 0.0f;
         for (const kotor::TriggerVolume& volume : game.scene().triggers) {
@@ -2879,6 +2882,9 @@ int runPlaythrough(GameSession& game)
             }
         }
         centre = count > 0.0f ? centre * (1.0f / count) : game.scene().entities[triggerEntity].position;
+        // A player clicks past the bulkhead once its leaves have finished opening: the walkmesh opens with the
+        // clip, a moment after the door's flag turns.
+        play(5.0f, [&] { return game.pathExists(game.controlledPosition(), centre); });
         walkOrFail(centre, 20.0f);
         const bool fired = play(2.0f, [&] { return hasEvent(game, "trigger end_trig02: enter"); });
         logInfo(concat("playthrough: trigger end_trig02 fired=", fired ? 1 : 0));
@@ -4351,6 +4357,12 @@ int runSaveMatrixTest(GameSession& base, const std::string& fixtureDirectory)
                     const kotor::GffNodePtr node = kotor::GffNode::fromGff(ifo);
                     node->remove("Mod_Entry_X");
                     node->addFloat("Mod_Entry_X", x);
+                    // The player stands where its own struct says (retail Mod_PlayerList), so move that too.
+                    if (kotor::GffNodeField* players = node->find("Mod_PlayerList");
+                        players != nullptr && !players->list.empty() && players->list.front() != nullptr) {
+                        players->list.front()->remove("XPosition");
+                        players->list.front()->addFloat("XPosition", x);
+                    }
                     if (corrupt) {
                         node->remove("EventQueue");
                         node->addList("EventQueue", {std::make_shared<kotor::GffNode>(0)});
@@ -10037,6 +10049,8 @@ int runApplication(const Options& options)
     }
 
     std::optional<GameSession> game;
+    std::unique_ptr<StateTrace> stateTrace; // --state-trace; declared after `game` so it detaches first
+    std::string traceHudLayout;             // the HUD layout drawn this frame (empty: none)
     std::unique_ptr<Chargen> chargen;
     std::unique_ptr<ChargenGuiState> chargenGui;
     bool chargenActive = options.chargen;
@@ -10117,19 +10131,25 @@ int runApplication(const Options& options)
             logInfo(concat("  encounter volumes: ", loaded.encounters.size()));
             logInfo(concat("  entry: ", loaded.entry.x, ", ", loaded.entry.y, ", ", loaded.entry.z));
             {
-                // A model with no drawable mesh (every slot NULL, or Render off) has nothing to show.
+                // A model with no drawable mesh (every slot NULL, or Render off) has nothing to show. The
+                // helper placeables (PLC_Invis and kin) are meshless by design, and waypoints, triggers,
+                // sounds and encounters have no model at all (Entity::model holds their template name), so
+                // the list is a debug line, printed with KOTOR_LOG_DEBUG=1.
                 std::map<std::string, int> withoutMesh;
                 std::set<std::uint32_t> meshOwners;
                 for (const kotor::EntityMesh& mesh : loaded.entityMeshes) {
                     meshOwners.insert(mesh.entity);
                 }
                 for (std::size_t i = 0; i < loaded.entities.size(); ++i) {
-                    if (!loaded.entities[i].model.empty() && meshOwners.count(static_cast<std::uint32_t>(i)) == 0u) {
-                        ++withoutMesh[loaded.entities[i].model];
+                    const kotor::Entity& entity = loaded.entities[i];
+                    const bool modelled = entity.kind == kotor::EntityKind::Door || entity.kind == kotor::EntityKind::Placeable
+                        || entity.kind == kotor::EntityKind::Creature;
+                    if (modelled && !entity.model.empty() && meshOwners.count(static_cast<std::uint32_t>(i)) == 0u) {
+                        ++withoutMesh[entity.model];
                     }
                 }
                 for (const auto& [model, count] : withoutMesh) {
-                    logInfo(concat("  model without a mesh: ", model, " x", count));
+                    logDebug(concat("  model without a mesh: ", model, " x", count));
                 }
             }
             logInfo(concat("  entity meshes: ", loaded.entityMeshes.size(), " triggers: ",
@@ -11094,6 +11114,11 @@ int runApplication(const Options& options)
                 }
                 game->setModuleLoadHook([&](const std::string& next) {
                     presentLoadScreen(state, *game, *loadScreenGui, next);
+                    if (stateTrace && loadScreenGui->screen() != nullptr) {
+                        const kotor::GuiScreen& shown = *loadScreenGui->screen();
+                        stateTrace->onLoadScreen(shown.name, shown.extent.left, shown.extent.top, shown.extent.width,
+                                                 shown.extent.height);
+                    }
                 });
                 if (options.frontEndTest) {
                     frontEndGate = std::make_unique<FrontEndGate>(options.frontEndOut, savesRoot, state.window,
@@ -11123,6 +11148,8 @@ int runApplication(const Options& options)
     }
 
     std::uint64_t frames = 0;
+    bool shadowProbeAsked = false;
+    int shadowProbeFrame = options.shadowProbeFrame; // --shadow-probe, 0 once reported
     // Verification only: --video-effect-sequence runs one compiled fixture per
     // frame (row0|row1|row2|off) so the GPU gate can drive the real script path.
     std::vector<std::string> videoEffectSequence;
@@ -11203,12 +11230,39 @@ int runApplication(const Options& options)
     InputScript inputScript;
     std::vector<std::string> inputScriptShots;
     std::uint64_t inputScriptStart = 0;
+    if (!options.stateTrace.empty() && game) {
+        stateTrace = std::make_unique<StateTrace>();
+        std::string traceError;
+        if (stateTrace->open(options.stateTrace, options.stateTraceSamp, traceError)) {
+            // A menu launch stands on a backdrop module that retail has no counterpart for.
+            const bool menuBackdrop = state.guiSystem && state.guiSystem->active()
+                && state.guiSystem->screenName().rfind("mainmenu", 0) == 0;
+            stateTrace->attach(*game, menuBackdrop);
+            logInfo(concat("state trace: ", options.stateTrace, " (every ", options.stateTraceSamp, " frames)"));
+        } else {
+            logError(concat("state trace: ", traceError));
+            stateTrace.reset();
+        }
+    }
     if (!options.inputScript.empty()) {
         if (!inputScript.load(options.inputScript, options.inputScriptOut)) {
             logError(concat("input script: ", inputScript.error()));
             running = false;
         } else {
             logInfo(concat("input script: ", inputScript.steps().size(), " steps from ", options.inputScript));
+        }
+    }
+    if (!options.stateTraceLoad.empty() && game) {
+        // --state-trace-load: the front end's Load Game outcome, without the menu.
+        if (game->loadOriginalSave(options.stateTraceLoad, true)) {
+            game->setThirdPerson(true);
+            if (state.guiSystem) {
+                state.guiSystem->close();
+            }
+            state.backend->setScene(&game->scene());
+            state.backend->setCamera(game->camera());
+        } else {
+            logWarn(concat("load failed: ", options.stateTraceLoad));
         }
     }
     while (running) {
@@ -11644,6 +11698,7 @@ int runApplication(const Options& options)
             if (game->module() != renderedModule) {
                 // A script's StartNewModule lands here, not through a key press.
                 renderedModule = game->module();
+                userPause = false; // retail 005f8290 clears the pause states with the module
                 state.backend->setScene(&game->scene());
                 renderedMeshKey = game->scene().entityMeshes.size() + game->scene().meshRevision;
                 moduleArrivalTicks = SDL_GetTicksNS();
@@ -11984,6 +12039,7 @@ int runApplication(const Options& options)
                             float designW = 0.0f;
                             float designH = 0.0f;
                             const std::string wantedLayout = Hud::layoutFor(hudIo.DisplaySize.x, hudIo.DisplaySize.y, designW, designH);
+                            traceHudLayout = wantedLayout;
                             if (hudGui->screenName() != wantedLayout) {
                                 hudGui->open(wantedLayout);
                             }
@@ -12695,6 +12751,19 @@ int runApplication(const Options& options)
             SDL_Quit();
             return 6;
         }
+        if (shadowProbeFrame > 0 && state.backend) {
+            // --shadow-probe: the stencil after the shadow volumes of one frame (00451a50).
+            std::size_t covered = 0;
+            std::size_t total = 0;
+            if (shadowProbeAsked && state.backend->shadowProbe(covered, total)) {
+                logInfo(concat("shadow probe: frame ", frames, " covered ", covered, " of ", total, " pixels"));
+                shadowProbeAsked = false;
+                shadowProbeFrame = 0;
+            } else if (!shadowProbeAsked && frames + 1u >= static_cast<std::uint64_t>(shadowProbeFrame)) {
+                state.backend->requestShadowProbe();
+                shadowProbeAsked = true;
+            }
+        }
         if (inEffectSequence && !options.videoEffectShots.empty()) {
             const std::string shot = options.videoEffectShots + "-" + std::to_string(sequenceIndex) + ".bmp";
             if (!state.backend->screenshot(shot)) {
@@ -12780,6 +12849,33 @@ int runApplication(const Options& options)
                 logInfo(gateExit == 0 ? "chargen_preview: PASS" : "chargen_preview: FAIL");
                 exitReason = "chargen preview gate finished";
                 running = false;
+            }
+        }
+        if (stateTrace) {
+            // The frame is drawn: sample it, then take the anchor frames that fell due (BMP).
+            StateTraceFrame traceFrame;
+            traceFrame.game = game ? &*game : nullptr;
+            traceFrame.menuGui = state.guiSystem.get();
+            traceFrame.dialogueGui = dialogueScreen ? &dialogueScreen->activeGui() : dialogueGui.get();
+            traceFrame.hudGui = hudGui.get();
+            traceFrame.hudLayout = traceHudLayout;
+            traceFrame.userPause = userPause;
+            traceFrame.uiPause = pauseMenuOpen || (gameScreens && gameScreens->open());
+            if (state.window != nullptr) {
+                SDL_GetWindowSizeInPixels(state.window, &traceFrame.windowWidth, &traceFrame.windowHeight);
+            }
+            stateTrace->step(traceFrame);
+            traceHudLayout.clear();
+            for (const std::filesystem::path& file : stateTrace->takeShots()) {
+                CapturedFrame traceShot;
+                if (!state.backend->captureFrame(traceShot) || traceShot.rgba.empty()
+                    || !writeBmpTopDown(file, traceShot.width, traceShot.height, traceShot.rgba)) {
+                    static bool warned = false;
+                    if (!warned) {
+                        warned = true;
+                        logWarn(concat("state trace: screenshot failed (no capture on this backend?): ", file.generic_string()));
+                    }
+                }
             }
         }
         for (const std::string& shot : inputScriptShots) {

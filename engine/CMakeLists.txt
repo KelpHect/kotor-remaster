@@ -182,6 +182,7 @@ add_executable(kotor_engine
     src/game/UpgradeBench.cpp
     src/game/DialogueScreen.cpp
     src/game/MenuScene.cpp
+    src/game/StateTrace.cpp
     src/game/Minigames.cpp
     src/game/MiniGame3D.cpp
     src/game/ScriptMiniGame.cpp
@@ -363,6 +364,19 @@ if(KOTOR_ENGINE_BUILD_TESTS)
             set_tests_properties(kotor_scene_sync_${backend} PROPERTIES TIMEOUT 300
                                  ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}"
                                  PASS_REGULAR_EXPRESSION "scene sync: meshes reused [1-9][0-9]* uploaded [1-9]"
+                                 FAIL_REGULAR_EXPRESSION "\\[ERROR\\]")
+        endforeach()
+        # Creature stencil shadows (Scene::RenderShadows 00451a50): on unk_m41aa the area light
+        # casts, and frame 30's shadow volumes must leave stencil >= 128 under the PC (third-person camera).
+        foreach(backend gl vulkan)
+            add_test(NAME kotor_shadow_stencil_${backend}
+                     COMMAND kotor_engine --${backend} --no-fallback --module unk_m41aa --frames 40 --no-movies --no-audio
+                             --hidden --third-person --shadow-probe 30
+                             --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_shadow_stencil_${backend}/saves"
+                             --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_shadow_stencil_${backend}/settings.ini")
+            set_tests_properties(kotor_shadow_stencil_${backend} PROPERTIES TIMEOUT 300
+                                 ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}"
+                                 PASS_REGULAR_EXPRESSION "shadow probe: frame [0-9]+ covered [1-9][0-9]* of"
                                  FAIL_REGULAR_EXPRESSION "\\[ERROR\\]")
         endforeach()
         # The GL pixel format is fixed at window creation: asking later left a 16-bit depth buffer.
@@ -806,6 +820,14 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                              --saves-dir "${CMAKE_BINARY_DIR}/p6_content/saves"
                              --settings-file "${CMAKE_BINARY_DIR}/p6_content/settings.ini")
             set_tests_properties(kotor_p6_content PROPERTIES TIMEOUT 900)
+            # --state-trace: the file parses with the shared record grammar, two runs agree, and compare.py
+            # passes the trace against itself and fails an edited copy.
+            add_test(NAME kotor_state_trace
+                     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/check_state_trace.py
+                             --exe $<TARGET_FILE:kotor_engine>
+                             --install "${KOTOR_TEST_INSTALL}"
+                             --out "${CMAKE_BINARY_DIR}/test_profile/kotor_state_trace")
+            set_tests_properties(kotor_state_trace PROPERTIES TIMEOUT 600)
         endif()
     endif()
 endif()

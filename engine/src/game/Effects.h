@@ -175,6 +175,10 @@ public:
     // Fires the MDL event table entries inside the interval.
     void animationAdvanced(std::size_t entity, const std::shared_ptr<kotor::Mdl>& model,
                            const std::string& clip, float from, float to, float duration, bool looped);
+    // The creature's current animation, every frame whether or not its room is drawn: retail
+    // CSWCCreature::UpdateRollingFootstepSound 00610840 (called from the creature update at 0061b35c) follows the
+    // animation id, not the pose, so a droid in a room nobody sees still rolls.
+    void creatureClip(std::size_t entity, const std::string& clip) { rollingSound(entity, clip); }
     // True when the clip `entity` is playing carries the named MDL event (any case).
     bool clipCarries(std::size_t entity, const char* eventName) const;
     // Fires a named MDL event for an entity (what animationAdvanced calls).
@@ -310,6 +314,7 @@ private:
     std::vector<SfxRecord> log_;
     std::map<std::uint32_t, int> saberVoices_;
     std::map<std::size_t, int> rollingVoices_; // looped rolling or floating droid sound per entity
+    std::map<int, std::string> rollingCell_;   // footstepsounds.2da row -> its Rolling cell (cached)
     void rollingSound(std::size_t entity, const std::string& clip);
     Shake shake_;
     std::vector<HardFx> hardFx_;

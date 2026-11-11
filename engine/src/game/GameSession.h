@@ -151,7 +151,10 @@ int runConversationFlow(GameSession& game, const FlowOptions& options);
 int runPlotReplay(GameSession& game, const FlowOptions& options);
 } // namespace quest
 
+class StateTrace; // --state-trace writer (game/StateTrace.h): reads session state, never changes it
+
 class GameSession : public script::ActionHost {
+    friend class StateTrace;
     friend struct ScriptApi;
     friend struct ItemOps;
     friend struct CombatOps;
@@ -200,6 +203,7 @@ public:
     // A frame the world does not tick (pause, a screen over the world): retail's server loop
     // (004babb0) still runs TempDeathUpdate (004b6da0) on the real clock.
     void tickWhilePaused(float realDt);
+    void runPendingModule();
     SceneCamera camera() const;
     SceneCamera cinematicCamera(std::int32_t cameraId) const;
     SceneCamera presetCamera(std::int32_t angle, float camHeight, float targetHeight,
@@ -229,6 +233,10 @@ public:
     // Called with the destination module just before update() loads it: the application
     // shows the loading screen there (the load itself blocks the frame loop).
     void setModuleLoadHook(std::function<void(const std::string&)> hook) { moduleLoadHook_ = std::move(hook); }
+    // --state-trace: null (the default) costs one pointer test at each of the three hook sites.
+    void setStateTrace(StateTrace* trace) { stateTrace_ = trace; }
+    // A combat round started for `owner` (the attack-round entry of the combat system).
+    void traceRound(std::int32_t number, std::uint32_t owner);
     bool save(const std::filesystem::path& path) const;
     bool load(const std::filesystem::path& path);
     // Original KotOR save folder (SAVEGAME.sav + sidecars). The reader maps
@@ -1375,6 +1383,7 @@ private:
     std::vector<std::uint8_t> originalRepute_;
     std::vector<kotor::SavedResource> originalOuterExtras_;
     std::vector<kotor::SavedResource> originalPreservedModules_;
+    const std::vector<std::uint8_t>* savedGit_ = nullptr; // loadOriginalSave: the save's GIT for the module being loaded
     std::int32_t gold_ = 0;
     std::vector<MerchantState> merchants_;
     std::vector<EncounterState> encounterStates_;
@@ -1405,6 +1414,7 @@ private:
     std::set<std::string> missingScripts_;
     std::string pendingModule_;
     std::function<void(const std::string&)> moduleLoadHook_;
+    StateTrace* stateTrace_ = nullptr;
     double heartbeatTimer_ = 0.0;
     std::uint32_t nextItemObject_ = 0x10000;
 };
