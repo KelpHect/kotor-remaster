@@ -2374,12 +2374,16 @@ void FrontEndGate::build()
             ++shown.barkSerial;
             return true;
         }));
-        ops_.push_back(wait(20));
-        ops_.push_back(capture("hud_bark_banner", 6));
+        // The bubble lives on the frame clock: CSWGuiBarkBubble::Draw 006a9ce0 takes the draw delta off its time
+        // left every frame (006a9ecb) and drops the box once the sound that played has ended (006a9efa), here the
+        // line's 1.15 s of voice. Whether a fixed number of frames fits inside that depends on how long the frames
+        // take, so the proof reads the line on the first frame the box is up and the capture comes after.
+        ops_.push_back(waitUntil("bark_banner_up", [](Context& context) { return !context.hudBark.empty(); }, 600));
         ops_.push_back(expect("proof_bark_banner_shows_the_line", [](Context& context) {
             logInfo(concat("front_end: bark banner \"", context.hudBark, "\""));
             return !context.hudBark.empty() && context.hudBark == context.game->localization().tlk().text(37107);
         }));
+        ops_.push_back(capture("hud_bark_banner", 6));
         // Option 0x400, retail 0040b490 and 00418a90: the slot's name and its key from keymap.2da.
         ops_.push_back(hover("BTN_ACTION0"));
         ops_.push_back(wait(3));
