@@ -741,35 +741,86 @@ Vec3 turnBackBy(const Mat3& m, Vec3 v)
             m.m[0][2] * v.x + m.m[1][2] * v.y + m.m[2][2] * v.z};
 }
 
-// LightManager::GetShadowLights 004a4b10, mode 2: a light with the shadow flag (+0x5c), not ambient
-// only (+0x68), with a radius of at least 1000 or dynamic type 0 (+0x58, +0x70), the lowest priority
-// below 6 (node +0x90), the first such in the list on a tie. NOT PROVEN to be the light
-// Scene::RenderShadows reads (scene +0x270 -> +0x1c, the root gob's light list): no writer of that
-// field was found statically, and GetShadowLights is only called with modes 0 and 1 (00453982,
-// 00453c1b, 00456278), so mode 2 may be dead code. RETAIL row 47 asks for the live light. On the
-// palm spot it picks the light that gives retail's shadow (SC render/palm_gl_pair3.png).
-const Scene::WorldLight* shadowLight(const Scene& scene)
+// Scene::RenderShadows 00451a50 reads its light and intensity from scene +0x270 -> +0x1c / +0x20:
+// the light list of the scene's own gob (gob at scene +0xf8, list at gob +0x178). The object binder
+// 004a3f70 fills them for each gob it binds (004a424d..004a4352): the shadow light is the first light
+// in the light manager's sorted candidates (+0x44, count +0x48) with the shadow flag (+0x5c); the
+// intensity fades in by 3 x frame time (007a1944 x 0078e574) up to 1; a different candidate first fades
+// the old one out to 0 and only then takes its place; with no candidate the light fades out and the slot
+// clears at 0. The candidates are 004a3cf0's list in 004a28c0's order (lower priority, type 1, 2, 0,
+// then nearer over the radius in the XY plane, nothing beyond the radius), as sampleLights sorts them.
+// GetShadowLights 004a4b10 is not this: it is only called with modes 0 and 1 (00453982, 00453c1b,
+// 00456278), and its mode-2 rule (radius >= 1000 or type 0) has no caller.
+// Inferred: the point the candidates are sorted from is the scene focus (the scene gob's place is not
+// decoded); RETAIL row 47 asks for the live light. The sun's two lights never have the shadow flag in
+// K1 (no ARE sets SunShadows or MoonShadows), so only scene.lights can win.
+std::size_t shadowCandidate(const Scene& scene, Vec3 focus)
 {
-    const Scene::WorldLight* chosen = nullptr;
-    int best = 6;
-    for (const Scene::WorldLight& light : scene.lights) {
-        if (!light.shadow || light.ambientOnly || !(light.radius >= 1000.0f || light.dynamicType == 0)) {
+    std::size_t chosen = SIZE_MAX;
+    int bestPriority = 0;
+    int bestRank = 0;
+    float bestReach = 0.0f;
+    const auto typeRank = [](int type) { return type == 1 ? 0 : (type == 2 ? 1 : 2); };
+    for (std::size_t i = 0; i < scene.lights.size(); ++i) {
+        const Scene::WorldLight& light = scene.lights[i];
+        if (!light.shadow || light.radius <= 0.0f
+            || (light.colour.x <= 0.0f && light.colour.y <= 0.0f && light.colour.z <= 0.0f)) {
             continue;
         }
-        if (light.priority < best) {
-            chosen = &light;
-            best = light.priority;
+        const float dx = light.position.x - focus.x;
+        const float dy = light.position.y - focus.y;
+        const float reach = std::sqrt(dx * dx + dy * dy) / light.radius;
+        if (reach > 1.0f) {
+            continue;
+        }
+        const int rank = typeRank(light.dynamicType);
+        if (chosen == SIZE_MAX || light.priority < bestPriority
+            || (light.priority == bestPriority && (rank < bestRank || (rank == bestRank && reach < bestReach)))) {
+            chosen = i;
+            bestPriority = light.priority;
+            bestRank = rank;
+            bestReach = reach;
         }
     }
     return chosen;
 }
 
-// The value at scene +0x270 -> +0x20 that 00450730 halves into the fan's centre alpha. Scene +0x270
-// is the root gob's light list (gob at scene +0xf8, list at gob +0x178); no static writer of its
-// +0x1c / +0x20 was found, so RETAIL row 47 asks for the live value. 1.0 is the fit to the drawn
-// palm pair (SC render/palm_gl_pair3.png): shadowed sand 82..89 in retail against lit 165, i.e. a
-// centre alpha of 127/255 less the fan's fall-off a few metres from the focus.
-constexpr float kShadowIntensity = 1.0f;
+// The scene gob's shadow slot, advanced once per light frame as 004a3f70 does (see shadowCandidate).
+// Outside a game session (no light fades) the candidate holds at full strength.
+std::size_t shadowLight(const Scene& scene, Vec3 focus, float& intensity)
+{
+    const std::size_t candidate = shadowCandidate(scene, focus);
+    Scene::ShadowSlot& slot = scene.shadowSlot;
+    if (!scene.lightFades) {
+        slot.light = candidate;
+        slot.intensity = candidate == SIZE_MAX ? 0.0f : 1.0f;
+    } else if (slot.frame != scene.lightFrame) {
+        slot.frame = scene.lightFrame;
+        const float step = scene.lightFadeStep;
+        if (slot.light >= scene.lights.size()) {
+            slot.light = SIZE_MAX;
+        }
+        if (candidate == SIZE_MAX) {
+            if (slot.light != SIZE_MAX) {
+                slot.intensity = std::max(slot.intensity - step, 0.0f);
+                if (slot.intensity <= 0.0f) {
+                    slot.light = SIZE_MAX;
+                }
+            }
+        } else if (slot.light == SIZE_MAX || slot.light == candidate) {
+            slot.light = candidate;
+            slot.intensity = std::min(slot.intensity + step, 1.0f);
+        } else {
+            slot.intensity = std::max(slot.intensity - step, 0.0f);
+            if (slot.intensity <= 0.0f) {
+                slot.light = candidate;
+                slot.intensity = std::min(step, 1.0f);
+            }
+        }
+    }
+    intensity = slot.intensity;
+    return slot.light;
+}
 
 } // namespace
 
@@ -779,7 +830,9 @@ ShadowFrame buildShadowFrame(const Scene& scene, const ShadowView& view)
     if (!view.enabled) {
         return frame;
     }
-    const Scene::WorldLight* light = shadowLight(scene);
+    float intensity = 0.0f;
+    const std::size_t lightIndex = shadowLight(scene, view.focus, intensity);
+    const Scene::WorldLight* light = lightIndex < scene.lights.size() ? &scene.lights[lightIndex] : nullptr;
     // 00451a50: the shadow light is used while scene +0xb0 + 1.75 (007415c4) is below its z (+0x9c).
     if (light == nullptr || !(view.focus.z + 1.75f < light->position.z)) {
         return frame;
@@ -1002,7 +1055,7 @@ ShadowFrame buildShadowFrame(const Scene& scene, const ShadowView& view)
                                                         std::sin(angle) * radius + centre.y, view.focus.z};
     }
     // The centre's alpha byte: _ftol(intensity * 0.5 * 255).
-    const int alphaByte = static_cast<int>(static_cast<double>(kShadowIntensity) * 0.5 * 255.0);
+    const int alphaByte = static_cast<int>(static_cast<double>(intensity) * 0.5 * 255.0);
     frame.diskAlpha = static_cast<float>(alphaByte) / 255.0f;
     return frame;
 }

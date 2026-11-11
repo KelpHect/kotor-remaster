@@ -1973,6 +1973,14 @@ struct Scene {
         std::uint64_t frame = 0;
     };
     mutable std::unordered_map<std::uint32_t, ObjectLightFade> objectLightFades;
+    // The scene gob's shadow slot (its light list +0x1c / +0x20, filled by 004a3f70): the index into
+    // lights (SIZE_MAX for none) and its fading intensity, advanced once per lightFrame.
+    struct ShadowSlot {
+        std::size_t light = SIZE_MAX;
+        float intensity = 0.0f;
+        std::uint64_t frame = 0;
+    };
+    mutable ShadowSlot shadowSlot;
     bool lightFades = false;
     float lightFadeStep = 0.0f;
     std::uint64_t lightFrame = 0;
