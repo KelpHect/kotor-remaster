@@ -1245,6 +1245,12 @@ std::vector<MdlMeshTriangle> Mdl::posedTrianglesLayered(const std::vector<MdlAni
     return trianglesFromPose(layeredWorld(layers), -1.0f, filter, tintClip, tintTime, nullptr, &tints);
 }
 
+std::vector<MdlMeshTriangle> Mdl::posedHiddenTrianglesLayered(const std::vector<MdlAnimLayer>& layers) const
+{
+    return trianglesFromPose(layeredWorld(layers), -1.0f,
+                             [](const Node& node) { return !node.render && (node.type & 0x40u) == 0u; });
+}
+
 std::optional<Mdl::Pose> Mdl::nodePoseLayered(const std::string& node,
                                               const std::vector<MdlAnimLayer>& layers) const
 {

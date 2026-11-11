@@ -1145,6 +1145,12 @@ void bakeWorldEntityMesh(EntityMesh& mesh, const std::shared_ptr<Mdl>& model,
             }
         }
     }
+    mesh.hiddenFaces.clear();
+    for (const MdlMeshTriangle& triangle : model->posedHiddenTrianglesLayered(layers)) {
+        mesh.hiddenFaces.push_back({translation + rotate(rotation, triangle.v[0].position),
+                                    translation + rotate(rotation, triangle.v[1].position),
+                                    translation + rotate(rotation, triangle.v[2].position)});
+    }
     ++mesh.revision;
 }
 
