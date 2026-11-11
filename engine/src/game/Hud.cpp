@@ -450,6 +450,38 @@ void Hud::bindActionSlots()
     if (option != nullptr) {
         gui_.setText("LBL_ACTIONDESC", option->detail.empty() ? option->name : option->name + " (" + option->detail + ")");
     }
+    // 00685560 SetMessageText (UpdateActionDescription 00686e20 calls it every frame): both description controls take
+    // the height of the text and a top of (bottom - height), the bottom being one pixel above the file's lower edge
+    // (retail rows of every module: ids 8 and 9 at 840 705 177 0 with no text; the file says 840 680 177 26). A text
+    // that fills the file's height keeps the file's rect.
+    // NOT YET: the height of a wrapped second line (the one-line text is what the file was made for).
+    if (kotor::GuiScreen* screen = gui_.editableScreen()) {
+        kotor::GuiControl* background = nullptr;
+        kotor::GuiControl* label = nullptr;
+        for (kotor::GuiControl& control : screen->controls) {
+            if (control.tag == "LBL_ACTIONDESCBG") {
+                background = &control;
+            } else if (control.tag == "LBL_ACTIONDESC") {
+                label = &control;
+            }
+        }
+        if (background != nullptr && label != nullptr) {
+            if (!descFitKnown_ || descScreen_ != screen) {
+                descFitKnown_ = true;
+                descScreen_ = screen;
+                descBackground_ = background->extent;
+                descLabel_ = label->extent;
+            }
+            const int bottom = descBackground_.top + descBackground_.height - 1;
+            if (option != nullptr) {
+                background->extent = descBackground_;
+                label->extent = descLabel_;
+            } else {
+                background->extent = {descBackground_.left, bottom, descBackground_.width, 0};
+                label->extent = {descBackground_.left, bottom, descBackground_.width, 0};
+            }
+        }
+    }
 }
 
 const Hud::Option* Hud::currentTarget(int slot) const
