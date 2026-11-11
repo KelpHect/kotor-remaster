@@ -377,6 +377,11 @@ void tickAmbience(GameSession& session, float dt)
         }
         audio->ambience().exciteTick(object, combat.inCombat, combat.combatTimer, enemyNear, dt);
     };
+    // Only the creature the player controls is excited into battle music: retail 004f3580 starts it only when
+    // 004ae910 (004b2a50, a search of the client's player list for the object id) finds the creature, so two
+    // creatures fighting each other leave the area music alone (the retail Endar trace plays no battle music
+    // through its opening duels).
+    const std::uint32_t player = session.controlledObject();
     bool pcTicked = false;
     for (std::size_t index = 0; index < scene.entities.size(); ++index) {
         const kotor::Entity& entity = scene.entities[index];
@@ -384,15 +389,15 @@ void tickAmbience(GameSession& session, float dt)
             continue;
         }
         const std::uint32_t object = bodyObject(index);
-        if (object == script::kObjectInvalid) {
+        if (object == script::kObjectInvalid || object != player) {
             continue;
         }
-        pcTicked = pcTicked || object == api.pc();
+        pcTicked = true;
         tick(index, object, entity.position);
     }
     // A session without an avatar entity (no third-person body) still has a PC with a combat state.
-    if (!pcTicked && api.pc() != script::kObjectInvalid) {
-        tick(none, api.pc(), session.controlledPosition());
+    if (!pcTicked && player != script::kObjectInvalid) {
+        tick(none, player, session.controlledPosition());
     }
     audio->update(dt);
 }

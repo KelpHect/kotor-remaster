@@ -1206,6 +1206,7 @@ constexpr float kSameSpot = 9.99999747e-06f;
 constexpr float kDetourMargin = 0.2f;
 constexpr float kRouteDriftLimit = 1.0f;
 constexpr float kRepathTargetMove = 0.25f;
+constexpr float kStopInset = 0.002f;
 constexpr float kFormationArrive = 0.35f;
 // A caller that starts a little off the mesh walks back on; farther than this, a
 // jump's settle leaves it where the script put it.
@@ -1704,9 +1705,9 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
     const std::size_t blockingEntity = path.status == nav::PathStatus::DoorBlocked
         ? mesh->doors()[static_cast<std::size_t>(path.blockingDoor)].entity
         : kNoDoor;
-    // The margin absorbs float error left by the last stride, which is sized to end
-    // exactly at the stop distance.
-    if (reachable && remaining <= std::max(stopDistance, 0.02f) + 0.005f) {
+    // The last stride is sized to end kStopInset inside the stop distance, which absorbs its float error; a
+    // walker left between the range and a margin outside it would stand where a script's <= test fails.
+    if (reachable && remaining <= std::max(stopDistance, 0.02f)) {
         return finish(ActorStep::Arrived, MoveOutcome::Arrived, kNoDoor);
     }
     // Within range but not routed: what is wanted may stand behind the closed door
@@ -1737,8 +1738,12 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
     }
 
     // Where this frame's stride along the route ends.
+    // A walker that is to stop at a range ends a hair inside it: a script that tests the distance with
+    // <= (k_inc_walkways: GetDistanceToObject2D(oWay) <= 2.5 after ForceMoveToObject range 2.5) must see
+    // the arrival, and a stride sized to end exactly on the range loses that test to float rounding.
+    const float inset = stopDistance > 0.0f ? kStopInset : 0.0f;
     const float stride = std::min(speed * dt,
-                                  reachable ? remaining - std::max(stopDistance, 0.0f) : remaining);
+                                  reachable ? remaining - std::max(stopDistance, 0.0f) + inset : remaining);
     Vec3 desired = from;
     std::size_t nextIndex = route.next;
     float left = stride;

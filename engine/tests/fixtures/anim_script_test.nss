@@ -1,4 +1,4 @@
 void main()
 {
-    PlayAnimation(6, 1.0, 0.0);
+    PlayAnimation(0, 1.0, 0.0);
 }

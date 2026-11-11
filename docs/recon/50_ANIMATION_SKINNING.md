@@ -274,7 +274,7 @@ Spire); Vulkan creates and binds its alpha/additive pipelines successfully.
   finite.
 - Endar Spire: `n_sithappren` plays `pause1`; 8,355 vertices change after
   0.96 s; `animations.2da` row 6 is `pause1` and loops.
-- Script fixture `anim_script_test.ncs` calls `PlayAnimation(6,1,0)` on an
+- Script fixture `anim_script_test.ncs` calls `PlayAnimation(0,1,0)` (ANIMATION_LOOPING_PAUSE, which retail 0x540550 maps to row 6) on an
   NPC and the NPC's clip becomes `pause1`.
 - Endar Spire now has **142 entity meshes**, **84 textures**, **237,594**
   vertices and **49 batches**; the weapon gate checks hand hooks, models,
