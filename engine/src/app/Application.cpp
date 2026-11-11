@@ -10122,19 +10122,25 @@ int runApplication(const Options& options)
             logInfo(concat("  encounter volumes: ", loaded.encounters.size()));
             logInfo(concat("  entry: ", loaded.entry.x, ", ", loaded.entry.y, ", ", loaded.entry.z));
             {
-                // A model with no drawable mesh (every slot NULL, or Render off) has nothing to show.
+                // A model with no drawable mesh (every slot NULL, or Render off) has nothing to show. The
+                // helper placeables (PLC_Invis and kin) are meshless by design, and waypoints, triggers,
+                // sounds and encounters have no model at all (Entity::model holds their template name), so
+                // the list is a debug line, printed with KOTOR_LOG_DEBUG=1.
                 std::map<std::string, int> withoutMesh;
                 std::set<std::uint32_t> meshOwners;
                 for (const kotor::EntityMesh& mesh : loaded.entityMeshes) {
                     meshOwners.insert(mesh.entity);
                 }
                 for (std::size_t i = 0; i < loaded.entities.size(); ++i) {
-                    if (!loaded.entities[i].model.empty() && meshOwners.count(static_cast<std::uint32_t>(i)) == 0u) {
-                        ++withoutMesh[loaded.entities[i].model];
+                    const kotor::Entity& entity = loaded.entities[i];
+                    const bool modelled = entity.kind == kotor::EntityKind::Door || entity.kind == kotor::EntityKind::Placeable
+                        || entity.kind == kotor::EntityKind::Creature;
+                    if (modelled && !entity.model.empty() && meshOwners.count(static_cast<std::uint32_t>(i)) == 0u) {
+                        ++withoutMesh[entity.model];
                     }
                 }
                 for (const auto& [model, count] : withoutMesh) {
-                    logInfo(concat("  model without a mesh: ", model, " x", count));
+                    logDebug(concat("  model without a mesh: ", model, " x", count));
                 }
             }
             logInfo(concat("  entity meshes: ", loaded.entityMeshes.size(), " triggers: ",
@@ -11668,6 +11674,7 @@ int runApplication(const Options& options)
             if (game->module() != renderedModule) {
                 // A script's StartNewModule lands here, not through a key press.
                 renderedModule = game->module();
+                userPause = false; // retail 005f8290 clears the pause states with the module
                 state.backend->setScene(&game->scene());
                 renderedMeshKey = game->scene().entityMeshes.size() + game->scene().meshRevision;
                 moduleArrivalTicks = SDL_GetTicksNS();

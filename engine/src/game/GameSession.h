@@ -203,6 +203,7 @@ public:
     // A frame the world does not tick (pause, a screen over the world): retail's server loop
     // (004babb0) still runs TempDeathUpdate (004b6da0) on the real clock.
     void tickWhilePaused(float realDt);
+    void runPendingModule();
     SceneCamera camera() const;
     SceneCamera cinematicCamera(std::int32_t cameraId) const;
     SceneCamera presetCamera(std::int32_t angle, float camHeight, float targetHeight,

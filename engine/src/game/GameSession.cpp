@@ -832,7 +832,10 @@ void GameSession::placeAtLink(const std::string& linkedTo)
             return;
         }
     }
-    logWarn(concat("module link target ", linkedTo, " not found in ", module_));
+    // Retail 004b3d10 (MovePlayerToArea) moves the player only when CSWSModule::GetWaypoint finds the tag; with no
+    // waypoint the player stays where 004b3a90 (InitiateModuleForPlayer) put it, the IFO's Mod_Entry point, and no
+    // error is raised (manm28aa has no from26c: k_pman_to28a still sends the party there).
+    logInfo(concat("module link target ", linkedTo, " not found in ", module_, ": staying at the module entry"));
 }
 
 void GameSession::startNewGame(const std::string& module)
@@ -873,6 +876,14 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
     // load calls 004aecd0 / 004aed30). The swoop race's heartbeat fades out, then StartNewModule
     // (tar_m03af), and nothing in tar_m03af fades back in.
     sim_->fade = FadeState{};
+    // Retail 005f8290 (CClientExoAppInternal::UnloadModule) clears both pause states and the Enemy Sighted flag
+    // (+0x324) and the autopause bit (+900 bit 0), then CGuiInGame::ShutDown (0062c310) deletes every in-game
+    // panel, the status summary (+0xa8) with the rows it had gathered: a pause or popup does not carry over.
+    enemySighted_ = false;
+    autoPauseRequest_ = 0;
+    statusOpen_ = false;
+    statusPending_ = {};
+    statusPopupOwed_ = false;
     arrivalPending_ = true;
     kotor::Scene loaded = kotor::loadModule(install_, module);
     module_ = module;
@@ -2809,6 +2820,7 @@ void GameSession::tickWhilePaused(float realDt)
     // TempDeathUpdate in a paused game) shows him already pushing up on his arms at the burst's first
     // frames (PAUSED label up) and the PC's combat idle moving, so the clip a revive starts runs on.
     updateAnimations(std::min(realDt, 0.08f));
+    runPendingModule();
 }
 
 void GameSession::update(float dt, const InputState& rawInput)
@@ -2993,6 +3005,13 @@ void GameSession::update(float dt, const InputState& rawInput)
         arrivalPending_ = false;
         completeArrival();
     }
+    runPendingModule();
+}
+
+// Retail 004babb0: the server loop takes a pending StartNewModule (+0x10080, set by 004aecc0) every frame with no
+// pause test, so a paused game (autopause box, status summary, party selection, pause key) still changes module.
+void GameSession::runPendingModule()
+{
     if (!pendingModule_.empty()) {
         const std::string next = pendingModule_;
         const std::string linkedTo = sim_->pendingLinkedTo;
