@@ -635,8 +635,36 @@ SavedNpc readNpcNode(const Gff& gff)
     return npc;
 }
 
+// The "SWVarTable" struct of an object (or of the GIT root, the area's own table).
+SavedVarTable readVarTable(const Gff& gff, std::uint32_t structure)
+{
+    SavedVarTable vars;
+    const GffField* table = field(gff, structure, "SWVarTable");
+    if (table == nullptr || table->type != GffType::Struct) {
+        return vars;
+    }
+    const std::uint32_t at = gff.structIndex(*table);
+    vars.present = true;
+    std::size_t word = 0;
+    for (const std::uint32_t entry : list(gff, at, "BitArray")) {
+        if (word < vars.bits.size()) {
+            // DWORD words: the raw bits (Gff::integer goes through a float and loses bits above 2^24).
+            const GffField* variable = field(gff, entry, "Variable");
+            vars.bits[word++] = variable != nullptr ? variable->data : 0u;
+        }
+    }
+    std::size_t byte = 0;
+    for (const std::uint32_t entry : list(gff, at, "ByteArray")) {
+        if (byte < vars.bytes.size()) {
+            vars.bytes[byte++] = static_cast<std::uint8_t>(numberInt(gff, entry, "Variable", 0));
+        }
+    }
+    return vars;
+}
+
 void readObjects(const Gff& gff, OriginalSave& save)
 {
+    save.areaVars = readVarTable(gff, gff.rootIndex());
     struct ListSpec {
         const char* label;
         SavedObjectState::Kind kind;
@@ -668,6 +696,7 @@ void readObjects(const Gff& gff, OriginalSave& save)
             object.open = numberInt(gff, structure, "OpenState", 0) != 0
                 || numberInt(gff, structure, "Open", 0) != 0;
             object.locked = numberInt(gff, structure, "Locked", 0) != 0;
+            object.vars = readVarTable(gff, structure);
             if (spec.kind == SavedObjectState::Kind::Placeable) {
                 for (const std::uint32_t item : list(gff, structure, "ItemList")) {
                     std::string resref = text(gff, item, "InventoryRes");
@@ -713,6 +742,28 @@ void patchInt(GffNode& node, const std::string& label, std::int64_t value)
         return;
     }
     node.addInt32(label, static_cast<std::int32_t>(value));
+}
+
+// Replaces a node's "SWVarTable" (retail CSWVarTable, struct id 0 with BitArray and ByteArray lists).
+void setVarTable(GffNode& node, const SavedVarTable& vars)
+{
+    node.remove("SWVarTable");
+    auto table = std::make_shared<GffNode>(0);
+    std::vector<GffNodePtr> bits;
+    for (const std::uint32_t word : vars.bits) {
+        auto entry = std::make_shared<GffNode>(0);
+        entry->addUInt32("Variable", word);
+        bits.push_back(std::move(entry));
+    }
+    std::vector<GffNodePtr> bytes;
+    for (const std::uint8_t byte : vars.bytes) {
+        auto entry = std::make_shared<GffNode>(0);
+        entry->addUInt8("Variable", byte);
+        bytes.push_back(std::move(entry));
+    }
+    table->addList("BitArray", std::move(bits));
+    table->addList("ByteArray", std::move(bytes));
+    node.addStruct("SWVarTable", std::move(table));
 }
 
 void patchFloat(GffNode& node, const std::string& label, float value)
@@ -1280,6 +1331,9 @@ void patchGit(GffNode& git, const OriginalSave& save, Install& install)
         map->addBinary("AreaMapData", std::move(bytes));
         git.addStruct("AreaMap", std::move(map));
     }
+    if (save.areaVars.present) {
+        setVarTable(git, save.areaVars);
+    }
     struct ListSpec {
         const char* label;
         SavedObjectState::Kind kind;
@@ -1324,6 +1378,9 @@ void patchGit(GffNode& git, const OriginalSave& save, Install& install)
                     } catch (const FormatError&) {
                     }
                 }
+            }
+            if (state->vars.present) {
+                setVarTable(*child, state->vars);
             }
             patchFloat(*child, "XPosition", state->position.x);
             patchFloat(*child, "YPosition", state->position.y);

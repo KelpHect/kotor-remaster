@@ -7242,6 +7242,7 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
     readPartyFromOriginalSave(saved);
 
     std::vector<std::pair<std::size_t, const decltype(kotor::SavedObjectState::loot)*>> savedLoot;
+    std::vector<std::pair<std::size_t, const kotor::SavedVarTable*>> savedVars;
     std::vector<bool> objectUsed(scene_.entities.size(), false);
     for (const kotor::SavedObjectState& state : saved.objects) {
         const kotor::EntityKind kind = entityKindForSaved(state.kind);
@@ -7267,6 +7268,9 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
             continue;
         }
         objectUsed[index] = true;
+        if (state.vars.present) {
+            savedVars.emplace_back(index, &state.vars);
+        }
         kotor::Entity& entity = scene_.entities[index];
         entity.position = state.position;
         entity.bearing = state.bearing;
@@ -7312,6 +7316,32 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
     combatTarget_ = UINT32_MAX;
     selectedEntity_ = UINT32_MAX;
     syncScriptWorld();
+    // The saved script locals (SWVarTable) go back before the entry scripts run: retail's area OnEnter fires on a
+    // loaded game too (CSWSArea::AddObjectToArea 0050dfd0 queues event 0xc carrying GetLoadFromSaveGame, handled at
+    // 0050d6c0) and the Endar area script k_pend_area01 guards its opening cutscene on a local of the area that
+    // the save holds; the retail trace of that save shows the script reach its guard and stop.
+    const auto restoreVars = [&](std::uint32_t id, const kotor::SavedVarTable& vars) {
+        if (id == script::kObjectInvalid) {
+            return;
+        }
+        for (std::int64_t i = 0; i < 96; ++i) {
+            // Only the set ones: a fresh object holds none, and an all-zero table stays empty.
+            if (((vars.bits[static_cast<std::size_t>(i / 32)] >> static_cast<unsigned>(i % 32)) & 1u) != 0u) {
+                scriptWorld_.setLocalBoolean(id, i, true);
+            }
+        }
+        for (std::int64_t i = 0; i < 8; ++i) {
+            if (vars.bytes[static_cast<std::size_t>(i)] != 0) {
+                scriptWorld_.setLocalNumber(id, i, static_cast<std::int8_t>(vars.bytes[static_cast<std::size_t>(i)]));
+            }
+        }
+    };
+    if (saved.areaVars.present) {
+        restoreVars(sim_->areaObject, saved.areaVars);
+    }
+    for (const auto& [index, vars] : savedVars) {
+        restoreVars(objectForEntity(index), *vars);
+    }
     // Loading a game is not walking in. Measured on retail: the Taris save loads with the player inside
     // tar02_carstr and no conversation starts (its k_ptar_carstr_en would start one).
     triggerInside_.assign(scene_.triggers.size(), false);
@@ -7542,11 +7572,28 @@ bool GameSession::saveOriginalSave(const std::filesystem::path& folder,
         global.location = location;
         save.globals.push_back(std::move(global));
     }
-    for (const kotor::Entity& entity : scene_.entities) {
+    // Script locals (retail CSWVarTable: 96 booleans, 8 number bytes) ride in each object's SWVarTable.
+    const auto varsOf = [&](std::uint32_t id) {
+        kotor::SavedVarTable vars;
+        vars.present = true;
+        for (std::int64_t i = 0; i < 96; ++i) {
+            if (scriptWorld_.localBoolean(id, i) != 0) {
+                vars.bits[static_cast<std::size_t>(i / 32)] |= std::uint32_t{1} << static_cast<unsigned>(i % 32);
+            }
+        }
+        for (std::int64_t i = 0; i < 8; ++i) {
+            vars.bytes[static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(scriptWorld_.localNumber(id, i));
+        }
+        return vars;
+    };
+    save.areaVars = varsOf(sim_->areaObject);
+    for (std::size_t entityIndex = 0; entityIndex < scene_.entities.size(); ++entityIndex) {
+        const kotor::Entity& entity = scene_.entities[entityIndex];
         if (entity.tag.empty() || entity.partyAvatar) {
             continue;
         }
         kotor::SavedObjectState state;
+        state.vars = varsOf(objectForEntity(entityIndex));
         switch (entity.kind) {
         case kotor::EntityKind::Creature: state.kind = kotor::SavedObjectState::Kind::Creature; break;
         case kotor::EntityKind::Door: state.kind = kotor::SavedObjectState::Kind::Door; break;

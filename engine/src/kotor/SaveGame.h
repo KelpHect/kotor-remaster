@@ -60,6 +60,29 @@ struct SavedResource {
     std::vector<std::uint8_t> data;
 };
 
+// An object's script variables as the saved GIT keeps them (struct "SWVarTable", retail CSWVarTable): "BitArray"
+// is three DWORDs of local booleans (index i is bit i % 32 of word i / 32) and "ByteArray" the eight local numbers.
+// The area's own table sits at the GIT root. A save without the struct (an engine save) leaves `present` false.
+struct SavedVarTable {
+    bool present = false;
+    std::array<std::uint32_t, 3> bits{};
+    std::array<std::uint8_t, 8> bytes{};
+    bool any() const
+    {
+        for (const std::uint32_t word : bits) {
+            if (word != 0) {
+                return true;
+            }
+        }
+        for (const std::uint8_t byte : bytes) {
+            if (byte != 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+};
+
 struct SavedObjectState {
     enum class Kind { Creature, Door, Placeable, Trigger, Store, Encounter, Waypoint, Sound, Other };
     Kind kind = Kind::Other;
@@ -73,6 +96,7 @@ struct SavedObjectState {
     bool open = false;
     bool locked = false;
     std::vector<std::string> loot;
+    SavedVarTable vars;
 };
 
 // One available NPC: a PARTYTABLE slot (PT_AVAIL_NPCS entry) plus the stored
@@ -165,6 +189,7 @@ struct OriginalSave {
     std::map<std::string, std::int32_t> journal;
     std::vector<SavedGlobal> globals;
     std::vector<SavedObjectState> objects;
+    SavedVarTable areaVars;
     SavedAreaMap areaMap;
     // Saved GITs are flattened snapshots: the writer removes UseTemplates and
     // readers must not re-template GIT objects.
