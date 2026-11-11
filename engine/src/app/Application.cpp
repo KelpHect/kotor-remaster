@@ -30,6 +30,7 @@
 #include "game/MenuScene.h"
 #include "game/Minigames.h"
 #include "game/Pathfinding.h"
+#include "game/StateTrace.h"
 #include "kotor/BinkDecoder.h"
 #include "kotor/Formats.h"
 #include "kotor/GffWrite.h"
@@ -10037,6 +10038,8 @@ int runApplication(const Options& options)
     }
 
     std::optional<GameSession> game;
+    std::unique_ptr<StateTrace> stateTrace; // --state-trace; declared after `game` so it detaches first
+    std::string traceHudLayout;             // the HUD layout drawn this frame (empty: none)
     std::unique_ptr<Chargen> chargen;
     std::unique_ptr<ChargenGuiState> chargenGui;
     bool chargenActive = options.chargen;
@@ -11094,6 +11097,11 @@ int runApplication(const Options& options)
                 }
                 game->setModuleLoadHook([&](const std::string& next) {
                     presentLoadScreen(state, *game, *loadScreenGui, next);
+                    if (stateTrace && loadScreenGui->screen() != nullptr) {
+                        const kotor::GuiScreen& shown = *loadScreenGui->screen();
+                        stateTrace->onLoadScreen(shown.name, shown.extent.left, shown.extent.top, shown.extent.width,
+                                                 shown.extent.height);
+                    }
                 });
                 if (options.frontEndTest) {
                     frontEndGate = std::make_unique<FrontEndGate>(options.frontEndOut, savesRoot, state.window,
@@ -11203,6 +11211,20 @@ int runApplication(const Options& options)
     InputScript inputScript;
     std::vector<std::string> inputScriptShots;
     std::uint64_t inputScriptStart = 0;
+    if (!options.stateTrace.empty() && game) {
+        stateTrace = std::make_unique<StateTrace>();
+        std::string traceError;
+        if (stateTrace->open(options.stateTrace, options.stateTraceSamp, traceError)) {
+            // A menu launch stands on a backdrop module that retail has no counterpart for.
+            const bool menuBackdrop = state.guiSystem && state.guiSystem->active()
+                && state.guiSystem->screenName().rfind("mainmenu", 0) == 0;
+            stateTrace->attach(*game, menuBackdrop);
+            logInfo(concat("state trace: ", options.stateTrace, " (every ", options.stateTraceSamp, " frames)"));
+        } else {
+            logError(concat("state trace: ", traceError));
+            stateTrace.reset();
+        }
+    }
     if (!options.inputScript.empty()) {
         if (!inputScript.load(options.inputScript, options.inputScriptOut)) {
             logError(concat("input script: ", inputScript.error()));
@@ -11984,6 +12006,7 @@ int runApplication(const Options& options)
                             float designW = 0.0f;
                             float designH = 0.0f;
                             const std::string wantedLayout = Hud::layoutFor(hudIo.DisplaySize.x, hudIo.DisplaySize.y, designW, designH);
+                            traceHudLayout = wantedLayout;
                             if (hudGui->screenName() != wantedLayout) {
                                 hudGui->open(wantedLayout);
                             }
@@ -12780,6 +12803,33 @@ int runApplication(const Options& options)
                 logInfo(gateExit == 0 ? "chargen_preview: PASS" : "chargen_preview: FAIL");
                 exitReason = "chargen preview gate finished";
                 running = false;
+            }
+        }
+        if (stateTrace) {
+            // The frame is drawn: sample it, then take the anchor frames that fell due (BMP).
+            StateTraceFrame traceFrame;
+            traceFrame.game = game ? &*game : nullptr;
+            traceFrame.menuGui = state.guiSystem.get();
+            traceFrame.dialogueGui = dialogueScreen ? &dialogueScreen->activeGui() : dialogueGui.get();
+            traceFrame.hudGui = hudGui.get();
+            traceFrame.hudLayout = traceHudLayout;
+            traceFrame.userPause = userPause;
+            traceFrame.uiPause = pauseMenuOpen || (gameScreens && gameScreens->open());
+            if (state.window != nullptr) {
+                SDL_GetWindowSizeInPixels(state.window, &traceFrame.windowWidth, &traceFrame.windowHeight);
+            }
+            stateTrace->step(traceFrame);
+            traceHudLayout.clear();
+            for (const std::filesystem::path& file : stateTrace->takeShots()) {
+                CapturedFrame traceShot;
+                if (!state.backend->captureFrame(traceShot) || traceShot.rgba.empty()
+                    || !writeBmpTopDown(file, traceShot.width, traceShot.height, traceShot.rgba)) {
+                    static bool warned = false;
+                    if (!warned) {
+                        warned = true;
+                        logWarn(concat("state trace: screenshot failed (no capture on this backend?): ", file.generic_string()));
+                    }
+                }
             }
         }
         for (const std::string& shot : inputScriptShots) {

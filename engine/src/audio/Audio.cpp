@@ -466,6 +466,7 @@ struct Mixer::Impl {
     ReverbPreset preset = reverbPreset("GENERIC");
     std::vector<Voice> voices;
     int nextId = 1;
+    Mixer::PlayObserver playObserver;
     std::vector<float> buses[5];
     float lastRms = 0.0f;
 
@@ -840,7 +841,18 @@ int Mixer::play(const std::shared_ptr<const SoundData>& data, Bus bus, float vol
     voice.pan = std::clamp(pan, -1.0f, 1.0f);
     voice.pitch = std::clamp(pitch, 0.05f, 8.0f);
     impl_->voices.push_back(std::move(voice));
-    return impl_->voices.back().id;
+    const Impl::Voice& started = impl_->voices.back();
+    if (impl_->playObserver) {
+        impl_->playObserver({started.id, &started.data->name, started.bus, started.volume, started.loop,
+                             started.positional, started.position, started.minDistance, started.maxDistance});
+    }
+    return started.id;
+}
+
+void Mixer::setPlayObserver(PlayObserver observer)
+{
+    KE_MIXER_LOCK();
+    impl_->playObserver = std::move(observer);
 }
 
 int Mixer::playMusic(const std::shared_ptr<const SoundData>& data, float volume, bool loop)

@@ -140,6 +140,9 @@ struct Options {
     // --input-script: a timed walk (app/InputScript.h) and the folder its frames go to.
     std::string inputScript;
     std::string inputScriptOut;
+    // --state-trace: the per-frame state trace compared against the original game's (game/StateTrace.h).
+    std::string stateTrace;
+    int stateTraceSamp = 3;
     // Gallery shots: "id[:n]" holds visualeffects.2da row id on the nth creature (default 0).
     std::string spawnVfx;
     bool minigameRenderCheck = false;

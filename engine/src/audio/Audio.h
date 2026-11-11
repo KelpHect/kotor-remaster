@@ -3,6 +3,7 @@
 #include "kotor/Formats.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -91,6 +92,21 @@ public:
              bool loop, bool positional = false, kotor::Vec3 position = {},
              float minDistance = 1.0f, float maxDistance = 10.0f, float pan = 0.0f,
              float pitch = 1.0f);
+    // --state-trace only (game/StateTrace.h): told on the caller's thread, under the mixer lock, each time a
+    // voice starts. It must not call back into the mixer. Null when the flag is absent (one test per play).
+    struct PlayInfo {
+        int voice = 0;
+        const std::string* name = nullptr;
+        Bus bus = Bus::Effects;
+        float volume = 0.0f;
+        bool loop = false;
+        bool positional = false;
+        kotor::Vec3 position;
+        float minDistance = 0.0f;
+        float maxDistance = 0.0f;
+    };
+    using PlayObserver = std::function<void(const PlayInfo&)>;
+    void setPlayObserver(PlayObserver observer);
     int playMusic(const std::shared_ptr<const SoundData>& data, float volume, bool loop);
     void stopMusic();
     void stopVoice(int voice);
