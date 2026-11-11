@@ -2461,10 +2461,38 @@ std::vector<MdlMeshTriangle> Mdl::loopMeshTriangles(const std::string& clip, flo
     return out;
 }
 
-std::vector<MdlMeshTriangle> Mdl::roomTriangles(Vec3 origin) const
+std::vector<MdlMeshTriangle> Mdl::roomTriangles(Vec3 origin, bool gobParts) const
 {
+    // Which nodes sit under the "<model>a" node (the node itself included); <model> is the root node's name.
+    std::string gobName;
+    for (const Node& node : nodes_) {
+        const auto parent = nodeByOffset_.find(node.parent);
+        if (parent == nodeByOffset_.end() || &nodes_[parent->second] == &node) {
+            gobName = lowerAscii(node.name) + "a";
+            break;
+        }
+    }
+    std::vector<std::uint8_t> inGob(nodes_.size(), 0u);
+    for (std::size_t i = 0; i < nodes_.size(); ++i) {
+        std::size_t at = i;
+        for (std::size_t guard = 0; guard < nodes_.size(); ++guard) {
+            if (!gobName.empty() && lowerAscii(nodes_[at].name) == gobName) {
+                inGob[i] = 1u;
+                break;
+            }
+            const auto parent = nodeByOffset_.find(nodes_[at].parent);
+            if (parent == nodeByOffset_.end() || parent->second == at) {
+                break;
+            }
+            at = parent->second;
+        }
+    }
+    const Node* first = nodes_.data();
     std::vector<MdlMeshTriangle> out = trianglesFromPose(
-        bindWorld_, -1.0f, [](const Node& node) { return node.render && !node.loopAnimated; });
+        bindWorld_, -1.0f, [&](const Node& node) {
+            const bool gob = inGob[static_cast<std::size_t>(&node - first)] != 0u;
+            return node.render && !node.loopAnimated && gob == gobParts;
+        });
     for (MdlMeshTriangle& triangle : out) {
         for (MdlMeshVertex& vertex : triangle.v) {
             vertex.position = vertex.position + origin;

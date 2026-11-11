@@ -582,6 +582,9 @@ void GameSession::updateAnimations(float dt)
             ++animationRevision_;
             continue;
         }
+        if (effects_ && !mesh.attachModel && mesh.entity < scene_.entities.size()) {
+            effects_->creatureClip(mesh.entity, mesh.animation);
+        }
         const bool dangly = mesh.model->danglyNodeCount() > 0;
         if (mesh.animation.empty() && !dangly && mesh.face.weight <= 0.0f) {
             continue;
@@ -885,7 +888,7 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
     statusPending_ = {};
     statusPopupOwed_ = false;
     arrivalPending_ = true;
-    kotor::Scene loaded = kotor::loadModule(install_, module);
+    kotor::Scene loaded = kotor::loadModule(install_, module, savedGit_);
     module_ = module;
     scene_ = std::move(loaded);
     if (effects_) {
@@ -966,6 +969,15 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
         if (entity < scene_.entities.size() && !scene_.entities[entity].linkedModule.empty()
             && pointInTrigger(scene_.triggers[i], arrival.x, arrival.y)) {
             triggerInside_[i] = true;
+        }
+    }
+    // A creature is created standing on the walkmesh: the GIT Z can sit above the floor (Taris tar_m02aa twilek is 3.13 in the
+    // GIT and measured at floor height 0 on retail from the first row).
+    for (kotor::Entity& entity : scene_.entities) {
+        float floorZ = 0.0f;
+        if (entity.kind == kotor::EntityKind::Creature && !entity.partyAvatar
+            && floorHeight(scene_, entity.position.x, entity.position.y, entity.position.z + 2.0f, floorZ)) {
+            entity.position.z = floorZ;
         }
     }
     initAnimations();
@@ -2036,10 +2048,27 @@ void GameSession::spawnEncounters()
          ++encounterIndex) {
         const kotor::EncounterVolume& volume = scene_.encounters[encounterIndex];
         EncounterState& state = encounterStates_[encounterIndex];
-        state.respawnsRemaining = volume.templateData.respawns < 0
+        const kotor::EncounterTemplate& data = volume.templateData;
+        state.respawnsRemaining = data.respawns < 0
             ? -1
-            : volume.templateData.respawns;
-        state.resetTime = static_cast<float>(std::max(0, volume.templateData.resetTime));
+            : std::max(0, data.respawns - data.currentSpawns); // AIUpdate 00593fb0: a respawn needs CurrentSpawns < Respawns
+        state.resetTime = static_cast<float>(std::max(0, data.resetTime));
+        // Counters of a saved encounter (ReadEncounterFromGff 00592430). SpawnIfAppropriate 00593be0 spawns only while
+        // Started is not 1; the wave's creatures are the AreaList objects. Exhausted (+0x27c) is written by
+        // SaveEncounter 00591350 but no spawn code reads it, so it is not restored.
+        state.spawnedCount = data.numberSpawned;
+        state.triggered = data.started;
+        state.spawned = data.started;
+        for (const std::uint32_t id : data.areaObjects) {
+            for (std::size_t e = 0; e < scene_.entities.size(); ++e) {
+                if (id != 0 && scene_.entities[e].savedObjectId == id) {
+                    state.entities.push_back(e);
+                    break;
+                }
+            }
+        }
+        // 00593fb0 wakes a reset encounter once LastSpawnDay and LastSpawnTime are both set and ResetTime has passed.
+        state.wiped = !data.active && data.lastSpawnDay != 0 && data.lastSpawnTime != 0;
     }
 }
 
@@ -6437,7 +6466,9 @@ std::optional<std::vector<script::Value>> GameSession::action(
                                                : script::kObjectInvalid);
     case 46: // PlaySound
         if (audio_) {
-            audio_->playEffect(stringArg(0));
+            // ACT_46 00541170 queues the object action 0x17; the retail trace (Taris cutscene, n_genbith_comm1) shows
+            // the sound as a 2D streaming source in priority group 9 (Non_Player_Chat, volume 127), like a spoken line.
+            audio_->playVoice(stringArg(0));
             logEvent("sound " + stringArg(0));
         }
         return std::vector<script::Value>{};
@@ -7144,16 +7175,20 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
     companions_.clear();
     partyTags_.clear();
     sim_->restoringSave = true;
+    savedGit_ = saved.gitBytes.empty() ? nullptr : &saved.gitBytes;
     try {
         if (!loadModule(saved.module, nullptr, {})) {
+            savedGit_ = nullptr;
             sim_->restoringSave = false;
             return false;
         }
     } catch (const std::exception& exception) {
+        savedGit_ = nullptr;
         sim_->restoringSave = false;
         logEvent(std::string("original save module failed: ") + exception.what());
         return false;
     }
+    savedGit_ = nullptr;
     sim_->restoringSave = false;
     if (!saved.area.empty() && lower(saved.area) != lower(scene_.area)) {
         logEvent("original save area differs from module entry: " + saved.area);
@@ -7245,16 +7280,15 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
     readPartyFromOriginalSave(saved);
 
     std::vector<std::pair<std::size_t, const decltype(kotor::SavedObjectState::loot)*>> savedLoot;
-    std::vector<std::pair<std::size_t, const kotor::SavedVarTable*>> savedVars;
-    std::vector<std::pair<std::uint32_t, std::size_t>> savedIds; // the save's object id, the entity it matched
     std::vector<bool> objectUsed(scene_.entities.size(), false);
+    std::vector<std::pair<std::size_t, const kotor::SavedObjectState*>> matchedObjects;
     for (const kotor::SavedObjectState& state : saved.objects) {
         const kotor::EntityKind kind = entityKindForSaved(state.kind);
         std::size_t index = static_cast<std::size_t>(-1);
         float bestDistance = 1.0e30f;
         for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
             const kotor::Entity& candidate = scene_.entities[i];
-            if (objectUsed[i] || candidate.tag != state.tag
+            if (objectUsed[i] || lower(candidate.tag) != lower(state.tag)
                 || candidate.partyAvatar
                 || (kind != kotor::EntityKind::Unknown && candidate.kind != kind)) {
                 continue;
@@ -7272,12 +7306,7 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
             continue;
         }
         objectUsed[index] = true;
-        if (state.vars.present) {
-            savedVars.emplace_back(index, &state.vars);
-        }
-        if (state.objectId != 0) {
-            savedIds.emplace_back(state.objectId, index);
-        }
+        matchedObjects.emplace_back(index, &state);
         kotor::Entity& entity = scene_.entities[index];
         entity.position = state.position;
         entity.bearing = state.bearing;
@@ -7323,31 +7352,78 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
     combatTarget_ = UINT32_MAX;
     selectedEntity_ = UINT32_MAX;
     syncScriptWorld();
-    // The saved script locals (SWVarTable) go back before the entry scripts run: retail's area OnEnter fires on a
-    // loaded game too (CSWSArea::AddObjectToArea 0050dfd0 queues event 0xc carrying GetLoadFromSaveGame, handled at
-    // 0050d6c0) and the Endar area script k_pend_area01 guards its opening cutscene on a local of the area that
-    // the save holds; the retail trace of that save shows the script reach its guard and stop.
-    const auto restoreVars = [&](std::uint32_t id, const kotor::SavedVarTable& vars) {
-        if (id == script::kObjectInvalid) {
-            return;
-        }
+    // The area's script locals (the SWVarTable at the GIT root) go back before the entry scripts run: retail's area
+    // OnEnter fires on a loaded game too (CSWSArea::AddObjectToArea 0050dfd0 queues event 0xc carrying
+    // GetLoadFromSaveGame, handled at 0050d6c0) and the Endar area script k_pend_area01 guards its opening cutscene on a
+    // local of the area that the save holds; the retail trace of that save shows the script reach its guard and stop.
+    if (saved.areaVars.present && sim_->areaObject != script::kObjectInvalid) {
         for (std::int64_t i = 0; i < 96; ++i) {
-            // Only the set ones: a fresh object holds none, and an all-zero table stays empty.
-            if (((vars.bits[static_cast<std::size_t>(i / 32)] >> static_cast<unsigned>(i % 32)) & 1u) != 0u) {
-                scriptWorld_.setLocalBoolean(id, i, true);
+            if (((saved.areaVars.bits[static_cast<std::size_t>(i / 32)] >> static_cast<unsigned>(i % 32)) & 1u) != 0u) {
+                scriptWorld_.setLocalBoolean(sim_->areaObject, i, true);
             }
         }
         for (std::int64_t i = 0; i < 8; ++i) {
-            if (vars.bytes[static_cast<std::size_t>(i)] != 0) {
-                scriptWorld_.setLocalNumber(id, i, static_cast<std::int8_t>(vars.bytes[static_cast<std::size_t>(i)]));
+            if (saved.areaVars.bytes[static_cast<std::size_t>(i)] != 0) {
+                scriptWorld_.setLocalNumber(sim_->areaObject, i, static_cast<std::int8_t>(saved.areaVars.bytes[static_cast<std::size_t>(i)]));
             }
         }
-    };
-    if (saved.areaVars.present) {
-        restoreVars(sim_->areaObject, saved.areaVars);
     }
-    for (const auto& [index, vars] : savedVars) {
-        restoreVars(objectForEntity(index), *vars);
+    // Retail 004d1cf0 (LoadObjectState) gives each object back its script variables: the named ones
+    // (0059aa80) and the 96 booleans and 8 numbers of CSWVarTable (0059b0f0).
+    for (const auto& [index, state] : matchedObjects) {
+        if (index >= entityObjects_.size() || entityObjects_[index] == 0) {
+            continue;
+        }
+        const std::uint32_t object = entityObjects_[index];
+        for (const kotor::SavedObjectState::Local& local : state->locals) {
+            if (local.type == 1) {
+                scriptWorld_.setLocal(object, local.name, script::Value::makeInt(local.integer));
+            } else if (local.type == 2) {
+                scriptWorld_.setLocal(object, local.name, script::Value::makeFloat(local.number));
+            } else if (local.type == 3) {
+                scriptWorld_.setLocal(object, local.name, script::Value::makeString(local.text));
+            }
+        }
+        for (std::int64_t bit = 0; bit < 96; ++bit) {
+            if ((state->localBits[static_cast<std::size_t>(bit) / 32] >> (bit % 32) & 1u) != 0) {
+                scriptWorld_.setLocalBoolean(object, bit, true);
+            }
+        }
+        for (std::int64_t number = 0; number < 8; ++number) {
+            const std::uint8_t byte = state->localBytes[static_cast<std::size_t>(number)];
+            if (byte != 0) {
+                scriptWorld_.setLocalNumber(object, number, static_cast<std::int8_t>(byte));
+            }
+        }
+    }
+    // Retail 004d1be0 (LoadEffectList) applies the saved effects again, except SkipOnLoad ones and innate (duration
+    // type 3) ones; the argument layout of an effect beyond its type is kept as the saved integers and floats.
+    {
+        ScriptApi api{*this};
+        for (const auto& [index, state] : matchedObjects) {
+            if (index >= entityObjects_.size() || entityObjects_[index] == 0) {
+                continue;
+            }
+            for (const kotor::SavedEffect& held : state->effects) {
+                const std::int32_t scriptType = kotor::savedEffectScriptType(held.type);
+                const std::int32_t durationType = held.subType & 7;
+                if (!kotor::savedEffectApplies(held) || scriptType < 0 || (durationType != 1 && durationType != 2)) {
+                    continue;
+                }
+                EffectData data;
+                data.type = scriptType;
+                data.subType = held.subType;
+                for (const std::int32_t value : held.ints) {
+                    data.args.push_back(script::Value::makeInt(value));
+                }
+                for (const float value : held.floats) {
+                    data.args.push_back(script::Value::makeFloat(value));
+                }
+                const std::int64_t id = api.sim().engine.add(std::move(data));
+                applyEffectRecord(api, durationType, id, entityObjects_[index], held.duration, script::kObjectInvalid,
+                                  static_cast<std::int32_t>(held.spellId));
+            }
+        }
     }
     // The delayed scripts still pending at the save (IFO EventQueue, retail's event queue) come back due at the
     // same distance from the saved world clock: Endar's k_pend_time01 starts the Trask conversation 19.4 s after
@@ -7362,9 +7438,10 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
         if (saved.playerObjectId != 0) {
             idMap[saved.playerObjectId] = scriptWorld_.pc;
         }
-        for (const auto& [savedId, index] : savedIds) {
-            if (const std::uint32_t object = objectForEntity(index); object != script::kObjectInvalid && object != 0) {
-                idMap[savedId] = object;
+        for (const auto& [index, state] : matchedObjects) {
+            if (const std::uint32_t object = objectForEntity(index);
+                state->objectId != 0 && object != script::kObjectInvalid && object != 0) {
+                idMap[state->objectId] = object;
             }
         }
         const auto mapObject = [&](std::uint32_t id) {
@@ -7668,7 +7745,12 @@ bool GameSession::saveOriginalSave(const std::filesystem::path& folder,
             continue;
         }
         kotor::SavedObjectState state;
-        state.vars = varsOf(objectForEntity(entityIndex));
+        {
+            const kotor::SavedVarTable vars = varsOf(objectForEntity(entityIndex));
+            state.localTable = true;
+            state.localBits = vars.bits;
+            state.localBytes = vars.bytes;
+        }
         switch (entity.kind) {
         case kotor::EntityKind::Creature: state.kind = kotor::SavedObjectState::Kind::Creature; break;
         case kotor::EntityKind::Door: state.kind = kotor::SavedObjectState::Kind::Door; break;

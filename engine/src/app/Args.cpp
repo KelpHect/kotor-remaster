@@ -99,6 +99,10 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.hidden = true;
             continue;
         }
+        if (arg == "--no-activate") {
+            result.options.noActivate = true;
+            continue;
+        }
         if (arg == "--fullscreen") {
             result.options.fullscreen = true;
             continue;
@@ -783,10 +787,23 @@ ParseResult parseArguments(int argc, char** argv)
             }
             if (file) {
                 result.options.stateTrace = value;
+                // The retail sound system re-tries a waiting looped sample on every rendered frame and the trace
+                // records each try, so a trace run needs a retail-like frame rate even without input focus.
+                if (result.options.backgroundFps == 15) {
+                    result.options.backgroundFps = 60;
+                }
             } else {
                 const int samp = std::atoi(value);
                 result.options.stateTraceSamp = samp > 1 ? samp : 1;
             }
+            continue;
+        }
+        if (arg == "--state-trace-load") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--state-trace-load requires a save folder");
+            }
+            result.options.stateTraceLoad = value;
             continue;
         }
         if (arg == "--capture-action") {
@@ -876,6 +893,13 @@ ParseResult parseArguments(int argc, char** argv)
             }
             continue;
         }
+        if (arg == "--shadow-probe") {
+            const char* value = requireValue();
+            if (!parseInteger(value, 1, result.options.shadowProbeFrame)) {
+                return fail(std::move(result), "--shadow-probe requires a positive frame number");
+            }
+            continue;
+        }
         if (arg == "--frames") {
             const char* value = requireValue();
             if (!parseInteger(value, 1, result.options.frames)) {
@@ -943,12 +967,15 @@ void printUsage()
         << "  --height <px>         Window height (default 720)\n"
         << "  --fullscreen          Start borderless at the desktop size (F11 toggles)\n"
         << "  --hidden              Create the window hidden\n"
+        << "  --no-activate         Show the window without ever giving it focus\n"
         << "  --input-script <f>    Play a timed walk of mouse, key and shot steps (app/InputScript.h)\n"
         << "  --input-script-out <d>  Folder for the walk's frames\n"
+        << "  --state-trace-load <d> Load this save folder at start, as Load Game does (with --state-trace)\n"
         << "  --state-trace <f>     Write the per-frame state trace (game/StateTrace.h); --state-trace-samp <n> sets the cadence\n"
         << "  --headless            Force the SDL dummy video driver\n"
         << "  --frames <n>          Exit after n frames\n"
         << "  --seconds <s>         Exit after s seconds\n"
+        << "  --shadow-probe <n>    Log the pixels frame n's shadow volumes cover\n"
         << "  --title <text>        Window title\n"
         << "  --validate            Enable Vulkan validation layers if present\n"
         << "  --vsync / --no-vsync  Swap interval preference\n"

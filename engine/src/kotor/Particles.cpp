@@ -1764,7 +1764,6 @@ void buildParticleMesh(Scene& scene, Vec3 eye, Vec3 forward, Vec3 up)
         const float frameEnd = p.scalar(kFrameEnd, frameStart);
         const float fps = p.scalar(kFps, 0.0f);
         const float spin = p.scalar(kParticleRot, 0.0f);
-        const float threshold = p.scalar(kThreshold, 0.0f);
         const int gridX = std::max(emitter.header.gridX, 1);
         const int gridY = std::max(emitter.header.gridY, 1);
         // Where in a particle's life the three keys sit (0048f040); 255 means no middle key.
@@ -1903,10 +1902,10 @@ void buildParticleMesh(Scene& scene, Vec3 eye, Vec3 forward, Vec3 up)
             }
             const float t = particle.life < 0.0f ? std::clamp(lifeAge * 0.01f, 0.0f, 1.0f)
                                                  : std::clamp(particle.age / std::max(particle.life, 0.001f), 0.0f, 1.0f);
+            // 0048f040 writes a quad for every particle in the list (0x60 bytes each); nothing compares
+            // the alpha with the threshold controller (164), which only the point-to-point movers read.
+            // MGB_sithfighter's explode emitters (threshold 1) hid every particle when it did.
             const float alpha = curve(alphaStart, alphaMid, alphaEnd, t);
-            if (alpha <= threshold) {
-                continue;
-            }
             const float size = curve(sizeStart, sizeMid, sizeEnd, t);
             float sizeY = curve(sizeStartY, sizeMidY, sizeEndY, t);
             if (sizeY <= 0.0f) {

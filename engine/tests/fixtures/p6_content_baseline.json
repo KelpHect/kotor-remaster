@@ -1,7 +1,7 @@
 {
   "aggregate": {
     "areas": 106,
-    "batches": 37258,
+    "batches": 37280,
     "cameras": 1137,
     "collision_facets": 190865,
     "collision_vertices": 116231,
@@ -158,7 +158,7 @@
     "STUNT_07": {
       "area": "stunt_ebodant",
       "area_tag": "Untitled",
-      "batches": 132,
+      "batches": 133,
       "cameras": 0,
       "collision_facets": 366,
       "collision_vertices": 251,
@@ -189,7 +189,7 @@
     "STUNT_12": {
       "area": "m40ad",
       "area_tag": "Untitled",
-      "batches": 136,
+      "batches": 137,
       "cameras": 9,
       "collision_facets": 985,
       "collision_vertices": 587,
@@ -220,7 +220,7 @@
     "STUNT_14": {
       "area": "m40ad",
       "area_tag": "Untitled",
-      "batches": 136,
+      "batches": 137,
       "cameras": 14,
       "collision_facets": 985,
       "collision_vertices": 587,
@@ -437,7 +437,7 @@
     "STUNT_42": {
       "area": "stunt_ebocom",
       "area_tag": "M12AA",
-      "batches": 192,
+      "batches": 193,
       "cameras": 0,
       "collision_facets": 530,
       "collision_vertices": 379,
@@ -468,7 +468,7 @@
     "STUNT_44": {
       "area": "stunt_ebocom",
       "area_tag": "M12AA",
-      "batches": 192,
+      "batches": 193,
       "cameras": 0,
       "collision_facets": 530,
       "collision_vertices": 379,
@@ -685,7 +685,7 @@
     "danm13": {
       "area": "m13aa",
       "area_tag": "Area001",
-      "batches": 562,
+      "batches": 563,
       "cameras": 31,
       "collision_facets": 2290,
       "collision_vertices": 1311,
@@ -933,7 +933,7 @@
     "ebo_m12aa": {
       "area": "m12aa",
       "area_tag": "Area001",
-      "batches": 360,
+      "batches": 361,
       "cameras": 10,
       "collision_facets": 1085,
       "collision_vertices": 746,
@@ -964,7 +964,7 @@
     "ebo_m40aa": {
       "area": "m12aa",
       "area_tag": "Untitled",
-      "batches": 360,
+      "batches": 361,
       "cameras": 1,
       "collision_facets": 1085,
       "collision_vertices": 746,
@@ -995,7 +995,7 @@
     "ebo_m40ad": {
       "area": "m12aa",
       "area_tag": "Area001",
-      "batches": 360,
+      "batches": 361,
       "cameras": 0,
       "collision_facets": 1085,
       "collision_vertices": 746,
@@ -1026,7 +1026,7 @@
     "ebo_m41aa": {
       "area": "m12aa",
       "area_tag": "Area001",
-      "batches": 360,
+      "batches": 361,
       "cameras": 6,
       "collision_facets": 1085,
       "collision_vertices": 746,
@@ -1491,7 +1491,7 @@
     "korr_m35aa": {
       "area": "m35aa",
       "area_tag": "SithMonastery",
-      "batches": 298,
+      "batches": 299,
       "cameras": 17,
       "collision_facets": 1685,
       "collision_vertices": 1156,
@@ -1770,7 +1770,7 @@
     "lev_m40ad": {
       "area": "m40ad",
       "area_tag": "Untitled",
-      "batches": 136,
+      "batches": 137,
       "cameras": 8,
       "collision_facets": 985,
       "collision_vertices": 587,
@@ -1801,7 +1801,7 @@
     "liv_m99aa": {
       "area": "m50aa",
       "area_tag": "Untitled",
-      "batches": 311,
+      "batches": 312,
       "cameras": 9,
       "collision_facets": 663,
       "collision_vertices": 403,
@@ -2049,7 +2049,7 @@
     "manm28aa": {
       "area": "m28aa",
       "area_tag": "Untitled",
-      "batches": 392,
+      "batches": 393,
       "cameras": 13,
       "collision_facets": 2634,
       "collision_vertices": 1711,
@@ -2173,7 +2173,7 @@
     "sta_m45aa": {
       "area": "m45aa",
       "area_tag": "sta_45aa",
-      "batches": 238,
+      "batches": 239,
       "cameras": 36,
       "collision_facets": 2234,
       "collision_vertices": 1718,
@@ -2359,7 +2359,7 @@
     "tar_m02ac": {
       "area": "m02ac",
       "area_tag": "Area001",
-      "batches": 353,
+      "batches": 354,
       "cameras": 3,
       "collision_facets": 955,
       "collision_vertices": 653,
@@ -2700,7 +2700,7 @@
     "tar_m05aa": {
       "area": "m05aa",
       "area_tag": "Untitled",
-      "batches": 438,
+      "batches": 440,
       "cameras": 2,
       "collision_facets": 2622,
       "collision_vertices": 1694,
@@ -2762,7 +2762,7 @@
     "tar_m08aa": {
       "area": "m08aa",
       "area_tag": "Untitled",
-      "batches": 378,
+      "batches": 379,
       "cameras": 19,
       "collision_facets": 2530,
       "collision_vertices": 1597,
@@ -2855,7 +2855,7 @@
     "tar_m10aa": {
       "area": "m10aa",
       "area_tag": "Area001",
-      "batches": 535,
+      "batches": 536,
       "cameras": 9,
       "collision_facets": 1774,
       "collision_vertices": 1187,
@@ -2917,7 +2917,7 @@
     "tar_m10ac": {
       "area": "m10ac",
       "area_tag": "Area001",
-      "batches": 645,
+      "batches": 646,
       "cameras": 10,
       "collision_facets": 1430,
       "collision_vertices": 946,
@@ -3072,7 +3072,7 @@
     "tat_m17ac": {
       "area": "m17ac",
       "area_tag": "Untitled",
-      "batches": 37,
+      "batches": 38,
       "cameras": 0,
       "collision_facets": 625,
       "collision_vertices": 424,

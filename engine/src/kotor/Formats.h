@@ -577,7 +577,11 @@ public:
                                                   float blend, float danglyTime = -1.0f) const;
     bool hasFxNodes() const;
     // Renderable triangles in world space for a room placed at `origin` (Render flag set).
-    std::vector<MdlMeshTriangle> roomTriangles(Vec3 origin) const;
+    // gobParts false: the room's static parts. true: the parts under the room's "<model>a" node, which
+    // retail draws as their own object after the static geometry, lit by the object binder 004a3f70
+    // (RETAIL row 41, palm_order_m41aa: every M41aa_*a palm part draws at 0047409f after a 004a3f70
+    // ShadowAurora bind; every other part at 00455824 in the static pass).
+    std::vector<MdlMeshTriangle> roomTriangles(Vec3 origin, bool gobParts = false) const;
     // The AABB (walkmesh) node's faces of a room placed at `origin`, with their surfaces, lightmap and
     // lightmap uvs: what retail grows grass on (00456f30 bins the part answering vtable +0x48).
     std::vector<MdlMeshTriangle> walkmeshTriangles(Vec3 origin) const;
@@ -1113,6 +1117,13 @@ struct EncounterTemplate {
     bool playerOnly = false;
     bool reset = false;
     bool active = true;
+    // Runtime counters a saved encounter carries (retail ReadEncounterFromGff 00592430); a UTE has none.
+    bool started = false;                // Started (+0x278): the wave was spawned and not yet wiped
+    std::int32_t numberSpawned = 0;      // NumberSpawned (+0x264)
+    std::int32_t currentSpawns = 0;      // CurrentSpawns (+0x2c8): respawns already used
+    std::uint32_t lastSpawnDay = 0;      // LastSpawnDay / LastSpawnTime (+0x270 / +0x274)
+    std::uint32_t lastSpawnTime = 0;
+    std::vector<std::uint32_t> areaObjects; // AreaList.AreaObject: object ids of the creatures it spawned
     std::vector<EncounterCreature> creatures;
 };
 
@@ -1248,6 +1259,7 @@ struct Entity {
     std::string conversation;
     Vec3 position;
     float bearing = 0.0f;
+    std::uint32_t savedObjectId = 0; // ObjectId of a struct read from a save (0 for a module template)
     std::string linkedModule;
     std::string linkedTo;
     std::uint32_t linkedFlags = 0;
@@ -1415,6 +1427,9 @@ struct TextureBatch {
     float maxDistance = 0.0f; // > 0: not drawn when the camera is farther than this (grass)
     // A room batch without a lightmap has no per-entity light to read: filled at load.
     bool bakedLight = false;
+    // Part of a model retail draws as its own object after RenderShadows (a reference node's model, or
+    // a room's "<model>a" parts): not drawn with the static geometry, so the shadow fan stays off it.
+    bool roomObject = false;
     SampledLight baked;
 };
 
@@ -1973,6 +1988,14 @@ struct Scene {
         std::uint64_t frame = 0;
     };
     mutable std::unordered_map<std::uint32_t, ObjectLightFade> objectLightFades;
+    // The scene gob's shadow slot (its light list +0x1c / +0x20, filled by 004a3f70): the index into
+    // lights (SIZE_MAX for none) and its fading intensity, advanced once per lightFrame.
+    struct ShadowSlot {
+        std::size_t light = SIZE_MAX;
+        float intensity = 0.0f;
+        std::uint64_t frame = 0;
+    };
+    mutable ShadowSlot shadowSlot;
     bool lightFades = false;
     float lightFadeStep = 0.0f;
     std::uint64_t lightFrame = 0;
@@ -2008,6 +2031,11 @@ TextureBatch makeMaterialBatch(Scene& scene, Install& install, const MdlMeshTria
 // Order of the blended pass: surfaces that hide what is behind them, then those that let it show,
 // then additive; by transparency hint within those, then far to near.
 bool blendedDrawsBefore(const TextureBatch& a, float distanceA, const TextureBatch& b, float distanceB);
+// A room batch in retail's default blend state whose pixels never let what is behind them show:
+// drawn with the static geometry, in place, so the room depth is complete before RenderShadows
+// (Scene::Render 00451750: RenderStaticGeometry 00450c30, RenderShadows 00451a50, then the dynamic
+// geometry 00450b50). Translucent and additive room parts stay in the sorted blended pass.
+bool drawsWithStaticGeometry(const TextureBatch& batch);
 // The batch state for an emitter's sprites, from its header and the sprite's TXI.
 TextureBatch makeEmitterBatch(const Scene& scene, const MdlEmitter& header, std::uint32_t texture);
 SceneVertex toSceneVertex(const MdlMeshVertex& vertex, const MdlMeshTriangle& triangle);
@@ -2129,7 +2157,10 @@ Vec3 grassPointWind(const GrassField& field, Vec3 point);
 std::pair<std::size_t, std::size_t> stepGrassWind(Scene& scene, float frameSeconds, Vec3 eye);
 bool captureCameraPose(const Scene& scene, const std::string& spec, Vec3& eye, Vec3& target, float& fov);
 
-Scene loadModule(Install& install, const std::string& moduleStem);
+// `savedGit`: the GIT of a retail save's module, used in place of the area's own GIT (retail 0050dd80 reads
+// the saved GIT when a game is loaded; a save writes every object whole, with no UseTemplates).
+Scene loadModule(Install& install, const std::string& moduleStem,
+                 const std::vector<std::uint8_t>* savedGit = nullptr);
 // ARE LoadScreenID of the module's first area (loadscreens.2da row); -1 when unreadable.
 // Rebinds `install` to the module, so pass a separate Install when one is in use.
 std::int32_t readLoadScreenId(Install& install, const std::string& moduleStem);
@@ -2217,5 +2248,17 @@ std::size_t spawnModelEntity(Scene& scene, Install& install, const std::string& 
 // module has been loaded. Kept separate from loadModule so the room pass stays
 // independent of template/model failures.
 void loadEntityAssets(Scene& scene, Install& install, const Gff& git);
+
+// A creature's hit points as retail loads them: CSWSCreatureStats::ReadStatsFromGff 005afce0 (the HitPoints,
+// CurrentHitPoints and FeatList block, non-PC branch) with CSWSCreature::GetMaxHitPoints 004ed310.
+// `HitPoints` is the base, the Constitution modifier and the Toughness feats add per level, and the
+// loaded current value takes the same per-level share. Reads HitPoints, CurrentHitPoints, Con,
+// ClassList and FeatList of a UTC or of a saved creature struct.
+struct CreatureHitPoints {
+    std::int32_t current = 1;
+    std::int32_t max = 1;
+};
+CreatureHitPoints creatureHitPointsFromGff(const Gff& gff, std::uint32_t structure);
+
 
 } // namespace ke::kotor

@@ -125,49 +125,71 @@ bool StateTrace::open(const std::filesystem::path& file, int samp, std::string& 
     return true;
 }
 
+void StateTrace::onPlay(const audio::Mixer::PlayInfo& info)
+{
+    if (!open_ || info.name == nullptr) {
+        return;
+    }
+    // Behind the main menu the session runs a backdrop world retail has no counterpart for: only the
+    // menu's own sounds (the theme and the interface sounds) are reported until a real module is ready.
+    // A movie's audio track is Bink's own output in retail, not a Miles sample or stream.
+    if (info.name->find(".bik") != std::string::npos) {
+        return;
+    }
+    if (backdrop_ && info.name->rfind("gui_", 0) != 0 && info.name->rfind("mus_theme", 0) != 0) {
+        return;
+    }
+    // Music, the ambient loops, looping positional emitters and the spoken lines (a creature's sound set
+    // included) are streams in retail; everything else is a sample. The caller says so when it knows.
+    const bool stream = info.stream >= 0
+        ? info.stream != 0
+        : (info.bus == audio::Bus::Music || info.bus == audio::Bus::Ambient || info.bus == audio::Bus::Voice);
+    std::vector<std::string> tail;
+    tail.push_back(stream ? "stream" : (info.positional ? "sample3d" : "sample2d"));
+    tail.push_back(clean(*info.name));
+    tail.push_back(info.positional ? f3(info.position.x) : "-");
+    tail.push_back(info.positional ? f3(info.position.y) : "-");
+    tail.push_back(info.positional ? f3(info.position.z) : "-");
+    // The 0-127 source volume byte and the priority group, as the caller handed them to the mixer.
+    tail.push_back(info.volume127 >= 0 ? std::to_string(info.volume127) : "-");
+    tail.push_back(info.group >= 0 ? std::to_string(info.group) : "-");
+    tail.push_back(info.loop ? "1" : "0");
+    // A source that is not positional keeps the distances of its priority group (MaxVolumeDist and MinVolumeDist,
+    // 005d7bd0); the mixer has no use for them, so they come from the table.
+    float minDistance = info.minDistance;
+    float maxDistance = info.maxDistance;
+    if (!info.positional && info.group >= 0 && game_ != nullptr) {
+        const AudioSystem::PriorityGroup& group = game_->audio().priorityGroup(info.group);
+        minDistance = std::min(group.maxVolumeDist, group.minVolumeDist);
+        maxDistance = std::max(group.maxVolumeDist, group.minVolumeDist);
+    }
+    tail.push_back(f3(minDistance));
+    tail.push_back(f3(maxDistance));
+    tail.push_back(stream ? "stream" : "sample");
+    std::vector<std::string> fields{"start"};
+    fields.insert(fields.end(), tail.begin(), tail.end());
+    const std::lock_guard<std::recursive_mutex> lock(mutex_);
+    writeSound(fields);
+    if (info.voice == 0) {
+        return; // an attempt retail drops before a source exists: nothing to follow
+    }
+    Voice voice;
+    voice.id = info.voice;
+    voice.tail = std::move(tail);
+    voice.loopedSample3d = !stream && info.loop && info.positional;
+    voices_.push_back(std::move(voice));
+    if (voices_.size() > kVoiceCap) {
+        voices_.erase(voices_.begin());
+    }
+}
+
 void StateTrace::attach(GameSession& game, bool menuBackdrop)
 {
     game_ = &game;
     attached_ = true;
     backdrop_ = menuBackdrop;
     game.setStateTrace(this);
-    game.audio().mixer().setPlayObserver([this](const audio::Mixer::PlayInfo& info) {
-        if (!open_ || info.name == nullptr) {
-            return;
-        }
-        // Behind the main menu the session runs a backdrop world retail has no counterpart for: only the
-        // menu's own sounds (the theme and the interface sounds) are reported until a real module is ready.
-        // A movie's audio track is Bink's own output in retail, not a Miles sample or stream.
-        if (info.name->find(".bik") != std::string::npos) {
-            return;
-        }
-        if (backdrop_ && info.name->rfind("gui_", 0) != 0 && info.name->rfind("mus_theme", 0) != 0) {
-            return;
-        }
-        // Music, the ambient loops and the spoken lines are streams in retail; everything else is a sample.
-        const bool stream = info.bus == audio::Bus::Music || info.bus == audio::Bus::Ambient
-            || (info.bus == audio::Bus::Voice && !info.positional);
-        std::vector<std::string> tail;
-        tail.push_back(stream ? "stream" : (info.positional ? "sample3d" : "sample2d"));
-        tail.push_back(clean(*info.name));
-        tail.push_back(info.positional ? f3(info.position.x) : "-");
-        tail.push_back(info.positional ? f3(info.position.y) : "-");
-        tail.push_back(info.positional ? f3(info.position.z) : "-");
-        tail.push_back("-"); // vol: the engine has the mixer level, not the source volume byte
-        tail.push_back("-"); // group: the engine keeps the priority group only inside playGroupSound
-        tail.push_back(info.loop ? "1" : "0");
-        tail.push_back(f3(info.minDistance));
-        tail.push_back(f3(info.maxDistance));
-        tail.push_back(stream ? "stream" : "sample");
-        std::vector<std::string> fields{"start"};
-        fields.insert(fields.end(), tail.begin(), tail.end());
-        const std::lock_guard<std::recursive_mutex> lock(mutex_);
-        writeSound(fields);
-        voices_.push_back({info.voice, std::move(tail)});
-        if (voices_.size() > kVoiceCap) {
-            voices_.erase(voices_.begin());
-        }
-    });
+    game.audio().mixer().setPlayObserver([this](const audio::Mixer::PlayInfo& info) { onPlay(info); });
     if (!menuBackdrop) {
         onModuleReady(game);
     }
@@ -294,7 +316,25 @@ void StateTrace::onModuleReady(GameSession& game)
     backdrop_ = false;
     resetWorld();
     write("mod", {"ready", clean(reported_)});
+    // Retail writes the first object rows at the moment the module becomes ready, before any simulated time passes (an
+    // NPC that starts a walk or a turn in its first tick is still at its GIT facing there).
+    {
+        StateTraceFrame first;
+        first.game = &game;
+        sampleState(first);
+    }
     schedule(kSettleFrames, "settle:" + reported_);
+    // Sounds the world started before this point (the looping sound objects start with the area, the menu backdrop
+    // hid them) are starts of this module: retail logs them right after `mod ready`.
+    game.audio().mixer().forEachLiveVoice([this](const audio::Mixer::PlayInfo& info) {
+        const std::lock_guard<std::recursive_mutex> lock(mutex_);
+        for (const Voice& known : voices_) {
+            if (known.id == info.voice) {
+                return;
+            }
+        }
+        onPlay(info);
+    });
 }
 
 void StateTrace::onLoadScreen(const std::string& name, int x, int y, int w, int h)
@@ -572,8 +612,28 @@ void StateTrace::trackSounds()
     }
     const std::lock_guard<std::recursive_mutex> lock(mutex_);
     const audio::Mixer& mixer = game_->audio().mixer();
+    const kotor::Vec3 listener = mixer.listenerPosition();
     for (std::size_t i = 0; i < voices_.size();) {
         if (mixer.voiceActive(voices_[i].id)) {
+            if (voices_[i].loopedSample3d) {
+                // GetWithinRangeOfListener 005db050: out of range when the distance is greater than the max distance.
+                audio::Mixer::VoiceTrace now;
+                if (mixer.voiceTrace(voices_[i].id, now) && now.positional) {
+                    const float dx = listener.x - now.position.x;
+                    const float dy = listener.y - now.position.y;
+                    const float dz = listener.z - now.position.z;
+                    const bool out = std::sqrt(dx * dx + dy * dy + dz * dz) > now.maxDistance;
+                    if (out || voices_[i].waiting) {
+                        std::vector<std::string> fields{"start"};
+                        fields.insert(fields.end(), voices_[i].tail.begin(), voices_[i].tail.end());
+                        fields[3] = f3(now.position.x);
+                        fields[4] = f3(now.position.y);
+                        fields[5] = f3(now.position.z);
+                        writeSound(fields);
+                    }
+                    voices_[i].waiting = out;
+                }
+            }
             ++i;
             continue;
         }
