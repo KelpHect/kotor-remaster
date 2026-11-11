@@ -494,12 +494,26 @@ bool AudioSystem::playSoundSetSlot(std::uint32_t entity, int slot, const SoundSe
         return false;
     }
     const std::string sound = tlk_->sound(static_cast<std::uint32_t>(strref));
-    if (sound.empty()) {
-        return false;
-    }
     kotor::Vec3 position{};
     if (const auto pos = entityPositions_.find(entity); pos != entityPositions_.end()) {
         position = pos->second;
+    }
+    if (sound.empty()) {
+        // 00611470 starts the streaming source whatever the resource name is: with an empty one the Play call
+        // (005dca30) is still made and then fails, which the state trace sees as a start with no name.
+        static const std::string kNoName;
+        audio::Mixer::PlayInfo attempt;
+        attempt.name = &kNoName;
+        attempt.bus = audio::Bus::Voice;
+        attempt.positional = true;
+        attempt.position = position;
+        attempt.minDistance = std::min(priorityGroup(kGroupSmallVoice).maxVolumeDist, priorityGroup(kGroupSmallVoice).minVolumeDist);
+        attempt.maxDistance = std::max(priorityGroup(kGroupSmallVoice).maxVolumeDist, priorityGroup(kGroupSmallVoice).minVolumeDist);
+        attempt.group = who.isPlayer ? kGroupPlayerChat : (who.sizeCategory < 4 ? kGroupSmallVoice : kGroupLargeVoice);
+        attempt.volume127 = 127;
+        attempt.stream = 1;
+        mixer_.reportAttempt(attempt);
+        return false;
     }
     // 00611470: the controlled creature speaks as Player_Chat (8); every other creature as a
     // medium-and-small (17, SizeCategory < 4) or large (16) creature vocalization. A creature
@@ -790,6 +804,7 @@ int AudioSystem::playGroupSound(const std::string& resref, const GroupSound& req
             pitch = up ? 1.0f + fraction * variance : 1.0f - fraction * variance * 0.5f;
         }
     }
+    mixer_.tagNextPlay({request.group, std::clamp(request.sourceVolume127, 0, 127), request.stream ? 1 : 0});
     const int voice = mixer_.play(data, bus, level, request.loop, positional, at, minDistance,
                                   maxDistance, 0.0f, pitch);
     if (voice > 0) {

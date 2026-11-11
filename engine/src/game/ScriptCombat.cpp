@@ -482,6 +482,9 @@ struct CombatOps {
                 s.effects_->speak(index, 0, EffectDirector::VoiceKind::BattleCry);
             }
         }
+        if (!combat.inCombat && s.effects_) {
+            s.effects_->saberUp(object);
+        }
         combat.inCombat = true;
         combat.combatTimer = kCombatStateSeconds;
     }
