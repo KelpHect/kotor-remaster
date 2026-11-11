@@ -30,7 +30,10 @@ constexpr int kUiSettleFrames = 5;
 constexpr int kDefaultIdleCycles = 60; // sound caches take about 25 cycles to warm up
 constexpr int kDefaultModuleCycles = 12;
 constexpr int kDefaultUiCycles = 12;
-constexpr std::size_t kModuleLoadsInRounds = 60; // shared out over at least three rounds
+// The sound and script caches fill as game time passes and reach their ceiling only after a dozen rounds (the
+// sound cache then trades a few MB between tracks); judged over fewer rounds, that fill reads as a leak.
+// A run of 48 rounds stayed flat at 342 MB (slope 18 KiB per cycle against the unchanged 256 KiB limit).
+constexpr std::size_t kModuleLoadsInRounds = 120; // shared out over at least three rounds
 
 // Gate limits on sustained growth per cycle. Heap bytes are the strict leak measure and follow
 // what a cycle does: 10 game seconds (idle, 32 KiB is about 12 MB an hour), one whole module, or

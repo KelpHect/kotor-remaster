@@ -2866,7 +2866,6 @@ int runPlaythrough(GameSession& game)
         const bool opened = play(30.0f, [&] { return bulkheadOpen() && !game.dialogue().active; });
         logInfo(concat("playthrough: end_door01 opened=", opened ? 1 : 0, " stage=", trainingStage()));
         ok = ok && opened;
-
         kotor::Vec3 centre{};
         float count = 0.0f;
         for (const kotor::TriggerVolume& volume : game.scene().triggers) {
@@ -2879,6 +2878,9 @@ int runPlaythrough(GameSession& game)
             }
         }
         centre = count > 0.0f ? centre * (1.0f / count) : game.scene().entities[triggerEntity].position;
+        // A player clicks past the bulkhead once its leaves have finished opening: the walkmesh opens with the
+        // clip, a moment after the door's flag turns.
+        play(5.0f, [&] { return game.pathExists(game.controlledPosition(), centre); });
         walkOrFail(centre, 20.0f);
         const bool fired = play(2.0f, [&] { return hasEvent(game, "trigger end_trig02: enter"); });
         logInfo(concat("playthrough: trigger end_trig02 fired=", fired ? 1 : 0));
