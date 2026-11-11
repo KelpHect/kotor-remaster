@@ -2149,7 +2149,10 @@ Vec3 grassPointWind(const GrassField& field, Vec3 point);
 std::pair<std::size_t, std::size_t> stepGrassWind(Scene& scene, float frameSeconds, Vec3 eye);
 bool captureCameraPose(const Scene& scene, const std::string& spec, Vec3& eye, Vec3& target, float& fov);
 
-Scene loadModule(Install& install, const std::string& moduleStem);
+// `savedGit`: the GIT of a retail save's module, used in place of the area's own GIT (retail 0050dd80 reads
+// the saved GIT when a game is loaded; a save writes every object whole, with no UseTemplates).
+Scene loadModule(Install& install, const std::string& moduleStem,
+                 const std::vector<std::uint8_t>* savedGit = nullptr);
 // ARE LoadScreenID of the module's first area (loadscreens.2da row); -1 when unreadable.
 // Rebinds `install` to the module, so pass a separate Install when one is in use.
 std::int32_t readLoadScreenId(Install& install, const std::string& moduleStem);
@@ -2237,5 +2240,17 @@ std::size_t spawnModelEntity(Scene& scene, Install& install, const std::string& 
 // module has been loaded. Kept separate from loadModule so the room pass stays
 // independent of template/model failures.
 void loadEntityAssets(Scene& scene, Install& install, const Gff& git);
+
+// A creature's hit points as retail loads them: CSWSCreatureStats::ReadStatsFromGff 005afce0 (the HitPoints,
+// CurrentHitPoints and FeatList block, non-PC branch) with CSWSCreature::GetMaxHitPoints 004ed310.
+// `HitPoints` is the base, the Constitution modifier and the Toughness feats add per level, and the
+// loaded current value takes the same per-level share. Reads HitPoints, CurrentHitPoints, Con,
+// ClassList and FeatList of a UTC or of a saved creature struct.
+struct CreatureHitPoints {
+    std::int32_t current = 1;
+    std::int32_t max = 1;
+};
+CreatureHitPoints creatureHitPointsFromGff(const Gff& gff, std::uint32_t structure);
+
 
 } // namespace ke::kotor

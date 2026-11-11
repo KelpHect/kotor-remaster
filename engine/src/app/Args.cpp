@@ -798,6 +798,14 @@ ParseResult parseArguments(int argc, char** argv)
             }
             continue;
         }
+        if (arg == "--state-trace-load") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--state-trace-load requires a save folder");
+            }
+            result.options.stateTraceLoad = value;
+            continue;
+        }
         if (arg == "--capture-action") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -962,6 +970,7 @@ void printUsage()
         << "  --no-activate         Show the window without ever giving it focus\n"
         << "  --input-script <f>    Play a timed walk of mouse, key and shot steps (app/InputScript.h)\n"
         << "  --input-script-out <d>  Folder for the walk's frames\n"
+        << "  --state-trace-load <d> Load this save folder at start, as Load Game does (with --state-trace)\n"
         << "  --state-trace <f>     Write the per-frame state trace (game/StateTrace.h); --state-trace-samp <n> sets the cadence\n"
         << "  --headless            Force the SDL dummy video driver\n"
         << "  --frames <n>          Exit after n frames\n"

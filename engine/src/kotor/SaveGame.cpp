@@ -557,8 +557,13 @@ SavedNpc readNpcNode(const Gff& gff)
     npc.intel = numberInt(gff, root, "Int", 10);
     npc.wis = numberInt(gff, root, "Wis", 10);
     npc.cha = numberInt(gff, root, "Cha", 10);
-    npc.hp = numberInt(gff, root, "CurrentHitPoints", numberInt(gff, root, "HitPoints", 1));
-    npc.maxHp = std::max(1, numberInt(gff, root, "MaxHitPoints", npc.hp));
+    // Retail 005afce0: a companion is loaded like any creature (current value through the per-level share).
+    {
+        const CreatureHitPoints hp = creatureHitPointsFromGff(gff, root);
+        npc.hp = hp.current;
+        npc.maxHp = std::max(1, hp.max);
+        npc.baseHp = numberInt(gff, root, "HitPoints", -1);
+    }
     npc.xp = numberInt(gff, root, "Experience", 0);
     npc.joiningXp = numberInt(gff, root, "JoiningXP", 0);
     npc.alignment = std::clamp(numberInt(gff, root, "GoodEvil", 50), 0, 100);
@@ -658,21 +663,57 @@ void readObjects(const Gff& gff, OriginalSave& save)
             object.tag = objectTag(gff, structure);
             object.position = objectPosition(gff, structure);
             object.bearing = objectBearing(gff, structure);
-            object.hitPoints = numberInt(gff, structure, "CurrentHitPoints",
-                                         numberInt(gff, structure, "HitPoints", 1));
-            object.maxHitPoints = std::max(1, numberInt(gff, structure, "MaxHitPoints",
-                                                       object.hitPoints));
+            if (spec.kind == SavedObjectState::Kind::Creature) {
+                // Retail 005afce0: the stored current value is read back through the per-level share.
+                const CreatureHitPoints hp = creatureHitPointsFromGff(gff, structure);
+                object.hitPoints = hp.current;
+                object.maxHitPoints = std::max(1, hp.max);
+            } else {
+                // Doors (0058a1f0) and placeables (00585670) write HP, the maximum, and CurrentHP.
+                object.hitPoints = static_cast<std::int16_t>(numberInt(gff, structure, "CurrentHP", 1));
+                object.maxHitPoints = std::max<std::int32_t>(
+                    1, static_cast<std::int16_t>(numberInt(gff, structure, "HP", object.hitPoints)));
+            }
             object.dead = numberInt(gff, structure, "Dead", 0) != 0
                 || numberInt(gff, structure, "IsDead", 0) != 0
-                || object.hitPoints <= 0;
+                || (spec.kind == SavedObjectState::Kind::Creature && object.hitPoints <= 0);
             object.open = numberInt(gff, structure, "OpenState", 0) != 0
                 || numberInt(gff, structure, "Open", 0) != 0;
             object.locked = numberInt(gff, structure, "Locked", 0) != 0;
+            for (const std::uint32_t entry : list(gff, structure, "VarTable")) {
+                SavedObjectState::Local local;
+                local.name = text(gff, entry, "Name");
+                local.type = numberInt(gff, entry, "Type", 0);
+                local.integer = numberInt(gff, entry, "Value", 0);
+                local.number = numberFloat(gff, entry, "Value", 0.0f);
+                if (local.type == 3) {
+                    local.text = text(gff, entry, "Value");
+                }
+                if (!local.name.empty() && local.type >= 1 && local.type <= 3) {
+                    object.locals.push_back(std::move(local));
+                }
+            }
+            if (const GffField* table = field(gff, structure, "SWVarTable");
+                table != nullptr && table->type == GffType::Struct) {
+                const std::uint32_t at = gff.structIndex(*table);
+                const std::vector<std::uint32_t> bits = list(gff, at, "BitArray");
+                for (std::size_t i = 0; i < bits.size() && i < object.localBits.size(); ++i) {
+                    const GffField* word = field(gff, bits[i], "Variable");
+                    object.localBits[i] = word != nullptr ? static_cast<std::uint32_t>(gff.integer(*word)) : 0u;
+                }
+                const std::vector<std::uint32_t> bytes = list(gff, at, "ByteArray");
+                for (std::size_t i = 0; i < bytes.size() && i < object.localBytes.size(); ++i) {
+                    object.localBytes[i] = static_cast<std::uint8_t>(numberInt(gff, bytes[i], "Variable", 0));
+                }
+            }
             if (spec.kind == SavedObjectState::Kind::Placeable) {
                 for (const std::uint32_t item : list(gff, structure, "ItemList")) {
                     std::string resref = text(gff, item, "InventoryRes");
                     if (resref.empty()) {
                         resref = text(gff, item, "InventoryResRef");
+                    }
+                    if (resref.empty()) {
+                        resref = lower(text(gff, item, "Tag")); // a retail save writes the item whole; Tag is its resref
                     }
                     if (!resref.empty()) {
                         object.loot.push_back(resref);
@@ -1021,6 +1062,23 @@ GffNodePtr buildNpcNode(const SavedNpc& npc)
     shape.skills = npc.skills;
     GffNodePtr node = buildPlayerNode(shape);
     patchInt(*node, "IsPC", 0);
+    {
+        // Retail SaveStats 005b1b90: HitPoints is the base, CurrentHitPoints is base + current - maximum
+        // (005afce0 adds the per-level share back on load), MaxHitPoints the maximum, PregameCurrent the
+        // current value. The share is the Constitution modifier and the Toughness feats per level.
+        const std::int32_t score = npc.con & 0xff;
+        const std::int32_t conMod = (score + (score < 10 ? -11 : -10)) / 2;
+        const auto has = [&](std::int32_t feat) {
+            return std::find(npc.feats.begin(), npc.feats.end(), feat) != npc.feats.end();
+        };
+        const std::int32_t bonus = (has(0x7c) ? 2 : (has(0x54) ? 1 : 0)) + (has(0x5f) ? 2 : 0);
+        const std::int32_t base = npc.baseHp >= 0
+            ? npc.baseHp
+            : std::max(0, npc.maxHp - std::max(1, npc.level) * (conMod + bonus));
+        patchInt(*node, "HitPoints", base);
+        patchInt(*node, "CurrentHitPoints", base + npc.hp - npc.maxHp);
+        patchInt(*node, "PregameCurrent", npc.hp);
+    }
     patchInt(*node, "Mod_IsPrimaryPlr", 0);
     node->remove("Mod_CommntyName");
     node->remove("Mod_FirstName");
@@ -1491,6 +1549,15 @@ OriginalSave readOriginalSave(const std::filesystem::path& folder,
     const std::vector<std::uint32_t> players = list(ifo, ifo.rootIndex(), "Mod_PlayerList");
     if (!players.empty()) {
         readPlayer(ifo, players.front(), save);
+        // The PC stands where the player struct says (XPosition and XOrientation of Mod_PlayerList), not at
+        // the module's entry point: Mod_Entry_* only names the arrival spot (the Taris save differs).
+        if (has(ifo, players.front(), "XPosition")) {
+            save.position = objectPosition(ifo, players.front());
+            if (has(ifo, players.front(), "XOrientation")) {
+                save.yaw = std::atan2(numberFloat(ifo, players.front(), "YOrientation", 1.0f),
+                                      numberFloat(ifo, players.front(), "XOrientation", 0.0f));
+            }
+        }
         // Equipped items live in the player's Equip_ItemList (slot mask in the struct type).
         for (SavedInventoryItem& item : readItems(ifo, field(ifo, players.front(), "Equip_ItemList"), true)) {
             save.inventory.push_back(std::move(item));
@@ -1498,6 +1565,7 @@ OriginalSave readOriginalSave(const std::filesystem::path& folder,
     }
     if (gitEntry != nullptr) {
         const Gff git = Gff::parse(gitEntry->data, moduleEntry->resref + ".git");
+        save.gitBytes = gitEntry->data;
         if (const GffField* useTemplates = git.field(git.rootIndex(), "UseTemplates")) {
             save.hasUseTemplates = true;
             save.useTemplates = git.integer(*useTemplates) != 0;

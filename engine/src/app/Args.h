@@ -146,6 +146,7 @@ struct Options {
     // --state-trace: the per-frame state trace compared against the original game's (game/StateTrace.h).
     std::string stateTrace;
     int stateTraceSamp = 3;
+    std::string stateTraceLoad; // --state-trace-load: a save folder loaded as the front end's Load Game would
     // Gallery shots: "id[:n]" holds visualeffects.2da row id on the nth creature (default 0).
     std::string spawnVfx;
     bool minigameRenderCheck = false;

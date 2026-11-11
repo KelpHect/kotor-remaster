@@ -165,7 +165,7 @@ def first_sight(seg):
     out, zero = {}, {}
     for r in seg.recs:
         if r.kind == "obj" and len(r.f) >= 14:
-            k = r.f[0]
+            k = r.f[0] + "@" + r.f[1]  # retail can reuse a tag#N label for two objects; the object id keeps them apart
             if k in out:
                 continue
             if all(abs(fl(v) or 0.0) < 1e-6 for v in r.f[4:7]):

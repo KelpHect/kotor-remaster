@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <optional>
 #include <set>
 #include <sstream>
 
@@ -240,11 +241,24 @@ void addSoundEmitters(Install& install, const Gff& git, std::uint32_t root, Scen
         }
         emitter.entity = soundEntity;
 
-        auto utsData = install.find(emitter.templateResref, resType(ResType::Uts));
-        if (utsData.has_value()) {
+        // A saved sound struct holds the whole template (no TemplateResRef; retail Sound Load 005c9040).
+        std::optional<Gff> ownedUts;
+        const Gff* utsSource = nullptr;
+        std::uint32_t utsRoot = 0;
+        if (emitter.templateResref.empty()) {
+            utsSource = &git;
+            utsRoot = structure;
+        } else if (auto utsData = install.find(emitter.templateResref, resType(ResType::Uts)); utsData.has_value()) {
             try {
-                Gff uts = Gff::parse(std::move(*utsData), emitter.templateResref + ".uts");
-                const std::uint32_t utsRoot = uts.rootIndex();
+                ownedUts.emplace(Gff::parse(std::move(*utsData), emitter.templateResref + ".uts"));
+                utsSource = &*ownedUts;
+                utsRoot = ownedUts->rootIndex();
+            } catch (const FormatError&) {
+            }
+        }
+        if (utsSource != nullptr) {
+            try {
+                const Gff& uts = *utsSource;
                 emitter.elevation = number(uts, utsRoot, "Elevation", 0.0f);
                 emitter.maxDistance = number(uts, utsRoot, "MaxDistance", 20.0f);
                 emitter.minDistance = number(uts, utsRoot, "MinDistance", 10.0f);
@@ -346,7 +360,7 @@ std::int32_t readLoadScreenId(Install& install, const std::string& moduleStem)
     }
 }
 
-Scene loadModule(Install& install, const std::string& moduleStem)
+Scene loadModule(Install& install, const std::string& moduleStem, const std::vector<std::uint8_t>* savedGit)
 {
     install.bindModule(moduleStem);
     install.addPacks();
@@ -371,7 +385,8 @@ Scene loadModule(Install& install, const std::string& moduleStem)
         throw FormatError(moduleStem + ": missing ARE/GIT/LYT for " + area);
     }
     Gff are = Gff::parse(std::move(*areData), area + ".are");
-    Gff git = Gff::parse(std::move(*gitData), area + ".git");
+    Gff git = savedGit != nullptr && !savedGit->empty() ? Gff::parse(*savedGit, area + ".git")
+                                                        : Gff::parse(std::move(*gitData), area + ".git");
     Lyt lyt = parseLyt(std::move(*lytData), area + ".lyt");
 
     Scene scene;
