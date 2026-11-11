@@ -7243,6 +7243,7 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
 
     std::vector<std::pair<std::size_t, const decltype(kotor::SavedObjectState::loot)*>> savedLoot;
     std::vector<std::pair<std::size_t, const kotor::SavedVarTable*>> savedVars;
+    std::vector<std::pair<std::uint32_t, std::size_t>> savedIds; // the save's object id, the entity it matched
     std::vector<bool> objectUsed(scene_.entities.size(), false);
     for (const kotor::SavedObjectState& state : saved.objects) {
         const kotor::EntityKind kind = entityKindForSaved(state.kind);
@@ -7270,6 +7271,9 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
         objectUsed[index] = true;
         if (state.vars.present) {
             savedVars.emplace_back(index, &state.vars);
+        }
+        if (state.objectId != 0) {
+            savedIds.emplace_back(state.objectId, index);
         }
         kotor::Entity& entity = scene_.entities[index];
         entity.position = state.position;
@@ -7341,6 +7345,74 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
     }
     for (const auto& [index, vars] : savedVars) {
         restoreVars(objectForEntity(index), *vars);
+    }
+    // The delayed scripts still pending at the save (IFO EventQueue, retail's event queue) come back due at the
+    // same distance from the saved world clock: Endar's k_pend_time01 starts the Trask conversation 19.4 s after
+    // the save's clock, and the engine would otherwise never start it. Object ids in the queue are the save's;
+    // they map onto the objects this load matched.
+    logInfo(concat("original save: ", saved.events.size(), " pending scripts in the event queue"));
+    if (!saved.events.empty()) {
+        std::map<std::uint32_t, std::uint32_t> idMap;
+        if (saved.areaObjectId != 0 && sim_->areaObject != script::kObjectInvalid) {
+            idMap[saved.areaObjectId] = sim_->areaObject;
+        }
+        if (saved.playerObjectId != 0) {
+            idMap[saved.playerObjectId] = scriptWorld_.pc;
+        }
+        for (const auto& [savedId, index] : savedIds) {
+            if (const std::uint32_t object = objectForEntity(index); object != script::kObjectInvalid && object != 0) {
+                idMap[savedId] = object;
+            }
+        }
+        const auto mapObject = [&](std::uint32_t id) {
+            if (id == 0 || id == script::kObjectInvalid) {
+                return id;
+            }
+            const auto it = idMap.find(id);
+            return it != idMap.end() ? it->second : script::kObjectInvalid;
+        };
+        for (const kotor::SavedScriptEvent& event : saved.events) {
+            const std::uint32_t owner = mapObject(event.objectId);
+            const script::ProgramPtr program = decodedScript(event.script);
+            if (owner == script::kObjectInvalid || owner == 0 || program == nullptr) {
+                logInfo(concat("original save: dropped pending ", event.script, " (object ", event.objectId, " mapped to ", owner,
+                               program == nullptr ? ", no script)" : ")"));
+                continue;
+            }
+            // The saved Code blob starts at the first instruction, without the 13-byte NCS header, so its
+            // InstructionPtr is that much short of the file offset the decoder keeps.
+            constexpr std::uint32_t kNcsHeaderBytes = 13;
+            const auto entry = program->byOffset.find(static_cast<std::uint32_t>(event.instruction) + kNcsHeaderBytes);
+            if (entry == program->byOffset.end()) {
+                logInfo(concat("original save: dropped pending ", event.script, " (no instruction at offset ", event.instruction, ")"));
+                continue;
+            }
+            script::Functor functor;
+            functor.program = program;
+            functor.ip = entry->second;
+            functor.bp = event.basePointer;
+            functor.script = event.script;
+            functor.source = "save";
+            functor.context["self"] = owner;
+            for (const kotor::SavedStackCell& cell : event.stack) {
+                switch (cell.type) {
+                case 3: functor.stack.push_back(script::Value::makeInt(cell.integer)); break;
+                case 4: functor.stack.push_back(script::Value::makeFloat(cell.real)); break;
+                case 5: functor.stack.push_back(script::Value::makeString(cell.text)); break;
+                case 6: functor.stack.push_back(script::Value::makeObject(mapObject(static_cast<std::uint32_t>(cell.integer)))); break;
+                default: functor.stack.push_back(script::Value::makeEngine(0)); break;
+                }
+            }
+            const double remainingMs = (static_cast<double>(event.time) - static_cast<double>(saved.pauseTime))
+                + (static_cast<double>(event.day) - static_cast<double>(saved.pauseDay)) * 86400000.0;
+            script::Timer timer;
+            timer.due = scriptWorld_.time + std::max(0.0, remainingMs / 1000.0);
+            logInfo(concat("original save: pending ", event.script, " restored, due in ", remainingMs / 1000.0, " s on object ", owner));
+            timer.functor = scriptWorld_.addFunctor(std::move(functor));
+            timer.target = owner;
+            timer.source = "save";
+            scriptWorld_.timers.push_back(std::move(timer));
+        }
     }
     // Loading a game is not walking in. Measured on retail: the Taris save loads with the player inside
     // tar02_carstr and no conversation starts (its k_ptar_carstr_en would start one).

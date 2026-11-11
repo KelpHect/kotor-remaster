@@ -83,6 +83,28 @@ struct SavedVarTable {
     }
 };
 
+// One cell of a saved script stack (IFO "EventQueue" > EventData > Stack > Stack): Type is the VM cell type
+// (3 integer, 4 float, 5 string, 6 object, 16 and up engine structures), Value its payload.
+struct SavedStackCell {
+    std::uint8_t type = 0;
+    std::int64_t integer = 0;
+    double real = 0.0;
+    std::string text;
+};
+
+// A delayed script situation still pending at the save (retail event queue entry, DelayCommand and the like).
+// day/time are the world clock (day, milliseconds into the day) at which it is due.
+struct SavedScriptEvent {
+    std::uint32_t day = 0;
+    std::uint32_t time = 0;
+    std::uint32_t objectId = 0;
+    std::uint32_t callerId = 0;
+    std::string script;
+    std::int32_t instruction = 0; // byte offset of the closure body in the script
+    std::int32_t basePointer = 0; // cells
+    std::vector<SavedStackCell> stack;
+};
+
 struct SavedObjectState {
     enum class Kind { Creature, Door, Placeable, Trigger, Store, Encounter, Waypoint, Sound, Other };
     Kind kind = Kind::Other;
@@ -97,6 +119,7 @@ struct SavedObjectState {
     bool locked = false;
     std::vector<std::string> loot;
     SavedVarTable vars;
+    std::uint32_t objectId = 0; // the GIT "ObjectId" the saved event queue refers to
 };
 
 // One available NPC: a PARTYTABLE slot (PT_AVAIL_NPCS entry) plus the stored
@@ -190,6 +213,13 @@ struct OriginalSave {
     std::vector<SavedGlobal> globals;
     std::vector<SavedObjectState> objects;
     SavedVarTable areaVars;
+    // World clock at the save (IFO Mod_PauseDay/Mod_PauseTime, milliseconds into the day) and the delayed
+    // script situations pending then, with the object ids they name.
+    std::uint32_t pauseDay = 0;
+    std::uint32_t pauseTime = 0;
+    std::uint32_t areaObjectId = 0;
+    std::uint32_t playerObjectId = 0;
+    std::vector<SavedScriptEvent> events;
     SavedAreaMap areaMap;
     // Saved GITs are flattened snapshots: the writer removes UseTemplates and
     // readers must not re-template GIT objects.

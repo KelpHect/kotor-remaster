@@ -697,6 +697,9 @@ void readObjects(const Gff& gff, OriginalSave& save)
                 || numberInt(gff, structure, "Open", 0) != 0;
             object.locked = numberInt(gff, structure, "Locked", 0) != 0;
             object.vars = readVarTable(gff, structure);
+            if (const GffField* id = field(gff, structure, "ObjectId"); id != nullptr) {
+                object.objectId = id->data;
+            }
             if (spec.kind == SavedObjectState::Kind::Placeable) {
                 for (const std::uint32_t item : list(gff, structure, "ItemList")) {
                     std::string resref = text(gff, item, "InventoryRes");
@@ -711,6 +714,65 @@ void readObjects(const Gff& gff, OriginalSave& save)
             if (!object.tag.empty() || object.position.x != 0.0f || object.position.y != 0.0f) {
                 save.objects.push_back(std::move(object));
             }
+        }
+    }
+}
+
+// The IFO's pending delayed scripts (retail event queue, saved as "EventQueue") and the clock they are due on.
+void readEventQueue(const Gff& ifo, OriginalSave& save)
+{
+    const auto dword = [&](std::uint32_t structure, const char* label) {
+        const GffField* value = field(ifo, structure, label);
+        // The raw 32 bits: Gff::integer goes through a float and rounds above 2^24 (a time of day in milliseconds).
+        return value != nullptr ? value->data : 0u;
+    };
+    const std::uint32_t root = ifo.rootIndex();
+    save.pauseDay = dword(root, "Mod_PauseDay");
+    save.pauseTime = dword(root, "Mod_PauseTime");
+    for (const std::uint32_t area : list(ifo, root, "Mod_Area_list")) {
+        save.areaObjectId = dword(area, "ObjectId");
+        break;
+    }
+    for (const std::uint32_t player : list(ifo, root, "Mod_PlayerList")) {
+        save.playerObjectId = dword(player, "ObjectId");
+        break;
+    }
+    for (const std::uint32_t entry : list(ifo, root, "EventQueue")) {
+        const GffField* data = field(ifo, entry, "EventData");
+        if (data == nullptr || data->type != GffType::Struct) {
+            continue;
+        }
+        const std::uint32_t body = ifo.structIndex(*data);
+        SavedScriptEvent event;
+        event.day = dword(entry, "Day");
+        event.time = dword(entry, "Time");
+        event.objectId = dword(entry, "ObjectId");
+        event.callerId = dword(entry, "CallerId");
+        event.script = text(ifo, body, "Name");
+        event.instruction = static_cast<std::int32_t>(dword(body, "InstructionPtr"));
+        const GffField* stack = field(ifo, body, "Stack");
+        if (stack != nullptr && stack->type == GffType::Struct) {
+            const std::uint32_t frame = ifo.structIndex(*stack);
+            event.basePointer = static_cast<std::int32_t>(dword(frame, "BasePointer"));
+            for (const std::uint32_t cell : list(ifo, frame, "Stack")) {
+                SavedStackCell out;
+                out.type = static_cast<std::uint8_t>(dword(cell, "Type"));
+                if (const GffField* value = field(ifo, cell, "Value"); value != nullptr) {
+                    switch (out.type) {
+                    case 4: out.real = ifo.number(*value); break;
+                    case 5: out.text = ifo.text(*value); break;
+                    default:
+                        if (value->type != GffType::Struct) {
+                            out.integer = static_cast<std::int32_t>(value->data);
+                        }
+                        break;
+                    }
+                }
+                event.stack.push_back(std::move(out));
+            }
+        }
+        if (!event.script.empty()) {
+            save.events.push_back(std::move(event));
         }
     }
 }
@@ -1545,6 +1607,7 @@ OriginalSave readOriginalSave(const std::filesystem::path& folder,
                      numberFloat(ifo, ifo.rootIndex(), "Mod_Entry_Z", 0.0f)};
     save.yaw = std::atan2(numberFloat(ifo, ifo.rootIndex(), "Mod_Entry_Dir_Y", 1.0f),
                           numberFloat(ifo, ifo.rootIndex(), "Mod_Entry_Dir_X", 0.0f));
+    readEventQueue(ifo, save);
     const std::vector<std::uint32_t> players = list(ifo, ifo.rootIndex(), "Mod_PlayerList");
     if (!players.empty()) {
         readPlayer(ifo, players.front(), save);
