@@ -42,8 +42,7 @@
 //    battle track; when the timer expires the track stops (ScriptCombat's 8 s combat
 //    state stands in for that timer: the DURATION 2DA it reads was not traced).
 //  - swkotor.ini [Sound Options] "Number 3D Voices=16".
-// Inferred (no retail trace): the fade-in length, the full-extent box of
-// RandomPosition, the MusicDelay replay rule (the area track plays once, then waits
+// Inferred (no retail trace): the fade-in length, the MusicDelay replay rule (the area track plays once, then waits
 // MusicDelay ms before it plays again; 0 loops without a gap), and the hand-off of a
 // stolen voice when more than 16 positional sounds want to play.
 
@@ -124,14 +123,38 @@ void AreaAmbience::startArea()
         emitters_.push_back(std::move(emitter));
     }
     emittersPending_ = true;
+    initialIntervalsRolled_ = false;
     refreshMusic(true);
     refreshAmbient(true);
+}
+
+// 0066b000 UpdateIntervalVariation: interval + rand % (2 * var) - var, floored at 0. The retail end_m01aa trace
+// (r8, 30 s idle) starts no continuous one-shot before its first interval has run: ShipAttackSingle
+// (10000 +- 5000) at 8.2 s, ShipStrain (12000 +- 5000) at 8.9 s, Alert (20000 +- 5000) at 19.6 s. Rolled once,
+// at the first tick after a load (so a seed set after the load applies).
+void AreaAmbience::rollInitialIntervals()
+{
+    if (initialIntervalsRolled_) {
+        return;
+    }
+    initialIntervalsRolled_ = true;
+    for (Emitter& emitter : emitters_) {
+        const kotor::SoundEmitter& def = emitter.def;
+        if (def.interval != 0 && emitter.active && !def.looping && emitter.intervalMs <= 0.0) {
+            double first = def.interval;
+            if (def.intervalVariation > 0) {
+                first += rng().below(2 * def.intervalVariation) - def.intervalVariation;
+            }
+            emitter.intervalMs = std::max(first, 0.0);
+        }
+    }
 }
 
 void AreaAmbience::setListener(kotor::Vec3 position)
 {
     listener_ = position;
     listenerSet_ = true;
+    rollInitialIntervals();
     if (emittersPending_) {
         // The first listener position after a load decides which of the nearest 16
         // positional sounds get a voice, so the start waits for it.
@@ -149,6 +172,7 @@ void AreaAmbience::update(float dt)
 {
     audio::Mixer& mixer = owner_.mixer_;
     emittersPending_ = false;
+    rollInitialIntervals();
 
     // AmbientScale ramps at 1.0 per second (docs/recon/51_AUDIO.md, retail 005ee860).
     if (roomScale_ != roomScaleTarget_) {
@@ -537,10 +561,19 @@ void AreaAmbience::refreshAmbient(bool immediate)
             resource.clear();
         }
     }
-    const bool alive = ambientVoice_ != 0 && mixer.voiceActive(ambientVoice_);
+    bool alive = ambientVoice_ != 0 && mixer.voiceActive(ambientVoice_);
+    const int wantedVolume =
+        std::clamp(isDay() ? area.ambientDayVolume : area.ambientNightVolume, 0, 127);
     if (alive && resource == ambientResource_) {
-        applyAmbientVolume();
-        return;
+        if (!(immediate && wantedVolume != ambientTagVolume_)) {
+            applyAmbientVolume();
+            return;
+        }
+        // The first time-of-day report after a load picks the other half of the day: retail starts the
+        // stream with that half's volume, so start it again (nothing was audible yet).
+        mixer.stopVoice(ambientVoice_);
+        ambientVoice_ = 0;
+        alive = false;
     }
     if (alive) {
         if (immediate) {
@@ -559,8 +592,8 @@ void AreaAmbience::refreshAmbient(bool immediate)
     if (!data) {
         return;
     }
-    mixer.tagNextPlay({AudioSystem::kGroupLoopAreaWide,
-                       std::clamp(isDay() ? owner_.areaAudio_.ambientDayVolume : owner_.areaAudio_.ambientNightVolume, 0, 127), 1});
+    mixer.tagNextPlay({AudioSystem::kGroupLoopAreaWide, wantedVolume, 1});
+    ambientTagVolume_ = wantedVolume;
     const int voice = mixer.play(data, audio::Bus::Ambient, ambientLevel(), true, false);
     if (voice != 0 && alive && !immediate) {
         mixer.setVoiceFade(voice, 0.0f);
@@ -694,12 +727,10 @@ bool AreaAmbience::startEmitterSound(Emitter& emitter)
         pitch *= rng().below(2) == 0 ? 1.0f + amount : 1.0f - amount;
     }
 
-    kotor::Vec3 at = def.position;
-    if (def.randomPosition) {
-        // INFERRED: RandomRangeX/Y is the full width of a box centred on the object.
-        at.x += (rng().uniform() - 0.5f) * def.randomRangeX;
-        at.y += (rng().uniform() - 0.5f) * def.randomRangeY;
-    }
+    // RandomPosition / RandomRangeX/Y are read by the server object (005c9040) but the client source is
+    // started at the object's own position: all 34 as_ot_shipatk sample starts of the retail end_m01aa trace
+    // sit exactly on their GIT positions although the template has RandomPosition 1 (range 10 x 20).
+    const kotor::Vec3 at = def.position;
 
     auto scheduleInterval = [&]() {
         if (resume) {

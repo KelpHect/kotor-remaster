@@ -1073,8 +1073,17 @@ private:
     bool lineOfSight(kotor::Vec3 from, kotor::Vec3 to) const;
     // Retail GetObstructionFactor 0050ccf0 for a sound: 0.4 for every surface of the area the line from the
     // sound to the listener crosses (surfacemat lineofsight), the line restarted a tenth of a metre past each
-    // hit, 1.0 once the sum passes 1. Doors and other objects on the line are not counted (0.4 / 0.55 there).
-    float soundObstruction(kotor::Vec3 from, kotor::Vec3 to) const;
+    // hit, 1.0 once the sum passes 1. A closed door on the line adds 0.55 and a placeable 0.4 (once per object).
+    float soundObstruction(kotor::Vec3 from, kotor::Vec3 to);
+    // World-space walkmesh triangles of the area's closed doors (<model>0.dwk) and placeables (<model>.pwk).
+    struct SoundFacet {
+        kotor::Vec3 a;
+        kotor::Vec3 b;
+        kotor::Vec3 c;
+        std::uint32_t entity = 0;
+        bool door = false;
+    };
+    const std::vector<SoundFacet>& soundObjectFacets();
     script::ProgramPtr decodedScript(const std::string& resref);
     ScriptContext hookContext(const std::string& hook, std::uint32_t entering) const;
     void placeAtLink(const std::string& linkedTo);
@@ -1200,6 +1209,8 @@ private:
     std::filesystem::path rsvRoot_;
     std::string module_;
     kotor::Install install_;
+    std::string soundFacetKey_;
+    std::vector<SoundFacet> soundFacets_;
     std::unique_ptr<kotor::Localization> localization_;
     std::uint32_t languageId_ = 0;
     std::unique_ptr<AudioSystem> audio_;

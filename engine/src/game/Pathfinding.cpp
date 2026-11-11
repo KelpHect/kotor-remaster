@@ -1426,6 +1426,67 @@ bool doorStillOpening(const kotor::Scene& scene, std::size_t index)
 
 } // namespace
 
+// The walkmesh triangles retail's GetObstructionFactor 0050ccf0 can meet besides the room walkmesh: the area's
+// door (closed state, <model>0.dwk) and placeable (<model>.pwk) walkmeshes, 00506650 / 004bbe20, rotated by the
+// object's bearing about z and moved to its position.
+const std::vector<GameSession::SoundFacet>& GameSession::soundObjectFacets()
+{
+    const std::string key = module_ + "|" + std::to_string(scene_.entities.size());
+    if (key == soundFacetKey_) {
+        return soundFacets_;
+    }
+    soundFacetKey_ = key;
+    soundFacets_.clear();
+    std::unordered_map<std::string, std::shared_ptr<const kotor::Wok>> cache;
+    for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+        const kotor::Entity& entity = scene_.entities[i];
+        const bool door = entity.kind == kotor::EntityKind::Door;
+        if ((!door && entity.kind != kotor::EntityKind::Placeable) || entity.model.empty()) {
+            continue;
+        }
+        std::string model = entity.model;
+        for (char& ch : model) {
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        }
+        const std::string name = door ? model + "0" : model;
+        auto found = cache.find(name);
+        if (found == cache.end()) {
+            std::shared_ptr<const kotor::Wok> parsed;
+            if (auto data = install_.find(name, door ? 2052 : 2053); data.has_value()) {
+                try {
+                    parsed = std::make_shared<const kotor::Wok>(
+                        kotor::parseWok(std::move(*data), name + (door ? ".dwk" : ".pwk")));
+                } catch (const kotor::FormatError&) {
+                }
+            }
+            found = cache.emplace(name, std::move(parsed)).first;
+        }
+        if (!found->second) {
+            continue;
+        }
+        const kotor::Wok& wok = *found->second;
+        const float c = std::cos(entity.bearing);
+        const float s = std::sin(entity.bearing);
+        const auto world = [&](const Vec3& v) {
+            return Vec3{entity.position.x + c * v.x - s * v.y, entity.position.y + s * v.x + c * v.y,
+                        entity.position.z + v.z};
+        };
+        for (const kotor::WokFace& face : wok.faces) {
+            if (face.a >= wok.vertices.size() || face.b >= wok.vertices.size() || face.c >= wok.vertices.size()) {
+                continue;
+            }
+            SoundFacet facet;
+            facet.a = world(wok.vertices[face.a]);
+            facet.b = world(wok.vertices[face.b]);
+            facet.c = world(wok.vertices[face.c]);
+            facet.entity = static_cast<std::uint32_t>(i);
+            facet.door = door;
+            soundFacets_.push_back(facet);
+        }
+    }
+    return soundFacets_;
+}
+
 nav::NavMesh* GameSession::navMesh()
 {
     if (!nav_) {

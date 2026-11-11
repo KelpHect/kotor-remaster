@@ -57,11 +57,13 @@ std::string rowResource(const std::optional<kotor::TwoDa>& table, std::int32_t i
     if (!table.has_value() || id < 0) {
         return {};
     }
-    const std::string row = std::to_string(id);
-    if (table->rowIndex(row) < 0) {
+    // Retail reads the 2da by row position (CExo2DA), not by the label column: ambientsound.2da skips labels
+    // from row 17 on, and area id 23 (Taris) is the row labelled 24, al_en_uprclasapt.
+    const int column = table->columnIndex("resource");
+    if (column < 0 || static_cast<std::size_t>(id) >= table->rowCount()) {
         return {};
     }
-    return table->cell(row, "resource");
+    return table->cell(static_cast<std::size_t>(id), static_cast<std::size_t>(column));
 }
 
 } // namespace
@@ -509,7 +511,8 @@ bool AudioSystem::playSoundSetSlot(std::uint32_t entity, int slot, const SoundSe
         attempt.position = position;
         attempt.minDistance = std::min(priorityGroup(kGroupSmallVoice).maxVolumeDist, priorityGroup(kGroupSmallVoice).minVolumeDist);
         attempt.maxDistance = std::max(priorityGroup(kGroupSmallVoice).maxVolumeDist, priorityGroup(kGroupSmallVoice).minVolumeDist);
-        attempt.group = who.isPlayer ? kGroupPlayerChat : (who.sizeCategory < 4 ? kGroupSmallVoice : kGroupLargeVoice);
+        attempt.group = who.isPlayer ? kGroupPlayerChat : who.isParty ? kGroupNonPlayerChat
+                                                                   : (who.sizeCategory < 4 ? kGroupSmallVoice : kGroupLargeVoice);
         attempt.volume127 = 127;
         attempt.stream = 1;
         mixer_.reportAttempt(attempt);
@@ -523,8 +526,10 @@ bool AudioSystem::playSoundSetSlot(std::uint32_t entity, int slot, const SoundSe
         creatureVoices_.erase(previous);
     }
     GroupSound request;
+    // 00611470: the controlled creature 8, another party member 9, everyone else 17 (size < 4) or 16.
     request.group = who.isPlayer ? kGroupPlayerChat
-                                 : (who.sizeCategory < 4 ? kGroupSmallVoice : kGroupLargeVoice);
+                                 : who.isParty ? kGroupNonPlayerChat
+                                               : (who.sizeCategory < 4 ? kGroupSmallVoice : kGroupLargeVoice);
     request.position = &position;
     request.stream = true;
     const int voice = playGroupSound(sound, request);

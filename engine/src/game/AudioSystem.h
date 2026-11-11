@@ -125,6 +125,7 @@ public:
     // Retail CSWCCreature::PlaySoundSetSound 00611470. `slot` is the SSF index (retail passes slot + 1).
     struct SoundSetVoice {
         bool isPlayer = false;   // the controlled creature: Player_Chat group 8
+        bool isParty = false;    // another party member (GetPlayerByGameObjectID 005ed590): NonPlayer_Chat group 9
         int sizeCategory = 3;    // others: medium and small 17, large 16
         bool dead = false;       // a dead creature only plays its death cry (slot 15)
     };
