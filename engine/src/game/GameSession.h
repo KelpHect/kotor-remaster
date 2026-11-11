@@ -236,7 +236,7 @@ public:
     // --state-trace: null (the default) costs one pointer test at each of the three hook sites.
     void setStateTrace(StateTrace* trace) { stateTrace_ = trace; }
     // A combat round started for `owner` (the attack-round entry of the combat system).
-    void traceRound(std::int32_t number, std::uint32_t owner);
+    void traceRound(std::int32_t number, std::uint32_t owner, bool ended = false);
     bool save(const std::filesystem::path& path) const;
     bool load(const std::filesystem::path& path);
     // Original KotOR save folder (SAVEGAME.sav + sidecars). The reader maps

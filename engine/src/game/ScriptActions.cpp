@@ -19,9 +19,6 @@ constexpr float kConversationRange = 3.0f;
 constexpr float kArrivalTolerance = 0.25f;
 constexpr float kStuckGiveUp = 2.0f;
 constexpr float kForceStuckJump = 3.0f;
-// Non-looping animations with no duration block about one clip. Clip length is
-// not known here for every actor (the PC may have no avatar).
-constexpr float kOneShotAnimation = 1.0f;
 constexpr int kInstantActionsPerTick = 32;
 // Stops at this gap from the followed creature when the script names no distance
 // (ActionFollowLeader). No retail value was recovered.
@@ -273,10 +270,23 @@ bool runFrontAction(ScriptApi api, std::uint32_t self, float dt)
             } else if (!name.empty() && index != static_cast<std::size_t>(-1)) {
                 api.playAnimation(index, name, api.animationLooping(action.animation));
             }
-            if (action.remaining <= 0.0f) {
-                action.remaining = api.animationLooping(action.animation) ? 0.0f
-                                                                          : kOneShotAnimation;
+            // retail AIActionPlayAnimation 0057d080 (the check before the return at 0057d3bb): the action
+            // lasts the clip's length (1000 ms when the object has no such clip), divided by |speed|
+            // when that is not 0; a duration over 0 replaces it unless animations.2da FireForget is set.
+            float length = 1.0f;
+            if (index != static_cast<std::size_t>(-1)) {
+                const float clip = api.animationSeconds(index, placeable != nullptr ? placeable : name);
+                if (clip > 0.0f) {
+                    length = clip;
+                }
             }
+            if (action.speed != 0.0f) {
+                length /= std::fabs(action.speed);
+            }
+            if (action.remaining > 0.0f && !api.animationFireAndForget(action.animation)) {
+                length = action.remaining;
+            }
+            action.remaining = length;
         }
         action.remaining -= dt;
         if (action.remaining > 0.0f) {
@@ -800,6 +810,7 @@ Cells actionPlayAnimation(ActionCall& call)
     ActorAction action;
     action.kind = ActorActionKind::PlayAnimation;
     action.animation = static_cast<std::int32_t>(call.intArg(0));
+    action.speed = static_cast<float>(call.floatArg(1, 1.0));
     action.remaining = static_cast<float>(call.floatArg(2));
     call.api().enqueue(call.self(), std::move(action));
     return ActionCall::none();

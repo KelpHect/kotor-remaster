@@ -2293,6 +2293,9 @@ void GameSession::runSpawnAndEnterScripts()
             }
         }
     }
+    if (sim_->restoringSave) {
+        primeLoadedCreatureClocks(ScriptApi{*this}); // saved creatures are already spawned: 004eb6e0
+    }
     if (!sim_->restoringSave) { // loadOriginalSave runs the module and entry hooks last.
         runSceneHook("Mod_OnClientEntr", scriptWorld_.pc);
         runSceneHook("OnEnter", scriptWorld_.pc);
@@ -5679,9 +5682,9 @@ void GameSession::updateCombat(float dt)
         }
         combatTarget_ = static_cast<std::uint32_t>(index);
     }
-    if (!dialogueView_.active) {
-        tickCombat(api, dt);
-    }
+    // Retail keeps combat rounds running through a conversation: the Endar duel ends and starts its rounds every
+    // 3 s while the Trask dialogue plays (state trace rnd rows).
+    tickCombat(api, dt);
 }
 
 bool GameSession::pointInTrigger(const kotor::TriggerVolume& trigger, float x, float y) const
@@ -6260,10 +6263,10 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
     return true;
 }
 
-void GameSession::traceRound(std::int32_t number, std::uint32_t owner)
+void GameSession::traceRound(std::int32_t number, std::uint32_t owner, bool ended)
 {
     if (stateTrace_ != nullptr) {
-        stateTrace_->onRound(*this, number, owner);
+        stateTrace_->onRound(*this, number, owner, ended);
     }
 }
 
@@ -6633,7 +6636,7 @@ std::optional<std::vector<script::Value>> GameSession::action(
     }
     case 300: { // PlayAnimation
         const std::int32_t animationId = static_cast<std::int32_t>(intArg(0));
-        const std::string name = rules_.animationName(animationId);
+        const std::string name = rules_.scriptAnimationName(animationId);
         if (!name.empty()) {
             const std::uint32_t self = runtime_ != nullptr
                 ? runtime_->contextObject("self") : world.pc;
@@ -6645,7 +6648,7 @@ std::optional<std::vector<script::Value>> GameSession::action(
                     if (placeable != nullptr) {
                         playAnimation(i, placeable, placeableLoop);
                     } else {
-                        playAnimation(i, name, rules_.animationLooping(animationId));
+                        playAnimation(i, name, rules_.scriptAnimationLooping(animationId));
                     }
                     break;
                 }

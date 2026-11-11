@@ -34,9 +34,10 @@ constexpr std::size_t kNone = static_cast<std::size_t>(-1);
 // player forever.
 constexpr float kRestrictWatchdogSeconds = 120.0f;
 constexpr float kFadeHoldWatchdogSeconds = 120.0f;
-// SpeakString reach for TALKVOLUME_TALK / WHISPER. No retail value was recovered.
-constexpr float kTalkRadius = 20.0f;
-constexpr float kWhisperRadius = 2.0f;
+// SpeakString reach by TALKVOLUME (CSWSMessage::SendServerToPlayerChatMessage 00571960 calling 004cd760): TALK and
+// SILENT_SHOUT 1000 m (data 00747444/00747458), WHISPER 3 m (00747448), SHOUT 250 m (00747440), SILENT_TALK 35 m
+// (00747454). The party volume takes the TALK branch.
+constexpr float kSilentTalkSeenRadius = 100.0f; // 00741838: unseen listeners beyond this squared range skip a silent talk
 
 using Cells = std::optional<std::vector<script::Value>>;
 
@@ -1436,19 +1437,28 @@ void speak(ActionCall& call, const std::string& text, std::int64_t volume)
     const std::uint32_t speaker = call.self();
     api.log("speak " + std::to_string(speaker) + ": " + text);
     // TALKVOLUME_TALK 0, WHISPER 1, SHOUT 2, SILENT_TALK 3, SILENT_SHOUT 4, PARTY 5.
-    const bool shout = volume == 2 || volume == 4;
-    const float reach = volume == 1 ? kWhisperRadius : kTalkRadius;
+    const float reach = volume == 1 ? 3.0f : volume == 2 ? 250.0f : volume == 3 ? 35.0f : 1000.0f;
+    const bool silentTalk = volume == 3;
     const std::vector<std::uint32_t> listeners(sim.listening.begin(), sim.listening.end());
     for (const std::uint32_t listener : listeners) {
         if (listener == speaker || !api.isAlive(listener)) {
             continue;
         }
-        if (volume == 5 && std::find(api.world().party.begin(), api.world().party.end(), listener)
-                == api.world().party.end()) {
+        const kotor::Vec3 from = api.position(speaker);
+        const kotor::Vec3 to = api.position(listener);
+        const float squared = (from.x - to.x) * (from.x - to.x) + (from.y - to.y) * (from.y - to.y)
+            + (from.z - to.z) * (from.z - to.z);
+        if (squared >= reach * reach) {
             continue;
         }
-        if (!shout && distance2(api.position(speaker), api.position(listener)) > reach) {
-            continue;
+        if (api.isCreature(listener) && api.isCreature(speaker)) {
+            // 004cd760: a creature listener must have heard the speaker (its perception record, flag 2); a silent talk
+            // also needs the speaker seen or within 100 squared metres.
+            const auto record = api.actor(listener).perceived.find(speaker);
+            const std::uint8_t flags = record != api.actor(listener).perceived.end() ? record->second : 0;
+            if ((flags & 2) == 0 || (silentTalk && (flags & 1) == 0 && squared >= kSilentTalkSeenRadius)) {
+                continue;
+            }
         }
         const auto found = sim.listenPatterns.find(listener);
         if (found == sim.listenPatterns.end()) {
