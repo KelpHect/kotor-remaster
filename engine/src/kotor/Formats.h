@@ -1475,6 +1475,7 @@ struct EntityMesh {
     std::vector<TextureBatch> batches;
     std::string animation;
     float animationTime = 0.0f;
+    float animationRate = 1.0f; // Clip seconds per second: a walking body's clip is cut to its speed (CSWCCreature::DriveAnimationUpdate 00615960).
     bool animationLoop = true;
     std::string previousAnimation;
     float previousAnimationTime = 0.0f;
@@ -1516,6 +1517,8 @@ struct EntityMesh {
     bool stancePlaced = false;
     float stanceStill = 1.0f;
     bool stanceRunning = false;
+    float stanceSpeed = 0.0f;  // Measured forward speed, and the distance one cycle of the walk or run clip covers (appearance DRIVEANIMWALK/RUN).
+    float stanceStride = 1.0f;
     std::int32_t stanceAttack = 0;
     bool visible = true;
     // Placed by its clip rather than by its entity: `center` is where the posed mesh is.
