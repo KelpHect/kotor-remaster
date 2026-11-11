@@ -1334,6 +1334,8 @@ std::size_t GlScene::drawMeshes(const SceneCamera& camera, float aspect, const P
         float distance;
     };
     std::vector<Pending> blended;
+    // Room objects (reference models, "<model>a" parts) solid enough to draw in place: after the shadows.
+    std::vector<const kotor::TextureBatch*> roomObjects;
     std::size_t drawnMeshes = 0;
     const std::vector<std::uint8_t>* rooms = scene_ != nullptr && view == nullptr && !scene_->visibleRooms.empty()
         ? &scene_->visibleRooms : nullptr;
@@ -1387,6 +1389,10 @@ std::size_t GlScene::drawMeshes(const SceneCamera& camera, float aspect, const P
                 blended.push_back({&mesh, &batch, model, light, kotor::length(center - camera.eye)});
                 continue;
             }
+            if (view == nullptr && mesh.entity == UINT32_MAX && batch.roomObject) {
+                roomObjects.push_back(&batch);
+                continue;
+            }
             drawBatch(&mesh, batch, light);
         }
         ++drawnMeshes;
@@ -1394,6 +1400,11 @@ std::size_t GlScene::drawMeshes(const SceneCamera& camera, float aspect, const P
         if (view == nullptr && &mesh == &meshes_.front()) {
             drawShadows(camera, viewProjection.m);
             gl_.UseProgram(program_);
+            gl_.UniformMatrix4fv(uniforms_.model, 1, 0, model.m);
+            gl_.BindVertexArray(mesh.vao);
+            for (const kotor::TextureBatch* batch : roomObjects) {
+                drawBatch(&mesh, *batch, light);
+            }
         }
     }
     std::stable_sort(blended.begin(), blended.end(), [](const Pending& a, const Pending& b) {
