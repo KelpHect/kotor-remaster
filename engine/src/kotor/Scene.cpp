@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -534,6 +535,25 @@ Scene loadModule(Install& install, const std::string& moduleStem, const std::vec
             byReference[roomKey + "a#" + materialKey(triangle)].push_back(std::move(triangle));
         }
         grassWalkmesh[static_cast<std::uint32_t>(roomIndex)] = mdl.walkmeshTriangles(room.origin);
+        {
+            Scene::RoomHitFaces hit;
+            hit.boxMin = {std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
+                          std::numeric_limits<float>::max()};
+            hit.boxMax = {-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max(),
+                          -std::numeric_limits<float>::max()};
+            for (const MdlMeshTriangle& triangle : mdl.roomHitTriangles(room.origin)) {
+                for (const MdlMeshVertex& vertex : triangle.v) {
+                    hit.boxMin = {std::min(hit.boxMin.x, vertex.position.x), std::min(hit.boxMin.y, vertex.position.y),
+                                  std::min(hit.boxMin.z, vertex.position.z)};
+                    hit.boxMax = {std::max(hit.boxMax.x, vertex.position.x), std::max(hit.boxMax.y, vertex.position.y),
+                                  std::max(hit.boxMax.z, vertex.position.z)};
+                }
+                hit.faces.push_back({triangle.v[0].position, triangle.v[1].position, triangle.v[2].position});
+            }
+            if (!hit.faces.empty()) {
+                scene.roomHitFaces.push_back(std::move(hit));
+            }
+        }
         sourceBytes += static_cast<std::uint32_t>(triangles.size() * 32u);
         for (MdlMeshTriangle& triangle : triangles) {
             byMaterial[roomKey + materialKey(triangle)].push_back(std::move(triangle));

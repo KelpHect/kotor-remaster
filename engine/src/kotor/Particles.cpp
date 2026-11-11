@@ -185,29 +185,87 @@ Vec3 flareWorldPosition(const Scene& scene, const FlareLight& flare)
     return flare.origin + mulRotation(flare.orientation, flare.local);
 }
 
-// Whether a walkmesh face that stops sight lies on the segment. Inferred: retail's cast goes through
-// the area's own query (a virtual call in 00457ec0), which has not been traced to its geometry.
+// 004ab750, one-sided: `from` must be on the face's front (plane distance >= 0) and `to` on its back
+// (<= 0), the crossing inside every edge within 1e-5 (007440f8).
+bool faceHitOneSided(Vec3 from, Vec3 to, const Vec3& a, const Vec3& b, const Vec3& c)
+{
+    const Vec3 normal = normalize(cross(b - a, c - a));
+    if (dot(normal, normal) < 0.5f) {
+        return false;
+    }
+    const float fromSide = dot(normal, from - a);
+    const float toSide = dot(normal, to - a);
+    if (!(fromSide >= 0.0f && toSide <= 0.0f && fromSide != toSide)) {
+        return false;
+    }
+    const Vec3 at = from + (to - from) * (fromSide / (fromSide - toSide));
+    const Vec3 corners[3] = {a, b, c};
+    for (int k = 0; k < 3; ++k) {
+        const Vec3& p0 = corners[k];
+        const Vec3& p1 = corners[(k + 1) % 3];
+        if (dot(cross(p1 - p0, at - p0), normal) < -1.0e-5f) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Whether the segment meets the box (BoxIntersect 004aa610 culls each room part by its bounds).
+bool segmentMeetsBox(Vec3 from, Vec3 to, Vec3 boxMin, Vec3 boxMax)
+{
+    float enter = 0.0f;
+    float leave = 1.0f;
+    const float start[3] = {from.x, from.y, from.z};
+    const float delta[3] = {to.x - from.x, to.y - from.y, to.z - from.z};
+    const float low[3] = {boxMin.x, boxMin.y, boxMin.z};
+    const float high[3] = {boxMax.x, boxMax.y, boxMax.z};
+    for (int axis = 0; axis < 3; ++axis) {
+        if (std::abs(delta[axis]) < 1e-12f) {
+            if (start[axis] < low[axis] || start[axis] > high[axis]) {
+                return false;
+            }
+            continue;
+        }
+        float t0 = (low[axis] - start[axis]) / delta[axis];
+        float t1 = (high[axis] - start[axis]) / delta[axis];
+        if (t0 > t1) {
+            std::swap(t0, t1);
+        }
+        enter = std::max(enter, t0);
+        leave = std::min(leave, t1);
+        if (enter > leave) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The area half of the scene cast 00456b60 for the flare's CHitInfo(0, 0xbfffffff, 0): each room
+// whose bounds the segment meets goes through 0046b4c0. Its first loop runs Part::HitCheck 004429d0
+// on every part of the room's model (mesh parts test each face with 004ab750, one-sided); the AABB
+// part's tree 00441570 keeps a face only when its material bit is in the mask (every surface but 30)
+// and tests it with the same 004ab750. The second list (007fbf4c, 0 outside two callers that set it
+// around their own call: 0061a092, 006470a2) is skipped; 0078e5a8 is 1 (initialised data, cleared
+// only around 0060f315), so the room's +0x6c object is asked too, which adds no face beyond these.
 bool segmentBlocked(const Scene& scene, Vec3 from, Vec3 to)
 {
-    const Vec3 ray = to - from;
+    for (const Scene::RoomHitFaces& room : scene.roomHitFaces) {
+        if (!segmentMeetsBox(from, to, room.boxMin, room.boxMax)) {
+            continue;
+        }
+        for (const std::array<Vec3, 3>& face : room.faces) {
+            if (faceHitOneSided(from, to, face[0], face[1], face[2])) {
+                return true;
+            }
+        }
+    }
+    constexpr std::uint32_t kHitMask = 0xbfffffffu;
     for (const CollisionFacet& facet : scene.collision) {
-        if (!facet.blocksSight) {
+        if (((1u << (facet.surface & 0x1fu)) & kHitMask) == 0u) {
             continue;
         }
-        const Vec3& a = scene.collisionVertices[facet.a];
-        const Vec3 e1 = scene.collisionVertices[facet.b] - a;
-        const Vec3 e2 = scene.collisionVertices[facet.c] - a;
-        const Vec3 p = cross(ray, e2);
-        const float det = dot(e1, p);
-        if (std::abs(det) < 1e-7f) {
-            continue;
-        }
-        const Vec3 t = from - a;
-        const float u = dot(t, p) / det;
-        const Vec3 q = cross(t, e1);
-        const float v = dot(ray, q) / det;
-        const float hit = dot(e2, q) / det;
-        if (u >= 0.0f && v >= 0.0f && u + v <= 1.0f && hit > 0.0f && hit < 1.0f) {
+        if (faceHitOneSided(from, to, scene.collisionVertices[facet.a], scene.collisionVertices[facet.b],
+                            scene.collisionVertices[facet.c])) {
             return true;
         }
     }
@@ -219,34 +277,10 @@ bool segmentBlocked(const Scene& scene, Vec3 from, Vec3 to)
 // flare's CHitInfo(0, 0xbfffffff, 0) (004578f0: +0x5c, +0x5e, +0x60 clear, +0x5d set): a gob is
 // skipped when its model's classification has bit 0, 1 or 7 (0x80) set, then Gob::HitCheck 0043eb80
 // (gob fade +0xd8 below 0.25 skips it; minigame gobs are opaque) walks its parts (004429d0); a
-// mesh part (00440ff0) tests each face with 004ab750, which is one-sided: `from` must be on the
-// face's front (plane distance >= 0) and `to` on its back (<= 0), the crossing inside every edge
-// within 1e-5 (007440f8). Skinned parts (vfunc +0x50 non-zero, 00641db0) and AABB nodes (0x821)
-// are not tested; the node's render flag is not read.
+// mesh part (00440ff0) tests each face with 004ab750 (faceHitOneSided). Skinned parts (vfunc +0x50
+// non-zero, 00641db0) are not tested; the node's render flag is not read.
 bool segmentHitsPlacedModel(const Scene& scene, Vec3 from, Vec3 to)
 {
-    const Vec3 ray = to - from;
-    const auto hits = [&](const Vec3& a, const Vec3& b, const Vec3& c) {
-        const Vec3 normal = normalize(cross(b - a, c - a));
-        if (dot(normal, normal) < 0.5f) {
-            return false;
-        }
-        const float fromSide = dot(normal, from - a);
-        const float toSide = dot(normal, to - a);
-        if (!(fromSide >= 0.0f && toSide <= 0.0f && fromSide != toSide)) {
-            return false;
-        }
-        const Vec3 at = from + ray * (fromSide / (fromSide - toSide));
-        const Vec3 corners[3] = {a, b, c};
-        for (int k = 0; k < 3; ++k) {
-            const Vec3& p0 = corners[k];
-            const Vec3& p1 = corners[(k + 1) % 3];
-            if (dot(cross(p1 - p0, at - p0), normal) < -1.0e-5f) {
-                return false;
-            }
-        }
-        return true;
-    };
     for (const EntityMesh& mesh : scene.entityMeshes) {
         if (!mesh.visible || mesh.entity != UINT32_MAX || mesh.roomAnimated || mesh.fx) {
             continue;
@@ -255,13 +289,14 @@ bool segmentHitsPlacedModel(const Scene& scene, Vec3 from, Vec3 to)
             continue;
         }
         for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
-            if (hits(mesh.vertices[mesh.indices[i]].position, mesh.vertices[mesh.indices[i + 1]].position,
-                     mesh.vertices[mesh.indices[i + 2]].position)) {
+            if (faceHitOneSided(from, to, mesh.vertices[mesh.indices[i]].position,
+                                mesh.vertices[mesh.indices[i + 1]].position,
+                                mesh.vertices[mesh.indices[i + 2]].position)) {
                 return true;
             }
         }
         for (const std::array<Vec3, 3>& face : mesh.hiddenFaces) {
-            if (hits(face[0], face[1], face[2])) {
+            if (faceHitOneSided(from, to, face[0], face[1], face[2])) {
                 return true;
             }
         }

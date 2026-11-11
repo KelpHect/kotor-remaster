@@ -2519,6 +2519,18 @@ std::vector<MdlMeshTriangle> Mdl::walkmeshTriangles(Vec3 origin) const
     return out;
 }
 
+std::vector<MdlMeshTriangle> Mdl::roomHitTriangles(Vec3 origin) const
+{
+    std::vector<MdlMeshTriangle> out = trianglesFromPose(
+        bindWorld_, -1.0f, [](const Node& node) { return (node.type & 0x240u) == 0u; });
+    for (MdlMeshTriangle& triangle : out) {
+        for (MdlMeshVertex& vertex : triangle.v) {
+            vertex.position = vertex.position + origin;
+        }
+    }
+    return out;
+}
+
 std::vector<MdlMeshTriangle> Mdl::placedTriangles(Vec3 origin, const Mat3& rotation) const
 {
     std::vector<MdlMeshTriangle> out = trianglesFromPose(bindWorld_, -1.0f, [](const Node& node) { return node.render; });

@@ -292,9 +292,16 @@ TextureBatch makeMaterialBatch(Scene& scene, Install& install, const MdlMeshTria
         }
     }
     // Code only: retail 00470d30 takes a bump route only when the mesh has tangents (0043e410).
+    // On the retail captures' card the NV2x shader level is off (0045fbd0 = 0), so the only bump
+    // route left is 6 (RenderBumpmapFallback), reached with no lightmap and no environment map. A
+    // lightmapped surface goes to 9 or 14 (00470590 / 0046fb10) and an environment-mapped one to
+    // 10 or 11 (0046ff70): none of those reads the bump map (tar_m02ad LTS_Pwall01i walls). The
+    // material still loads it (00470d30 asks Material::HasBumpMap of every mesh).
     if (!txi.bumpMap.empty() && triangle.material != nullptr && triangle.material->hasTangents) {
         batch.bumpmap = ensureOptionalTexture(scene, install, txi.bumpMap);
-        if (batch.bumpmap == kNoTexture) {
+        if (batch.bumpmap != kNoTexture && (batch.lightmap != kNoTexture || batch.envmap != kNoTexture)) {
+            batch.bumpmap = kNoTexture;
+        } else if (batch.bumpmap == kNoTexture) {
             ++scene.missingTextures[txi.bumpMap];
         } else {
             Texture& bump = scene.textures[batch.bumpmap];
