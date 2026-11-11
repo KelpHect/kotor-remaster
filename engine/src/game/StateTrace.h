@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -87,6 +88,9 @@ private:
         int h = 0;
         const kotor::GuiScreen* screen = nullptr;
     };
+    // fade.gui, parsed once for the fade panel's control row.
+    std::unique_ptr<kotor::GuiScreen> fadeScreen_;
+    bool fadeScreenTried_ = false;
     struct Pending {
         std::uint64_t due = 0;
         bool control = false; // true: write `lines`; false: a shot named `name`
@@ -132,6 +136,7 @@ private:
     std::unordered_map<std::uint32_t, std::string> keyById_;
     std::unordered_map<std::string, int> seen_;          // tag|template -> objects met
     std::vector<std::string> entityKey_;                 // entity index -> key, this sample
+    std::unordered_map<std::string, std::string> objectVisible_; // object id -> the visible column outside a minigame
     std::unordered_map<std::string, std::string> objects_; // id text -> key, to write obj_del
     std::vector<Panel> panels_;
     std::string reported_;                               // the module `mod ready` last named
