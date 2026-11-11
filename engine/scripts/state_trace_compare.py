@@ -234,6 +234,10 @@ def run(args):
     dk = lambda r: (tagof(r.f[3]), tagof(r.f[4]), tagof(r.f[5]), r.f[6], r.f[7], r.f[8], r.f[9] if r.f[9] != "-" else "*")
     if any(len(r.f) >= 10 for r in sel(ee, "dlg")):
         ra, ea = sel(rr, "dlg"), sel(ee, "dlg")
+        skipped = len([r for r in ra + ea if len(r.f) < 10])
+        if skipped:
+            print("note: %d dlg rows in the old format (fewer than 10 fields) skipped" % skipped, file=sys.stderr)
+        ra, ea = [r for r in ra if len(r.f) >= 10], [r for r in ea if len(r.f) >= 10]
         d.checked = max(len(ra), len(ea))
         for i in range(d.checked):
             x = ra[i] if i < len(ra) else None
