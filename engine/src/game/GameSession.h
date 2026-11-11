@@ -1383,6 +1383,7 @@ private:
     std::vector<std::uint8_t> originalRepute_;
     std::vector<kotor::SavedResource> originalOuterExtras_;
     std::vector<kotor::SavedResource> originalPreservedModules_;
+    const std::vector<std::uint8_t>* savedGit_ = nullptr; // loadOriginalSave: the save's GIT for the module being loaded
     std::int32_t gold_ = 0;
     std::vector<MerchantState> merchants_;
     std::vector<EncounterState> encounterStates_;

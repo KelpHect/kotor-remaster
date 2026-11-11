@@ -294,6 +294,13 @@ void StateTrace::onModuleReady(GameSession& game)
     backdrop_ = false;
     resetWorld();
     write("mod", {"ready", clean(reported_)});
+    // Retail writes the first object rows at the moment the module becomes ready, before any simulated time passes (an
+    // NPC that starts a walk or a turn in its first tick is still at its GIT facing there).
+    {
+        StateTraceFrame first;
+        first.game = &game;
+        sampleState(first);
+    }
     schedule(kSettleFrames, "settle:" + reported_);
 }
 

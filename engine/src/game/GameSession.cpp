@@ -885,7 +885,7 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
     statusPending_ = {};
     statusPopupOwed_ = false;
     arrivalPending_ = true;
-    kotor::Scene loaded = kotor::loadModule(install_, module);
+    kotor::Scene loaded = kotor::loadModule(install_, module, savedGit_);
     module_ = module;
     scene_ = std::move(loaded);
     if (effects_) {
@@ -966,6 +966,15 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
         if (entity < scene_.entities.size() && !scene_.entities[entity].linkedModule.empty()
             && pointInTrigger(scene_.triggers[i], arrival.x, arrival.y)) {
             triggerInside_[i] = true;
+        }
+    }
+    // A creature is created standing on the walkmesh: the GIT Z can sit above the floor (Taris tar_m02aa twilek is 3.13 in the
+    // GIT and measured at floor height 0 on retail from the first row).
+    for (kotor::Entity& entity : scene_.entities) {
+        float floorZ = 0.0f;
+        if (entity.kind == kotor::EntityKind::Creature && !entity.partyAvatar
+            && floorHeight(scene_, entity.position.x, entity.position.y, entity.position.z + 2.0f, floorZ)) {
+            entity.position.z = floorZ;
         }
     }
     initAnimations();
@@ -7141,16 +7150,20 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
     companions_.clear();
     partyTags_.clear();
     sim_->restoringSave = true;
+    savedGit_ = saved.gitBytes.empty() ? nullptr : &saved.gitBytes;
     try {
         if (!loadModule(saved.module, nullptr, {})) {
+            savedGit_ = nullptr;
             sim_->restoringSave = false;
             return false;
         }
     } catch (const std::exception& exception) {
+        savedGit_ = nullptr;
         sim_->restoringSave = false;
         logEvent(std::string("original save module failed: ") + exception.what());
         return false;
     }
+    savedGit_ = nullptr;
     sim_->restoringSave = false;
     if (!saved.area.empty() && lower(saved.area) != lower(scene_.area)) {
         logEvent("original save area differs from module entry: " + saved.area);
@@ -7243,13 +7256,14 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
 
     std::vector<std::pair<std::size_t, const decltype(kotor::SavedObjectState::loot)*>> savedLoot;
     std::vector<bool> objectUsed(scene_.entities.size(), false);
+    std::vector<std::pair<std::size_t, const kotor::SavedObjectState*>> matchedObjects;
     for (const kotor::SavedObjectState& state : saved.objects) {
         const kotor::EntityKind kind = entityKindForSaved(state.kind);
         std::size_t index = static_cast<std::size_t>(-1);
         float bestDistance = 1.0e30f;
         for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
             const kotor::Entity& candidate = scene_.entities[i];
-            if (objectUsed[i] || candidate.tag != state.tag
+            if (objectUsed[i] || lower(candidate.tag) != lower(state.tag)
                 || candidate.partyAvatar
                 || (kind != kotor::EntityKind::Unknown && candidate.kind != kind)) {
                 continue;
@@ -7267,6 +7281,7 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
             continue;
         }
         objectUsed[index] = true;
+        matchedObjects.emplace_back(index, &state);
         kotor::Entity& entity = scene_.entities[index];
         entity.position = state.position;
         entity.bearing = state.bearing;
@@ -7312,6 +7327,34 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
     combatTarget_ = UINT32_MAX;
     selectedEntity_ = UINT32_MAX;
     syncScriptWorld();
+    // Retail 004d1cf0 (LoadObjectState) gives each object back its script variables: the named ones
+    // (0059aa80) and the 96 booleans and 8 numbers of CSWVarTable (0059b0f0).
+    for (const auto& [index, state] : matchedObjects) {
+        if (index >= entityObjects_.size() || entityObjects_[index] == 0) {
+            continue;
+        }
+        const std::uint32_t object = entityObjects_[index];
+        for (const kotor::SavedObjectState::Local& local : state->locals) {
+            if (local.type == 1) {
+                scriptWorld_.setLocal(object, local.name, script::Value::makeInt(local.integer));
+            } else if (local.type == 2) {
+                scriptWorld_.setLocal(object, local.name, script::Value::makeFloat(local.number));
+            } else if (local.type == 3) {
+                scriptWorld_.setLocal(object, local.name, script::Value::makeString(local.text));
+            }
+        }
+        for (std::int64_t bit = 0; bit < 96; ++bit) {
+            if ((state->localBits[static_cast<std::size_t>(bit) / 32] >> (bit % 32) & 1u) != 0) {
+                scriptWorld_.setLocalBoolean(object, bit, true);
+            }
+        }
+        for (std::int64_t number = 0; number < 8; ++number) {
+            const std::uint8_t byte = state->localBytes[static_cast<std::size_t>(number)];
+            if (byte != 0) {
+                scriptWorld_.setLocalNumber(object, number, static_cast<std::int8_t>(byte));
+            }
+        }
+    }
     // Loading a game is not walking in. Measured on retail: the Taris save loads with the player inside
     // tar02_carstr and no conversation starts (its k_ptar_carstr_en would start one).
     triggerInside_.assign(scene_.triggers.size(), false);

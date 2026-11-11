@@ -4354,6 +4354,12 @@ int runSaveMatrixTest(GameSession& base, const std::string& fixtureDirectory)
                     const kotor::GffNodePtr node = kotor::GffNode::fromGff(ifo);
                     node->remove("Mod_Entry_X");
                     node->addFloat("Mod_Entry_X", x);
+                    // The player stands where its own struct says (retail Mod_PlayerList), so move that too.
+                    if (kotor::GffNodeField* players = node->find("Mod_PlayerList");
+                        players != nullptr && !players->list.empty() && players->list.front() != nullptr) {
+                        players->list.front()->remove("XPosition");
+                        players->list.front()->addFloat("XPosition", x);
+                    }
                     if (corrupt) {
                         node->remove("EventQueue");
                         node->addList("EventQueue", {std::make_shared<kotor::GffNode>(0)});
@@ -11239,6 +11245,19 @@ int runApplication(const Options& options)
             running = false;
         } else {
             logInfo(concat("input script: ", inputScript.steps().size(), " steps from ", options.inputScript));
+        }
+    }
+    if (!options.stateTraceLoad.empty() && game) {
+        // --state-trace-load: the front end's Load Game outcome, without the menu.
+        if (game->loadOriginalSave(options.stateTraceLoad, true)) {
+            game->setThirdPerson(true);
+            if (state.guiSystem) {
+                state.guiSystem->close();
+            }
+            state.backend->setScene(&game->scene());
+            state.backend->setCamera(game->camera());
+        } else {
+            logWarn(concat("load failed: ", options.stateTraceLoad));
         }
     }
     while (running) {
