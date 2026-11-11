@@ -783,6 +783,11 @@ ParseResult parseArguments(int argc, char** argv)
             }
             if (file) {
                 result.options.stateTrace = value;
+                // The retail sound system re-tries a waiting looped sample on every rendered frame and the trace
+                // records each try, so a trace run needs a retail-like frame rate even without input focus.
+                if (result.options.backgroundFps == 15) {
+                    result.options.backgroundFps = 60;
+                }
             } else {
                 const int samp = std::atoi(value);
                 result.options.stateTraceSamp = samp > 1 ? samp : 1;

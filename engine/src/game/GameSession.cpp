@@ -582,6 +582,9 @@ void GameSession::updateAnimations(float dt)
             ++animationRevision_;
             continue;
         }
+        if (effects_ && !mesh.attachModel && mesh.entity < scene_.entities.size()) {
+            effects_->creatureClip(mesh.entity, mesh.animation);
+        }
         const bool dangly = mesh.model->danglyNodeCount() > 0;
         if (mesh.animation.empty() && !dangly && mesh.face.weight <= 0.0f) {
             continue;
@@ -6434,7 +6437,9 @@ std::optional<std::vector<script::Value>> GameSession::action(
                                                : script::kObjectInvalid);
     case 46: // PlaySound
         if (audio_) {
-            audio_->playEffect(stringArg(0));
+            // ACT_46 00541170 queues the object action 0x17; the retail trace (Taris cutscene, n_genbith_comm1) shows
+            // the sound as a 2D streaming source in priority group 9 (Non_Player_Chat, volume 127), like a spoken line.
+            audio_->playVoice(stringArg(0));
             logEvent("sound " + stringArg(0));
         }
         return std::vector<script::Value>{};

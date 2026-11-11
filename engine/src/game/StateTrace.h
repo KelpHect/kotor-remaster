@@ -89,6 +89,11 @@ private:
     struct Voice {
         int id = 0;
         std::vector<std::string> tail; // the columns after `start|stop`
+        // A looped 3D sample (retail CExoSoundSourceInternal, not a streaming source) that is farther from the
+        // listener than its max distance is not played: it waits in the non-playing looping list and
+        // CExoSoundInternal::Render (005d9590) calls its Play (005db4d0) again on every frame.
+        bool loopedSample3d = false;
+        bool waiting = false;
     };
 
     void write(const char* kind, const std::vector<std::string>& fields);
@@ -97,6 +102,7 @@ private:
     void resetWorld();
     void trackGui(const StateTraceFrame& frame);
     void trackSounds();
+    void onPlay(const audio::Mixer::PlayInfo& info);
     void writeSound(const std::vector<std::string>& fields);
     void sampleState(const StateTraceFrame& frame);
     void trackDialogueCamera(GameSession& game);

@@ -104,9 +104,34 @@ public:
         kotor::Vec3 position;
         float minDistance = 0.0f;
         float maxDistance = 0.0f;
+        // What the caller said about the source (tagNextPlay): the priority group, the 0-127 source
+        // volume byte and whether retail makes it a streaming source (1) or a sample (0). -1: not said.
+        int group = -1;
+        int volume127 = -1;
+        int stream = -1;
     };
     using PlayObserver = std::function<void(const PlayInfo&)>;
     void setPlayObserver(PlayObserver observer);
+    // --state-trace only: describes the next play() to the observer; consumed (and cleared) by that call.
+    struct PlayTag {
+        int group = -1;
+        int volume127 = -1;
+        int stream = -1;
+    };
+    void tagNextPlay(const PlayTag& tag);
+    // --state-trace only: a play that retail attempts and drops before a voice exists (an empty resource name,
+    // a creature sound-set slot without a file) still reaches the observer, with voice 0.
+    void reportAttempt(const PlayInfo& info);
+    // --state-trace only: what a live voice looks like now (its position follows setVoicePosition).
+    struct VoiceTrace {
+        bool positional = false;
+        bool loop = false;
+        kotor::Vec3 position;
+        float maxDistance = 0.0f;
+    };
+    bool voiceTrace(int voice, VoiceTrace& out) const;
+    // --state-trace only: every voice that is playing now, described as play() described it (under the mixer lock).
+    void forEachLiveVoice(const std::function<void(const PlayInfo&)>& visit) const;
     int playMusic(const std::shared_ptr<const SoundData>& data, float volume, bool loop);
     void stopMusic();
     void stopVoice(int voice);
