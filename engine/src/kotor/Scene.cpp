@@ -96,6 +96,7 @@ void addEntities(const Gff& git, std::uint32_t root, const char* listLabel, Enti
             entity.templateResref = text(git, structure, "ResRef");
         }
         entity.tag = text(git, structure, "Tag");
+        entity.savedObjectId = static_cast<std::uint32_t>(number(git, structure, "ObjectId", 0.0f));
         entity.linkedModule = text(git, structure, "LinkedToModule");
         entity.linkedTo = text(git, structure, "LinkedTo");
         entity.linkedFlags = static_cast<std::uint32_t>(number(git, structure, "LinkedToFlags", 0.0f));

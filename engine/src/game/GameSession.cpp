@@ -2048,10 +2048,27 @@ void GameSession::spawnEncounters()
          ++encounterIndex) {
         const kotor::EncounterVolume& volume = scene_.encounters[encounterIndex];
         EncounterState& state = encounterStates_[encounterIndex];
-        state.respawnsRemaining = volume.templateData.respawns < 0
+        const kotor::EncounterTemplate& data = volume.templateData;
+        state.respawnsRemaining = data.respawns < 0
             ? -1
-            : volume.templateData.respawns;
-        state.resetTime = static_cast<float>(std::max(0, volume.templateData.resetTime));
+            : std::max(0, data.respawns - data.currentSpawns); // AIUpdate 00593fb0: a respawn needs CurrentSpawns < Respawns
+        state.resetTime = static_cast<float>(std::max(0, data.resetTime));
+        // Counters of a saved encounter (ReadEncounterFromGff 00592430). SpawnIfAppropriate 00593be0 spawns only while
+        // Started is not 1; the wave's creatures are the AreaList objects. Exhausted (+0x27c) is written by
+        // SaveEncounter 00591350 but no spawn code reads it, so it is not restored.
+        state.spawnedCount = data.numberSpawned;
+        state.triggered = data.started;
+        state.spawned = data.started;
+        for (const std::uint32_t id : data.areaObjects) {
+            for (std::size_t e = 0; e < scene_.entities.size(); ++e) {
+                if (id != 0 && scene_.entities[e].savedObjectId == id) {
+                    state.entities.push_back(e);
+                    break;
+                }
+            }
+        }
+        // 00593fb0 wakes a reset encounter once LastSpawnDay and LastSpawnTime are both set and ResetTime has passed.
+        state.wiped = !data.active && data.lastSpawnDay != 0 && data.lastSpawnTime != 0;
     }
 }
 
@@ -7357,6 +7374,35 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
             const std::uint8_t byte = state->localBytes[static_cast<std::size_t>(number)];
             if (byte != 0) {
                 scriptWorld_.setLocalNumber(object, number, static_cast<std::int8_t>(byte));
+            }
+        }
+    }
+    // Retail 004d1be0 (LoadEffectList) applies the saved effects again, except SkipOnLoad ones and innate (duration
+    // type 3) ones; the argument layout of an effect beyond its type is kept as the saved integers and floats.
+    {
+        ScriptApi api{*this};
+        for (const auto& [index, state] : matchedObjects) {
+            if (index >= entityObjects_.size() || entityObjects_[index] == 0) {
+                continue;
+            }
+            for (const kotor::SavedEffect& held : state->effects) {
+                const std::int32_t scriptType = kotor::savedEffectScriptType(held.type);
+                const std::int32_t durationType = held.subType & 7;
+                if (!kotor::savedEffectApplies(held) || scriptType < 0 || (durationType != 1 && durationType != 2)) {
+                    continue;
+                }
+                EffectData data;
+                data.type = scriptType;
+                data.subType = held.subType;
+                for (const std::int32_t value : held.ints) {
+                    data.args.push_back(script::Value::makeInt(value));
+                }
+                for (const float value : held.floats) {
+                    data.args.push_back(script::Value::makeFloat(value));
+                }
+                const std::int64_t id = api.sim().engine.add(std::move(data));
+                applyEffectRecord(api, durationType, id, entityObjects_[index], held.duration, script::kObjectInvalid,
+                                  static_cast<std::int32_t>(held.spellId));
             }
         }
     }
