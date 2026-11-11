@@ -585,6 +585,10 @@ public:
     // The AABB (walkmesh) node's faces of a room placed at `origin`, with their surfaces, lightmap and
     // lightmap uvs: what retail grows grass on (00456f30 bins the part answering vtable +0x48).
     std::vector<MdlMeshTriangle> walkmeshTriangles(Vec3 origin) const;
+    // The faces a ray test meets in a room placed at `origin` (0046b4c0 -> Part::HitCheck 004429d0 on
+    // every part): every mesh node at its bind pose whatever its render flag, except skinned parts and
+    // the AABB node, whose faces Scene::collision tests with the hit mask.
+    std::vector<MdlMeshTriangle> roomHitTriangles(Vec3 origin) const;
     // Every rendered mesh at its bind pose, turned and moved as one object.
     std::vector<MdlMeshTriangle> placedTriangles(Vec3 origin, const Mat3& rotation) const;
     // Nodes of type 0x11 name another model to show at that node (refmodel, parsed in 00468070).
@@ -1942,6 +1946,13 @@ struct Scene {
     std::vector<Texture> textures;
     std::vector<Vec3> collisionVertices;
     std::vector<CollisionFacet> collision;
+    // Per room, the mesh faces a scene ray test meets (Mdl::roomHitTriangles) and their bounds.
+    struct RoomHitFaces {
+        Vec3 boxMin;
+        Vec3 boxMax;
+        std::vector<std::array<Vec3, 3>> faces;
+    };
+    std::vector<RoomHitFaces> roomHitFaces;
     std::vector<Entity> entities;
     std::vector<EntityMesh> entityMeshes;
     std::vector<FlareLight> flareLights;
