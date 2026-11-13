@@ -2364,6 +2364,7 @@ name = "kotor-launcher"
 version = "0.1.0"
 dependencies = [
  "gpui",
+ "raw-window-handle",
  "sha2 0.11.1",
  "windows-sys 0.61.2",
 ]

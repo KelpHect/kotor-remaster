@@ -141,7 +141,7 @@ impl Backend {
     /// OpenGL 4.5 core context; auto tries Vulkan, then falls back to OpenGL).
     pub fn api_summary(self) -> &'static str {
         match self {
-            Backend::Auto => "Vulkan 1.3, OpenGL 4.5 fallback",
+            Backend::Auto => "Vulkan 1.3 or OpenGL 4.5",
             Backend::Vulkan => "Vulkan 1.3",
             Backend::Gl => "OpenGL 4.5",
         }

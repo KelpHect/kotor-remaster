@@ -26,6 +26,14 @@ macro_rules! icon {
 const ICONS: &[(&str, &str)] = &[
     ("icons/home.svg", icon!(r#"<path d="M3 11.2 12 3.5l9 7.7"/><path d="M5.5 9.5V20h5v-6h3v6h5V9.5"/>"#)),
     (
+        "icons/home-fill.svg",
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="white" d="M12 2.2 1.2 11.6h3.1V21.5h5.6v-6.2h4.2v6.2h5.6v-9.9h3.1z"/></svg>"#,
+    ),
+    (
+        "icons/gear-fill.svg",
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white"><circle cx="12" cy="12" r="5.6" stroke-width="5"/><path stroke-width="3.6" d="M12 1.6v4M12 18.4v4M1.6 12h4M18.4 12h4M4.6 4.6l2.8 2.8M16.6 16.6l2.8 2.8M4.6 19.4l2.8-2.8M16.6 7.4l2.8-2.8"/></svg>"#,
+    ),
+    (
         "icons/gear.svg",
         icon!(
             r#"<circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/><circle cx="12" cy="12" r="6.3"/>"#

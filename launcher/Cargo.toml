@@ -15,10 +15,13 @@ path = "src/main.rs"
 # Exact pins; Cargo.lock is committed.
 gpui = { version = "=0.2.2", default-features = false, features = ["windows-manifest"] }
 sha2 = "=0.11.1"
+# Already in the tree through gpui; used to reach the native window for rounded corners.
+raw-window-handle = "=0.6.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "=0.61.2", features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
     "Win32_Storage_FileSystem",
     "Win32_System_Console",
     "Win32_System_Registry",

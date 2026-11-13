@@ -57,7 +57,17 @@ impl LauncherState {
         if let Some(saves) = &cl.saves_dir {
             choices.saves_dir = saves.clone();
         }
-        let engine_path = cl.engine.clone().unwrap_or_else(|| exe_folder().join(engine_file_name()));
+        let engine_path = cl.engine.clone().unwrap_or_else(|| {
+            let remembered = from_text(config.get("engine"));
+            if remembered.is_file() {
+                return remembered;
+            }
+            let mut starts = vec![exe_folder()];
+            starts.extend(std::env::current_dir().ok());
+            // The checkout this launcher was built from (development builds live outside it).
+            starts.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+            discover_engine(&starts).unwrap_or_else(|| exe_folder().join(engine_file_name()))
+        });
         let mut settings = UserSettings::default();
         settings.load(&settings_path);
         settings.dirty = false;
@@ -158,6 +168,33 @@ impl LauncherState {
         true
     }
 
+    /// The engine the player located by hand; written to the launcher config at once (only that file).
+    pub fn set_engine(&mut self, path: &Path) {
+        self.engine_path = path.to_path_buf();
+        self.config.set("engine", &generic(path));
+        if let Err(error) = self.config.save(&self.config_path) {
+            self.status = format!("Could not write {}: {error}", generic(&self.config_path));
+        }
+    }
+
+    /// Searches again (the engine may have been built since the launcher started).
+    pub fn detect_engine(&mut self) -> bool {
+        let mut starts = vec![exe_folder()];
+        starts.extend(std::env::current_dir().ok());
+        starts.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+        match discover_engine(&starts) {
+            Some(found) => {
+                self.set_engine(&found);
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn engine_found(&self) -> bool {
+        self.engine_path.is_file()
+    }
+
     pub fn plan(&self) -> LaunchPlan {
         build_launch_plan(&self.choices, &self.engine_path)
     }
@@ -197,7 +234,21 @@ impl LauncherState {
         if !self.save_all() {
             return false; // never start the engine on settings that did not save
         }
-        match std::process::Command::new(&plan.args[0]).args(&plan.args[1..]).spawn() {
+        let mut command = std::process::Command::new(&plan.args[0]);
+        // The launcher has no console of its own; give the engine valid (empty) standard handles.
+        command
+            .args(&plan.args[1..])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        #[cfg(windows)]
+        {
+            // The engine is a console program; started from this window it would open an empty console.
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        match command.spawn() {
             Ok(_child) => true, // dropping the handle leaves the engine running on its own
             Err(error) => {
                 self.status = format!("Could not start the engine: {error}");
@@ -209,6 +260,51 @@ impl LauncherState {
 
 pub fn engine_file_name() -> &'static str {
     if cfg!(windows) { "kotor_engine.exe" } else { "kotor_engine" }
+}
+
+/// Finds the engine without help: next to a start folder, else in a checkout's build tree
+/// (`engine/build/<preset>/`) at a start folder or any of its ancestors, else, for a git worktree, in
+/// its main checkout's build tree. Release presets win over others, then the newest file.
+pub fn discover_engine(starts: &[PathBuf]) -> Option<PathBuf> {
+    let name = engine_file_name();
+    for start in starts {
+        let beside = start.join(name);
+        if beside.is_file() {
+            return Some(beside);
+        }
+    }
+    let in_build_tree = |root: &Path| -> Option<PathBuf> {
+        let entries = std::fs::read_dir(root.join("engine").join("build")).ok()?;
+        entries.flatten().map(|entry| entry.path().join(name)).filter(|exe| exe.is_file()).max_by_key(|exe| {
+            let preset = exe
+                .parent()
+                .and_then(Path::file_name)
+                .map(|folder| folder.to_string_lossy().to_ascii_lowercase())
+                .unwrap_or_default();
+            let modified = exe.metadata().and_then(|meta| meta.modified()).ok();
+            (preset.contains("release"), modified)
+        })
+    };
+    for start in starts {
+        for folder in start.ancestors() {
+            if let Some(found) = in_build_tree(folder) {
+                return Some(found);
+            }
+        }
+    }
+    for start in starts {
+        for folder in start.ancestors() {
+            // A worktree's `.git` is a file: "gitdir: <main>/.git/worktrees/<name>".
+            let Ok(text) = std::fs::read_to_string(folder.join(".git")) else { continue };
+            let Some(gitdir) = text.trim().strip_prefix("gitdir:") else { continue };
+            let gitdir = PathBuf::from(gitdir.trim());
+            let main = gitdir.ancestors().find(|dir| dir.file_name().is_some_and(|name| name == ".git"));
+            if let Some(found) = main.and_then(Path::parent).and_then(in_build_tree) {
+                return Some(found);
+            }
+        }
+    }
+    None
 }
 
 fn same_path(a: &Path, b: &Path) -> bool {
@@ -242,5 +338,47 @@ mod tests {
         assert!(work.join("cfg").join("launcher.ini").is_file());
         assert!(work.join("cfg").join("settings.ini").is_file());
         assert!(!state.add_folder(&work.join("nothing_here")));
+        state.set_engine(&work.join("located").join("kotor_engine.exe"));
+        assert!(state.save_all());
+        let again = LauncherState::new(CommandLine {
+            config_file: Some(work.join("cfg").join("launcher.ini")),
+            no_system_scan: true,
+            ..Default::default()
+        });
+        assert_eq!(again.config.get("engine"), generic(&work.join("located").join("kotor_engine.exe")));
+    }
+
+    #[test]
+    fn engine_is_found_beside_in_build_tree_and_via_worktree() {
+        let work = work_dir("discover");
+        let name = engine_file_name();
+        // Beside the launcher.
+        let beside = work.join("beside");
+        crate::testutil::write_text(&beside.join(name), "stub");
+        assert_eq!(discover_engine(std::slice::from_ref(&beside)), Some(beside.join(name)));
+        // In a checkout's build tree above the start folder; a release preset wins.
+        let repo = work.join("repo");
+        crate::testutil::write_text(&repo.join("engine/build/msvc-debug").join(name), "stub");
+        crate::testutil::write_text(&repo.join("engine/build/msvc-release").join(name), "stub");
+        let deep = repo.join("tools").join("bin");
+        std::fs::create_dir_all(&deep).unwrap();
+        assert_eq!(discover_engine(&[deep]), Some(repo.join("engine/build/msvc-release").join(name)));
+        // A worktree without a build of its own uses its main checkout's build.
+        let main = work.join("main");
+        std::fs::create_dir_all(main.join(".git").join("worktrees").join("lane")).unwrap();
+        crate::testutil::write_text(&main.join("engine/build/msvc-release").join(name), "stub");
+        let tree = work.join("trees").join("lane");
+        crate::testutil::write_text(
+            &tree.join(".git"),
+            &format!(
+                "gitdir: {}
+",
+                generic(&main.join(".git").join("worktrees").join("lane"))
+            ),
+        );
+        let inside = tree.join("launcher");
+        std::fs::create_dir_all(&inside).unwrap();
+        assert_eq!(discover_engine(&[inside]), Some(main.join("engine/build/msvc-release").join(name)));
+        assert_eq!(discover_engine(&[work.join("nowhere")]), None);
     }
 }

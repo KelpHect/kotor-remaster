@@ -136,7 +136,8 @@ fn run_window(args: Args, started: Instant) {
     Application::new().with_assets(assets::Assets).run(move |cx: &mut App| {
         let _ =
             cx.text_system().add_fonts(assets::FONTS.iter().map(|font| std::borrow::Cow::Borrowed(*font)).collect());
-        let bounds = Bounds::centered(None, size(px(1280.0), px(720.0)), cx);
+        // The mockup's window, 1536x850 logical pixels.
+        let bounds = Bounds::centered(None, size(px(1536.0), px(850.0)), cx);
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             titlebar: Some(TitlebarOptions {
@@ -144,11 +145,19 @@ fn run_window(args: Args, started: Instant) {
                 appears_transparent: true,
                 traffic_light_position: Some(point(px(12.0), px(12.0))),
             }),
-            window_min_size: Some(size(px(1180.0), px(680.0))),
+            window_min_size: Some(size(px(1280.0), px(800.0))),
             app_id: Some("kotor-remaster-launcher".into()),
             ..Default::default()
         };
-        let opened = cx.open_window(options, move |_, cx| cx.new(|cx| LauncherView::new(state, view, probe, cx)));
+        let opened = cx.open_window(options, move |window, cx| {
+            use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            if let Ok(handle) = window.window_handle()
+                && let RawWindowHandle::Win32(win32) = handle.as_raw()
+            {
+                platform::round_window(win32.hwnd.get(), theme::FRAME_RGB);
+            }
+            cx.new(|cx| LauncherView::new(state, view, probe, cx))
+        });
         if opened.is_err() {
             cx.quit();
             return;

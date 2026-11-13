@@ -26,6 +26,13 @@ and the same engine command line (`src/config.rs`).
   a neutral placeholder.
 - News: `launcher/src/news.rs` has a `NewsSource` trait with a placeholder source ("No news yet"); a web
   API source replaces it later. No network access.
+- Engine: `--engine` wins; else the path the player located (Locate engine on Home, or Settings > Launch >
+  Engine), kept as `engine` in `launcher.ini`; else `kotor_engine.exe` beside the launcher, the current folder
+  or the checkout it was built from; else `engine/build/<preset>/kotor_engine.exe` in any of their ancestors
+  (release presets first, then the newest); else, for a git worktree, the main checkout's build tree. The
+  engine is started without a console window (`CREATE_NO_WINDOW`, null standard handles).
+- Layout follows the mockup at its 1536x850 window (`launcher/src/ui.rs` constants). The non-affiliation
+  text lives in the About dialog (footer links and emblem) and in Settings > About.
 - Command line: the C++ flags (`--list`, `--check`, `--print-command`, `--config-file`, `--settings-file`,
   `--saves-dir`, `--engine`, `--install`) plus `--view home|settings`, `--no-system-scan`, `--steam-root`,
   `--probe-file`, `--probe-exit`.

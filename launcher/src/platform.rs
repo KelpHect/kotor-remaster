@@ -63,6 +63,32 @@ mod imp {
             .collect()
     }
 
+    /// Asks the window manager for rounded corners and a thin frame in the launcher's frame colour
+    /// (Windows 11; older systems ignore both).
+    pub fn round_window(hwnd: isize, frame_rgb: u32) {
+        use windows_sys::Win32::Graphics::Dwm::{
+            DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
+        };
+        let corner = DWMWCP_ROUND;
+        // COLORREF is 0x00BBGGRR.
+        let colour: u32 = ((frame_rgb & 0xff) << 16) | (frame_rgb & 0xff00) | ((frame_rgb >> 16) & 0xff);
+        // SAFETY: the window handle comes from the live window; each value is a plain u32-sized integer.
+        unsafe {
+            DwmSetWindowAttribute(
+                hwnd as _,
+                DWMWA_WINDOW_CORNER_PREFERENCE as u32,
+                (&raw const corner).cast(),
+                size_of::<i32>() as u32,
+            );
+            DwmSetWindowAttribute(
+                hwnd as _,
+                DWMWA_BORDER_COLOR as u32,
+                (&raw const colour).cast(),
+                size_of::<u32>() as u32,
+            );
+        }
+    }
+
     /// Lets `--list` and friends print into the console that started a GUI-subsystem exe.
     pub fn attach_parent_console() {
         // SAFETY: plain call; failure (no parent console) is fine.
@@ -85,9 +111,11 @@ mod imp {
     }
 
     pub fn attach_parent_console() {}
+
+    pub fn round_window(_hwnd: isize, _frame_rgb: u32) {}
 }
 
-pub use imp::{attach_parent_console, fixed_drive_roots, read_registry_path};
+pub use imp::{attach_parent_console, fixed_drive_roots, read_registry_path, round_window};
 
 /// Steam's own folder (`HKCU\Software\Valve\Steam\SteamPath`).
 pub fn steam_path() -> Option<PathBuf> {

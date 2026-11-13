@@ -6,7 +6,7 @@
 pub struct NewsItem {
     pub title: String,
     pub body: String,
-    /// Where "view all" leads; `None` hides the link.
+    /// A web page for the item, once a feed provides one. "View all news" opens the launcher's own list.
     pub link: Option<String>,
 }
 
@@ -20,7 +20,11 @@ pub struct PlaceholderNews;
 
 impl NewsSource for PlaceholderNews {
     fn items(&self) -> Vec<NewsItem> {
-        vec![NewsItem { title: "No news yet".into(), body: "Project news will appear here.".into(), link: None }]
+        vec![NewsItem {
+            title: "No news yet".into(),
+            body: "Project news and release notes will appear here.".into(),
+            link: None,
+        }]
     }
 }
 

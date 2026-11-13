@@ -33,11 +33,31 @@ pub fn panel_border() -> Rgba {
 pub fn divider() -> Rgba {
     rgb(0x18232f)
 }
+pub fn divider_light() -> Rgba {
+    rgb(0x24303e)
+}
+/// The thin window frame (also given to the window manager for its own border).
+pub const FRAME_RGB: u32 = 0x2a3646;
+pub fn frame() -> Rgba {
+    rgb(FRAME_RGB)
+}
+pub fn panel_border_light() -> Rgba {
+    rgb(0x323e4e)
+}
 pub fn gold() -> Rgba {
     rgb(0xdcb462)
 }
+pub fn gold_title() -> Rgba {
+    rgb(0xe2bd6c)
+}
+pub fn title_white() -> Rgba {
+    rgb(0xeceae4)
+}
 pub fn gold_border() -> Rgba {
     rgb(0x8c6d3c)
+}
+pub fn gold_border_bright() -> Rgba {
+    rgb(0xc9a256)
 }
 pub fn gold_line() -> Rgba {
     rgb(0x5f5442)
@@ -76,13 +96,16 @@ pub fn hsla(color: Rgba) -> Hsla {
     color.into()
 }
 
-/// Wide letter spacing for capitals (the text system has no tracking): a hair space between letters,
-/// three between words.
-pub fn tracked(text: &str) -> String {
-    let mut out = String::with_capacity(text.len() * 4);
+/// Letter spacing for capitals. GPUI 0.2's text system has no tracking, so `level` hair spaces go between
+/// letters (about 0.09 em each in Barlow) and a thin space stands in for a word space.
+pub fn tracked_by(text: &str, level: usize) -> String {
+    if level == 0 {
+        return text.to_owned();
+    }
+    let mut out = String::with_capacity(text.len() * (2 + 3 * level));
     for (index, ch) in text.chars().enumerate() {
         if index > 0 {
-            out.push('\u{200A}');
+            out.extend(std::iter::repeat_n('\u{200A}', level));
         }
         if ch == ' ' {
             out.push('\u{2009}');
@@ -99,8 +122,10 @@ mod tests {
 
     #[test]
     fn tracking_keeps_letters() {
-        let spaced = tracked("AB C");
+        let spaced = tracked_by("AB C", 2);
         assert_eq!(spaced.chars().filter(|ch| ch.is_alphabetic()).collect::<String>(), "ABC");
+        assert_eq!(spaced.chars().filter(|ch| *ch == '\u{200A}').count(), 6);
+        assert_eq!(tracked_by("AB C", 0), "AB C");
         assert!(!ENGINE_VERSION.is_empty(), "build script read the engine version");
     }
 }
