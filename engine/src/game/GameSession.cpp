@@ -2103,6 +2103,12 @@ void GameSession::updateParty(float dt)
     // follow code: the members, and the PC when a companion is steered.
     const std::uint32_t leader = controlledObject();
     const kotor::Vec3 anchor = controlledPosition();
+    if (followHold_) {
+        if (std::fabs(anchor.x - followHoldAnchor_.x) + std::fabs(anchor.y - followHoldAnchor_.y) < 0.01f) {
+            return;
+        }
+        followHold_ = false;
+    }
     const float anchorYaw = yaw_;
     ScriptApi api{*this};
     int slot = 0;
@@ -7621,6 +7627,8 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
             }
         }
     }
+    followHold_ = true;
+    followHoldAnchor_ = controlledPosition();
     logEvent("original save loaded: " + saved.module + " gold=" + std::to_string(gold_)
              + " inventory=" + std::to_string(character_.inventory.size())
              + " journal=" + std::to_string(journal_.size())
