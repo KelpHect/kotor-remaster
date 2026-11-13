@@ -730,20 +730,28 @@ void refreshEntityMeshImpl(EntityMesh& mesh)
 // UTC ItemList (carried, with a Dropable flag) and Equip_ItemList (worn). The
 // struct type of an Equip_ItemList entry is the slot bit mask, so the lowest set
 // bit is the INVENTORY_SLOT_* number.
-void readCreatureItems(Entity& entity, const Gff& utc)
+// `root` is the creature's struct: the root of a UTC, a saved creature inside a retail save's GIT. A saved
+// item has no InventoryRes / EquippedRes; its Tag is the template resref.
+void readCreatureItems(Entity& entity, const Gff& utc, std::uint32_t root)
 {
     entity.creatureItems.clear();
-    if (const GffField* list = utc.field(utc.rootIndex(), "ItemList"); list != nullptr) {
+    if (const GffField* list = utc.field(root, "ItemList"); list != nullptr) {
         for (const std::uint32_t item : utc.list(*list)) {
-            const std::string resref = textField(utc, item, "InventoryRes");
+            std::string resref = textField(utc, item, "InventoryRes");
+            if (resref.empty()) {
+                resref = lower(textField(utc, item, "Tag"));
+            }
             if (!resref.empty()) {
                 entity.creatureItems.push_back({resref, intField(utc, item, "Dropable", 1) != 0, -1});
             }
         }
     }
-    if (const GffField* list = utc.field(utc.rootIndex(), "Equip_ItemList"); list != nullptr) {
+    if (const GffField* list = utc.field(root, "Equip_ItemList"); list != nullptr) {
         for (const std::uint32_t item : utc.list(*list)) {
-            const std::string resref = textField(utc, item, "EquippedRes");
+            std::string resref = textField(utc, item, "EquippedRes");
+            if (resref.empty()) {
+                resref = lower(textField(utc, item, "Tag"));
+            }
             if (resref.empty()) {
                 continue;
             }
@@ -761,9 +769,9 @@ void readCreatureItems(Entity& entity, const Gff& utc)
 }
 
 void applyEquippedWeapon(Entity& entity, Install& install, const Gff& utc,
-                         const TwoDa& baseitems)
+                         const TwoDa& baseitems, std::uint32_t root)
 {
-    const GffField* list = utc.field(utc.rootIndex(), "Equip_ItemList");
+    const GffField* list = utc.field(root, "Equip_ItemList");
     if (list == nullptr) {
         return;
     }
@@ -990,27 +998,51 @@ void addEncounterGeometry(Scene& scene, Install& install, const Gff& git)
         volume.entity = static_cast<std::uint32_t>(entityIndex);
         volume.templateResref = entity.templateResref;
 
-        auto data = install.find(entity.templateResref, 2040); // UTE
-        if (!data.has_value()) {
+        std::optional<Gff> ownedUte;
+        const Gff* uteSource = nullptr;
+        std::uint32_t uteRoot = 0;
+        if (entity.templateResref.empty()) { // a saved encounter holds its own spawn list
+            uteSource = &git;
+            uteRoot = structure;
+        } else if (auto data = install.find(entity.templateResref, 2040); data.has_value()) { // UTE
+            try {
+                ownedUte.emplace(Gff::parse(std::move(*data), entity.templateResref + ".ute"));
+                uteSource = &*ownedUte;
+                uteRoot = ownedUte->rootIndex();
+            } catch (const FormatError&) {
+            }
+        }
+        if (uteSource == nullptr) {
             continue;
         }
         try {
-            Gff ute = Gff::parse(std::move(*data), entity.templateResref + ".ute");
+            const Gff& ute = *uteSource;
             EncounterTemplate& encounter = volume.templateData;
             encounter.resref = entity.templateResref;
-            encounter.tag = textField(ute, ute.rootIndex(), "Tag");
-            encounter.active = intField(ute, ute.rootIndex(), "Active", 1) != 0;
-            encounter.difficulty = intField(ute, ute.rootIndex(), "Difficulty", 0);
-            encounter.maxCreatures = intField(ute, ute.rootIndex(), "MaxCreatures", 0);
-            encounter.recCreatures = intField(ute, ute.rootIndex(), "RecCreatures", 0);
-            encounter.resetTime = intField(ute, ute.rootIndex(), "ResetTime", 0);
-            encounter.respawns = intField(ute, ute.rootIndex(), "Respawns", 0);
-            encounter.spawnOption = intField(ute, ute.rootIndex(), "SpawnOption", 0);
-            encounter.difficultyIndex = intField(ute, ute.rootIndex(), "DifficultyIndex", -1);
-            encounter.faction = intField(ute, ute.rootIndex(), "Faction", 0);
-            encounter.playerOnly = intField(ute, ute.rootIndex(), "PlayerOnly", 0) != 0;
-            encounter.reset = intField(ute, ute.rootIndex(), "Reset", 0) != 0;
-            if (const GffField* list = ute.field(ute.rootIndex(), "CreatureList"); list != nullptr) {
+            encounter.tag = textField(ute, uteRoot, "Tag");
+            encounter.active = intField(ute, uteRoot, "Active", 1) != 0;
+            encounter.difficulty = intField(ute, uteRoot, "Difficulty", 0);
+            encounter.maxCreatures = intField(ute, uteRoot, "MaxCreatures", 0);
+            encounter.recCreatures = intField(ute, uteRoot, "RecCreatures", 0);
+            encounter.resetTime = intField(ute, uteRoot, "ResetTime", 0);
+            encounter.respawns = intField(ute, uteRoot, "Respawns", 0);
+            encounter.spawnOption = intField(ute, uteRoot, "SpawnOption", 0);
+            encounter.difficultyIndex = intField(ute, uteRoot, "DifficultyIndex", -1);
+            encounter.faction = intField(ute, uteRoot, "Faction", 0);
+            encounter.playerOnly = intField(ute, uteRoot, "PlayerOnly", 0) != 0;
+            encounter.reset = intField(ute, uteRoot, "Reset", 0) != 0;
+            // A saved encounter also holds its counters (ReadEncounterFromGff 00592430).
+            encounter.started = intField(ute, uteRoot, "Started", 0) == 1;
+            encounter.numberSpawned = intField(ute, uteRoot, "NumberSpawned", 0);
+            encounter.currentSpawns = intField(ute, uteRoot, "CurrentSpawns", 0);
+            encounter.lastSpawnDay = static_cast<std::uint32_t>(intField(ute, uteRoot, "LastSpawnDay", 0));
+            encounter.lastSpawnTime = static_cast<std::uint32_t>(intField(ute, uteRoot, "LastSpawnTime", 0));
+            if (const GffField* list = ute.field(uteRoot, "AreaList"); list != nullptr) {
+                for (const std::uint32_t entry : ute.list(*list)) {
+                    encounter.areaObjects.push_back(static_cast<std::uint32_t>(intField(ute, entry, "AreaObject", 0)));
+                }
+            }
+            if (const GffField* list = ute.field(uteRoot, "CreatureList"); list != nullptr) {
                 for (const std::uint32_t creatureStruct : ute.list(*list)) {
                     EncounterCreature creature;
                     creature.resref = textField(ute, creatureStruct, "ResRef");
@@ -1112,6 +1144,12 @@ void bakeWorldEntityMesh(EntityMesh& mesh, const std::shared_ptr<Mdl>& model,
                 vertex.alpha = triangle.alpha;
             }
         }
+    }
+    mesh.hiddenFaces.clear();
+    for (const MdlMeshTriangle& triangle : model->posedHiddenTrianglesLayered(layers)) {
+        mesh.hiddenFaces.push_back({translation + rotate(rotation, triangle.v[0].position),
+                                    translation + rotate(rotation, triangle.v[1].position),
+                                    translation + rotate(rotation, triangle.v[2].position)});
     }
     ++mesh.revision;
 }
@@ -1222,6 +1260,66 @@ std::optional<ItemTemplate> loadItemTemplate(Install& install, const std::string
     }
 }
 
+CreatureHitPoints creatureHitPointsFromGff(const Gff& gff, std::uint32_t structure)
+{
+    // 005afce0 reads HitPoints into the creature's base (+0xe0) and CurrentHitPoints (default: the
+    // base), both as signed words. The ability modifier is (score - 10) / 2 with C division
+    // (a score under 10 takes 11), stored at stats +0xee for Constitution.
+    const auto word = [](std::int32_t value) { return static_cast<std::int32_t>(static_cast<std::int16_t>(value)); };
+    const std::int32_t base = word(intField(gff, structure, "HitPoints", 0));
+    const std::int32_t stored = word(intField(gff, structure, "CurrentHitPoints", base));
+    const std::int32_t score = intField(gff, structure, "Con", 10) & 0xff;
+    const std::int32_t conMod = (score + (score < 10 ? -11 : -10)) / 2;
+    std::int32_t level = 0;
+    if (const GffField* classes = gff.field(structure, "ClassList"); classes != nullptr) {
+        for (const std::uint32_t entry : gff.list(*classes)) {
+            level += intField(gff, entry, "ClassLevel", 0);
+        }
+    }
+    level &= 0xff;
+    bool feat124 = false;
+    bool feat84 = false;
+    bool feat95 = false;
+    if (const GffField* feats = gff.field(structure, "FeatList"); feats != nullptr) {
+        for (const std::uint32_t entry : gff.list(*feats)) {
+            const std::int32_t feat = intField(gff, entry, "Feat", -1);
+            feat124 = feat124 || feat == 0x7c;
+            feat84 = feat84 || feat == 0x54;
+            feat95 = feat95 || feat == 0x5f;
+        }
+    }
+    // 004ed310 with bIncludeBonus set: Master Toughness 2 per level, else Toughness 1, and 2 more for
+    // Wookiee Endurance (feat 0x5f), each added to the Constitution modifier.
+    const auto maxHitPoints = [&](bool withFeats) {
+        std::int32_t bonus = 0;
+        if (withFeats) {
+            bonus = feat124 ? 2 : (feat84 ? 1 : 0);
+            bonus += feat95 ? 2 : 0;
+        }
+        if (level <= level * conMod + base) {
+            return word(level * (conMod + bonus) + base);
+        }
+        return word(level * bonus + level);
+    };
+    std::int32_t current = 0;
+    const std::int32_t share = level * conMod + base;
+    if (stored < base) {
+        current = level < share ? level * conMod + stored : level + (stored - base);
+    } else {
+        current = level < share ? level * conMod + stored : level;
+    }
+    // The feats are added after that, and the current value moves by what they added to the maximum.
+    const std::int32_t before = maxHitPoints(false);
+    const std::int32_t after = maxHitPoints(true);
+    if (before != after) {
+        current += after - before;
+    }
+    if (intField(gff, structure, "Min1HP", 0) != 0 && current < 1) {
+        current = 1;
+    }
+    return {word(current), after};
+}
+
 std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utcResref,
                           Vec3 position, float bearing)
 {
@@ -1252,12 +1350,11 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
         entity.appearance = static_cast<std::uint32_t>(
             intField(utc, root, "Appearance_Type", 0));
         entity.faction = static_cast<std::uint32_t>(intField(utc, root, "FactionID", 0));
-        entity.hitPoints = intField(utc, root, "HitPoints", 1);
-        entity.maxHitPoints = intField(utc, root, "MaxHitPoints", entity.hitPoints);
-        if (entity.maxHitPoints <= 0) {
-            entity.maxHitPoints = 1;
+        {
+            const CreatureHitPoints hp = creatureHitPointsFromGff(utc, root);
+            entity.maxHitPoints = std::max(1, hp.max);
+            entity.hitPoints = std::max(1, hp.current);
         }
-        entity.hitPoints = std::max(1, std::min(entity.hitPoints, entity.maxHitPoints));
         // defense, attackBonus and damageMin/Max come from Rules::deriveCreatureCombat.
         // Retail 005afce0 reads the per-creature save bonuses fortbonus, willbonus and refbonus
         // (stats +0x1a0..+0x1a2); *SaveThrow are totals 005b1b90 only writes.
@@ -1271,9 +1368,9 @@ std::size_t spawnCreature(Scene& scene, Install& install, const std::string& utc
         entity.walkRate = 3.0f + numberField(utc, root, "WalkRate", 7.0f) * 0.15f;
         entity.walkRateRow = intField(utc, root, "WalkRate", 7);
         entity.hostile = false;
-        readCreatureItems(entity, utc);
+        readCreatureItems(entity, utc, root);
         if (baseitems != nullptr) {
-            applyEquippedWeapon(entity, install, utc, *baseitems);
+            applyEquippedWeapon(entity, install, utc, *baseitems, root);
         }
         collectScriptHooks(utc, root, entity.scripts);
         if (appearances != nullptr) {
@@ -1484,65 +1581,96 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
         Entity& entity = scene.entities[index];
         const std::uint32_t structure = entity.sourceStructure;
         if (entity.kind == EntityKind::Creature) {
-            auto data = install.find(entity.templateResref, 2027); // UTC
-            if (data.has_value()) {
+            // A retail save writes every object whole and without a TemplateResRef (UseTemplates is
+            // 0): the struct itself then plays the part of the UTx template (retail 00504a70 and
+            // the Load* of each object read the saved struct).
+            std::optional<Gff> owned;
+            const Gff* source = nullptr;
+            std::uint32_t srcRoot = 0;
+            if (entity.templateResref.empty()) {
+                source = &git;
+                srcRoot = structure;
+            } else if (auto data = install.find(entity.templateResref, 2027); data.has_value()) { // UTC
                 try {
-                    Gff utc = Gff::parse(std::move(*data), entity.templateResref + ".utc");
-                    collectScriptHooks(utc, utc.rootIndex(), entity.scripts);
-                    entity.tag = textField(utc, utc.rootIndex(), "Tag");
-                    entity.name = locField(utc, utc.rootIndex(), "FirstName", tlk ? &*tlk : nullptr);
-                    entity.conversation = textField(utc, utc.rootIndex(), "Conversation");
+                    owned.emplace(Gff::parse(std::move(*data), entity.templateResref + ".utc"));
+                    source = &*owned;
+                    srcRoot = owned->rootIndex();
+                } catch (const FormatError&) {
+                }
+            }
+            if (source != nullptr) {
+                try {
+                    const Gff& utc = *source;
+                    collectScriptHooks(utc, srcRoot, entity.scripts);
+                    entity.tag = textField(utc, srcRoot, "Tag");
+                    entity.name = locField(utc, srcRoot, "FirstName", tlk ? &*tlk : nullptr);
+                    entity.conversation = textField(utc, srcRoot, "Conversation");
                     entity.appearance = static_cast<std::uint32_t>(
-                        intField(utc, utc.rootIndex(), "Appearance_Type", 0));
-                    entity.faction = static_cast<std::uint32_t>(intField(utc, utc.rootIndex(), "FactionID", 0));
-                    entity.hitPoints = intField(utc, utc.rootIndex(), "HitPoints", 1);
-                    entity.maxHitPoints = intField(utc, utc.rootIndex(), "MaxHitPoints", entity.hitPoints);
-                    if (entity.maxHitPoints <= 0) {
-                        entity.maxHitPoints = 1;
+                        intField(utc, srcRoot, "Appearance_Type", 0));
+                    entity.faction = static_cast<std::uint32_t>(intField(utc, srcRoot, "FactionID", 0));
+                    {
+                        const CreatureHitPoints hp = creatureHitPointsFromGff(utc, srcRoot);
+                        entity.maxHitPoints = std::max(1, hp.max);
+                        entity.hitPoints = std::max(1, hp.current);
                     }
-                    entity.hitPoints = std::max(1, std::min(entity.hitPoints, entity.maxHitPoints));
                     // defense, attackBonus and damageMin/Max: Rules::deriveCreatureCombat.
-                    entity.fortSave = intField(utc, utc.rootIndex(), "fortbonus", 0);
-                    entity.willSave = intField(utc, utc.rootIndex(), "willbonus", 0);
-                    entity.refSave = intField(utc, utc.rootIndex(), "refbonus", 0);
-                    applyGameplayFields(entity, utc, utc.rootIndex());
-                    applyCreatureStats(entity, utc, utc.rootIndex());
-                    entity.scriptDialogue = textField(utc, utc.rootIndex(), "ScriptDialogue");
-                    entity.scriptOnEnter = textField(utc, utc.rootIndex(), "ScriptOnNotice");
-                    entity.walkRate = 3.0f + numberField(utc, utc.rootIndex(), "WalkRate", 7.0f) * 0.15f;
-                    entity.walkRateRow = intField(utc, utc.rootIndex(), "WalkRate", 7);
+                    entity.fortSave = intField(utc, srcRoot, "fortbonus", 0);
+                    entity.willSave = intField(utc, srcRoot, "willbonus", 0);
+                    entity.refSave = intField(utc, srcRoot, "refbonus", 0);
+                    applyGameplayFields(entity, utc, srcRoot);
+                    applyCreatureStats(entity, utc, srcRoot);
+                    entity.scriptDialogue = textField(utc, srcRoot, "ScriptDialogue");
+                    entity.scriptOnEnter = textField(utc, srcRoot, "ScriptOnNotice");
+                    entity.walkRate = 3.0f + numberField(utc, srcRoot, "WalkRate", 7.0f) * 0.15f;
+                    entity.walkRateRow = intField(utc, srcRoot, "WalkRate", 7);
                     entity.hostile = false; // GameSession applies faction relations
-                    readCreatureItems(entity, utc);
+                    readCreatureItems(entity, utc, srcRoot);
                     if (baseitems != nullptr) {
-                        applyEquippedWeapon(entity, install, utc, *baseitems);
+                        applyEquippedWeapon(entity, install, utc, *baseitems, srcRoot);
                     }
                     if (appearances != nullptr) {
                         std::string texture;
                         entity.bodyVariant = wornBodyVariant(install, entity);
                         entity.model = creatureModel(*appearances, entity.appearance, texture, entity.bodyVariant);
                         entity.texture = texture;
-                        applyCreatureAudio(entity, *appearances, soundSets, utc, utc.rootIndex());
+                        applyCreatureAudio(entity, *appearances, soundSets, utc, srcRoot);
                     }
                 } catch (const FormatError&) {
                 }
             }
         } else if (entity.kind == EntityKind::Door) {
-            auto data = install.find(entity.templateResref, 2042); // UTD
-            if (data.has_value()) {
+            // A retail save writes every object whole and without a TemplateResRef (UseTemplates is
+            // 0): the struct itself then plays the part of the UTx template (retail 00504a70 and
+            // the Load* of each object read the saved struct).
+            std::optional<Gff> owned;
+            const Gff* source = nullptr;
+            std::uint32_t srcRoot = 0;
+            if (entity.templateResref.empty()) {
+                source = &git;
+                srcRoot = structure;
+            } else if (auto data = install.find(entity.templateResref, 2042); data.has_value()) { // UTD
                 try {
-                    Gff utd = Gff::parse(std::move(*data), entity.templateResref + ".utd");
-                    collectScriptHooks(utd, utd.rootIndex(), entity.scripts);
-                    entity.tag = textField(utd, utd.rootIndex(), "Tag");
-                    entity.name = locField(utd, utd.rootIndex(), "LocName", tlk ? &*tlk : nullptr); // the target block's name
-                    entity.faction = static_cast<std::uint32_t>(intField(utd, utd.rootIndex(), "Faction", 0));
-                    applyGameplayFields(entity, utd, utd.rootIndex());
+                    owned.emplace(Gff::parse(std::move(*data), entity.templateResref + ".utd"));
+                    source = &*owned;
+                    srcRoot = owned->rootIndex();
+                } catch (const FormatError&) {
+                }
+            }
+            if (source != nullptr) {
+                try {
+                    const Gff& utd = *source;
+                    collectScriptHooks(utd, srcRoot, entity.scripts);
+                    entity.tag = textField(utd, srcRoot, "Tag");
+                    entity.name = locField(utd, srcRoot, "LocName", tlk ? &*tlk : nullptr); // the target block's name
+                    entity.faction = static_cast<std::uint32_t>(intField(utd, srcRoot, "Faction", 0));
+                    applyGameplayFields(entity, utd, srcRoot);
                     // A door is bashable: UTD HP / CurrentHP are its hit points.
-                    entity.maxHitPoints = std::max(1, intField(utd, utd.rootIndex(), "HP", 1));
+                    entity.maxHitPoints = std::max(1, intField(utd, srcRoot, "HP", 1));
                     entity.hitPoints = std::clamp(
-                        intField(utd, utd.rootIndex(), "CurrentHP", entity.maxHitPoints), 1,
+                        intField(utd, srcRoot, "CurrentHP", entity.maxHitPoints), 1,
                         entity.maxHitPoints);
                     const std::uint32_t genericType = static_cast<std::uint32_t>(
-                        intField(utd, utd.rootIndex(), "GenericType", 0));
+                        intField(utd, srcRoot, "GenericType", 0));
                     entity.appearance = genericType;
                     if (genericDoors != nullptr) {
                         entity.model = genericDoors->cell(std::to_string(genericType), "modelname");
@@ -1551,23 +1679,50 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                 }
             }
         } else if (entity.kind == EntityKind::Placeable) {
-            auto data = install.find(entity.templateResref, 2044); // UTP
-            if (data.has_value()) {
+            // A retail save writes every object whole and without a TemplateResRef (UseTemplates is
+            // 0): the struct itself then plays the part of the UTx template (retail 00504a70 and
+            // the Load* of each object read the saved struct).
+            std::optional<Gff> owned;
+            const Gff* source = nullptr;
+            std::uint32_t srcRoot = 0;
+            if (entity.templateResref.empty()) {
+                source = &git;
+                srcRoot = structure;
+            } else if (auto data = install.find(entity.templateResref, 2044); data.has_value()) { // UTP
                 try {
-                    Gff utp = Gff::parse(std::move(*data), entity.templateResref + ".utp");
-                    collectScriptHooks(utp, utp.rootIndex(), entity.scripts);
-                    entity.tag = textField(utp, utp.rootIndex(), "Tag");
-                    entity.name = locField(utp, utp.rootIndex(), "LocName", tlk ? &*tlk : nullptr);
-                    entity.conversation = textField(utp, utp.rootIndex(), "Conversation");
-                    applyGameplayFields(entity, utp, utp.rootIndex());
+                    owned.emplace(Gff::parse(std::move(*data), entity.templateResref + ".utp"));
+                    source = &*owned;
+                    srcRoot = owned->rootIndex();
+                } catch (const FormatError&) {
+                }
+            }
+            if (source != nullptr) {
+                try {
+                    const Gff& utp = *source;
+                    collectScriptHooks(utp, srcRoot, entity.scripts);
+                    entity.tag = textField(utp, srcRoot, "Tag");
+                    entity.name = locField(utp, srcRoot, "LocName", tlk ? &*tlk : nullptr);
+                    entity.conversation = textField(utp, srcRoot, "Conversation");
+                    applyGameplayFields(entity, utp, srcRoot);
                     entity.appearance = static_cast<std::uint32_t>(
-                        intField(utp, utp.rootIndex(), "Appearance", 0));
-                    entity.faction = static_cast<std::uint32_t>(intField(utp, utp.rootIndex(), "Faction", 0));
-                    entity.useable = intField(utp, utp.rootIndex(), "Useable", 0) != 0
+                        intField(utp, srcRoot, "Appearance", 0));
+                    entity.faction = static_cast<std::uint32_t>(intField(utp, srcRoot, "Faction", 0));
+                    // Retail 00585670: HP is the maximum, CurrentHP the current value (both signed words,
+                    // default 0), and Min1HP lifts a current value under 1 (SetCurrentHitPoints 004cc280).
+                    entity.maxHitPoints = std::max<std::int32_t>(
+                        1, static_cast<std::int16_t>(intField(utp, srcRoot, "HP", 0)));
+                    entity.hitPoints = static_cast<std::int16_t>(intField(utp, srcRoot, "CurrentHP", 0));
+                    if (entity.min1Hp && entity.hitPoints < 1) {
+                        entity.hitPoints = 1;
+                    }
+                    entity.useable = intField(utp, srcRoot, "Useable", 0) != 0
                         || !entity.conversation.empty();
-                    if (const GffField* list = utp.field(utp.rootIndex(), "ItemList"); list != nullptr) {
+                    if (const GffField* list = utp.field(srcRoot, "ItemList"); list != nullptr) {
                         for (const std::uint32_t itemStruct : utp.list(*list)) {
-                            const std::string resref = textField(utp, itemStruct, "InventoryRes");
+                            std::string resref = textField(utp, itemStruct, "InventoryRes");
+                            if (resref.empty() && entity.templateResref.empty()) {
+                                resref = lower(textField(utp, itemStruct, "Tag")); // a saved item's Tag is its resref
+                            }
                             if (!resref.empty()) {
                                 entity.lootItems.push_back(resref);
                             }
@@ -1581,34 +1736,63 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                 }
             }
         } else if (entity.kind == EntityKind::Trigger) {
-            auto data = install.find(entity.templateResref, 2032); // UTT
-            if (data.has_value()) {
+            std::optional<Gff> owned;
+            const Gff* source = nullptr;
+            std::uint32_t srcRoot = 0;
+            if (entity.templateResref.empty()) { // a saved trigger (see the creature branch)
+                source = &git;
+                srcRoot = structure;
+            } else if (auto data = install.find(entity.templateResref, 2032); data.has_value()) { // UTT
                 try {
-                    Gff utt = Gff::parse(std::move(*data), entity.templateResref + ".utt");
-                    collectScriptHooks(utt, utt.rootIndex(), entity.scripts);
-                    entity.tag = textField(utt, utt.rootIndex(), "Tag");
-                    entity.scriptOnEnter = textField(utt, utt.rootIndex(), "ScriptOnEnter");
-                    entity.scriptOnExit = textField(utt, utt.rootIndex(), "ScriptOnExit");
-                    applyGameplayFields(entity, utt, utt.rootIndex());
-                    entity.triggerType = intField(utt, utt.rootIndex(), "Type", 0);
+                    owned.emplace(Gff::parse(std::move(*data), entity.templateResref + ".utt"));
+                    source = &*owned;
+                    srcRoot = owned->rootIndex();
+                } catch (const FormatError&) {
+                }
+            }
+            if (source != nullptr) {
+                try {
+                    const Gff& utt = *source;
+                    collectScriptHooks(utt, srcRoot, entity.scripts);
+                    entity.tag = textField(utt, srcRoot, "Tag");
+                    entity.scriptOnEnter = textField(utt, srcRoot, "ScriptOnEnter");
+                    entity.scriptOnExit = textField(utt, srcRoot, "ScriptOnExit");
+                    applyGameplayFields(entity, utt, srcRoot);
+                    entity.triggerType = intField(utt, srcRoot, "Type", 0);
                 } catch (const FormatError&) {
                 }
             }
         } else if (entity.kind == EntityKind::Store) {
-            auto data = install.find(entity.templateResref, 2051); // UTM
-            if (data.has_value()) {
+            std::optional<Gff> owned;
+            const Gff* source = nullptr;
+            std::uint32_t srcRoot = 0;
+            if (entity.templateResref.empty()) { // a saved store holds its stock whole (retail 005c7180)
+                source = &git;
+                srcRoot = structure;
+            } else if (auto data = install.find(entity.templateResref, 2051); data.has_value()) { // UTM
                 try {
-                    Gff utm = Gff::parse(std::move(*data), entity.templateResref + ".utm");
-                    collectScriptHooks(utm, utm.rootIndex(), entity.scripts);
-                    entity.tag = textField(utm, utm.rootIndex(), "Tag");
-                    entity.name = locField(utm, utm.rootIndex(), "LocName", tlk ? &*tlk : nullptr);
-                    entity.storeMarkUp = intField(utm, utm.rootIndex(), "MarkUp", 100);
-                    entity.storeMarkDown = intField(utm, utm.rootIndex(), "MarkDown", 40);
-                    entity.storeBuySell = intField(utm, utm.rootIndex(), "BuySellFlag", 3);
+                    owned.emplace(Gff::parse(std::move(*data), entity.templateResref + ".utm"));
+                    source = &*owned;
+                    srcRoot = owned->rootIndex();
+                } catch (const FormatError&) {
+                }
+            }
+            if (source != nullptr) {
+                try {
+                    const Gff& utm = *source;
+                    collectScriptHooks(utm, srcRoot, entity.scripts);
+                    entity.tag = textField(utm, srcRoot, "Tag");
+                    entity.name = locField(utm, srcRoot, "LocName", tlk ? &*tlk : nullptr);
+                    entity.storeMarkUp = intField(utm, srcRoot, "MarkUp", 100);
+                    entity.storeMarkDown = intField(utm, srcRoot, "MarkDown", 40);
+                    entity.storeBuySell = intField(utm, srcRoot, "BuySellFlag", 3);
                     entity.useable = true;
-                    if (const GffField* list = utm.field(utm.rootIndex(), "ItemList"); list != nullptr) {
+                    if (const GffField* list = utm.field(srcRoot, "ItemList"); list != nullptr) {
                         for (const std::uint32_t itemStruct : utm.list(*list)) {
-                            const std::string resref = textField(utm, itemStruct, "InventoryRes");
+                            std::string resref = textField(utm, itemStruct, "InventoryRes");
+                            if (resref.empty() && entity.templateResref.empty()) {
+                                resref = lower(textField(utm, itemStruct, "Tag")); // a saved item's Tag is its resref
+                            }
                             if (!resref.empty()) {
                                 entity.storeItems.emplace_back(
                                     resref, intField(utm, itemStruct, "Infinite", 0) != 0);
@@ -1619,14 +1803,26 @@ void loadEntityAssets(Scene& scene, Install& install, const Gff& git)
                 }
             }
         } else if (entity.kind == EntityKind::Encounter) {
-            auto data = install.find(entity.templateResref, 2040); // UTE
-            if (data.has_value()) {
+            std::optional<Gff> owned;
+            const Gff* source = nullptr;
+            std::uint32_t srcRoot = 0;
+            if (entity.templateResref.empty()) { // a saved encounter (see the creature branch)
+                source = &git;
+                srcRoot = structure;
+            } else if (auto data = install.find(entity.templateResref, 2040); data.has_value()) { // UTE
                 try {
-                    Gff ute = Gff::parse(std::move(*data), entity.templateResref + ".ute");
-                    collectScriptHooks(ute, ute.rootIndex(), entity.scripts);
-                    entity.tag = textField(ute, ute.rootIndex(), "Tag");
-                    entity.name = locField(ute, ute.rootIndex(), "LocalizedName",
-                                           tlk ? &*tlk : nullptr);
+                    owned.emplace(Gff::parse(std::move(*data), entity.templateResref + ".ute"));
+                    source = &*owned;
+                    srcRoot = owned->rootIndex();
+                } catch (const FormatError&) {
+                }
+            }
+            if (source != nullptr) {
+                try {
+                    const Gff& ute = *source;
+                    collectScriptHooks(ute, srcRoot, entity.scripts);
+                    entity.tag = textField(ute, srcRoot, "Tag");
+                    entity.name = locField(ute, srcRoot, "LocalizedName", tlk ? &*tlk : nullptr);
                 } catch (const FormatError&) {
                 }
             }

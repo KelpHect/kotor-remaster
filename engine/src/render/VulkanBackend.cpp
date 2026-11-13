@@ -574,6 +574,12 @@ public:
         return true;
     }
 
+    void requestShadowProbe() override { sceneRenderer_.requestShadowProbe(); }
+    bool shadowProbe(std::size_t& covered, std::size_t& total) override
+    {
+        return sceneRenderer_.shadowProbe(covered, total);
+    }
+
     bool screenshot(const std::filesystem::path& path) override
     {
         std::vector<std::uint8_t> rgba;
@@ -798,6 +804,12 @@ public:
         if (result != VK_SUCCESS) {
             error = concat("vkQueueSubmit failed: ", resultName(result));
             return FrameStatus::Fatal;
+        }
+        if (shadowProbeInFlight_) {
+            // Test path only (--shadow-probe): wait for this frame, then count its stencil.
+            shadowProbeInFlight_ = false;
+            vkQueueWaitIdle(graphicsQueue_);
+            sceneRenderer_.finishShadowProbe();
         }
 
         VkPresentInfoKHR presentInfo{};
@@ -1652,6 +1664,9 @@ private:
         }
 
         vkCmdEndRendering(commandBuffer);
+        if (sceneReady_ && sceneRenderer_.recordShadowProbe(commandBuffer)) {
+            shadowProbeInFlight_ = true;
+        }
 
         VkImageMemoryBarrier toPresent = toColor;
         toPresent.oldLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -1715,6 +1730,7 @@ private:
 
     std::uint32_t currentFrame_ = 0;
     std::uint64_t frameIndex_ = 0;
+    bool shadowProbeInFlight_ = false;
     bool pendingRecreate_ = false;
     bool initialized_ = false;
     bool platformInitialized_ = false;

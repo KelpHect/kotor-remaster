@@ -151,7 +151,10 @@ int runConversationFlow(GameSession& game, const FlowOptions& options);
 int runPlotReplay(GameSession& game, const FlowOptions& options);
 } // namespace quest
 
+class StateTrace; // --state-trace writer (game/StateTrace.h): reads session state, never changes it
+
 class GameSession : public script::ActionHost {
+    friend class StateTrace;
     friend struct ScriptApi;
     friend struct ItemOps;
     friend struct CombatOps;
@@ -200,6 +203,7 @@ public:
     // A frame the world does not tick (pause, a screen over the world): retail's server loop
     // (004babb0) still runs TempDeathUpdate (004b6da0) on the real clock.
     void tickWhilePaused(float realDt);
+    void runPendingModule();
     SceneCamera camera() const;
     SceneCamera cinematicCamera(std::int32_t cameraId) const;
     SceneCamera presetCamera(std::int32_t angle, float camHeight, float targetHeight,
@@ -229,6 +233,10 @@ public:
     // Called with the destination module just before update() loads it: the application
     // shows the loading screen there (the load itself blocks the frame loop).
     void setModuleLoadHook(std::function<void(const std::string&)> hook) { moduleLoadHook_ = std::move(hook); }
+    // --state-trace: null (the default) costs one pointer test at each of the three hook sites.
+    void setStateTrace(StateTrace* trace) { stateTrace_ = trace; }
+    // A combat round started for `owner` (the attack-round entry of the combat system).
+    void traceRound(std::int32_t number, std::uint32_t owner, bool ended = false);
     bool save(const std::filesystem::path& path) const;
     bool load(const std::filesystem::path& path);
     // Original KotOR save folder (SAVEGAME.sav + sidecars). The reader maps
@@ -1069,12 +1077,21 @@ private:
     std::int32_t plotXp(std::int32_t row, double fraction);
     std::int32_t plotXpByLabel(const std::string& label, double fraction);
     ActorStep stepActorToward(std::uint32_t object, kotor::Vec3 target, float speed, float dt,
-                              float stopDistance);
+                              float stopDistance, bool ramp = true);
     bool lineOfSight(kotor::Vec3 from, kotor::Vec3 to) const;
     // Retail GetObstructionFactor 0050ccf0 for a sound: 0.4 for every surface of the area the line from the
     // sound to the listener crosses (surfacemat lineofsight), the line restarted a tenth of a metre past each
-    // hit, 1.0 once the sum passes 1. Doors and other objects on the line are not counted (0.4 / 0.55 there).
-    float soundObstruction(kotor::Vec3 from, kotor::Vec3 to) const;
+    // hit, 1.0 once the sum passes 1. A closed door on the line adds 0.55 and a placeable 0.4 (once per object).
+    float soundObstruction(kotor::Vec3 from, kotor::Vec3 to);
+    // World-space walkmesh triangles of the area's closed doors (<model>0.dwk) and placeables (<model>.pwk).
+    struct SoundFacet {
+        kotor::Vec3 a;
+        kotor::Vec3 b;
+        kotor::Vec3 c;
+        std::uint32_t entity = 0;
+        bool door = false;
+    };
+    const std::vector<SoundFacet>& soundObjectFacets();
     script::ProgramPtr decodedScript(const std::string& resref);
     ScriptContext hookContext(const std::string& hook, std::uint32_t entering) const;
     void placeAtLink(const std::string& linkedTo);
@@ -1121,6 +1138,18 @@ private:
     std::string roomNameAt(kotor::Vec3 point);
     void loadMovementTables();
     float creatureMoveRate(std::uint32_t object, bool run);
+    // The keyboard drive of a controlled creature (retail CSWPlayerControlCamRelative, 00679870 / vtable 00679940):
+    // advances its velocity toward `scale` times the top speed along (dirX, dirY) and returns this frame's move.
+    kotor::Vec3 driveStep(std::uint32_t object, float dirX, float dirY, float scale, float dt);
+    void driveStop(std::uint32_t object);
+    // CSWSArea::ComputeSafeLocation 004be860 for a creature of this appearance: the nearest spot to `point` within `reach`
+    // metres where TestSafeLocationPoint 004be5e0 holds. Only creatures before index `before` count as in the way (module load adds them one by one).
+    bool computeSafeLocation(kotor::Vec3 point, float reach, std::uint32_t appearance, bool lineTest, std::size_t before,
+                             kotor::Vec3& out);
+    // Whether a creature moving at `speed` shows its run clip, and the distance one cycle of the clip it shows covers.
+    void locomotionOf(std::uint32_t object, std::uint32_t appearance, float speed, bool& running, float& stride);
+    // The velocity the drive controller holds for `object` after a blocked step: what the walkmesh left of the move.
+    void driveSetVelocity(std::uint32_t object, float vx, float vy);
     float creatureRadius(std::uint32_t object);
     float creatureApproachRange(std::uint32_t self, std::uint32_t target, float range);
     kotor::Vec3 slidePlayer(kotor::Vec3 from, kotor::Vec3 to, bool& moved, float radius = -1.0f);
@@ -1200,6 +1229,8 @@ private:
     std::filesystem::path rsvRoot_;
     std::string module_;
     kotor::Install install_;
+    std::string soundFacetKey_;
+    std::vector<SoundFacet> soundFacets_;
     std::unique_ptr<kotor::Localization> localization_;
     std::uint32_t languageId_ = 0;
     std::unique_ptr<AudioSystem> audio_;
@@ -1384,6 +1415,7 @@ private:
     std::vector<std::uint8_t> originalRepute_;
     std::vector<kotor::SavedResource> originalOuterExtras_;
     std::vector<kotor::SavedResource> originalPreservedModules_;
+    const std::vector<std::uint8_t>* savedGit_ = nullptr; // loadOriginalSave: the save's GIT for the module being loaded
     std::int32_t gold_ = 0;
     std::vector<MerchantState> merchants_;
     std::vector<EncounterState> encounterStates_;
@@ -1414,6 +1446,7 @@ private:
     std::set<std::string> missingScripts_;
     std::string pendingModule_;
     std::function<void(const std::string&)> moduleLoadHook_;
+    StateTrace* stateTrace_ = nullptr;
     double heartbeatTimer_ = 0.0;
     std::uint32_t nextItemObject_ = 0x10000;
 };

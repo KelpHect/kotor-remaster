@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <map>
+#include <optional>
 #include <set>
 #include <sstream>
 
@@ -95,6 +97,7 @@ void addEntities(const Gff& git, std::uint32_t root, const char* listLabel, Enti
             entity.templateResref = text(git, structure, "ResRef");
         }
         entity.tag = text(git, structure, "Tag");
+        entity.savedObjectId = static_cast<std::uint32_t>(number(git, structure, "ObjectId", 0.0f));
         entity.linkedModule = text(git, structure, "LinkedToModule");
         entity.linkedTo = text(git, structure, "LinkedTo");
         entity.linkedFlags = static_cast<std::uint32_t>(number(git, structure, "LinkedToFlags", 0.0f));
@@ -240,11 +243,24 @@ void addSoundEmitters(Install& install, const Gff& git, std::uint32_t root, Scen
         }
         emitter.entity = soundEntity;
 
-        auto utsData = install.find(emitter.templateResref, resType(ResType::Uts));
-        if (utsData.has_value()) {
+        // A saved sound struct holds the whole template (no TemplateResRef; retail Sound Load 005c9040).
+        std::optional<Gff> ownedUts;
+        const Gff* utsSource = nullptr;
+        std::uint32_t utsRoot = 0;
+        if (emitter.templateResref.empty()) {
+            utsSource = &git;
+            utsRoot = structure;
+        } else if (auto utsData = install.find(emitter.templateResref, resType(ResType::Uts)); utsData.has_value()) {
             try {
-                Gff uts = Gff::parse(std::move(*utsData), emitter.templateResref + ".uts");
-                const std::uint32_t utsRoot = uts.rootIndex();
+                ownedUts.emplace(Gff::parse(std::move(*utsData), emitter.templateResref + ".uts"));
+                utsSource = &*ownedUts;
+                utsRoot = ownedUts->rootIndex();
+            } catch (const FormatError&) {
+            }
+        }
+        if (utsSource != nullptr) {
+            try {
+                const Gff& uts = *utsSource;
                 emitter.elevation = number(uts, utsRoot, "Elevation", 0.0f);
                 emitter.maxDistance = number(uts, utsRoot, "MaxDistance", 20.0f);
                 emitter.minDistance = number(uts, utsRoot, "MinDistance", 10.0f);
@@ -346,7 +362,7 @@ std::int32_t readLoadScreenId(Install& install, const std::string& moduleStem)
     }
 }
 
-Scene loadModule(Install& install, const std::string& moduleStem)
+Scene loadModule(Install& install, const std::string& moduleStem, const std::vector<std::uint8_t>* savedGit)
 {
     install.bindModule(moduleStem);
     install.addPacks();
@@ -371,7 +387,8 @@ Scene loadModule(Install& install, const std::string& moduleStem)
         throw FormatError(moduleStem + ": missing ARE/GIT/LYT for " + area);
     }
     Gff are = Gff::parse(std::move(*areData), area + ".are");
-    Gff git = Gff::parse(std::move(*gitData), area + ".git");
+    Gff git = savedGit != nullptr && !savedGit->empty() ? Gff::parse(*savedGit, area + ".git")
+                                                        : Gff::parse(std::move(*gitData), area + ".git");
     Lyt lyt = parseLyt(std::move(*lytData), area + ".lyt");
 
     Scene scene;
@@ -512,10 +529,32 @@ Scene loadModule(Install& install, const std::string& moduleStem)
         Mdl mdl = Mdl::parse(std::move(*mdlData), std::move(*mdxData), room.room + ".mdl");
         roomScript.push_back(mdl.markRoomScriptMeshes());
         roomLoopClip.push_back(mdl.markRoomLoopMeshes());
-        std::vector<MdlMeshTriangle> triangles = mdl.roomTriangles(room.origin);
-        grassWalkmesh[static_cast<std::uint32_t>(roomIndex)] = mdl.walkmeshTriangles(room.origin);
-        sourceBytes += static_cast<std::uint32_t>(triangles.size() * 32u);
         const std::string roomKey = std::to_string(roomIndex) + "#";
+        std::vector<MdlMeshTriangle> triangles = mdl.roomTriangles(room.origin);
+        for (MdlMeshTriangle& triangle : mdl.roomTriangles(room.origin, true)) {
+            byReference[roomKey + "a#" + materialKey(triangle)].push_back(std::move(triangle));
+        }
+        grassWalkmesh[static_cast<std::uint32_t>(roomIndex)] = mdl.walkmeshTriangles(room.origin);
+        {
+            Scene::RoomHitFaces hit;
+            hit.boxMin = {std::numeric_limits<float>::max(), std::numeric_limits<float>::max(),
+                          std::numeric_limits<float>::max()};
+            hit.boxMax = {-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max(),
+                          -std::numeric_limits<float>::max()};
+            for (const MdlMeshTriangle& triangle : mdl.roomHitTriangles(room.origin)) {
+                for (const MdlMeshVertex& vertex : triangle.v) {
+                    hit.boxMin = {std::min(hit.boxMin.x, vertex.position.x), std::min(hit.boxMin.y, vertex.position.y),
+                                  std::min(hit.boxMin.z, vertex.position.z)};
+                    hit.boxMax = {std::max(hit.boxMax.x, vertex.position.x), std::max(hit.boxMax.y, vertex.position.y),
+                                  std::max(hit.boxMax.z, vertex.position.z)};
+                }
+                hit.faces.push_back({triangle.v[0].position, triangle.v[1].position, triangle.v[2].position});
+            }
+            if (!hit.faces.empty()) {
+                scene.roomHitFaces.push_back(std::move(hit));
+            }
+        }
+        sourceBytes += static_cast<std::uint32_t>(triangles.size() * 32u);
         for (MdlMeshTriangle& triangle : triangles) {
             byMaterial[roomKey + materialKey(triangle)].push_back(std::move(triangle));
         }
@@ -603,6 +642,7 @@ Scene loadModule(Install& install, const std::string& moduleStem)
     for (const auto& [key, triangles] : groups) {
         TextureBatch batch = makeMaterialBatch(scene, install, triangles.front());
         batch.room = std::stoi(key.substr(0, key.find('#')));
+        batch.roomObject = asObject;
         batch.firstIndex = static_cast<std::uint32_t>(scene.indices.size());
         Vec3 sum{};
         for (const MdlMeshTriangle& triangle : triangles) {
@@ -741,31 +781,86 @@ Vec3 turnBackBy(const Mat3& m, Vec3 v)
             m.m[0][2] * v.x + m.m[1][2] * v.y + m.m[2][2] * v.z};
 }
 
-// LightManager::GetShadowLights 004a4b10, mode 2: a light with the shadow flag (+0x5c), not ambient
-// only (+0x68), with a radius of at least 1000 or dynamic type 0 (+0x58, +0x70), the lowest priority
-// below 6 (node +0x90), the first such in the list on a tie. NOT PROVEN to be the light
-// Scene::RenderShadows reads (scene +0x270 -> +0x1c); no writer of that field was found
-// statically. RETAIL row 46 asks for it.
-const Scene::WorldLight* shadowLight(const Scene& scene)
+// Scene::RenderShadows 00451a50 reads its light and intensity from scene +0x270 -> +0x1c / +0x20:
+// the light list of the scene's own gob (gob at scene +0xf8, list at gob +0x178). The object binder
+// 004a3f70 fills them for each gob it binds (004a424d..004a4352): the shadow light is the first light
+// in the light manager's sorted candidates (+0x44, count +0x48) with the shadow flag (+0x5c); the
+// intensity fades in by 3 x frame time (007a1944 x 0078e574) up to 1; a different candidate first fades
+// the old one out to 0 and only then takes its place; with no candidate the light fades out and the slot
+// clears at 0. The candidates are 004a3cf0's list in 004a28c0's order (lower priority, type 1, 2, 0,
+// then nearer over the radius in the XY plane, nothing beyond the radius), as sampleLights sorts them.
+// GetShadowLights 004a4b10 is not this: it is only called with modes 0 and 1 (00453982, 00453c1b,
+// 00456278), and its mode-2 rule (radius >= 1000 or type 0) has no caller.
+// Inferred: the point the candidates are sorted from is the scene focus (the scene gob's place is not
+// decoded); RETAIL row 47 asks for the live light. The sun's two lights never have the shadow flag in
+// K1 (no ARE sets SunShadows or MoonShadows), so only scene.lights can win.
+std::size_t shadowCandidate(const Scene& scene, Vec3 focus)
 {
-    const Scene::WorldLight* chosen = nullptr;
-    int best = 6;
-    for (const Scene::WorldLight& light : scene.lights) {
-        if (!light.shadow || light.ambientOnly || !(light.radius >= 1000.0f || light.dynamicType == 0)) {
+    std::size_t chosen = SIZE_MAX;
+    int bestPriority = 0;
+    int bestRank = 0;
+    float bestReach = 0.0f;
+    const auto typeRank = [](int type) { return type == 1 ? 0 : (type == 2 ? 1 : 2); };
+    for (std::size_t i = 0; i < scene.lights.size(); ++i) {
+        const Scene::WorldLight& light = scene.lights[i];
+        if (!light.shadow || light.radius <= 0.0f
+            || (light.colour.x <= 0.0f && light.colour.y <= 0.0f && light.colour.z <= 0.0f)) {
             continue;
         }
-        if (light.priority < best) {
-            chosen = &light;
-            best = light.priority;
+        const float dx = light.position.x - focus.x;
+        const float dy = light.position.y - focus.y;
+        const float reach = std::sqrt(dx * dx + dy * dy) / light.radius;
+        if (reach > 1.0f) {
+            continue;
+        }
+        const int rank = typeRank(light.dynamicType);
+        if (chosen == SIZE_MAX || light.priority < bestPriority
+            || (light.priority == bestPriority && (rank < bestRank || (rank == bestRank && reach < bestReach)))) {
+            chosen = i;
+            bestPriority = light.priority;
+            bestRank = rank;
+            bestReach = reach;
         }
     }
     return chosen;
 }
 
-// The value at scene +0x270 -> +0x20 that 00450730 halves into the fan's centre alpha. NOT PROVEN:
-// its writer was not found statically (RETAIL row 46); this is the value that matches the paired
-// Taris frame (paired\palm_m41aa_taris_pair.png).
-constexpr float kShadowIntensity = 0.7f;
+// The scene gob's shadow slot, advanced once per light frame as 004a3f70 does (see shadowCandidate).
+// Outside a game session (no light fades) the candidate holds at full strength.
+std::size_t shadowLight(const Scene& scene, Vec3 focus, float& intensity)
+{
+    const std::size_t candidate = shadowCandidate(scene, focus);
+    Scene::ShadowSlot& slot = scene.shadowSlot;
+    if (!scene.lightFades) {
+        slot.light = candidate;
+        slot.intensity = candidate == SIZE_MAX ? 0.0f : 1.0f;
+    } else if (slot.frame != scene.lightFrame) {
+        slot.frame = scene.lightFrame;
+        const float step = scene.lightFadeStep;
+        if (slot.light >= scene.lights.size()) {
+            slot.light = SIZE_MAX;
+        }
+        if (candidate == SIZE_MAX) {
+            if (slot.light != SIZE_MAX) {
+                slot.intensity = std::max(slot.intensity - step, 0.0f);
+                if (slot.intensity <= 0.0f) {
+                    slot.light = SIZE_MAX;
+                }
+            }
+        } else if (slot.light == SIZE_MAX || slot.light == candidate) {
+            slot.light = candidate;
+            slot.intensity = std::min(slot.intensity + step, 1.0f);
+        } else {
+            slot.intensity = std::max(slot.intensity - step, 0.0f);
+            if (slot.intensity <= 0.0f) {
+                slot.light = candidate;
+                slot.intensity = std::min(step, 1.0f);
+            }
+        }
+    }
+    intensity = slot.intensity;
+    return slot.light;
+}
 
 } // namespace
 
@@ -775,7 +870,9 @@ ShadowFrame buildShadowFrame(const Scene& scene, const ShadowView& view)
     if (!view.enabled) {
         return frame;
     }
-    const Scene::WorldLight* light = shadowLight(scene);
+    float intensity = 0.0f;
+    const std::size_t lightIndex = shadowLight(scene, view.focus, intensity);
+    const Scene::WorldLight* light = lightIndex < scene.lights.size() ? &scene.lights[lightIndex] : nullptr;
     // 00451a50: the shadow light is used while scene +0xb0 + 1.75 (007415c4) is below its z (+0x9c).
     if (light == nullptr || !(view.focus.z + 1.75f < light->position.z)) {
         return frame;
@@ -998,7 +1095,7 @@ ShadowFrame buildShadowFrame(const Scene& scene, const ShadowView& view)
                                                         std::sin(angle) * radius + centre.y, view.focus.z};
     }
     // The centre's alpha byte: _ftol(intensity * 0.5 * 255).
-    const int alphaByte = static_cast<int>(static_cast<double>(kShadowIntensity) * 0.5 * 255.0);
+    const int alphaByte = static_cast<int>(static_cast<double>(intensity) * 0.5 * 255.0);
     frame.diskAlpha = static_cast<float>(alphaByte) / 255.0f;
     return frame;
 }

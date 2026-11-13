@@ -557,8 +557,13 @@ SavedNpc readNpcNode(const Gff& gff)
     npc.intel = numberInt(gff, root, "Int", 10);
     npc.wis = numberInt(gff, root, "Wis", 10);
     npc.cha = numberInt(gff, root, "Cha", 10);
-    npc.hp = numberInt(gff, root, "CurrentHitPoints", numberInt(gff, root, "HitPoints", 1));
-    npc.maxHp = std::max(1, numberInt(gff, root, "MaxHitPoints", npc.hp));
+    // Retail 005afce0: a companion is loaded like any creature (current value through the per-level share).
+    {
+        const CreatureHitPoints hp = creatureHitPointsFromGff(gff, root);
+        npc.hp = hp.current;
+        npc.maxHp = std::max(1, hp.max);
+        npc.baseHp = numberInt(gff, root, "HitPoints", -1);
+    }
     npc.xp = numberInt(gff, root, "Experience", 0);
     npc.joiningXp = numberInt(gff, root, "JoiningXP", 0);
     npc.alignment = std::clamp(numberInt(gff, root, "GoodEvil", 50), 0, 100);
@@ -635,8 +640,36 @@ SavedNpc readNpcNode(const Gff& gff)
     return npc;
 }
 
+// The "SWVarTable" struct of an object (or of the GIT root, the area's own table).
+SavedVarTable readVarTable(const Gff& gff, std::uint32_t structure)
+{
+    SavedVarTable vars;
+    const GffField* table = field(gff, structure, "SWVarTable");
+    if (table == nullptr || table->type != GffType::Struct) {
+        return vars;
+    }
+    const std::uint32_t at = gff.structIndex(*table);
+    vars.present = true;
+    std::size_t word = 0;
+    for (const std::uint32_t entry : list(gff, at, "BitArray")) {
+        if (word < vars.bits.size()) {
+            // DWORD words: the raw bits (Gff::integer goes through a float and loses bits above 2^24).
+            const GffField* variable = field(gff, entry, "Variable");
+            vars.bits[word++] = variable != nullptr ? variable->data : 0u;
+        }
+    }
+    std::size_t byte = 0;
+    for (const std::uint32_t entry : list(gff, at, "ByteArray")) {
+        if (byte < vars.bytes.size()) {
+            vars.bytes[byte++] = static_cast<std::uint8_t>(numberInt(gff, entry, "Variable", 0));
+        }
+    }
+    return vars;
+}
+
 void readObjects(const Gff& gff, OriginalSave& save)
 {
+    save.areaVars = readVarTable(gff, gff.rootIndex());
     struct ListSpec {
         const char* label;
         SavedObjectState::Kind kind;
@@ -658,21 +691,54 @@ void readObjects(const Gff& gff, OriginalSave& save)
             object.tag = objectTag(gff, structure);
             object.position = objectPosition(gff, structure);
             object.bearing = objectBearing(gff, structure);
-            object.hitPoints = numberInt(gff, structure, "CurrentHitPoints",
-                                         numberInt(gff, structure, "HitPoints", 1));
-            object.maxHitPoints = std::max(1, numberInt(gff, structure, "MaxHitPoints",
-                                                       object.hitPoints));
+            if (spec.kind == SavedObjectState::Kind::Creature) {
+                // Retail 005afce0: the stored current value is read back through the per-level share.
+                const CreatureHitPoints hp = creatureHitPointsFromGff(gff, structure);
+                object.hitPoints = hp.current;
+                object.maxHitPoints = std::max(1, hp.max);
+            } else {
+                // Doors (0058a1f0) and placeables (00585670) write HP, the maximum, and CurrentHP.
+                object.hitPoints = static_cast<std::int16_t>(numberInt(gff, structure, "CurrentHP", 1));
+                object.maxHitPoints = std::max<std::int32_t>(
+                    1, static_cast<std::int16_t>(numberInt(gff, structure, "HP", object.hitPoints)));
+            }
             object.dead = numberInt(gff, structure, "Dead", 0) != 0
                 || numberInt(gff, structure, "IsDead", 0) != 0
-                || object.hitPoints <= 0;
+                || (spec.kind == SavedObjectState::Kind::Creature && object.hitPoints <= 0);
             object.open = numberInt(gff, structure, "OpenState", 0) != 0
                 || numberInt(gff, structure, "Open", 0) != 0;
             object.locked = numberInt(gff, structure, "Locked", 0) != 0;
+            for (const std::uint32_t entry : list(gff, structure, "VarTable")) {
+                SavedObjectState::Local local;
+                local.name = text(gff, entry, "Name");
+                local.type = numberInt(gff, entry, "Type", 0);
+                local.integer = numberInt(gff, entry, "Value", 0);
+                local.number = numberFloat(gff, entry, "Value", 0.0f);
+                if (local.type == 3) {
+                    local.text = text(gff, entry, "Value");
+                }
+                if (!local.name.empty() && local.type >= 1 && local.type <= 3) {
+                    object.locals.push_back(std::move(local));
+                }
+            }
+            object.effects = readSavedEffects(gff, structure);
+            {
+                const SavedVarTable table = readVarTable(gff, structure);
+                object.localTable = table.present;
+                object.localBits = table.bits;
+                object.localBytes = table.bytes;
+            }
+            if (const GffField* id = field(gff, structure, "ObjectId"); id != nullptr) {
+                object.objectId = id->data;
+            }
             if (spec.kind == SavedObjectState::Kind::Placeable) {
                 for (const std::uint32_t item : list(gff, structure, "ItemList")) {
                     std::string resref = text(gff, item, "InventoryRes");
                     if (resref.empty()) {
                         resref = text(gff, item, "InventoryResRef");
+                    }
+                    if (resref.empty()) {
+                        resref = lower(text(gff, item, "Tag")); // a retail save writes the item whole; Tag is its resref
                     }
                     if (!resref.empty()) {
                         object.loot.push_back(resref);
@@ -682,6 +748,65 @@ void readObjects(const Gff& gff, OriginalSave& save)
             if (!object.tag.empty() || object.position.x != 0.0f || object.position.y != 0.0f) {
                 save.objects.push_back(std::move(object));
             }
+        }
+    }
+}
+
+// The IFO's pending delayed scripts (retail event queue, saved as "EventQueue") and the clock they are due on.
+void readEventQueue(const Gff& ifo, OriginalSave& save)
+{
+    const auto dword = [&](std::uint32_t structure, const char* label) {
+        const GffField* value = field(ifo, structure, label);
+        // The raw 32 bits: Gff::integer goes through a float and rounds above 2^24 (a time of day in milliseconds).
+        return value != nullptr ? value->data : 0u;
+    };
+    const std::uint32_t root = ifo.rootIndex();
+    save.pauseDay = dword(root, "Mod_PauseDay");
+    save.pauseTime = dword(root, "Mod_PauseTime");
+    for (const std::uint32_t area : list(ifo, root, "Mod_Area_list")) {
+        save.areaObjectId = dword(area, "ObjectId");
+        break;
+    }
+    for (const std::uint32_t player : list(ifo, root, "Mod_PlayerList")) {
+        save.playerObjectId = dword(player, "ObjectId");
+        break;
+    }
+    for (const std::uint32_t entry : list(ifo, root, "EventQueue")) {
+        const GffField* data = field(ifo, entry, "EventData");
+        if (data == nullptr || data->type != GffType::Struct) {
+            continue;
+        }
+        const std::uint32_t body = ifo.structIndex(*data);
+        SavedScriptEvent event;
+        event.day = dword(entry, "Day");
+        event.time = dword(entry, "Time");
+        event.objectId = dword(entry, "ObjectId");
+        event.callerId = dword(entry, "CallerId");
+        event.script = text(ifo, body, "Name");
+        event.instruction = static_cast<std::int32_t>(dword(body, "InstructionPtr"));
+        const GffField* stack = field(ifo, body, "Stack");
+        if (stack != nullptr && stack->type == GffType::Struct) {
+            const std::uint32_t frame = ifo.structIndex(*stack);
+            event.basePointer = static_cast<std::int32_t>(dword(frame, "BasePointer"));
+            for (const std::uint32_t cell : list(ifo, frame, "Stack")) {
+                SavedStackCell out;
+                out.type = static_cast<std::uint8_t>(dword(cell, "Type"));
+                if (const GffField* value = field(ifo, cell, "Value"); value != nullptr) {
+                    switch (out.type) {
+                    case 4: out.real = ifo.number(*value); break;
+                    case 5: out.text = ifo.text(*value); break;
+                    default:
+                        if (value->type != GffType::Struct) {
+                            out.integer = static_cast<std::int32_t>(value->data);
+                        }
+                        break;
+                    }
+                }
+                event.stack.push_back(std::move(out));
+            }
+        }
+        if (!event.script.empty()) {
+            save.events.push_back(std::move(event));
         }
     }
 }
@@ -713,6 +838,28 @@ void patchInt(GffNode& node, const std::string& label, std::int64_t value)
         return;
     }
     node.addInt32(label, static_cast<std::int32_t>(value));
+}
+
+// Replaces a node's "SWVarTable" (retail CSWVarTable, struct id 0 with BitArray and ByteArray lists).
+void setVarTable(GffNode& node, const SavedVarTable& vars)
+{
+    node.remove("SWVarTable");
+    auto table = std::make_shared<GffNode>(0);
+    std::vector<GffNodePtr> bits;
+    for (const std::uint32_t word : vars.bits) {
+        auto entry = std::make_shared<GffNode>(0);
+        entry->addUInt32("Variable", word);
+        bits.push_back(std::move(entry));
+    }
+    std::vector<GffNodePtr> bytes;
+    for (const std::uint8_t byte : vars.bytes) {
+        auto entry = std::make_shared<GffNode>(0);
+        entry->addUInt8("Variable", byte);
+        bytes.push_back(std::move(entry));
+    }
+    table->addList("BitArray", std::move(bits));
+    table->addList("ByteArray", std::move(bytes));
+    node.addStruct("SWVarTable", std::move(table));
 }
 
 void patchFloat(GffNode& node, const std::string& label, float value)
@@ -1021,6 +1168,23 @@ GffNodePtr buildNpcNode(const SavedNpc& npc)
     shape.skills = npc.skills;
     GffNodePtr node = buildPlayerNode(shape);
     patchInt(*node, "IsPC", 0);
+    {
+        // Retail SaveStats 005b1b90: HitPoints is the base, CurrentHitPoints is base + current - maximum
+        // (005afce0 adds the per-level share back on load), MaxHitPoints the maximum, PregameCurrent the
+        // current value. The share is the Constitution modifier and the Toughness feats per level.
+        const std::int32_t score = npc.con & 0xff;
+        const std::int32_t conMod = (score + (score < 10 ? -11 : -10)) / 2;
+        const auto has = [&](std::int32_t feat) {
+            return std::find(npc.feats.begin(), npc.feats.end(), feat) != npc.feats.end();
+        };
+        const std::int32_t bonus = (has(0x7c) ? 2 : (has(0x54) ? 1 : 0)) + (has(0x5f) ? 2 : 0);
+        const std::int32_t base = npc.baseHp >= 0
+            ? npc.baseHp
+            : std::max(0, npc.maxHp - std::max(1, npc.level) * (conMod + bonus));
+        patchInt(*node, "HitPoints", base);
+        patchInt(*node, "CurrentHitPoints", base + npc.hp - npc.maxHp);
+        patchInt(*node, "PregameCurrent", npc.hp);
+    }
     patchInt(*node, "Mod_IsPrimaryPlr", 0);
     node->remove("Mod_CommntyName");
     node->remove("Mod_FirstName");
@@ -1280,6 +1444,9 @@ void patchGit(GffNode& git, const OriginalSave& save, Install& install)
         map->addBinary("AreaMapData", std::move(bytes));
         git.addStruct("AreaMap", std::move(map));
     }
+    if (save.areaVars.present) {
+        setVarTable(git, save.areaVars);
+    }
     struct ListSpec {
         const char* label;
         SavedObjectState::Kind kind;
@@ -1324,6 +1491,13 @@ void patchGit(GffNode& git, const OriginalSave& save, Install& install)
                     } catch (const FormatError&) {
                     }
                 }
+            }
+            if (state->localTable) {
+                SavedVarTable table;
+                table.present = true;
+                table.bits = state->localBits;
+                table.bytes = state->localBytes;
+                setVarTable(*child, table);
             }
             patchFloat(*child, "XPosition", state->position.x);
             patchFloat(*child, "YPosition", state->position.y);
@@ -1488,9 +1662,19 @@ OriginalSave readOriginalSave(const std::filesystem::path& folder,
                      numberFloat(ifo, ifo.rootIndex(), "Mod_Entry_Z", 0.0f)};
     save.yaw = std::atan2(numberFloat(ifo, ifo.rootIndex(), "Mod_Entry_Dir_Y", 1.0f),
                           numberFloat(ifo, ifo.rootIndex(), "Mod_Entry_Dir_X", 0.0f));
+    readEventQueue(ifo, save);
     const std::vector<std::uint32_t> players = list(ifo, ifo.rootIndex(), "Mod_PlayerList");
     if (!players.empty()) {
         readPlayer(ifo, players.front(), save);
+        // The PC stands where the player struct says (XPosition and XOrientation of Mod_PlayerList), not at
+        // the module's entry point: Mod_Entry_* only names the arrival spot (the Taris save differs).
+        if (has(ifo, players.front(), "XPosition")) {
+            save.position = objectPosition(ifo, players.front());
+            if (has(ifo, players.front(), "XOrientation")) {
+                save.yaw = std::atan2(numberFloat(ifo, players.front(), "YOrientation", 1.0f),
+                                      numberFloat(ifo, players.front(), "XOrientation", 0.0f));
+            }
+        }
         // Equipped items live in the player's Equip_ItemList (slot mask in the struct type).
         for (SavedInventoryItem& item : readItems(ifo, field(ifo, players.front(), "Equip_ItemList"), true)) {
             save.inventory.push_back(std::move(item));
@@ -1498,6 +1682,7 @@ OriginalSave readOriginalSave(const std::filesystem::path& folder,
     }
     if (gitEntry != nullptr) {
         const Gff git = Gff::parse(gitEntry->data, moduleEntry->resref + ".git");
+        save.gitBytes = gitEntry->data;
         if (const GffField* useTemplates = git.field(git.rootIndex(), "UseTemplates")) {
             save.hasUseTemplates = true;
             save.useTemplates = git.integer(*useTemplates) != 0;
@@ -1691,6 +1876,98 @@ std::vector<std::uint8_t> makeSaveThumbnail()
         }
     }
     return out;
+}
+
+bool savedEffectApplies(const SavedEffect& effect)
+{
+    return !effect.skipOnLoad && (effect.subType & 7) != 3;
+}
+
+std::int32_t savedEffectScriptType(std::int32_t internalType)
+{
+    // Internal type -> nwscript EFFECT_TYPE_ constant: the straight comparisons of 00503a70.
+    static const std::array<std::pair<std::int32_t, std::int32_t>, 56> kTable = {{
+        {2, 1}, {7, 3}, {12, 7}, {15, 9}, {18, 11}, {21, 13}, {22, 15}, {24, 17}, {25, 18}, {31, 20},
+        {32, 21}, {35, 31}, {5, 32}, {45, 33}, {46, 34}, {1, 36}, {3, 37}, {36, 38}, {37, 39}, {10, 40},
+        {11, 41}, {13, 42}, {14, 43}, {16, 44}, {17, 45}, {48, 46}, {49, 47}, {28, 48}, {29, 49}, {26, 50},
+        {27, 51}, {33, 52}, {34, 53}, {55, 54}, {56, 55}, {47, 56}, {74, 58}, {51, 59}, {61, 60}, {82, 61},
+        {62, 62}, {63, 63}, {72, 64}, {70, 65}, {64, 66}, {73, 67}, {65, 68}, {52, 69}, {71, 70}, {75, 71},
+        {76, 72}, {50, 73}, {101, 74}, {30, 75}, {100, 76}, {102, 77},
+    }};
+    for (const auto& [internal, script] : kTable) {
+        if (internal == internalType) {
+            return script;
+        }
+    }
+    return -1;
+}
+
+std::vector<SavedEffect> readSavedEffects(const Gff& gff, std::uint32_t structure)
+{
+    std::vector<SavedEffect> effects;
+    for (const std::uint32_t entry : list(gff, structure, "EffectList")) {
+        SavedEffect effect;
+        // DWORD fields are read exactly (number() goes through float); the 64-bit Id is not exposed by Gff.
+        const auto exact = [&](const char* label) {
+            const GffField* value = field(gff, entry, label);
+            return value != nullptr ? value->data : 0u;
+        };
+        effect.type = numberInt(gff, entry, "Type", 0);
+        effect.subType = numberInt(gff, entry, "SubType", 0);
+        effect.duration = numberFloat(gff, entry, "Duration", 0.0f);
+        effect.skipOnLoad = numberInt(gff, entry, "SkipOnLoad", 0) != 0;
+        effect.expireDay = exact("ExpireDay");
+        effect.expireTime = exact("ExpireTime");
+        effect.creatorId = exact("CreatorId");
+        effect.spellId = field(gff, entry, "SpellId") != nullptr ? exact("SpellId") : 0xFFFFFFFFu;
+        effect.isExposed = numberInt(gff, entry, "IsExposed", 0) != 0;
+        const std::int32_t count = numberInt(gff, entry, "NumIntegers", 0);
+        std::vector<std::int32_t> saved;
+        for (const std::uint32_t item : list(gff, entry, "IntList")) {
+            saved.push_back(numberInt(gff, item, "Value", 0));
+        }
+        if (effect.type == 35 || effect.type == 38) {
+            // LoadGameEffect pads these two types to 21 integers: entries below NumIntegers - 6 and from the 16th on
+            // come from the list, the ones between are zero.
+            effect.ints.assign(21, 0);
+            std::size_t at = 0;
+            for (std::int32_t step = 0; step < 21; ++step) {
+                if (step < count - 6) {
+                    if (at < saved.size()) {
+                        effect.ints[at] = saved[at];
+                        ++at;
+                    }
+                } else if (step >= 15) {
+                    if (at < saved.size()) {
+                        effect.ints[at] = saved[at];
+                        ++at;
+                    }
+                } else {
+                    effect.ints[at < 21 ? at : 20] = 0;
+                }
+            }
+        } else if (count > 0) {
+            effect.ints = saved;
+        }
+        for (const std::uint32_t item : list(gff, entry, "FloatList")) {
+            if (effect.floats.size() < 4) {
+                effect.floats.push_back(numberFloat(gff, item, "Value", 0.0f));
+            }
+        }
+        for (const std::uint32_t item : list(gff, entry, "StringList")) {
+            if (effect.strings.size() < 6) {
+                effect.strings.push_back(text(gff, item, "Value"));
+            }
+        }
+        for (const std::uint32_t item : list(gff, entry, "ObjectList")) {
+            if (effect.objects.size() < 4) {
+                const GffField* object = field(gff, item, "Value");
+                effect.objects.push_back(object != nullptr ? object->data : 0u);
+            }
+        }
+        effects.push_back(std::move(effect));
+    }
+    return effects;
 }
 
 } // namespace ke::kotor

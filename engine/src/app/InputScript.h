@@ -26,6 +26,8 @@
 //                       walk steps (app/WalkTools.h): the script plays the game through the player's own paths and
 //                       holds every later step until the step reports done; a failed step ends the script. The
 //                       grammar is in engine/tests/walk/STEPS.md.
+//   if <condition> <step>   the step (click, key, shot, ...) runs only if the condition holds when it comes due;
+//                       the conditions are the waitfor ones plus `paused`
 //   end                 quit after this point
 
 #include <SDL3/SDL.h>
@@ -50,6 +52,8 @@ public:
         std::string name;
         std::array<float, 10> camera{}; // eye, forward, up, fovy; fovy <= 0 turns the override off
         std::uint64_t timeoutMs = 60000; // WaitFor
+        int group = 0;                   // `if <condition> <step>`: the steps of one line, run only when the condition holds
+        std::string onlyIf;
     };
     // WaitFor: true once the game is in the named state (the step's name, e.g. "entry 4").
     using Condition = std::function<bool(const std::string&)>;
@@ -114,6 +118,8 @@ private:
     std::uint64_t offsetMs_ = 0;   // added to every step's time: the time spent in WaitFor steps
     bool waiting_ = false;
     bool abortOnFail_ = true;
+    int group_ = 0;        // the `if` line being run or skipped
+    bool groupRun_ = true;
     std::uint64_t waitStartMs_ = 0;
     WaitResult waitResult_;
 };

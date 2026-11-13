@@ -445,6 +445,9 @@ struct Mixer::Impl {
         float fadeStep = 0.0f;  // per output frame, signed
         bool fading = false;
         bool fadeStops = false;
+        int tagGroup = -1;      // PlayTag, kept for the state trace
+        int tagVolume127 = -1;
+        int tagStream = -1;
     };
 
     // The game thread starts, stops and retunes voices while the device thread runs
@@ -466,6 +469,8 @@ struct Mixer::Impl {
     ReverbPreset preset = reverbPreset("GENERIC");
     std::vector<Voice> voices;
     int nextId = 1;
+    Mixer::PlayObserver playObserver;
+    Mixer::PlayTag pendingTag;
     std::vector<float> buses[5];
     float lastRms = 0.0f;
 
@@ -824,6 +829,8 @@ int Mixer::play(const std::shared_ptr<const SoundData>& data, Bus bus, float vol
                 float maxDistance, float pan, float pitch)
 {
     KE_MIXER_LOCK();
+    const PlayTag tag = impl_->pendingTag;
+    impl_->pendingTag = PlayTag{};
     if (!data || data->frameCount() == 0) {
         return 0;
     }
@@ -839,8 +846,65 @@ int Mixer::play(const std::shared_ptr<const SoundData>& data, Bus bus, float vol
     voice.maxDistance = std::max(maxDistance, voice.minDistance + 0.01f);
     voice.pan = std::clamp(pan, -1.0f, 1.0f);
     voice.pitch = std::clamp(pitch, 0.05f, 8.0f);
+    voice.tagGroup = tag.group;
+    voice.tagVolume127 = tag.volume127;
+    voice.tagStream = tag.stream;
     impl_->voices.push_back(std::move(voice));
-    return impl_->voices.back().id;
+    const Impl::Voice& started = impl_->voices.back();
+    if (impl_->playObserver) {
+        impl_->playObserver({started.id, &started.data->name, started.bus, started.volume, started.loop,
+                             started.positional, started.position, started.minDistance, started.maxDistance,
+                             tag.group, tag.volume127, tag.stream});
+    }
+    return started.id;
+}
+
+void Mixer::tagNextPlay(const PlayTag& tag)
+{
+    KE_MIXER_LOCK();
+    impl_->pendingTag = tag;
+}
+
+void Mixer::reportAttempt(const PlayInfo& info)
+{
+    KE_MIXER_LOCK();
+    impl_->pendingTag = PlayTag{};
+    if (impl_->playObserver) {
+        impl_->playObserver(info);
+    }
+}
+
+void Mixer::forEachLiveVoice(const std::function<void(const PlayInfo&)>& visit) const
+{
+    KE_MIXER_LOCK();
+    for (const Impl::Voice& v : impl_->voices) {
+        if (!v.active || !v.data) {
+            continue;
+        }
+        visit({v.id, &v.data->name, v.bus, v.volume, v.loop, v.positional, v.position, v.minDistance, v.maxDistance,
+               v.tagGroup, v.tagVolume127, v.tagStream});
+    }
+}
+
+bool Mixer::voiceTrace(int voice, VoiceTrace& out) const
+{
+    KE_MIXER_LOCK();
+    for (const Impl::Voice& v : impl_->voices) {
+        if (v.id == voice && v.active) {
+            out.positional = v.positional;
+            out.loop = v.loop;
+            out.position = v.position;
+            out.maxDistance = v.maxDistance;
+            return true;
+        }
+    }
+    return false;
+}
+
+void Mixer::setPlayObserver(PlayObserver observer)
+{
+    KE_MIXER_LOCK();
+    impl_->playObserver = std::move(observer);
 }
 
 int Mixer::playMusic(const std::shared_ptr<const SoundData>& data, float volume, bool loop)

@@ -3,6 +3,7 @@
 #include "kotor/Formats.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -91,6 +92,46 @@ public:
              bool loop, bool positional = false, kotor::Vec3 position = {},
              float minDistance = 1.0f, float maxDistance = 10.0f, float pan = 0.0f,
              float pitch = 1.0f);
+    // --state-trace only (game/StateTrace.h): told on the caller's thread, under the mixer lock, each time a
+    // voice starts. It must not call back into the mixer. Null when the flag is absent (one test per play).
+    struct PlayInfo {
+        int voice = 0;
+        const std::string* name = nullptr;
+        Bus bus = Bus::Effects;
+        float volume = 0.0f;
+        bool loop = false;
+        bool positional = false;
+        kotor::Vec3 position;
+        float minDistance = 0.0f;
+        float maxDistance = 0.0f;
+        // What the caller said about the source (tagNextPlay): the priority group, the 0-127 source
+        // volume byte and whether retail makes it a streaming source (1) or a sample (0). -1: not said.
+        int group = -1;
+        int volume127 = -1;
+        int stream = -1;
+    };
+    using PlayObserver = std::function<void(const PlayInfo&)>;
+    void setPlayObserver(PlayObserver observer);
+    // --state-trace only: describes the next play() to the observer; consumed (and cleared) by that call.
+    struct PlayTag {
+        int group = -1;
+        int volume127 = -1;
+        int stream = -1;
+    };
+    void tagNextPlay(const PlayTag& tag);
+    // --state-trace only: a play that retail attempts and drops before a voice exists (an empty resource name,
+    // a creature sound-set slot without a file) still reaches the observer, with voice 0.
+    void reportAttempt(const PlayInfo& info);
+    // --state-trace only: what a live voice looks like now (its position follows setVoicePosition).
+    struct VoiceTrace {
+        bool positional = false;
+        bool loop = false;
+        kotor::Vec3 position;
+        float maxDistance = 0.0f;
+    };
+    bool voiceTrace(int voice, VoiceTrace& out) const;
+    // --state-trace only: every voice that is playing now, described as play() described it (under the mixer lock).
+    void forEachLiveVoice(const std::function<void(const PlayInfo&)>& visit) const;
     int playMusic(const std::shared_ptr<const SoundData>& data, float volume, bool loop);
     void stopMusic();
     void stopVoice(int voice);

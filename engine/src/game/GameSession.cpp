@@ -1,6 +1,7 @@
 #include "game/GameSession.h"
 #include "game/Ambience.h"
 #include "game/Pathfinding.h"
+#include "game/StateTrace.h"
 
 #include "core/Log.h"
 #include "kotor/SaveGame.h"
@@ -506,6 +507,7 @@ bool GameSession::playAnimation(std::size_t entityIndex, const std::string& name
     }
     mesh->animation = name;
     mesh->animationTime = 0.0f;
+    mesh->animationRate = 1.0f;
     mesh->animationLoop = loop;
     kotor::refreshEntityMesh(*mesh);
     ++animationRevision_;
@@ -581,6 +583,9 @@ void GameSession::updateAnimations(float dt)
             ++animationRevision_;
             continue;
         }
+        if (effects_ && !mesh.attachModel && mesh.entity < scene_.entities.size()) {
+            effects_->creatureClip(mesh.entity, mesh.animation);
+        }
         const bool dangly = mesh.model->danglyNodeCount() > 0;
         if (mesh.animation.empty() && !dangly && mesh.face.weight <= 0.0f) {
             continue;
@@ -588,7 +593,7 @@ void GameSession::updateAnimations(float dt)
         const float duration = mesh.model->animationDuration(mesh.animation);
         const float clipBefore = mesh.animationTime;
         if (!mesh.animation.empty() && duration > 0.0f) {
-            mesh.animationTime += dt;
+            mesh.animationTime += dt * mesh.animationRate;
             if (mesh.referenceHolder && !mesh.referenceClip.empty()) {
                 const float holderLength = mesh.referenceHolder->animationDuration(mesh.referenceClip);
                 mesh.referenceTime = holderLength > 0.0f ? std::fmod(mesh.referenceTime + dt, holderLength) : 0.0f;
@@ -831,7 +836,10 @@ void GameSession::placeAtLink(const std::string& linkedTo)
             return;
         }
     }
-    logWarn(concat("module link target ", linkedTo, " not found in ", module_));
+    // Retail 004b3d10 (MovePlayerToArea) moves the player only when CSWSModule::GetWaypoint finds the tag; with no
+    // waypoint the player stays where 004b3a90 (InitiateModuleForPlayer) put it, the IFO's Mod_Entry point, and no
+    // error is raised (manm28aa has no from26c: k_pman_to28a still sends the party there).
+    logInfo(concat("module link target ", linkedTo, " not found in ", module_, ": staying at the module entry"));
 }
 
 void GameSession::startNewGame(const std::string& module)
@@ -872,8 +880,16 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
     // load calls 004aecd0 / 004aed30). The swoop race's heartbeat fades out, then StartNewModule
     // (tar_m03af), and nothing in tar_m03af fades back in.
     sim_->fade = FadeState{};
+    // Retail 005f8290 (CClientExoAppInternal::UnloadModule) clears both pause states and the Enemy Sighted flag
+    // (+0x324) and the autopause bit (+900 bit 0), then CGuiInGame::ShutDown (0062c310) deletes every in-game
+    // panel, the status summary (+0xa8) with the rows it had gathered: a pause or popup does not carry over.
+    enemySighted_ = false;
+    autoPauseRequest_ = 0;
+    statusOpen_ = false;
+    statusPending_ = {};
+    statusPopupOwed_ = false;
     arrivalPending_ = true;
-    kotor::Scene loaded = kotor::loadModule(install_, module);
+    kotor::Scene loaded = kotor::loadModule(install_, module, savedGit_);
     module_ = module;
     scene_ = std::move(loaded);
     if (effects_) {
@@ -956,7 +972,26 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
             triggerInside_[i] = true;
         }
     }
+    // A creature is created standing on the walkmesh: the GIT Z can sit above the floor (Taris tar_m02aa twilek is 3.13 in the
+    // GIT and measured at floor height 0 on retail from the first row). Module load 00504a70 puts each creature at
+    // ComputeSafeLocation 004be860 of its GIT position (20 m reach, line test on), one after the other.
+    for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+        kotor::Entity& entity = scene_.entities[i];
+        if (entity.kind != kotor::EntityKind::Creature || entity.partyAvatar) {
+            continue;
+        }
+        kotor::Vec3 safe;
+        float floorZ = 0.0f;
+        if (computeSafeLocation(entity.position, 20.0f, entity.appearance, true, i, safe)) {
+            entity.position = safe;
+        } else if (floorHeight(scene_, entity.position.x, entity.position.y, entity.position.z + 2.0f, floorZ)) {
+            entity.position.z = floorZ;
+        }
+    }
     initAnimations();
+    if (stateTrace_ != nullptr) {
+        stateTrace_->onModuleReady(*this);
+    }
     return true;
 }
 
@@ -2021,10 +2056,27 @@ void GameSession::spawnEncounters()
          ++encounterIndex) {
         const kotor::EncounterVolume& volume = scene_.encounters[encounterIndex];
         EncounterState& state = encounterStates_[encounterIndex];
-        state.respawnsRemaining = volume.templateData.respawns < 0
+        const kotor::EncounterTemplate& data = volume.templateData;
+        state.respawnsRemaining = data.respawns < 0
             ? -1
-            : volume.templateData.respawns;
-        state.resetTime = static_cast<float>(std::max(0, volume.templateData.resetTime));
+            : std::max(0, data.respawns - data.currentSpawns); // AIUpdate 00593fb0: a respawn needs CurrentSpawns < Respawns
+        state.resetTime = static_cast<float>(std::max(0, data.resetTime));
+        // Counters of a saved encounter (ReadEncounterFromGff 00592430). SpawnIfAppropriate 00593be0 spawns only while
+        // Started is not 1; the wave's creatures are the AreaList objects. Exhausted (+0x27c) is written by
+        // SaveEncounter 00591350 but no spawn code reads it, so it is not restored.
+        state.spawnedCount = data.numberSpawned;
+        state.triggered = data.started;
+        state.spawned = data.started;
+        for (const std::uint32_t id : data.areaObjects) {
+            for (std::size_t e = 0; e < scene_.entities.size(); ++e) {
+                if (id != 0 && scene_.entities[e].savedObjectId == id) {
+                    state.entities.push_back(e);
+                    break;
+                }
+            }
+        }
+        // 00593fb0 wakes a reset encounter once LastSpawnDay and LastSpawnTime are both set and ResetTime has passed.
+        state.wiped = !data.active && data.lastSpawnDay != 0 && data.lastSpawnTime != 0;
     }
 }
 
@@ -2248,6 +2300,9 @@ void GameSession::runSpawnAndEnterScripts()
                           scriptWorld_.pc, scriptWorld_.pc);
             }
         }
+    }
+    if (sim_->restoringSave) {
+        primeLoadedCreatureClocks(ScriptApi{*this}); // saved creatures are already spawned: 004eb6e0
     }
     if (!sim_->restoringSave) { // loadOriginalSave runs the module and entry hooks last.
         runSceneHook("Mod_OnClientEntr", scriptWorld_.pc);
@@ -2805,6 +2860,7 @@ void GameSession::tickWhilePaused(float realDt)
     // TempDeathUpdate in a paused game) shows him already pushing up on his arms at the burst's first
     // frames (PAUSED label up) and the PC's combat idle moving, so the clip a revive starts runs on.
     updateAnimations(std::min(realDt, 0.08f));
+    runPendingModule();
 }
 
 void GameSession::update(float dt, const InputState& rawInput)
@@ -2888,7 +2944,6 @@ void GameSession::update(float dt, const InputState& rawInput)
             ScriptApi{*this}.clearQueue(scriptWorld_.pc);
         }
     }
-    const float speed = creatureMoveRate(scriptWorld_.pc, input.run);
     const float cosYaw = std::cos(yaw_);
     const float sinYaw = std::sin(yaw_);
     kotor::Vec3 desired{cosYaw * forwardAxis + sinYaw * rightAxis,
@@ -2909,13 +2964,28 @@ void GameSession::update(float dt, const InputState& rawInput)
     if (magnitude > 1.0e-5f) {
         desired = desired * (1.0f / magnitude);
     }
-    const kotor::Vec3 delta = desired * (speed * dt);
+    // The drive controller (retail 00679940): the input is a direction of unit length, half of it with Shift held
+    // (InputState::run false), and the body's velocity follows it with the appearance's DRIVEACCL / DRIVEMAXSPEED.
+    // A conversation, a lock or a dead player holds the controls, and the velocity with them.
+    const bool driveHeld = playerDead_ || dialogueView_.active || !pcActor.commandable || controlLocked();
+    if (driveHeld) {
+        driveStop(scriptWorld_.pc);
+    }
+    const kotor::Vec3 delta = driveHeld
+        ? kotor::Vec3{0.0f, 0.0f, 0.0f}
+        : driveStep(scriptWorld_.pc, desired.x, desired.y, magnitude > 1.0e-5f ? (input.run ? 1.0f : 0.5f) : 0.0f, dt);
+    const bool driving = delta.x * delta.x + delta.y * delta.y > 1.0e-12f;
 
     const kotor::Vec3 start = position_;
     bool steered = false;
-    const kotor::Vec3 candidate = magnitude > 1.0e-5f
+    const kotor::Vec3 candidate = driving
         ? slidePlayer(start, {position_.x + delta.x, position_.y + delta.y, position_.z}, steered)
         : start;
+    if (driving && dt > 0.0f
+        && (std::fabs(candidate.x - (start.x + delta.x)) > 1.0e-4f || std::fabs(candidate.y - (start.y + delta.y)) > 1.0e-4f)) {
+        // The walkmesh kept the body from some of the move: it keeps the speed it really made.
+        driveSetVelocity(scriptWorld_.pc, (candidate.x - start.x) / dt, (candidate.y - start.y) / dt);
+    }
     position_.x = candidate.x;
     position_.y = candidate.y;
 
@@ -2946,7 +3016,7 @@ void GameSession::update(float dt, const InputState& rawInput)
     if (nav_) {
         nav_->playerStepped = false;
     }
-    updatePlayerAvatar(dt, magnitude > 1.0e-5f || queueWalked);
+    updatePlayerAvatar(dt, driving || queueWalked);
     }
 
     // Retail has no footstep timer: a step sounds only from the snd_Footstep event of the playing clip
@@ -2989,6 +3059,13 @@ void GameSession::update(float dt, const InputState& rawInput)
         arrivalPending_ = false;
         completeArrival();
     }
+    runPendingModule();
+}
+
+// Retail 004babb0: the server loop takes a pending StartNewModule (+0x10080, set by 004aecc0) every frame with no
+// pause test, so a paused game (autopause box, status summary, party selection, pause key) still changes module.
+void GameSession::runPendingModule()
+{
     if (!pendingModule_.empty()) {
         const std::string next = pendingModule_;
         const std::string linkedTo = sim_->pendingLinkedTo;
@@ -3021,10 +3098,12 @@ bool GameSession::lineOfSight(kotor::Vec3 from, kotor::Vec3 to) const
     return !wallBlocked(scene_, from, to, 0.15f);
 }
 
-float GameSession::soundObstruction(kotor::Vec3 from, kotor::Vec3 to) const
+float GameSession::soundObstruction(kotor::Vec3 from, kotor::Vec3 to)
 {
     float total = 0.0f;
     kotor::Vec3 start = from;
+    const std::vector<SoundFacet>& objectFacets = soundObjectFacets();
+    std::vector<std::uint32_t> hitObjects; // 0050c330 skips the object the previous cast hit.
     for (int pass = 0; pass < 100; ++pass) {
         const kotor::Vec3 d{to.x - start.x, to.y - start.y, to.z - start.z};
         float nearest = 2.0f;
@@ -3067,10 +3146,49 @@ float GameSession::soundObstruction(kotor::Vec3 from, kotor::Vec3 to) const
                 nearest = t;
             }
         }
-        if (nearest > 1.0f) {
+        // Doors and placeables on the line (00506650 -> 004bbe20); an open door has no closed walkmesh to hit.
+        float objectNearest = 2.0f;
+        const SoundFacet* objectHit = nullptr;
+        for (const SoundFacet& facet : objectFacets) {
+            const kotor::Entity& owner = scene_.entities[facet.entity];
+            if (owner.dead || (facet.door && owner.open)
+                || std::find(hitObjects.begin(), hitObjects.end(), facet.entity) != hitObjects.end()) {
+                continue;
+            }
+            const kotor::Vec3 e1{facet.b.x - facet.a.x, facet.b.y - facet.a.y, facet.b.z - facet.a.z};
+            const kotor::Vec3 e2{facet.c.x - facet.a.x, facet.c.y - facet.a.y, facet.c.z - facet.a.z};
+            const kotor::Vec3 p{d.y * e2.z - d.z * e2.y, d.z * e2.x - d.x * e2.z, d.x * e2.y - d.y * e2.x};
+            const float det = e1.x * p.x + e1.y * p.y + e1.z * p.z;
+            if (std::fabs(det) < 1.0e-9f) {
+                continue;
+            }
+            const kotor::Vec3 s{start.x - facet.a.x, start.y - facet.a.y, start.z - facet.a.z};
+            const float u = (s.x * p.x + s.y * p.y + s.z * p.z) / det;
+            if (u < 0.0f || u > 1.0f) {
+                continue;
+            }
+            const kotor::Vec3 q{s.y * e1.z - s.z * e1.y, s.z * e1.x - s.x * e1.z, s.x * e1.y - s.y * e1.x};
+            const float v = (d.x * q.x + d.y * q.y + d.z * q.z) / det;
+            if (v < 0.0f || u + v > 1.0f) {
+                continue;
+            }
+            const float t = (e2.x * q.x + e2.y * q.y + e2.z * q.z) / det;
+            if (t > 1.0e-6f && t <= 1.0f && t < objectNearest) {
+                objectNearest = t;
+                objectHit = &facet;
+            }
+        }
+        if (nearest > 1.0f && objectNearest > 1.0f) {
             return total;
         }
-        total += 0.4f;
+        if (objectNearest < nearest) {
+            // GetObstructionFactor 0050ccf0: a placeable adds 0.4 (_DAT_0073e320), a door 0.55 (_DAT_00747b84).
+            total += objectHit->door ? 0.55f : 0.4f;
+            hitObjects.push_back(objectHit->entity);
+            nearest = objectNearest;
+        } else {
+            total += 0.4f;
+        }
         if (total > 1.0f) {
             return 1.0f;
         }
@@ -3253,7 +3371,9 @@ SceneCamera GameSession::camera() const
         camera.eye = eye;
         camera.forward = {std::cos(elevation) * back.x, std::cos(elevation) * back.y,
                           std::sin(elevation)};
-        camera.up = {0.0f, 0.0f, 1.0f};
+        // The camera's up is the world up made perpendicular to its forward (retail logs 0, 0.121, 0.993 for a 7 degree pitch).
+        camera.up = kotor::normalize(kotor::Vec3{-std::sin(elevation) * camera.forward.x, -std::sin(elevation) * camera.forward.y,
+                                                  1.0f - std::sin(elevation) * camera.forward.z});
         camera.fovYDegrees = viewAngle;
         return camera;
     }
@@ -4204,7 +4324,10 @@ void GameSession::showDialogueEntry(std::uint32_t entryIndex)
         }
         // A control entry and its textless link walk the shot table like any other
         // (inferred: retail's server path 005a13d0 and 005a1ecc does not look at the text).
-        activeDialogue_->shots.enterEntry(entryIndex, entry.cameraAngle);
+        const std::int32_t passAngle = activeDialogue_->shots.enterEntry(entryIndex, entry.cameraAngle);
+        if (stateTrace_ != nullptr) {
+            stateTrace_->onDialogueControlEntry(*this, entryIndex, passAngle);
+        }
         activeDialogue_->shots.beginReplies();
         activeDialogue_->shots.offerReply(replies.front(), reply.cameraAngle);
         if (traceDialogueTrail_) {
@@ -4251,6 +4374,9 @@ void GameSession::showDialogueEntry(std::uint32_t entryIndex)
     dialogueView_.cameraId = entry.cameraId;
     const std::int32_t authoredAngle = entry.cameraAngle;
     dialogueView_.cameraAngle = activeDialogue_->shots.enterEntry(entryIndex, authoredAngle);
+    if (stateTrace_ != nullptr) {
+        stateTrace_->onDialogueLine(*this, entryIndex);
+    }
     dialogueView_.shotOnListener = false;
     dialogueView_.camVidEffect = entry.camVidEffect;
     // Retail 006306e0: an entry's camera set-up applies its video effect on a
@@ -5581,9 +5707,9 @@ void GameSession::updateCombat(float dt)
         }
         combatTarget_ = static_cast<std::uint32_t>(index);
     }
-    if (!dialogueView_.active) {
-        tickCombat(api, dt);
-    }
+    // Retail keeps combat rounds running through a conversation: the Endar duel ends and starts its rounds every
+    // 3 s while the Trask dialogue plays (state trace rnd rows).
+    tickCombat(api, dt);
 }
 
 bool GameSession::pointInTrigger(const kotor::TriggerVolume& trigger, float x, float y) const
@@ -6162,10 +6288,20 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
     return true;
 }
 
+void GameSession::traceRound(std::int32_t number, std::uint32_t owner, bool ended)
+{
+    if (stateTrace_ != nullptr) {
+        stateTrace_->onRound(*this, number, owner, ended);
+    }
+}
+
 std::optional<std::vector<script::Value>> GameSession::action(
     std::uint16_t actionId, const std::vector<std::vector<script::Value>>& args,
     script::World& world, script::Vm& vm)
 {
+    if (stateTrace_ != nullptr) {
+        stateTrace_->onAction(actionId);
+    }
     if (const ActionHandler handler = sim_->handlers.get(actionId); handler != nullptr) {
         ActionCall call{*this, world, vm, args, actionId};
         if (auto handled = handler(call); handled.has_value()) {
@@ -6399,7 +6535,9 @@ std::optional<std::vector<script::Value>> GameSession::action(
                                                : script::kObjectInvalid);
     case 46: // PlaySound
         if (audio_) {
-            audio_->playEffect(stringArg(0));
+            // ACT_46 00541170 queues the object action 0x17; the retail trace (Taris cutscene, n_genbith_comm1) shows
+            // the sound as a 2D streaming source in priority group 9 (Non_Player_Chat, volume 127), like a spoken line.
+            audio_->playVoice(stringArg(0));
             logEvent("sound " + stringArg(0));
         }
         return std::vector<script::Value>{};
@@ -6523,7 +6661,7 @@ std::optional<std::vector<script::Value>> GameSession::action(
     }
     case 300: { // PlayAnimation
         const std::int32_t animationId = static_cast<std::int32_t>(intArg(0));
-        const std::string name = rules_.animationName(animationId);
+        const std::string name = rules_.scriptAnimationName(animationId);
         if (!name.empty()) {
             const std::uint32_t self = runtime_ != nullptr
                 ? runtime_->contextObject("self") : world.pc;
@@ -6535,7 +6673,7 @@ std::optional<std::vector<script::Value>> GameSession::action(
                     if (placeable != nullptr) {
                         playAnimation(i, placeable, placeableLoop);
                     } else {
-                        playAnimation(i, name, rules_.animationLooping(animationId));
+                        playAnimation(i, name, rules_.scriptAnimationLooping(animationId));
                     }
                     break;
                 }
@@ -7106,16 +7244,20 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
     companions_.clear();
     partyTags_.clear();
     sim_->restoringSave = true;
+    savedGit_ = saved.gitBytes.empty() ? nullptr : &saved.gitBytes;
     try {
         if (!loadModule(saved.module, nullptr, {})) {
+            savedGit_ = nullptr;
             sim_->restoringSave = false;
             return false;
         }
     } catch (const std::exception& exception) {
+        savedGit_ = nullptr;
         sim_->restoringSave = false;
         logEvent(std::string("original save module failed: ") + exception.what());
         return false;
     }
+    savedGit_ = nullptr;
     sim_->restoringSave = false;
     if (!saved.area.empty() && lower(saved.area) != lower(scene_.area)) {
         logEvent("original save area differs from module entry: " + saved.area);
@@ -7208,13 +7350,14 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
 
     std::vector<std::pair<std::size_t, const decltype(kotor::SavedObjectState::loot)*>> savedLoot;
     std::vector<bool> objectUsed(scene_.entities.size(), false);
+    std::vector<std::pair<std::size_t, const kotor::SavedObjectState*>> matchedObjects;
     for (const kotor::SavedObjectState& state : saved.objects) {
         const kotor::EntityKind kind = entityKindForSaved(state.kind);
         std::size_t index = static_cast<std::size_t>(-1);
         float bestDistance = 1.0e30f;
         for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
             const kotor::Entity& candidate = scene_.entities[i];
-            if (objectUsed[i] || candidate.tag != state.tag
+            if (objectUsed[i] || lower(candidate.tag) != lower(state.tag)
                 || candidate.partyAvatar
                 || (kind != kotor::EntityKind::Unknown && candidate.kind != kind)) {
                 continue;
@@ -7232,6 +7375,7 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
             continue;
         }
         objectUsed[index] = true;
+        matchedObjects.emplace_back(index, &state);
         kotor::Entity& entity = scene_.entities[index];
         entity.position = state.position;
         entity.bearing = state.bearing;
@@ -7277,6 +7421,148 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
     combatTarget_ = UINT32_MAX;
     selectedEntity_ = UINT32_MAX;
     syncScriptWorld();
+    // The area's script locals (the SWVarTable at the GIT root) go back before the entry scripts run: retail's area
+    // OnEnter fires on a loaded game too (CSWSArea::AddObjectToArea 0050dfd0 queues event 0xc carrying
+    // GetLoadFromSaveGame, handled at 0050d6c0) and the Endar area script k_pend_area01 guards its opening cutscene on a
+    // local of the area that the save holds; the retail trace of that save shows the script reach its guard and stop.
+    if (saved.areaVars.present && sim_->areaObject != script::kObjectInvalid) {
+        for (std::int64_t i = 0; i < 96; ++i) {
+            if (((saved.areaVars.bits[static_cast<std::size_t>(i / 32)] >> static_cast<unsigned>(i % 32)) & 1u) != 0u) {
+                scriptWorld_.setLocalBoolean(sim_->areaObject, i, true);
+            }
+        }
+        for (std::int64_t i = 0; i < 8; ++i) {
+            if (saved.areaVars.bytes[static_cast<std::size_t>(i)] != 0) {
+                scriptWorld_.setLocalNumber(sim_->areaObject, i, static_cast<std::int8_t>(saved.areaVars.bytes[static_cast<std::size_t>(i)]));
+            }
+        }
+    }
+    // Retail 004d1cf0 (LoadObjectState) gives each object back its script variables: the named ones
+    // (0059aa80) and the 96 booleans and 8 numbers of CSWVarTable (0059b0f0).
+    for (const auto& [index, state] : matchedObjects) {
+        if (index >= entityObjects_.size() || entityObjects_[index] == 0) {
+            continue;
+        }
+        const std::uint32_t object = entityObjects_[index];
+        for (const kotor::SavedObjectState::Local& local : state->locals) {
+            if (local.type == 1) {
+                scriptWorld_.setLocal(object, local.name, script::Value::makeInt(local.integer));
+            } else if (local.type == 2) {
+                scriptWorld_.setLocal(object, local.name, script::Value::makeFloat(local.number));
+            } else if (local.type == 3) {
+                scriptWorld_.setLocal(object, local.name, script::Value::makeString(local.text));
+            }
+        }
+        for (std::int64_t bit = 0; bit < 96; ++bit) {
+            if ((state->localBits[static_cast<std::size_t>(bit) / 32] >> (bit % 32) & 1u) != 0) {
+                scriptWorld_.setLocalBoolean(object, bit, true);
+            }
+        }
+        for (std::int64_t number = 0; number < 8; ++number) {
+            const std::uint8_t byte = state->localBytes[static_cast<std::size_t>(number)];
+            if (byte != 0) {
+                scriptWorld_.setLocalNumber(object, number, static_cast<std::int8_t>(byte));
+            }
+        }
+    }
+    // Retail 004d1be0 (LoadEffectList) applies the saved effects again, except SkipOnLoad ones and innate (duration
+    // type 3) ones; the argument layout of an effect beyond its type is kept as the saved integers and floats.
+    {
+        ScriptApi api{*this};
+        for (const auto& [index, state] : matchedObjects) {
+            if (index >= entityObjects_.size() || entityObjects_[index] == 0) {
+                continue;
+            }
+            for (const kotor::SavedEffect& held : state->effects) {
+                const std::int32_t scriptType = kotor::savedEffectScriptType(held.type);
+                const std::int32_t durationType = held.subType & 7;
+                if (!kotor::savedEffectApplies(held) || scriptType < 0 || (durationType != 1 && durationType != 2)) {
+                    continue;
+                }
+                EffectData data;
+                data.type = scriptType;
+                data.subType = held.subType;
+                for (const std::int32_t value : held.ints) {
+                    data.args.push_back(script::Value::makeInt(value));
+                }
+                for (const float value : held.floats) {
+                    data.args.push_back(script::Value::makeFloat(value));
+                }
+                const std::int64_t id = api.sim().engine.add(std::move(data));
+                applyEffectRecord(api, durationType, id, entityObjects_[index], held.duration, script::kObjectInvalid,
+                                  static_cast<std::int32_t>(held.spellId));
+            }
+        }
+    }
+    // The delayed scripts still pending at the save (IFO EventQueue, retail's event queue) come back due at the
+    // same distance from the saved world clock: Endar's k_pend_time01 starts the Trask conversation 19.4 s after
+    // the save's clock, and the engine would otherwise never start it. Object ids in the queue are the save's;
+    // they map onto the objects this load matched.
+    logInfo(concat("original save: ", saved.events.size(), " pending scripts in the event queue"));
+    if (!saved.events.empty()) {
+        std::map<std::uint32_t, std::uint32_t> idMap;
+        if (saved.areaObjectId != 0 && sim_->areaObject != script::kObjectInvalid) {
+            idMap[saved.areaObjectId] = sim_->areaObject;
+        }
+        if (saved.playerObjectId != 0) {
+            idMap[saved.playerObjectId] = scriptWorld_.pc;
+        }
+        for (const auto& [index, state] : matchedObjects) {
+            if (const std::uint32_t object = objectForEntity(index);
+                state->objectId != 0 && object != script::kObjectInvalid && object != 0) {
+                idMap[state->objectId] = object;
+            }
+        }
+        const auto mapObject = [&](std::uint32_t id) {
+            if (id == 0 || id == script::kObjectInvalid) {
+                return id;
+            }
+            const auto it = idMap.find(id);
+            return it != idMap.end() ? it->second : script::kObjectInvalid;
+        };
+        for (const kotor::SavedScriptEvent& event : saved.events) {
+            const std::uint32_t owner = mapObject(event.objectId);
+            const script::ProgramPtr program = decodedScript(event.script);
+            if (owner == script::kObjectInvalid || owner == 0 || program == nullptr) {
+                logInfo(concat("original save: dropped pending ", event.script, " (object ", event.objectId, " mapped to ", owner,
+                               program == nullptr ? ", no script)" : ")"));
+                continue;
+            }
+            // The saved Code blob starts at the first instruction, without the 13-byte NCS header, so its
+            // InstructionPtr is that much short of the file offset the decoder keeps.
+            constexpr std::uint32_t kNcsHeaderBytes = 13;
+            const auto entry = program->byOffset.find(static_cast<std::uint32_t>(event.instruction) + kNcsHeaderBytes);
+            if (entry == program->byOffset.end()) {
+                logInfo(concat("original save: dropped pending ", event.script, " (no instruction at offset ", event.instruction, ")"));
+                continue;
+            }
+            script::Functor functor;
+            functor.program = program;
+            functor.ip = entry->second;
+            functor.bp = event.basePointer;
+            functor.script = event.script;
+            functor.source = "save";
+            functor.context["self"] = owner;
+            for (const kotor::SavedStackCell& cell : event.stack) {
+                switch (cell.type) {
+                case 3: functor.stack.push_back(script::Value::makeInt(cell.integer)); break;
+                case 4: functor.stack.push_back(script::Value::makeFloat(cell.real)); break;
+                case 5: functor.stack.push_back(script::Value::makeString(cell.text)); break;
+                case 6: functor.stack.push_back(script::Value::makeObject(mapObject(static_cast<std::uint32_t>(cell.integer)))); break;
+                default: functor.stack.push_back(script::Value::makeEngine(0)); break;
+                }
+            }
+            const double remainingMs = (static_cast<double>(event.time) - static_cast<double>(saved.pauseTime))
+                + (static_cast<double>(event.day) - static_cast<double>(saved.pauseDay)) * 86400000.0;
+            script::Timer timer;
+            timer.due = scriptWorld_.time + std::max(0.0, remainingMs / 1000.0);
+            logInfo(concat("original save: pending ", event.script, " restored, due in ", remainingMs / 1000.0, " s on object ", owner));
+            timer.functor = scriptWorld_.addFunctor(std::move(functor));
+            timer.target = owner;
+            timer.source = "save";
+            scriptWorld_.timers.push_back(std::move(timer));
+        }
+    }
     // Loading a game is not walking in. Measured on retail: the Taris save loads with the player inside
     // tar02_carstr and no conversation starts (its k_ptar_carstr_en would start one).
     triggerInside_.assign(scene_.triggers.size(), false);
@@ -7507,11 +7793,33 @@ bool GameSession::saveOriginalSave(const std::filesystem::path& folder,
         global.location = location;
         save.globals.push_back(std::move(global));
     }
-    for (const kotor::Entity& entity : scene_.entities) {
+    // Script locals (retail CSWVarTable: 96 booleans, 8 number bytes) ride in each object's SWVarTable.
+    const auto varsOf = [&](std::uint32_t id) {
+        kotor::SavedVarTable vars;
+        vars.present = true;
+        for (std::int64_t i = 0; i < 96; ++i) {
+            if (scriptWorld_.localBoolean(id, i) != 0) {
+                vars.bits[static_cast<std::size_t>(i / 32)] |= std::uint32_t{1} << static_cast<unsigned>(i % 32);
+            }
+        }
+        for (std::int64_t i = 0; i < 8; ++i) {
+            vars.bytes[static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(scriptWorld_.localNumber(id, i));
+        }
+        return vars;
+    };
+    save.areaVars = varsOf(sim_->areaObject);
+    for (std::size_t entityIndex = 0; entityIndex < scene_.entities.size(); ++entityIndex) {
+        const kotor::Entity& entity = scene_.entities[entityIndex];
         if (entity.tag.empty() || entity.partyAvatar) {
             continue;
         }
         kotor::SavedObjectState state;
+        {
+            const kotor::SavedVarTable vars = varsOf(objectForEntity(entityIndex));
+            state.localTable = true;
+            state.localBits = vars.bits;
+            state.localBytes = vars.bytes;
+        }
         switch (entity.kind) {
         case kotor::EntityKind::Creature: state.kind = kotor::SavedObjectState::Kind::Creature; break;
         case kotor::EntityKind::Door: state.kind = kotor::SavedObjectState::Kind::Door; break;

@@ -432,8 +432,35 @@ void sectionLoad(Gate& g, GameSession& game, float& masterFactor)
 
     const kotor::Vec3 at = game.actorPosition(game.scriptWorld().pc);
     audio.setListener(at, 0.0f);
+    // Retail runs the first interval of a continuous one-shot before its first sound (r8 trace: nothing of
+    // ShipAttackSingle / ShipStrain / Alert starts before 8 s), so what plays at once is what loops or has no
+    // interval; the rest waits a rolled Interval +- IntervalVrtn (0066b000).
+    std::vector<double> startDelay(scene.soundEmitters.size(), 0.0);
+    std::size_t globalNow = 0;      // plays at once
+    std::size_t globalSoon = 0;     // may have started within the first second
+    std::size_t sampleNow = 0;
+    std::size_t sampleSoon = 0;
+    for (std::size_t i = 0; i < scene.soundEmitters.size(); ++i) {
+        const kotor::SoundEmitter& e = scene.soundEmitters[i];
+        startDelay[i] = amb.soundObject(i).intervalLeftMs;
+        if (!e.active || e.sounds.empty()) {
+            continue;
+        }
+        const bool now = e.looping || e.interval == 0;
+        const bool soon = !now && startDelay[i] <= 1100.0;
+        if (!e.positional) {
+            globalNow += now ? 1u : 0u;
+            globalSoon += soon ? 1u : 0u;
+        } else if (!e.looping) {
+            sampleNow += now ? 1u : 0u;
+            sampleSoon += soon ? 1u : 0u;
+        }
+    }
+    g.note(concat("load_first_interval global_now=", globalNow, " global_soon=", globalSoon, " sample_now=", sampleNow,
+                  " sample_soon=", sampleSoon));
     const std::size_t after = voicesOn(audio, Bus::Effects);
     std::size_t positionalPlaying = 0;
+    std::size_t samplePlaying = 0;
     std::size_t globalPlaying = 0;
     std::size_t inactivePlaying = 0;
     std::size_t audible = 0;
@@ -449,6 +476,7 @@ void sectionLoad(Gate& g, GameSession& game, float& masterFactor)
         }
         if (e.positional) {
             ++positionalPlaying;
+            samplePlaying += e.looping ? 0u : 1u;
             const float dx = info.lastPosition.x - at.x;
             const float dy = info.lastPosition.y - at.y;
             const float dz = info.lastPosition.z - at.z;
@@ -478,10 +506,12 @@ void sectionLoad(Gate& g, GameSession& game, float& masterFactor)
     g.note(concat("effects_voices_after_listener=", after, " positional_playing=",
                   positionalPlaying, " global_playing=", globalPlaying, " audible=", audible));
     g.check(after > 0, "load_effects_voices_after_listener_gt_0");
-    g.check(globalPlaying == globalActive, "load_every_active_global_emitter_plays");
-    g.check(positionalPlaying == std::min<std::size_t>(positionalActive, AreaAmbience::kMax3dVoices),
+    g.check(globalPlaying >= globalNow && globalPlaying <= globalNow + globalSoon,
+            "load_global_emitters_play_after_their_first_interval");
+    g.check(samplePlaying >= std::min<std::size_t>(sampleNow, AreaAmbience::kMax3dVoices)
+                && samplePlaying <= std::min<std::size_t>(sampleNow + sampleSoon, AreaAmbience::kMax3dVoices),
             "load_positional_voices_capped_at_16");
-    g.check(amb.activeSoundVoices() == positionalPlaying, "load_budget_counter_matches");
+    g.check(amb.activeSoundVoices() == samplePlaying, "load_budget_counter_matches");
     g.check(after == positionalPlaying + globalPlaying, "load_effects_voices_are_the_emitters");
     g.check(inactivePlaying == 0, "load_inactive_emitters_silent");
     g.check(gainsMatch, "load_positional_gain_matches_distance_formula");
@@ -527,7 +557,13 @@ void sectionLoad(Gate& g, GameSession& game, float& masterFactor)
                   " voice=", fx(meter.rms(Bus::Voice), 5), " movie=", fx(meter.rms(Bus::Movie), 5)));
     g.check(meter.pk(Bus::Music) > 0.0f && meter.rms(Bus::Music) > 0.0f, "mix_music_bus_nonzero");
     g.check(meter.pk(Bus::Ambient) > 0.0f && meter.rms(Bus::Ambient) > 0.0f, "mix_ambient_bus_nonzero");
-    g.check(meter.pk(Bus::Effects) > 0.0f && meter.rms(Bus::Effects) > 0.0f, "mix_effects_bus_nonzero");
+    // Retail's first one-shot of the area starts after its first interval (r8 trace: 6.2 s for the first
+    // 2D one-shot), so the first two seconds may carry nothing on Effects; the one-shots do reach the bus
+    // once their intervals have run.
+    Meter later;
+    audioTicks(audio, 3000, &later);
+    g.note(concat("mix30s effects peak=", fx(later.pk(Bus::Effects)), " rms=", fx(later.rms(Bus::Effects), 5)));
+    g.check(later.pk(Bus::Effects) > 0.0f && later.rms(Bus::Effects) > 0.0f, "mix_effects_bus_nonzero_after_the_first_interval");
     g.check(meter.pk(Bus::Voice) == 0.0f && meter.pk(Bus::Movie) == 0.0f, "mix_voice_and_movie_buses_silent");
     g.check(meter.masterRms() > 0.0f, "mix_master_buffer_nonzero");
 }
@@ -997,7 +1033,8 @@ void sectionVariance(Gate& g, GameSession& game, const Pool& pool)
         g.check(voices, "volume_variation_voice_volume_is_drawn_over_127");
         g.check(distinct.size() >= 8 && mean > 85.0 && mean < 99.0, "volume_variation_differs_every_play");
     }
-    // RandomPosition 20 x 10: the play lands in that box around the object.
+    // RandomPosition 20 x 10: retail starts the source at the object's own position (the end_m01aa trace has
+    // every as_ot_shipatk start exactly on its GIT position, template RandomPosition 1).
     {
         kotor::SoundEmitter e = fixtureEmitter(1000, {shortName});
         e.randomPosition = true;
@@ -1008,15 +1045,15 @@ void sectionVariance(Gate& g, GameSession& game, const Pool& pool)
         float minX = 1e9f, maxX = -1e9f, minY = 1e9f, maxY = -1e9f;
         bool inside = !plays.empty();
         for (const PlayRecord& play : plays) {
-            inside = inside && std::fabs(play.position.x) <= 10.0f + 1e-3f && std::fabs(play.position.y) <= 5.0f + 1e-3f;
+            inside = inside && std::fabs(play.position.x) <= 1e-3f && std::fabs(play.position.y) <= 1e-3f;
             minX = std::min(minX, play.position.x);
             maxX = std::max(maxX, play.position.x);
             minY = std::min(minY, play.position.y);
             maxY = std::max(maxY, play.position.y);
         }
         g.note(concat("random_position x=", fx(minX, 2), "..", fx(maxX, 2), " y=", fx(minY, 2), "..", fx(maxY, 2)));
-        g.check(inside && plays.size() >= 60, "random_position_stays_inside_the_range_box");
-        g.check(maxX - minX > 8.0f && maxY - minY > 4.0f, "random_position_moves_every_play");
+        g.check(inside && plays.size() >= 60, "random_position_plays_at_the_object_position");
+        g.check(maxX - minX < 1e-3f && maxY - minY < 1e-3f, "random_position_does_not_move_the_play");
     }
     // The same seed repeats a run exactly; another seed does not.
     {
@@ -1107,9 +1144,16 @@ void sectionBudget(Gate& g, GameSession& game, const Pool& pool)
     AudioSystem& audio = game.audio();
     AreaAmbience& amb = audio.ambience();
     std::vector<kotor::SoundEmitter> list;
+    // One-shot samples that outlast the section take the 16 voices; looping ones are streams and take none.
+    std::size_t longest = 0;
+    for (std::size_t i = 1; i < pool.durations.size(); ++i) {
+        if (pool.durations[i] > pool.durations[longest]) {
+            longest = i;
+        }
+    }
     for (int i = 0; i < 24; ++i) {
-        kotor::SoundEmitter e = fixtureEmitter(2000 + static_cast<std::uint32_t>(i), {pool.names.front()});
-        e.looping = true;
+        kotor::SoundEmitter e = fixtureEmitter(2000 + static_cast<std::uint32_t>(i), {pool.names[longest]});
+        e.looping = false;
         e.position = {3.0f * static_cast<float>(i), 0.0f, 0.0f};
         e.maxDistance = 200.0f;
         list.push_back(e);

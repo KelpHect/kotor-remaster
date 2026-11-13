@@ -119,6 +119,14 @@ public:
     // tightly packed RGBA8 with a top-left origin and opaque alpha.
     bool readFramePixels(bool backBuffer, int width, int height,
                          std::vector<std::uint8_t>& rgbaTopLeft);
+    // IRenderBackend::requestShadowProbe / shadowProbe.
+    void requestShadowProbe() { shadowProbeRequested_ = true; shadowProbeReady_ = false; }
+    bool shadowProbe(std::size_t& covered, std::size_t& total) const
+    {
+        covered = shadowProbeCovered_;
+        total = shadowProbeTotal_;
+        return shadowProbeReady_;
+    }
 
 private:
     struct GlMesh {
@@ -186,6 +194,10 @@ private:
     float fogNear_ = 40.0f;
     float fogFar_ = 160.0f;
     bool loggedFirstFrame_ = false;
+    bool shadowProbeRequested_ = false;
+    bool shadowProbeReady_ = false;
+    std::size_t shadowProbeCovered_ = 0;
+    std::size_t shadowProbeTotal_ = 0;
 
     // Video effect post pass (ACT_508/510): the scene is copied to a texture
     // and redrawn through the effect program, as retail does.

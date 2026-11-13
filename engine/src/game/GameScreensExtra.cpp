@@ -221,6 +221,28 @@ void GameScreens::bindStatusSummary()
         {"LBL_RECEIVED", "LBL_RECEIVED_DESC", s.received, {}},
         {"LBL_LOST", "LBL_LOST_DESC", s.lost, {}},
     };
+    // AddPanel (0040bc70) logs the panel with the file's extent: OnPanelAdded (00625c60) fits it afterwards, so the
+    // trace row of an open shows the shipped one (retail row: 159 74 322 332, modal push).
+    if (const kotor::GuiScreen* shipped = gui_.variant("statussummary", "statussummary"); shipped != nullptr) {
+        box->openExtent = shipped->extent;
+        box->hasOpenExtent = true;
+        // A fresh panel each time: the previous fit does not carry over.
+        box->extent = shipped->extent;
+        for (kotor::GuiControl& control : box->controls) {
+            for (const kotor::GuiControl& original : shipped->controls) {
+                if (original.tag == control.tag) {
+                    control.extent = original.extent;
+                    break;
+                }
+            }
+        }
+    }
+    // 00625c60 (006260d7..00626222): each shown row's text control gets the running width W (starts at 150, 0x96);
+    // when its text is not empty and W is under 440 (0x1b8), W grows by 20 until the text wraps to one line
+    // (the wrapped height equals one font height) and the control takes the new width. W is not reset by the next
+    // row. Paired with the retail rows of tar_m02ac: "Journal Entry Added" fits at 210 (control 8 is 210 wide).
+    int fitWidth = 150;
+    int textLeft = 52;
     int y = 10;
     for (const Row& row : rows) {
         for (kotor::GuiControl& control : box->controls) {
@@ -228,18 +250,44 @@ void GameScreens::bindStatusSummary()
                 control.extent.top = y;
             } else if (row.shown && control.tag == row.text) {
                 control.extent.top = y - 1;
+                std::string text = row.line;
+                if (text.empty() && control.strref != 0xFFFFFFFFu) {
+                    text = tlk(control.strref);
+                }
+                control.extent.width = fitWidth;
+                if (!text.empty() && fitWidth < 440) {
+                    const float oneLine = std::max(1.0f, painter_.measureText(control.font, "Ay", 1000.0f));
+                    do {
+                        const int lines = std::max(1, static_cast<int>(std::lround(
+                            painter_.measureText(control.font, text, static_cast<float>(fitWidth)) / oneLine)));
+                        if (lines <= 1) {
+                            break;
+                        }
+                        fitWidth += 20;
+                        control.extent.width = fitWidth;
+                    } while (fitWidth < 440);
+                }
             }
         }
         if (row.shown) {
             y += 37;
         }
     }
+    for (const kotor::GuiControl& control : box->controls) {
+        if (control.tag == rows[0].text) {
+            textLeft = control.extent.left; // param_1[0x391]: the first text control's left
+        }
+    }
+    const int width = textLeft + 10 + fitWidth;
     const int height = y + 25;
+    box->extent.width = width;
+    box->extent.left = (640 - width) / 2;
     box->extent.height = height;
     box->extent.top = (480 - height) / 2;
     for (kotor::GuiControl& control : box->controls) {
         if (control.tag == "BTN_OK") {
             control.extent.top = y - 7;
+            control.extent.left = (width - control.extent.width) / 2;
         }
     }
     if (!gui_.open("statussummary_fit")) {

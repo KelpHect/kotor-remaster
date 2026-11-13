@@ -74,6 +74,7 @@ bool InputScript::load(const std::string& path, const std::string& outDir)
     };
     std::string line;
     int lineNumber = 0;
+    int groups = 0;
     while (std::getline(in, line)) {
         ++lineNumber;
         if (const std::size_t hash = line.find('#'); hash != std::string::npos) {
@@ -90,6 +91,22 @@ bool InputScript::load(const std::string& path, const std::string& outDir)
         };
         Step step;
         step.atMs = clock;
+        if (op == "if") {
+            if (!(words >> step.onlyIf)) {
+                return bad();
+            }
+            if (step.onlyIf == "gui" || step.onlyIf == "panel" || step.onlyIf == "entry") {
+                std::string argument;
+                if (!(words >> argument)) {
+                    return bad();
+                }
+                step.onlyIf += " " + argument;
+            }
+            if (!(words >> op)) {
+                return bad();
+            }
+            step.group = ++groups;
+        }
         if (op == "section") {
             if (!(words >> section)) {
                 return bad();
@@ -279,6 +296,16 @@ std::vector<std::string> InputScript::advance(std::uint64_t nowMs, SDL_Window* w
                 finished_ = true;
             }
             continue;
+        }
+        if (step.group != 0) {
+            if (step.group != group_) {
+                group_ = step.group;
+                groupRun_ = condition && condition(step.onlyIf);
+            }
+            if (!groupRun_) {
+                ++next_;
+                continue;
+            }
         }
         ++next_;
         SDL_Event event{};

@@ -73,7 +73,10 @@ float toFloat(const std::string& text, float fallback)
 int categoryGroup(const std::string& category)
 {
     if (category == "swing" || category == "parry" || category == "hit") return AudioSystem::kGroupCombat;
-    if (category == "shot") return AudioSystem::kGroupProjectile;
+    // Retail trace (Taris, SC/trace/runs/taris_final3): the blaster shot cb_sh_blast1 starts in group 15 (Combat) and
+    // its impact cb_ht_blastleth1 in group 14 (Projectile).
+    if (category == "shot") return AudioSystem::kGroupCombat;
+    if (category == "shotimpact") return AudioSystem::kGroupProjectile;
     if (category == "saber") return AudioSystem::kGroupSingleGlobal;
     if (category == "hitground") return AudioSystem::kGroupUnmaskable;
     if (category == "spellconjure" || category == "spellimpact" || category == "spellduration"
@@ -461,7 +464,7 @@ int EffectDirector::shotImpact(std::size_t attacker, std::uint32_t attackerObjec
     const std::string ammo = cell2("baseitems", std::to_string(base), "ammunitiontype");
     at.z += 1.0f;
     return emit("shot_impact", cell2("ammunitiontypes", ammo, power ? "impactsound1" : "impactsound0"),
-                "hit", &at, target);
+                "shotimpact", &at, target);
 }
 
 void EffectDirector::attackResolved(std::uint32_t attackerObject, std::uint32_t targetObject,
@@ -529,11 +532,13 @@ void EffectDirector::saberUp(std::uint32_t object)
         return;
     }
     at.z += 1.0f;
-    emit("saber_powerup", cell2("baseitems", std::to_string(base), "powerupsnd"), "saber", &at, entity);
-    // Inferred timing: the hum loops from the power-up until the fight ends.
+    // CSWCItem::PowerItem 00647130 (powering on): the hum source (baseitems poweredsnd, group 21, looped, 3D) is
+    // played first, then the one-shot power-up sound (powerupsnd, group 21). The caller powers a creature's saber
+    // when it enters combat (the server's combat state update reaches PowerItem through 006655e0 / 00610f40).
     const int hum = emit("saber_hum", cell2("baseitems", std::to_string(base), "poweredsnd"), "saber",
                          &at, entity, true);
     saberVoices_[object] = hum > 0 ? hum : -1;
+    emit("saber_powerup", cell2("baseitems", std::to_string(base), "powerupsnd"), "saber", &at, entity);
 }
 
 void EffectDirector::saberDown(std::uint32_t object)
@@ -670,6 +675,11 @@ bool EffectDirector::speak(std::size_t entity, int slot, VoiceKind kind)
     }
     AudioSystem::SoundSetVoice who;
     who.isPlayer = isLeader;
+    if (!isLeader) {
+        const std::uint32_t object = session_.objectForEntityIndex(static_cast<std::uint32_t>(entity));
+        const std::vector<std::uint32_t> party = session_.partyObjects();
+        who.isParty = object != 0 && std::find(party.begin(), party.end(), object) != party.end();
+    }
     who.sizeCategory = e.sizeCategory;
     who.dead = e.dead;
     const bool played = audio->playSoundSetSlot(static_cast<std::uint32_t>(entity), slot, who);
@@ -700,7 +710,11 @@ void EffectDirector::rollingSound(std::size_t entity, const std::string& clipNam
         return;
     }
     const std::string row = std::to_string(e.footstepType);
-    const std::string rolling = cell2("footstepsounds", row, "rolling");
+    auto cached = rollingCell_.find(e.footstepType);
+    if (cached == rollingCell_.end()) {
+        cached = rollingCell_.emplace(e.footstepType, cell2("footstepsounds", row, "rolling")).first;
+    }
+    const std::string& rolling = cached->second;
     if (rolling.empty()) {
         return;
     }
@@ -710,9 +724,11 @@ void EffectDirector::rollingSound(std::size_t entity, const std::string& clipNam
     };
     int kind = -1;
     if (!clip.empty() && !e.dead) {
-        if (named(0) || named(1) || named(91) || named(131)) {
+        // The droid models carry the same moves as cwalk, cwalkinj and crun (animations.2da rows 253 to 255): the
+        // client animation id stays walk, walkinj or run, only the clip played on the model changes.
+        if (named(0) || named(1) || named(91) || named(131) || named(253) || named(254)) {
             kind = 0;
-        } else if (named(2) || named(92)) {
+        } else if (named(2) || named(92) || named(255)) {
             kind = 1;
         }
     }
@@ -740,9 +756,12 @@ void EffectDirector::rollingSound(std::size_t entity, const std::string& clipNam
         : (e.sizeCategory >= 1 && e.sizeCategory <= 3 ? AudioSystem::kGroupSmallFootstep
                                                       : AudioSystem::kGroupLargeFootstep);
     play.position = &e.position;
-    play.zOffset = 1.5f;
+    // 006105b0 builds the source with a 1.5 m offset, but 006107c0 re-poses it with offset 0 before every Play
+    // and on every update (retail trace: z equals the creature's z).
+    play.zOffset = 0.0f;
     play.loop = true;
-    play.stream = true;
+    // A CExoSoundSource (sample), not a streaming source: the retail trace logs it as sample3d.
+    play.stream = false;
     play.pitchVariance = 0.0f;
     play.fixedVariance = rate;
     const int voice = audio->playGroupSound(rolling, play);
@@ -759,7 +778,6 @@ void EffectDirector::animationAdvanced(std::size_t entity, const std::shared_ptr
     if (!model || clip.empty() || entity >= session_.scene().entities.size()) {
         return;
     }
-    rollingSound(entity, clip);
     const std::vector<kotor::MdlAnimEvent> events = model->animationEvents(clip);
     if (events.empty()) {
         return;

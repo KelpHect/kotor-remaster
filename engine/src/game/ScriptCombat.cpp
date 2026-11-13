@@ -482,6 +482,9 @@ struct CombatOps {
                 s.effects_->speak(index, 0, EffectDirector::VoiceKind::BattleCry);
             }
         }
+        if (!combat.inCombat && s.effects_) {
+            s.effects_->saberUp(object);
+        }
         combat.inCombat = true;
         combat.combatTimer = kCombatStateSeconds;
     }
@@ -753,6 +756,7 @@ struct CombatOps {
         }
         combat.pendingAction = kActionAttackObject;
         const std::int32_t number = ++a.sim().combatRoundCounter;
+        s.traceRound(number, self);
         if (isPc(self)) {
             s.combatRound_ = number;
             s.logEvent("round " + std::to_string(number) + ": " + nameOf(target));
@@ -810,6 +814,7 @@ struct CombatOps {
     {
         ScriptApi a = api();
         ActorCombat& combat = a.actor(self).combat;
+        s.traceRound(a.sim().combatRoundCounter, self, true); // 004d4620 EndCombatRound
         combat.roundActive = false;
         combat.lastHostileTarget = combat.attemptedTarget;
         combat.lastAttackAction = combat.pendingAction;
@@ -1477,9 +1482,6 @@ struct CombatOps {
         if (stationaryPass) {
             sim.perceptionTimer = 0.0f;
         }
-        if (a.dialogueActive()) {
-            return;
-        }
         std::vector<std::uint32_t> creatures;
         if (!s.playerDead_) {
             creatures.push_back(a.pc());
@@ -1516,6 +1518,9 @@ struct CombatOps {
             state.perceivePositionKnown = true;
         }
         for (const std::uint32_t observer : creatures) {
+            if (a.inConversation(observer)) {
+                continue; // 004eb6e0 / 0051b050 skip a creature that is in a conversation
+            }
             ActorState& schedule = a.actor(observer);
             schedule.perceptionDue -= dt;
             if (schedule.perceptionStarted && schedule.perceptionDue > 0.0f) {
@@ -2317,16 +2322,19 @@ Cells getIsTalentValid(ActionCall& call)
     return call.engineArg(0) != 0 ? Cells{std::nullopt} : ActionCall::retInt(0);
 }
 
+// ACT_362 / ACT_363 (handler 00544d70): the talent struct's type and id fields. A default talent has type -1
+// (GetIsTalentValid 00539f90 tests it), so a never-assigned talent is not a Force power and the droid and
+// lightsaber checks of k_inc_generic skip their id comparisons.
 Cells getTypeFromTalent(ActionCall& call)
 {
     const TalentData* talent = call.api().sim().engine.get<TalentData>(call.engineArg(0));
-    return talent != nullptr ? ActionCall::retInt(talent->type) : Cells{std::nullopt};
+    return ActionCall::retInt(talent != nullptr ? talent->type : -1);
 }
 
 Cells getIdFromTalent(ActionCall& call)
 {
     const TalentData* talent = call.api().sim().engine.get<TalentData>(call.engineArg(0));
-    return talent != nullptr ? ActionCall::retInt(talent->id) : Cells{std::nullopt};
+    return ActionCall::retInt(talent != nullptr ? talent->id : -1);
 }
 
 // ACT_735 GetCategoryFromTalent: the table's category column.

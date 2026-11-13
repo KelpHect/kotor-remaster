@@ -10,6 +10,8 @@ struct Options {
     BackendKind backend = BackendKind::Auto;
     bool headless = false;
     bool hidden = false;
+    // --no-activate: a shown window that never takes focus (Vulkan presents nothing from a hidden one).
+    bool noActivate = false;
     bool validate = false;
     bool vsync = true;
     int maxFps = -1;          // --max-fps N: -1 takes the engine's default, 0 is no cap
@@ -125,6 +127,7 @@ struct Options {
     bool sizeGiven = false;   // --width or --height was passed: a saved size does not override it
     bool fullscreen = false;  // --fullscreen: borderless at the desktop size
     int frames = 0;          // 0 = unlimited
+    int shadowProbeFrame = 0; // --shadow-probe: count the stencil shadow pixels of this frame
     double seconds = 0.0;    // 0 = unlimited
     std::string title = "KotOR Remaster - Engine Scaffold";
     std::string install;
@@ -148,6 +151,10 @@ struct Options {
     bool walkContinue = false;
     std::string startWp;
     std::string seedFile;
+    // --state-trace: the per-frame state trace compared against the original game's (game/StateTrace.h).
+    std::string stateTrace;
+    int stateTraceSamp = 3;
+    std::string stateTraceLoad; // --state-trace-load: a save folder loaded as the front end's Load Game would
     // Gallery shots: "id[:n]" holds visualeffects.2da row id on the nth creature (default 0).
     std::string spawnVfx;
     bool minigameRenderCheck = false;

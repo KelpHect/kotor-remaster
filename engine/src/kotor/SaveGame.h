@@ -60,6 +60,76 @@ struct SavedResource {
     std::vector<std::uint8_t> data;
 };
 
+// An object's script variables as the saved GIT keeps them (struct "SWVarTable", retail CSWVarTable): "BitArray"
+// is three DWORDs of local booleans (index i is bit i % 32 of word i / 32) and "ByteArray" the eight local numbers.
+// The area's own table sits at the GIT root. A save without the struct (an engine save) leaves `present` false.
+struct SavedVarTable {
+    bool present = false;
+    std::array<std::uint32_t, 3> bits{};
+    std::array<std::uint8_t, 8> bytes{};
+    bool any() const
+    {
+        for (const std::uint32_t word : bits) {
+            if (word != 0) {
+                return true;
+            }
+        }
+        for (const std::uint8_t byte : bytes) {
+            if (byte != 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+};
+
+// One cell of a saved script stack (IFO "EventQueue" > EventData > Stack > Stack): Type is the VM cell type
+// (3 integer, 4 float, 5 string, 6 object, 16 and up engine structures), Value its payload.
+struct SavedStackCell {
+    std::uint8_t type = 0;
+    std::int64_t integer = 0;
+    double real = 0.0;
+    std::string text;
+};
+
+// A delayed script situation still pending at the save (retail event queue entry, DelayCommand and the like).
+// day/time are the world clock (day, milliseconds into the day) at which it is due.
+struct SavedScriptEvent {
+    std::uint32_t day = 0;
+    std::uint32_t time = 0;
+    std::uint32_t objectId = 0;
+    std::uint32_t callerId = 0;
+    std::string script;
+    std::int32_t instruction = 0; // byte offset of the closure body in the script
+    std::int32_t basePointer = 0; // cells
+    std::vector<SavedStackCell> stack;
+};
+// One saved game effect (retail CGameEffect::SaveGameEffect 00503790 / LoadGameEffect 005043a0).
+struct SavedEffect {
+    std::uint64_t id = 0;      // Id (64-bit): not read, Gff exposes no 64-bit value
+    std::int32_t type = 0;     // the internal effect type, not the nwscript EFFECT_TYPE_ constant
+    std::int32_t subType = 0;  // low 3 bits: duration type (1 temporary, 2 permanent, 3 innate); 8 magical flag
+    float duration = 0.0f;
+    bool skipOnLoad = false;
+    std::uint32_t expireDay = 0;
+    std::uint32_t expireTime = 0;
+    std::uint32_t creatorId = 0;
+    std::uint32_t spellId = 0xFFFFFFFFu;
+    bool isExposed = false;
+    std::vector<std::int32_t> ints;
+    std::vector<float> floats;
+    std::vector<std::string> strings;
+    std::vector<std::uint32_t> objects;
+};
+
+// CSWSObject::LoadEffectList 004d1be0: an effect with SkipOnLoad set, or with duration type 3 (innate: the
+// item or feat that gave it applies it again), is dropped; every other one is applied again.
+bool savedEffectApplies(const SavedEffect& effect);
+// CGameEffect::GetEffectTypeScriptConstant 00503a70; -1 for an internal type with no constant.
+std::int32_t savedEffectScriptType(std::int32_t internalType);
+// The EffectList of the GIT struct `structure` (LoadGameEffect field layout).
+std::vector<SavedEffect> readSavedEffects(const Gff& gff, std::uint32_t structure);
+
 struct SavedObjectState {
     enum class Kind { Creature, Door, Placeable, Trigger, Store, Encounter, Waypoint, Sound, Other };
     Kind kind = Kind::Other;
@@ -73,6 +143,22 @@ struct SavedObjectState {
     bool open = false;
     bool locked = false;
     std::vector<std::string> loot;
+    // The object's script variables (retail 004d1cf0 LoadObjectState -> 0059aa80 CSWSScriptVarTable and
+    // 0059b0f0 CSWVarTable): "VarTable" entries by name (type 1 int, 2 float, 3 string) and the SWVarTable
+    // bit words (booleans 0..95) and bytes (numbers 0..7).
+    struct Local {
+        std::string name;
+        std::int32_t type = 0;
+        std::int32_t integer = 0;
+        float number = 0.0f;
+        std::string text;
+    };
+    std::vector<Local> locals;
+    std::array<std::uint32_t, 3> localBits{};
+    std::array<std::uint8_t, 8> localBytes{};
+    bool localTable = false; // the SWVarTable struct was present in the GIT (an engine save without it leaves the table alone)
+    std::vector<SavedEffect> effects; // EffectList (LoadEffectList 004d1be0)
+    std::uint32_t objectId = 0; // the GIT "ObjectId" the saved event queue refers to
 };
 
 // One available NPC: a PARTYTABLE slot (PT_AVAIL_NPCS entry) plus the stored
@@ -90,6 +176,7 @@ struct SavedNpc {
     std::int32_t xp = 0;
     std::int32_t hp = 1;
     std::int32_t maxHp = 1;
+    std::int32_t baseHp = -1;  // the stored HitPoints (retail stats +0xe0); -1 derives it from maxHp
     std::int32_t forcePoints = 0;
     std::int32_t maxForcePoints = 0;
     std::int32_t str = 10;
@@ -165,6 +252,15 @@ struct OriginalSave {
     std::map<std::string, std::int32_t> journal;
     std::vector<SavedGlobal> globals;
     std::vector<SavedObjectState> objects;
+    SavedVarTable areaVars;
+    // World clock at the save (IFO Mod_PauseDay/Mod_PauseTime, milliseconds into the day) and the delayed
+    // script situations pending then, with the object ids they name.
+    std::uint32_t pauseDay = 0;
+    std::uint32_t pauseTime = 0;
+    std::uint32_t areaObjectId = 0;
+    std::uint32_t playerObjectId = 0;
+    std::vector<SavedScriptEvent> events;
+    std::vector<std::uint8_t> gitBytes; // the module GIT as the save holds it (every object whole)
     SavedAreaMap areaMap;
     // Saved GITs are flattened snapshots: the writer removes UseTemplates and
     // readers must not re-template GIT objects.
