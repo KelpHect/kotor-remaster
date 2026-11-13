@@ -1582,8 +1582,7 @@ void GameSession::updatePlayerAvatar(float dt, bool moving)
     kotor::Entity& entity = scene_.entities[playerEntity_];
     entity.position = position_;
     entity.bearing = playerBearing_;
-    // The camera orbits the controlled creature, so the hide-when-too-close test
-    // applies to that creature's body (the PC's avatar, or the companion's).
+    // The camera orbits the controlled creature (the PC's avatar, or the companion's).
     const kotor::Vec3 focus = controlledPosition();
     const std::size_t body = controlledEntity();
     const kotor::Vec3 target{focus.x, focus.y, focus.z + 1.3f};
@@ -1599,7 +1598,10 @@ void GameSession::updatePlayerAvatar(float dt, bool moving)
         eye.x = target.x - back.x * distance;
         eye.y = target.y - back.y * distance;
     }
-    const bool visible = noClip || distance >= 1.6f;
+    // Retail never hides the followed creature for a close camera: 45 recorded loads and runs keep its Gob visible with
+    // the eye as near as 0.72 m (Endar) and 1.39 m (unk_m44aa save), where a 1.6 m rule showed a first-person view.
+    // Only a camera pushed to the clip floor leaves the body out.
+    const bool visible = noClip || distance > 0.5f;
     if (visible != playerVisible_) {
         playerVisible_ = visible;
         for (kotor::EntityMesh& mesh : scene_.entityMeshes) {
@@ -5353,6 +5355,14 @@ bool GameSession::targetVisible(std::size_t index)
 // NOT YET: the mine case (reason 11, bit 0x2000, message 0x15) and the trap-hostile test of vtable +0x138.
 void GameSession::tickEnemySighted(float dt)
 {
+    // The caller (00602eb0 at 00603b61) runs the scan only while the in-game fade panel (client GUI +0x6c) is idle:
+    // 0062ac60 (a fade still inside its duration, 006244b0) and 0062ded0 (the panel's +0x4c above 0.001) both skip it,
+    // and a skipped scan leaves the selection and the sighted flag as they were. This is why retail shows no selected
+    // object for the first moments after a load.
+    // The frame that completes a load is skipped as well: the client's loading flag (+0x288) is still set (00602eb0).
+    if (arrivalPending_ || sim_->fade.active() || sim_->fade.opacity > 0.001f) {
+        return;
+    }
     std::vector<TargetCandidate> angular;
     std::vector<std::size_t> forward;
     bool seen = false;
