@@ -1343,6 +1343,11 @@ private:
     std::int32_t forceJumpBonus_ = 0;
     std::vector<bool> triggerInside_;
     bool saveModuleStartPending_ = false;
+    // After a game is loaded the followers keep their saved places until the leader moves (retail traces of 11 saves
+    // show no follower move in two seconds of game time with an idle leader; PositionParty 00565b00 resets the
+    // follow data, so there is no trail to follow yet).
+    bool followHold_ = false;
+    kotor::Vec3 followHoldAnchor_{};
     std::vector<std::string> combatLog_;
     bool playerDead_ = false;
     int autoPauseRequest_ = 0;
