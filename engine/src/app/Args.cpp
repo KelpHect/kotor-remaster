@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <sstream>
 #include <string_view>
 
 namespace ke {
@@ -366,6 +367,29 @@ ParseResult parseArguments(int argc, char** argv)
         }
         if (arg == "--chargen") {
             result.options.chargen = true;
+            continue;
+        }
+        if (arg == "--chargen-portrait-seed") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--chargen-portrait-seed requires a number");
+            }
+            result.options.chargenPortraitSeed = static_cast<std::uint32_t>(std::strtoul(value, nullptr, 10));
+            continue;
+        }
+        if (arg == "--chargen-portrait-rows") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--chargen-portrait-rows requires six comma separated rows");
+            }
+            result.options.chargenPortraitRows.clear();
+            std::istringstream rows{std::string(value)};
+            for (std::string item; std::getline(rows, item, ',');) {
+                result.options.chargenPortraitRows.push_back(static_cast<std::int32_t>(std::strtol(item.c_str(), nullptr, 10)));
+            }
+            if (result.options.chargenPortraitRows.size() != 6) {
+                return fail(std::move(result), "--chargen-portrait-rows requires six comma separated rows");
+            }
             continue;
         }
         if (arg == "--chargen-gui") {

@@ -44,6 +44,14 @@ public:
     static std::int32_t slotGender(int slot);
     bool selectSlot(int slot);
     int slot() const { return slot_; }
+    // The portrait row (portraits.2da) each classsel slot wears. Retail 006dc3c0 draws one at random per
+    // slot, without repeats inside a gender, from the rows with ForPC == 1 and the slot's Sex; the portcust
+    // panel then opens on that slot's portrait (006f90f0 marks the row equal to the creature's portrait id).
+    // A fresh Chargen takes the first row of each gender; shuffleSlotPortraits is the retail draw.
+    std::int32_t slotPortraitRow(int slot) const;
+    // `seed` feeds the draw (retail seeds the CRT rand from GetTickCount, 005f8d68); 0 keeps the first rows.
+    // `forced`, when it holds six rows, replaces the draw outright (the --chargen-portrait-rows option).
+    void shuffleSlotPortraits(std::uint32_t seed, const std::vector<std::int32_t>& forced = {});
     std::int32_t gender() const { return gender_; }
     // Switching gender restarts the portrait list at its first entry.
     bool setGender(std::int32_t gender);
@@ -87,6 +95,7 @@ private:
     static std::int32_t attributeCost(std::int32_t score);
     void refreshDerived(bool resetSelections);
     void refreshPortraits();
+    std::int32_t portraitIndexOfRow(std::int32_t row) const;
     void applyAttributes(CharacterSheet& sheet) const;
 
     const Rules& rules_;
@@ -100,6 +109,7 @@ private:
     std::int32_t portraitIndex_ = 0;
     std::int32_t gender_ = 0;
     int slot_ = 2;
+    std::array<std::int32_t, kSlotCount> slotPortrait_{{-1, -1, -1, -1, -1, -1}};
     std::vector<std::int32_t> portraitRows_;
     std::string name_ = "Player";
     CharacterSheet base_;

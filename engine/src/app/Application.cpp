@@ -61,6 +61,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <random>
 #include <set>
 #include <sstream>
 #include <string>
@@ -1500,6 +1501,17 @@ bool isPreviewTag(const std::string& tag)
     return tag == "LBL_HEAD" || tag == "LBL_3D" || tag == "LBL_3DCHAR" || tag == "MODEL_LBL" || tag == "3D_PlanetDisplay"
         || tag == "3D_PlanetModel"
         || (tag.size() == 9 && tag.rfind("3D_MODEL", 0) == 0 && tag[8] >= '1' && tag[8] <= '6');
+}
+
+// classsel's six portraits for a real New Game: retail 006dc3c0 draws them with the CRT rand, which the client
+// seeds from GetTickCount (005f8d68). The options repeat or name a draw (see Options::chargenPortraitSeed).
+void shuffleChargenPortraits(Chargen& chargen, const Options& options)
+{
+    std::uint32_t seed = options.chargenPortraitSeed;
+    if (seed == 0) {
+        seed = std::random_device{}() | 1u;
+    }
+    chargen.shuffleSlotPortraits(seed, options.chargenPortraitRows);
 }
 
 SDL_WindowFlags windowFlagsFor(BackendKind kind, const Options& options)
@@ -4903,7 +4915,7 @@ int runChargenTest(GameSession& game)
         // camerahook; the retail sheet frames at alignment 10, 50 and 90 (cs_al10, cs_before, cs_al90) keep one framing.
         ChargenPreview preview(game.install(), game.rules());
         check(chargenBodyVariant() == kotor::BodyVariant{2, 1}, "chargen_body_clothes");
-        preview.showClassSelection(game.rules());
+        preview.showClassSelection(game.rules(), chargen);
         check(preview.bodyVariant() == chargenBodyVariant() && preview.entityForTag("3D_MODEL1") >= 0, "classsel_dressed");
         const std::int32_t headAppearance = preview.appearanceForTag("3D_MODEL3");
         preview.showHead(headAppearance, 0);
@@ -10800,6 +10812,7 @@ int runApplication(const Options& options)
             const std::string screen = options.chargenGui ? "classsel" : options.guiScreen;
             if (options.chargenGui) {
                 chargenGui = std::make_unique<ChargenGuiState>(game->rules());
+                shuffleChargenPortraits(chargenGui->chargen, options);
             }
             if (!guiRequested) {
                 // nothing to open yet
@@ -12596,7 +12609,7 @@ int runApplication(const Options& options)
             if (chargenStage && chargenGui && chargenGui->active && visuals.preview != nullptr) {
                 const Chargen& chargenState = chargenGui->chargen;
                 if (chargenGui->step == 0) {
-                    visuals.preview->showClassSelection(game->rules());
+                    visuals.preview->showClassSelection(game->rules(), chargenState);
                 } else if (chargenGui->step == 1) {
                     visuals.preview->showHead(chargenState.appearanceId(), chargenState.gender());
                 } else if (chargenGui->step == kChargenHub) {
@@ -12688,6 +12701,7 @@ int runApplication(const Options& options)
                 state.requestChargen = false;
                 if (state.guiSystem && !(chargenGui && chargenGui->active)) {
                     chargenGui = std::make_unique<ChargenGuiState>(game->rules());
+                    shuffleChargenPortraits(chargenGui->chargen, options);
                     newGameFlow = true;
                     setUpChargenStage();
                     state.guiSystem->open("classsel");

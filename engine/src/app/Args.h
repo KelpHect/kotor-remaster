@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
+#include <vector>
 
 namespace ke {
 
@@ -61,6 +63,11 @@ struct Options {
     bool bugParityTest = false;
     bool chargen = false;
     bool chargenGui = false;
+    // classsel's six portraits (retail 006dc3c0 draws them at random; 005f8d68 seeds from GetTickCount):
+    // --chargen-portrait-seed N repeats a draw, --chargen-portrait-rows r1,..,r6 names the portraits.rows
+    // rows of BTN_SEL1..6. Neither: a fresh random draw each New Game.
+    std::uint32_t chargenPortraitSeed = 0;
+    std::vector<std::int32_t> chargenPortraitRows;
     bool debugUi = false;        // developer panels over the shipped HUD
     bool frontEndTest = false;   // --front-end-test: menu/options/load/movies by real events
     std::string frontEndOut;     // directory for the gate's frames
