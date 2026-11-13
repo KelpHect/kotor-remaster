@@ -22,6 +22,10 @@
 //                       time waited. Conditions (Application decides them): nogui | gui <screen> |
 //                       panel <screen> | nopanel | dialogue | nodialogue | entry <n> | replies | status |
 //                       nostatus
+//   goto|use|talk|dialogue|autodialogue|fight|module|expect|idle|partyselect|note|list|loot|equip|leader|unlock ...
+//                       walk steps (app/WalkTools.h): the script plays the game through the player's own paths and
+//                       holds every later step until the step reports done; a failed step ends the script. The
+//                       grammar is in engine/tests/walk/STEPS.md.
 //   end                 quit after this point
 
 #include <SDL3/SDL.h>
@@ -38,7 +42,7 @@ class InputScript {
 public:
     struct Step {
         std::uint64_t atMs = 0;
-        enum class Kind { Move, Down, Up, KeyDown, KeyUp, Shot, Script, Camera, WaitFor, End } kind = Kind::Move;
+        enum class Kind { Move, Down, Up, KeyDown, KeyUp, Shot, Script, Camera, WaitFor, Walk, End } kind = Kind::Move;
         float x = 0.0f;
         float y = 0.0f;
         int button = SDL_BUTTON_LEFT;
@@ -49,6 +53,9 @@ public:
     };
     // WaitFor: true once the game is in the named state (the step's name, e.g. "entry 4").
     using Condition = std::function<bool(const std::string&)>;
+    // Walk: called every frame the step is pending, with the step's whole line and whether this is the first
+    // call. Returns 0 while pending, 1 when done, -1 when it failed.
+    using WalkHook = std::function<int(const std::string&, bool)>;
     struct Camera {
         bool on = false;
         float eye[3]{};
@@ -65,7 +72,14 @@ public:
     // Pushes every input step due by nowMs (script clock) and returns the frames to shoot after this
     // frame is drawn, as full paths. finished() turns true once the end step is reached.
     // A WaitFor step holds every later step until `condition` says yes or its timeout passes.
-    std::vector<std::string> advance(std::uint64_t nowMs, SDL_Window* window, const Condition& condition = {});
+    std::vector<std::string> advance(std::uint64_t nowMs, SDL_Window* window, const Condition& condition = {},
+                                     const WalkHook& walk = {});
+    // True when the file has walk steps (the application turns the walk reporting on).
+    bool hasWalkSteps() const;
+    // A failed walk step ends the script unless this is off.
+    void setAbortOnFail(bool abort) { abortOnFail_ = abort; }
+    // Ends the script now (the walk gave up).
+    void abort() { finished_ = true; }
     // The last WaitFor that ended: its condition, the time waited and whether it timed out.
     struct WaitResult {
         std::string condition;
@@ -99,6 +113,7 @@ private:
     Camera camera_;
     std::uint64_t offsetMs_ = 0;   // added to every step's time: the time spent in WaitFor steps
     bool waiting_ = false;
+    bool abortOnFail_ = true;
     std::uint64_t waitStartMs_ = 0;
     WaitResult waitResult_;
 };

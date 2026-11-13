@@ -1,0 +1,42 @@
+# The whole opening, played as a player would: new game -> Endar Spire (end_m01aa, end_m01ab) -> escape pod ->
+# Taris apartment (tar_m02af) -> South Apartments (tar_m02aa) -> Upper City South (tar_m02ac) -> Upper City North.
+# Not a registered test until it passes end to end; opening.walk is the part that passes today.
+# Run:  kotor_engine --new-game --null --headless --fixed-dt 0.0166667 --walk-godmode --walk-continue \
+#         --input-script opening_full.walk   (--walk-continue lists every stop instead of ending at the first)
+autodialogue first
+expect module end_m01aa
+idle 25
+goto end_locker01
+use end_locker01
+loot
+equip all
+idle 10
+# Trask's talk after the equipment ends in the party-selection screen.
+partyselect timeout=60
+goto end_door01
+use end_door01
+module end_m01ab timeout=60
+# Stop 2: end_m01ab, the walk to end_door05 ends short of end_door01 (reach check on a closed door).
+goto end_door01
+use end_door01
+goto end_door05 timeout=90
+fight range=30 timeout=150
+unlock end_door05
+goto end_pod timeout=90
+fight range=30 timeout=150
+talk end_pod
+dialogue first
+module STUNT_00 timeout=60
+module tar_m02af timeout=120
+dialogue first
+expect party >= 2
+goto tar02_aptdoor timeout=60
+use tar02_aptdoor
+module tar_m02aa timeout=60
+goto ptar_stnddr timeout=120
+use ptar_stnddr
+module tar_m02ac timeout=60
+goto UpperNorth timeout=120
+use UpperNorth
+module tar_m02ab timeout=60
+end

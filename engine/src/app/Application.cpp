@@ -2,6 +2,7 @@
 #include "app/FramePacer.h"
 #include "app/InputScript.h"
 #include "app/Soak.h"
+#include "app/WalkTools.h"
 
 #include "audio/Output.h"
 #include "audio/Reverb.h"
@@ -33,6 +34,7 @@
 #include "kotor/BinkDecoder.h"
 #include "kotor/Formats.h"
 #include "kotor/GffWrite.h"
+#include "kotor/ResourceMisses.h"
 #include "kotor/Gui.h"
 #include "kotor/SaveGame.h"
 #include "render/Backend.h"
@@ -10043,6 +10045,9 @@ int runApplication(const Options& options)
     std::unique_ptr<audio::Output> audioOutput;
     // --start-minigame needs no --module: swoop is the first race the story reaches.
     std::string startModule = options.module;
+    if (startModule.empty() && options.newGame) {
+        startModule = "end_m01aa"; // the first module of a new game (walk tooling)
+    }
     if (startModule.empty() && options.startMinigame == "swoop") {
         startModule = "tar_m03mg";
     } else if (startModule.empty() && options.startMinigame == "turret") {
@@ -10086,6 +10091,15 @@ int runApplication(const Options& options)
                     options.playerName);
                 game->setThirdPerson(true);
                 game->setCameraNoClip(options.cameraNoClip);
+            }
+            if (options.newGame) {
+                walkStartNewGame(*game);
+            }
+            if (!options.seedFile.empty()) {
+                walkApplySeedFile(*game, options.seedFile);
+            }
+            if (!options.startWp.empty()) {
+                walkStartAtWaypoint(*game, options.startWp);
             }
             if (options.noMovies) {
                 game->stopMovie();
@@ -11203,12 +11217,20 @@ int runApplication(const Options& options)
     InputScript inputScript;
     std::vector<std::string> inputScriptShots;
     std::uint64_t inputScriptStart = 0;
+    // Walk steps (app/WalkTools.h): the script plays the game and the run reports each step.
+    WalkDriver walkDriver(options.walkGodmode, options.fixedDt);
+    bool walkActive = false;
     if (!options.inputScript.empty()) {
         if (!inputScript.load(options.inputScript, options.inputScriptOut)) {
             logError(concat("input script: ", inputScript.error()));
             running = false;
         } else {
             logInfo(concat("input script: ", inputScript.steps().size(), " steps from ", options.inputScript));
+            walkActive = inputScript.hasWalkSteps();
+            inputScript.setAbortOnFail(!options.walkContinue);
+            if (walkActive) {
+                kotor::setResourceMissRecording(true);
+            }
         }
     }
     while (running) {
@@ -11282,7 +11304,13 @@ int runApplication(const Options& options)
                 }
                 return false;
             };
-            inputScriptShots = inputScript.advance(SDL_GetTicks() - inputScriptStart, state.window, walkCondition);
+            if (walkActive && game) {
+                walkDriver.tick(*game);
+            }
+            const InputScript::WalkHook walkHook = [&](const std::string& line, bool first) -> int {
+                return game ? walkDriver.step(*game, line, first) : -1;
+            };
+            inputScriptShots = inputScript.advance(SDL_GetTicks() - inputScriptStart, state.window, walkCondition, walkHook);
             if (const InputScript::WaitResult waited = inputScript.takeWaitResult(); waited.fresh) {
                 logInfo(concat("input script: waitfor ", waited.condition, waited.timedOut ? " TIMED OUT after " : " met after ",
                                waited.waitedMs, " ms"));
@@ -12875,6 +12903,12 @@ int runApplication(const Options& options)
 
     logInfo(concat("Exit: ", exitReason));
     logInfo(concat("Frames: ", frames, " in ", totalSeconds, " s (avg ", averageMs, " ms/frame)"));
+    if (walkActive) {
+        const int walkExit = walkDriver.finish(game ? &*game : nullptr, inputScript.finished(), exitReason);
+        if (walkExit != 0 && gateExit == 0) {
+            gateExit = walkExit;
+        }
+    }
     if (paceWaits > 0) {
         logInfo(concat("Frame pacing: ", paceWaits, " waits, late by ",
                        static_cast<double>(paceLateTotal) / static_cast<double>(paceWaits) / 1000.0,

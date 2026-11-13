@@ -92,6 +92,7 @@ add_library(kotor_data STATIC
     src/kotor/Geometry.cpp
     src/kotor/Gui.cpp
     src/kotor/Install.cpp
+    src/kotor/ResourceMisses.cpp
     src/kotor/Localization.cpp
     src/kotor/Media.cpp
     src/kotor/Profile.cpp
@@ -144,6 +145,7 @@ add_executable(kotor_engine
     src/app/Args.cpp
     src/app/InputScript.cpp
     src/app/Soak.cpp
+    src/app/WalkTools.cpp
     src/core/Log.cpp
     src/game/Ambience.cpp
     src/game/AmbienceFamily.cpp
@@ -152,6 +154,7 @@ add_executable(kotor_engine
     src/game/AnimationFamily.cpp
     src/game/AudioSystem.cpp
     src/game/Chargen.cpp
+    src/game/WalkSupport.cpp
     src/game/ChargenGui.cpp
     src/game/ChargenPreview.cpp
     src/game/FacialRig.cpp
@@ -292,6 +295,18 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                  COMMAND kotor_engine --module tar_m02af --door-test --null --headless)
         add_test(NAME kotor_walk_collision
                  COMMAND kotor_engine --module end_m01aa --walk-test --null --headless)
+        # Walk tooling (app/WalkTools.h, tests/walk/STEPS.md): a script plays the opening through the player's own
+        # paths. The script holds the part of the route that passes today; it only grows. The full route to the
+        # next stop is tests/walk/opening_full.walk (not a test until it passes).
+        add_test(NAME kotor_walk_opening
+                 COMMAND kotor_engine --new-game --input-script "${CMAKE_CURRENT_SOURCE_DIR}/tests/walk/opening.walk"
+                         --null --headless --fixed-dt 0.0166667 --no-audio --no-movies
+                         --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_walk_opening/saves"
+                         --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_walk_opening/settings.ini")
+        set_tests_properties(kotor_walk_opening PROPERTIES
+            ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}"
+            PASS_REGULAR_EXPRESSION "WALK RESULT PASS"
+            TIMEOUT 300)
         add_test(NAME kotor_dialogue
                  COMMAND kotor_engine --module end_m01aa --dialogue-test --null --headless)
         add_test(NAME kotor_family_pathfinding

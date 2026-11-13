@@ -1,4 +1,5 @@
 #include "kotor/Formats.h"
+#include "kotor/ResourceMisses.h"
 
 #include <algorithm>
 #include <cctype>
@@ -332,6 +333,18 @@ std::optional<std::vector<std::uint8_t>> Install::find(const std::string& resref
                                                        std::string* source)
 {
     const std::string wanted = normalizeResref(resref);
+    // Walk tooling: a lookup that finds nothing is counted (only while recording is on).
+    struct MissGuard {
+        std::uint32_t type;
+        const std::string& resref;
+        bool hit = false;
+        ~MissGuard()
+        {
+            if (!hit) {
+                recordResourceMiss(type, resref);
+            }
+        }
+    } missGuard{type, resref};
     // Pass 1: flat loose directories (overlay entries are indexed last and
     // searched first).
     if (const auto it = loose_.find(lower(wanted)); it != loose_.end()) {
@@ -355,6 +368,7 @@ std::optional<std::vector<std::uint8_t>> Install::find(const std::string& resref
             if (source != nullptr) {
                 *source = file->path.string() + " (loose)";
             }
+            missGuard.hit = true;
             return bytes;
         }
     }
@@ -365,6 +379,7 @@ std::optional<std::vector<std::uint8_t>> Install::find(const std::string& resref
             if (source != nullptr) {
                 *source = layer.name;
             }
+            missGuard.hit = true;
             return layer.archive.read(*entry);
         }
     }
@@ -384,6 +399,7 @@ std::optional<std::vector<std::uint8_t>> Install::find(const std::string& resref
         if (source != nullptr) {
             *source = key_.bifs()[entry->bifIndex].name + " (KEY)";
         }
+        missGuard.hit = true;
         return file.read(*record);
     }
     return std::nullopt;
@@ -392,18 +408,27 @@ std::optional<std::vector<std::uint8_t>> Install::find(const std::string& resref
 std::optional<std::vector<std::uint8_t>> Install::findTexture(const std::string& resref, std::uint32_t* type,
                                                               std::string* source)
 {
-    if (auto data = find(resref, resType(ResType::Tpc), source); data.has_value()) {
-        if (type != nullptr) {
-            *type = resType(ResType::Tpc);
+    // The two probes are one question: a texture is missing only when neither form exists.
+    struct Probe {
+        Probe() { setTextureProbe(true); }
+        ~Probe() { setTextureProbe(false); }
+    };
+    {
+        Probe probe;
+        if (auto data = find(resref, resType(ResType::Tpc), source); data.has_value()) {
+            if (type != nullptr) {
+                *type = resType(ResType::Tpc);
+            }
+            return data;
         }
-        return data;
-    }
-    if (auto data = find(resref, resType(ResType::Tga), source); data.has_value()) {
-        if (type != nullptr) {
-            *type = resType(ResType::Tga);
+        if (auto data = find(resref, resType(ResType::Tga), source); data.has_value()) {
+            if (type != nullptr) {
+                *type = resType(ResType::Tga);
+            }
+            return data;
         }
-        return data;
     }
+    recordTextureMiss(resref);
     return std::nullopt;
 }
 

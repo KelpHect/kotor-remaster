@@ -1,0 +1,12 @@
+# kotor_walk_opening: the part of the opening route that plays through today.
+# New game -> Endar Spire opening conversation -> locker -> loot -> equip.
+# Grow it as each stop in the route is fixed (see opening_full.walk).
+autodialogue first
+expect module end_m01aa
+idle 25
+goto end_locker01
+use end_locker01
+loot
+equip all
+idle 10
+end

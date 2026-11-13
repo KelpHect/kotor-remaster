@@ -19,7 +19,24 @@ std::string pad(std::size_t value, int width)
     return text;
 }
 
+bool isWalkVerb(const std::string& op)
+{
+    static const char* const verbs[] = {"goto", "use", "talk", "dialogue", "autodialogue", "fight", "module",
+                                        "expect", "idle", "partyselect", "note", "list", "loot", "equip", "leader", "unlock"};
+    for (const char* verb : verbs) {
+        if (op == verb) {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
+
+bool InputScript::hasWalkSteps() const
+{
+    return std::any_of(steps_.begin(), steps_.end(), [](const Step& step) { return step.kind == Step::Kind::Walk; });
+}
 
 bool InputScript::load(const std::string& path, const std::string& outDir)
 {
@@ -190,6 +207,18 @@ bool InputScript::load(const std::string& path, const std::string& outDir)
             clock = step.atMs;
             step.kind = Step::Kind::WaitFor;
             steps_.push_back(step);
+        } else if (isWalkVerb(op)) {
+            // The whole line (comment removed) goes to the walk driver; like waitfor, the step comes after
+            // everything already due, and the script holds until it reports done.
+            const std::size_t first = line.find_first_not_of(" \t\r");
+            const std::size_t last = line.find_last_not_of(" \t\r");
+            step.name = line.substr(first, last - first + 1);
+            for (const Step& earlier : steps_) {
+                step.atMs = std::max(step.atMs, earlier.atMs);
+            }
+            clock = step.atMs;
+            step.kind = Step::Kind::Walk;
+            steps_.push_back(step);
         } else if (op == "end") {
             step.kind = Step::Kind::End;
             steps_.push_back(step);
@@ -209,7 +238,8 @@ bool InputScript::load(const std::string& path, const std::string& outDir)
     return true;
 }
 
-std::vector<std::string> InputScript::advance(std::uint64_t nowMs, SDL_Window* window, const Condition& condition)
+std::vector<std::string> InputScript::advance(std::uint64_t nowMs, SDL_Window* window, const Condition& condition,
+                                              const WalkHook& walk)
 {
     std::vector<std::string> shots;
     const SDL_WindowID windowId = window != nullptr ? SDL_GetWindowID(window) : 0;
@@ -230,6 +260,24 @@ std::vector<std::string> InputScript::advance(std::uint64_t nowMs, SDL_Window* w
             // Later steps keep their spacing from this point.
             offsetMs_ = nowMs - step.atMs;
             ++next_;
+            continue;
+        }
+        if (step.kind == Step::Kind::Walk) {
+            const bool first = !waiting_;
+            if (first) {
+                waiting_ = true;
+                waitStartMs_ = nowMs;
+            }
+            const int result = walk ? walk(step.name, first) : -1;
+            if (result == 0) {
+                return shots; // asked again next frame
+            }
+            waiting_ = false;
+            offsetMs_ = nowMs - step.atMs;
+            ++next_;
+            if (result < 0 && abortOnFail_) {
+                finished_ = true;
+            }
             continue;
         }
         ++next_;
@@ -288,6 +336,7 @@ std::vector<std::string> InputScript::advance(std::uint64_t nowMs, SDL_Window* w
             camera_.fovy = step.camera[9];
             break;
         case Step::Kind::WaitFor:
+        case Step::Kind::Walk:
             break;
         case Step::Kind::End:
             finished_ = true;

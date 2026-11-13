@@ -140,6 +140,14 @@ struct Options {
     // --input-script: a timed walk (app/InputScript.h) and the folder its frames go to.
     std::string inputScript;
     std::string inputScriptOut;
+    // Walk tooling (app/WalkTools.h). --new-game: the default character into end_m01aa through the front end's New
+    // Game entry; --walk-godmode / --walk-continue: see the usage text; --start-wp / --seed-file: start-state
+    // helpers for per-module probing only.
+    bool newGame = false;
+    bool walkGodmode = false;
+    bool walkContinue = false;
+    std::string startWp;
+    std::string seedFile;
     // Gallery shots: "id[:n]" holds visualeffects.2da row id on the nth creature (default 0).
     std::string spawnVfx;
     bool minigameRenderCheck = false;

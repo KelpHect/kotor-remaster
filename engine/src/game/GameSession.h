@@ -1008,6 +1008,14 @@ public:
     // Opens a door as a player's click does. False when it is locked.
     bool openDoorAsPlayer(std::size_t entityIndex);
 
+    // Walk tooling (app/WalkTools.cpp, game/WalkSupport.cpp). Reads of state a walk step reports; none of it
+    // changes play. walkPlaceLeader is for per-module probing only (--start-wp), never the continuous run.
+    std::string dialogueResref() const { return activeDialogue_ ? activeDialogue_->resref : std::string{}; }
+    bool usePending() const { return pendingUse_ != UINT32_MAX; }
+    // What the last default action on an object did (a UseOutcome), -1 when none ran since the last call.
+    int takeLastUseOutcome() { const int outcome = lastUseOutcome_; lastUseOutcome_ = -1; return outcome; }
+    bool walkPlaceLeader(kotor::Vec3 at, float yaw);
+
     // Deterministic helpers used by the scripted playthrough gate.
     bool walkTo(kotor::Vec3 target, float maxSeconds);
     std::size_t findEntity(const std::string& tag) const;
@@ -1321,6 +1329,7 @@ private:
     void tickEnemySighted(float dt);
     std::uint32_t clickedEntity_ = UINT32_MAX; // the object a world click selected
     std::uint32_t pendingUse_ = UINT32_MAX;    // the object a default action walks to
+    int lastUseOutcome_ = -1;                  // what finishUse's last use of an object did (UseOutcome), for walk reports
     void tickPendingUse();
     bool finishUse(std::size_t index);
     // Retail 004f2c30 (CSWSCreature::ValidNearestObjectType): the objects the client's selection scan

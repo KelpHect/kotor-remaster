@@ -3599,6 +3599,7 @@ bool GameSession::finishUse(std::size_t index)
         return startDialogue(index);
     }
     const UseOutcome outcome = useObject(index);
+    lastUseOutcome_ = static_cast<int>(outcome);
     return outcome != UseOutcome::OutOfRange && outcome != UseOutcome::Invalid && outcome != UseOutcome::Refused;
 }
 

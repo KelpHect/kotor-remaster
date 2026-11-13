@@ -775,6 +775,27 @@ ParseResult parseArguments(int argc, char** argv)
             (script ? result.options.inputScript : result.options.inputScriptOut) = value;
             continue;
         }
+        if (arg == "--new-game") {
+            result.options.newGame = true;
+            continue;
+        }
+        if (arg == "--walk-godmode") {
+            result.options.walkGodmode = true;
+            continue;
+        }
+        if (arg == "--walk-continue") {
+            result.options.walkContinue = true;
+            continue;
+        }
+        if (arg == "--start-wp" || arg == "--seed-file") {
+            const bool waypoint = arg == "--start-wp";
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), waypoint ? "--start-wp requires a waypoint tag" : "--seed-file requires a file");
+            }
+            (waypoint ? result.options.startWp : result.options.seedFile) = value;
+            continue;
+        }
         if (arg == "--capture-action") {
             const char* value = requireValue();
             if (value == nullptr || *value == '\0') {
@@ -931,6 +952,11 @@ void printUsage()
         << "  --hidden              Create the window hidden\n"
         << "  --input-script <f>    Play a timed walk of mouse, key and shot steps (app/InputScript.h)\n"
         << "  --input-script-out <d>  Folder for the walk's frames\n"
+        << "  --new-game            Start a new game (default character, end_m01aa) instead of a bare module\n"
+        << "  --walk-godmode        Walk steps only: keep the party from dying (route discovery)\n"
+        << "  --walk-continue       Walk steps only: keep going after a failed step\n"
+        << "  --start-wp <tag>      Per-module probing: stand the leader on this waypoint after the load\n"
+        << "  --seed-file <f>       Per-module probing: globals, journal, party, gold, xp from a file\n"
         << "  --headless            Force the SDL dummy video driver\n"
         << "  --frames <n>          Exit after n frames\n"
         << "  --seconds <s>         Exit after s seconds\n"
