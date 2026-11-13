@@ -9,6 +9,7 @@
 #include "game/GameSession.h"
 #include "game/GuiPaint.h"
 #include "game/GuiSystem.h"
+#include "game/UserSettings.h"
 
 #include <filesystem>
 #include <map>
@@ -35,22 +36,6 @@ struct OptionHelpRow {
     const char* screen;
     const char* tag;
     std::uint32_t strref;
-};
-
-// User options (swkotor.ini in retail). Keys are the engine's own names.
-class UserSettings {
-public:
-    UserSettings();
-    float get(const std::string& key) const;
-    void set(const std::string& key, float value);
-    void resetGroup(const std::string& group);
-    bool load(const std::filesystem::path& path);
-    bool save(const std::filesystem::path& path) const;
-    std::set<std::string> seenMovies;
-    bool dirty = false;
-
-private:
-    std::map<std::string, float> values_;
 };
 
 struct FrontEndOutcome {

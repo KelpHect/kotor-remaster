@@ -138,6 +138,7 @@ struct Options {
     double seconds = 0.0;    // 0 = unlimited
     std::string title = "KotOR Remaster - Engine Scaffold";
     std::string install;
+    std::string uiFont; // --ui-font: native TrueType/OpenType font for interface text (launcher remaster option)
     std::string module;
     std::string screenshot;
     // Gallery shots: entry | creature[:n] | placeable[:n] | door[:n] | x,y,z,lx,ly,lz[,fov].

@@ -10107,6 +10107,12 @@ int runApplication(const Options& options)
     if (options.selfTest) {
         return runImGuiSelfTest();
     }
+    if (!options.uiFont.empty()) {
+        // The launcher's native-font option. Interface text is still drawn with the original bitmap font; the
+        // native glyph path is not wired into GuiPainter yet, so say so rather than pretend.
+        logWarn(concat("--ui-font ", options.uiFont, ": native interface font rendering is not implemented yet; "
+                       "using the classic font"));
+    }
 
     std::optional<GameSession> game;
     std::unique_ptr<StateTrace> stateTrace; // --state-trace; declared after `game` so it detaches first

@@ -111,7 +111,8 @@ add_library(kotor_data STATIC
     src/kotor/Material.cpp
     src/kotor/Particles.cpp
     src/kotor/Tlk.cpp
-    src/kotor/TwoDa.cpp)
+    src/kotor/TwoDa.cpp
+    src/game/UserSettings.cpp)
 target_include_directories(kotor_data PUBLIC src)
 target_precompile_headers(kotor_data PRIVATE ${KOTOR_PCH_STD} "${CMAKE_CURRENT_SOURCE_DIR}/src/kotor/Formats.h")
 target_link_libraries(kotor_data PUBLIC kotor_engine_options)
@@ -271,10 +272,52 @@ add_custom_command(TARGET kotor_engine POST_BUILD
     COMMENT "Copying scene shaders")
 
 # ---------------------------------------------------------------------------
+# Launcher: install detection and validation (no SDL), options model, and the ImGui window.
+# Reads the user's install, never writes to it (ADR 0003).
+# ---------------------------------------------------------------------------
+add_library(kotor_launcher_core STATIC
+    src/launcher/InstallDetect.cpp
+    src/launcher/LauncherConfig.cpp)
+target_include_directories(kotor_launcher_core PUBLIC src)
+target_link_libraries(kotor_launcher_core PUBLIC kotor_engine_options kotor_data)
+if(WIN32)
+    target_link_libraries(kotor_launcher_core PUBLIC advapi32)
+endif()
+
+add_executable(kotor_launcher src/launcher/main.cpp)
+target_include_directories(kotor_launcher PRIVATE src)
+target_link_libraries(kotor_launcher PRIVATE kotor_engine_options kotor_launcher_core kotor_imgui SDL3::SDL3-static)
+if(WIN32)
+    target_link_libraries(kotor_launcher PRIVATE opengl32)
+endif()
+
+# ---------------------------------------------------------------------------
 # Tests (headless; no GPU required)
 # ---------------------------------------------------------------------------
 if(KOTOR_ENGINE_BUILD_TESTS)
     enable_testing()
+    add_executable(kotor_launcher_tests tests/test_launcher.cpp)
+    target_link_libraries(kotor_launcher_tests PRIVATE kotor_engine_options kotor_launcher_core)
+    add_test(NAME kotor_launcher COMMAND kotor_launcher_tests "${CMAKE_BINARY_DIR}/test_profile/kotor_launcher")
+    set_tests_properties(kotor_launcher PROPERTIES TIMEOUT 120)
+    # The launcher's own command line: detection listing and a failing check on a non-install. Paths stay
+    # under the build tree, so nothing reaches the player's profile.
+    add_test(NAME kotor_launcher_cli
+             COMMAND kotor_launcher --list
+                     --config-file "${CMAKE_BINARY_DIR}/test_profile/kotor_launcher_cli/launcher.ini"
+                     --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_launcher_cli/settings.ini"
+                     --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_launcher_cli/saves")
+    set_tests_properties(kotor_launcher_cli PROPERTIES TIMEOUT 60)
+    add_test(NAME kotor_launcher_cli_reject COMMAND kotor_launcher --check "${CMAKE_BINARY_DIR}")
+    set_tests_properties(kotor_launcher_cli_reject PROPERTIES WILL_FAIL FALSE PASS_REGULAR_EXPRESSION "not a recognised game data set")
+    # A hidden window for a few frames; a machine without OpenGL skips (exit 77).
+    add_test(NAME kotor_launcher_ui
+             COMMAND kotor_launcher --hidden --frames 6
+                     --config-file "${CMAKE_BINARY_DIR}/test_profile/kotor_launcher_ui/launcher.ini"
+                     --settings-file "${CMAKE_BINARY_DIR}/test_profile/kotor_launcher_ui/settings.ini"
+                     --saves-dir "${CMAKE_BINARY_DIR}/test_profile/kotor_launcher_ui/saves"
+                     --screenshot "${CMAKE_BINARY_DIR}/test_profile/kotor_launcher_ui/play.png")
+    set_tests_properties(kotor_launcher_ui PROPERTIES TIMEOUT 60 SKIP_RETURN_CODE 77)
     add_executable(kotor_tests tests/test_kotor.cpp)
     target_link_libraries(kotor_tests PRIVATE kotor_engine_options kotor_data kotor_script)
     add_test(NAME kotor_formats COMMAND kotor_tests)

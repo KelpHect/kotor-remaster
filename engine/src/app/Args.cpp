@@ -778,6 +778,14 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.install = value;
             continue;
         }
+        if (arg == "--ui-font") {
+            const char* value = requireValue();
+            if (value == nullptr || *value == '\0') {
+                return fail(std::move(result), "--ui-font requires a .ttf, .otf or .ttc file");
+            }
+            result.options.uiFont = value;
+            continue;
+        }
         if (arg == "--minigame-render-check") {
             result.options.minigameRenderCheck = true;
             continue;
@@ -1047,6 +1055,7 @@ void printUsage()
         << "\n"
         << "KotOR module (C++ data layer):\n"
         << "  --install <dir>       KotOR install (default: KOTOR_INSTALL or the Steam path)\n"
+        << "  --ui-font <file>      Native font for interface text (remaster option; classic bitmap font by default)\n"
         << "  --module <stem>       Load one module, e.g. end_m01aa or tar_m02af\n"
         << "  --scene-stats         Parse the module, print counts, then exit\n"
         << "  --content-stats       Print one JSON content line, then exit\n"
