@@ -1546,6 +1546,7 @@ void GameSession::loadMovementTables()
         const int rate = columnNoCase(table, "moverate");
         const int personal = columnNoCase(table, "perspace");
         const int creature = columnNoCase(table, "creperspace");
+        const int cameraSpaceColumn = columnNoCase(table, "cameraspace");
         const int height = columnNoCase(table, "height");
         const int driveAccel = columnNoCase(table, "driveaccl");
         const int driveMax = columnNoCase(table, "drivemaxspeed");
@@ -1581,6 +1582,10 @@ void GameSession::loadMovementTables()
                 nav_->creatureSpace[id] = parseCell(table.cell(row, static_cast<std::size_t>(creature)),
                                                     kDefaultPersonalSpace);
             }
+            const float creatureFallback = creature >= 0 ? nav_->creatureSpace[id] : kDefaultPersonalSpace;
+            nav_->cameraSpace[id] = cameraSpaceColumn >= 0
+                ? parseCell(table.cell(row, static_cast<std::size_t>(cameraSpaceColumn)), creatureFallback)
+                : creatureFallback;
         }
     }
 }
