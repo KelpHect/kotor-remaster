@@ -98,6 +98,9 @@ struct GuiScreen {
     float alpha = 1.0f;
     std::vector<GuiControl> controls;
     std::size_t controlCount = 0;
+    // A panel fitted by its own OnPanelAdded: the extent AddPanel logs before the fit (the state trace's open row).
+    GuiExtent openExtent;
+    bool hasOpenExtent = false;
 
     bool hasTag(const std::string& wanted) const;
 };

@@ -236,7 +236,7 @@ public:
     // --state-trace: null (the default) costs one pointer test at each of the three hook sites.
     void setStateTrace(StateTrace* trace) { stateTrace_ = trace; }
     // A combat round started for `owner` (the attack-round entry of the combat system).
-    void traceRound(std::int32_t number, std::uint32_t owner);
+    void traceRound(std::int32_t number, std::uint32_t owner, bool ended = false);
     bool save(const std::filesystem::path& path) const;
     bool load(const std::filesystem::path& path);
     // Original KotOR save folder (SAVEGAME.sav + sidecars). The reader maps
@@ -1069,7 +1069,7 @@ private:
     std::int32_t plotXp(std::int32_t row, double fraction);
     std::int32_t plotXpByLabel(const std::string& label, double fraction);
     ActorStep stepActorToward(std::uint32_t object, kotor::Vec3 target, float speed, float dt,
-                              float stopDistance);
+                              float stopDistance, bool ramp = true);
     bool lineOfSight(kotor::Vec3 from, kotor::Vec3 to) const;
     // Retail GetObstructionFactor 0050ccf0 for a sound: 0.4 for every surface of the area the line from the
     // sound to the listener crosses (surfacemat lineofsight), the line restarted a tenth of a metre past each
@@ -1130,6 +1130,18 @@ private:
     std::string roomNameAt(kotor::Vec3 point);
     void loadMovementTables();
     float creatureMoveRate(std::uint32_t object, bool run);
+    // The keyboard drive of a controlled creature (retail CSWPlayerControlCamRelative, 00679870 / vtable 00679940):
+    // advances its velocity toward `scale` times the top speed along (dirX, dirY) and returns this frame's move.
+    kotor::Vec3 driveStep(std::uint32_t object, float dirX, float dirY, float scale, float dt);
+    void driveStop(std::uint32_t object);
+    // CSWSArea::ComputeSafeLocation 004be860 for a creature of this appearance: the nearest spot to `point` within `reach`
+    // metres where TestSafeLocationPoint 004be5e0 holds. Only creatures before index `before` count as in the way (module load adds them one by one).
+    bool computeSafeLocation(kotor::Vec3 point, float reach, std::uint32_t appearance, bool lineTest, std::size_t before,
+                             kotor::Vec3& out);
+    // Whether a creature moving at `speed` shows its run clip, and the distance one cycle of the clip it shows covers.
+    void locomotionOf(std::uint32_t object, std::uint32_t appearance, float speed, bool& running, float& stride);
+    // The velocity the drive controller holds for `object` after a blocked step: what the walkmesh left of the move.
+    void driveSetVelocity(std::uint32_t object, float vx, float vy);
     float creatureRadius(std::uint32_t object);
     float creatureApproachRange(std::uint32_t self, std::uint32_t target, float range);
     kotor::Vec3 slidePlayer(kotor::Vec3 from, kotor::Vec3 to, bool& moved, float radius = -1.0f);

@@ -175,7 +175,32 @@ std::uint32_t creatureHeartbeatMs(std::uint32_t object, std::int64_t nowMs)
     h ^= h >> 33;
     h *= 0xff51afd7ed558ccdULL;
     h ^= h >> 33;
-    return 3000u + static_cast<std::uint32_t>(h % 1200u);
+    const std::uint32_t interval = 3000u + static_cast<std::uint32_t>(h % 1200u);
+    // 004eb6e0 also counts updates: once the interval has passed, interval >> 6 further updates must run before
+    // the heartbeat fires (a 60 Hz server tick, 1000/60 ms each).
+    return interval + static_cast<std::uint32_t>((interval >> 6) * 1000u / 60u);
+}
+
+// Creatures read from a save are already spawned (004eb6e0 skips the spawn-and-heartbeat first update), so their
+// clocks start at the load: the first heartbeat is one interval away and the first perception pass of a creature
+// that is not the player's comes after 4000 ms (the retail sample shows the first AI burst at 4.0-4.3 s).
+void primeLoadedCreatureClocks(ScriptApi api)
+{
+    WorldSim& sim = api.sim();
+    const double now = api.world().time;
+    const std::int64_t nowMs = api.world().nowMs();
+    sim.heartbeatDue.clear();
+    for (std::size_t i = 0; i < api.scene().entities.size(); ++i) {
+        const std::uint32_t object = api.objectFor(i);
+        const kotor::Entity& entity = api.scene().entities[i];
+        const bool creature = api.isCreature(object);
+        sim.heartbeatDue.push_back(creature ? now + creatureHeartbeatMs(object, nowMs) / 1000.0 : now + kHeartbeatSeconds);
+        if (creature && !entity.partyAvatar) {
+            ActorState& actor = api.actor(object);
+            actor.perceptionStarted = true;
+            actor.perceptionDue = 4.0f;
+        }
+    }
 }
 
 void tickHeartbeats(ScriptApi api, float dt)

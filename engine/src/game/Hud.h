@@ -102,6 +102,11 @@ private:
     void hideEventControls();
     void rebuildOptions();
     void bindActionSlots();
+    // The file's rects of the action description controls (SetMessageText 00685560 refits them).
+    bool descFitKnown_ = false;
+    const void* descScreen_ = nullptr;
+    kotor::GuiExtent descBackground_;
+    kotor::GuiExtent descLabel_;
     void bindTarget(double timeSeconds);
     void bindReticle(float dt);
     const Option* current(int slot) const;

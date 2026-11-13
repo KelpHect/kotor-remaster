@@ -160,6 +160,7 @@ struct ActorAction {
     float range = 1.0f;
     float timeout = 30.0f;
     float remaining = 0.0f;
+    float speed = 1.0f;       // PlayAnimation: fSpeed.
     float stuck = 0.0f;
     std::int64_t functor = -1;
     std::string text;
@@ -492,12 +493,18 @@ struct ScriptApi {
 
     bool startConversation(std::uint32_t owner, const std::string& resref) const;
     bool dialogueActive() const;
+    // The conversation owner and the player side: the creatures retail marks as in a conversation (+0xa88), which
+    // the perception passes of 004eb6e0 and 0051b050 skip.
+    bool inConversation(std::uint32_t object) const;
     void setDialoguePaused(bool paused) const;
 
     bool playAnimation(std::size_t entity, const std::string& name, bool loop) const;
     void stopAnimation(std::size_t entity) const;
     std::string animationName(std::int32_t animation) const;
     bool animationLooping(std::int32_t animation) const;
+    bool animationFireAndForget(std::int32_t animation) const;
+    // Length in seconds of the model's clip, 0 when the object has no model or no such clip.
+    float animationSeconds(std::size_t entity, const std::string& name) const;
 
     // Spawns a creature template as a live, script-visible object.
     std::uint32_t spawnCreature(const std::string& resref, kotor::Vec3 position,
@@ -572,6 +579,8 @@ int runMiniGame3DFamilyTest(GameSession& game);
 void tickActors(ScriptApi api, float dt);
 void tickEvents(ScriptApi api);
 void tickHeartbeats(ScriptApi api, float dt);
+// A save-game load: every creature starts its heartbeat and perception clocks now instead of acting at once.
+void primeLoadedCreatureClocks(ScriptApi api);
 void tickPerception(ScriptApi api, float dt);
 
 // ---- combat and effects (ScriptCombat.cpp, ScriptEffects.cpp) ---------------

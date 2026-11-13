@@ -396,6 +396,18 @@ bool ScriptApi::dialogueActive() const
     return session.dialogueView_.active;
 }
 
+bool ScriptApi::inConversation(std::uint32_t object) const
+{
+    if (!session.dialogueView_.active) {
+        return false;
+    }
+    if (session.activeDialogue_.has_value() && object == session.activeDialogue_->npcObject) {
+        return true;
+    }
+    const std::vector<std::uint32_t>& party = session.scriptWorld_.party;
+    return object == session.scriptWorld_.pc || std::find(party.begin(), party.end(), object) != party.end();
+}
+
 void ScriptApi::setDialoguePaused(bool paused) const
 {
     session.sim_->dialoguePaused = paused;
@@ -413,12 +425,27 @@ void ScriptApi::stopAnimation(std::size_t entity) const
 
 std::string ScriptApi::animationName(std::int32_t animation) const
 {
-    return session.rules_.animationName(animation);
+    return session.rules_.scriptAnimationName(animation);
 }
 
 bool ScriptApi::animationLooping(std::int32_t animation) const
 {
-    return session.rules_.animationLooping(animation);
+    return session.rules_.scriptAnimationLooping(animation);
+}
+
+bool ScriptApi::animationFireAndForget(std::int32_t animation) const
+{
+    return session.rules_.scriptAnimationFireAndForget(animation);
+}
+
+float ScriptApi::animationSeconds(std::size_t entity, const std::string& name) const
+{
+    for (const kotor::EntityMesh& mesh : session.scene_.entityMeshes) {
+        if (mesh.entity == entity) {
+            return mesh.model ? mesh.model->animationDuration(name) : 0.0f;
+        }
+    }
+    return 0.0f;
 }
 
 std::uint32_t ScriptApi::spawnCreature(const std::string& resref, kotor::Vec3 position,

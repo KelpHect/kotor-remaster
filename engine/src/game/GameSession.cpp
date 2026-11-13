@@ -507,6 +507,7 @@ bool GameSession::playAnimation(std::size_t entityIndex, const std::string& name
     }
     mesh->animation = name;
     mesh->animationTime = 0.0f;
+    mesh->animationRate = 1.0f;
     mesh->animationLoop = loop;
     kotor::refreshEntityMesh(*mesh);
     ++animationRevision_;
@@ -592,7 +593,7 @@ void GameSession::updateAnimations(float dt)
         const float duration = mesh.model->animationDuration(mesh.animation);
         const float clipBefore = mesh.animationTime;
         if (!mesh.animation.empty() && duration > 0.0f) {
-            mesh.animationTime += dt;
+            mesh.animationTime += dt * mesh.animationRate;
             if (mesh.referenceHolder && !mesh.referenceClip.empty()) {
                 const float holderLength = mesh.referenceHolder->animationDuration(mesh.referenceClip);
                 mesh.referenceTime = holderLength > 0.0f ? std::fmod(mesh.referenceTime + dt, holderLength) : 0.0f;
@@ -972,11 +973,18 @@ bool GameSession::loadModule(const std::string& module, const kotor::Vec3* spawn
         }
     }
     // A creature is created standing on the walkmesh: the GIT Z can sit above the floor (Taris tar_m02aa twilek is 3.13 in the
-    // GIT and measured at floor height 0 on retail from the first row).
-    for (kotor::Entity& entity : scene_.entities) {
+    // GIT and measured at floor height 0 on retail from the first row). Module load 00504a70 puts each creature at
+    // ComputeSafeLocation 004be860 of its GIT position (20 m reach, line test on), one after the other.
+    for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+        kotor::Entity& entity = scene_.entities[i];
+        if (entity.kind != kotor::EntityKind::Creature || entity.partyAvatar) {
+            continue;
+        }
+        kotor::Vec3 safe;
         float floorZ = 0.0f;
-        if (entity.kind == kotor::EntityKind::Creature && !entity.partyAvatar
-            && floorHeight(scene_, entity.position.x, entity.position.y, entity.position.z + 2.0f, floorZ)) {
+        if (computeSafeLocation(entity.position, 20.0f, entity.appearance, true, i, safe)) {
+            entity.position = safe;
+        } else if (floorHeight(scene_, entity.position.x, entity.position.y, entity.position.z + 2.0f, floorZ)) {
             entity.position.z = floorZ;
         }
     }
@@ -2293,6 +2301,9 @@ void GameSession::runSpawnAndEnterScripts()
             }
         }
     }
+    if (sim_->restoringSave) {
+        primeLoadedCreatureClocks(ScriptApi{*this}); // saved creatures are already spawned: 004eb6e0
+    }
     if (!sim_->restoringSave) { // loadOriginalSave runs the module and entry hooks last.
         runSceneHook("Mod_OnClientEntr", scriptWorld_.pc);
         runSceneHook("OnEnter", scriptWorld_.pc);
@@ -2933,7 +2944,6 @@ void GameSession::update(float dt, const InputState& rawInput)
             ScriptApi{*this}.clearQueue(scriptWorld_.pc);
         }
     }
-    const float speed = creatureMoveRate(scriptWorld_.pc, input.run);
     const float cosYaw = std::cos(yaw_);
     const float sinYaw = std::sin(yaw_);
     kotor::Vec3 desired{cosYaw * forwardAxis + sinYaw * rightAxis,
@@ -2954,13 +2964,28 @@ void GameSession::update(float dt, const InputState& rawInput)
     if (magnitude > 1.0e-5f) {
         desired = desired * (1.0f / magnitude);
     }
-    const kotor::Vec3 delta = desired * (speed * dt);
+    // The drive controller (retail 00679940): the input is a direction of unit length, half of it with Shift held
+    // (InputState::run false), and the body's velocity follows it with the appearance's DRIVEACCL / DRIVEMAXSPEED.
+    // A conversation, a lock or a dead player holds the controls, and the velocity with them.
+    const bool driveHeld = playerDead_ || dialogueView_.active || !pcActor.commandable || controlLocked();
+    if (driveHeld) {
+        driveStop(scriptWorld_.pc);
+    }
+    const kotor::Vec3 delta = driveHeld
+        ? kotor::Vec3{0.0f, 0.0f, 0.0f}
+        : driveStep(scriptWorld_.pc, desired.x, desired.y, magnitude > 1.0e-5f ? (input.run ? 1.0f : 0.5f) : 0.0f, dt);
+    const bool driving = delta.x * delta.x + delta.y * delta.y > 1.0e-12f;
 
     const kotor::Vec3 start = position_;
     bool steered = false;
-    const kotor::Vec3 candidate = magnitude > 1.0e-5f
+    const kotor::Vec3 candidate = driving
         ? slidePlayer(start, {position_.x + delta.x, position_.y + delta.y, position_.z}, steered)
         : start;
+    if (driving && dt > 0.0f
+        && (std::fabs(candidate.x - (start.x + delta.x)) > 1.0e-4f || std::fabs(candidate.y - (start.y + delta.y)) > 1.0e-4f)) {
+        // The walkmesh kept the body from some of the move: it keeps the speed it really made.
+        driveSetVelocity(scriptWorld_.pc, (candidate.x - start.x) / dt, (candidate.y - start.y) / dt);
+    }
     position_.x = candidate.x;
     position_.y = candidate.y;
 
@@ -2991,7 +3016,7 @@ void GameSession::update(float dt, const InputState& rawInput)
     if (nav_) {
         nav_->playerStepped = false;
     }
-    updatePlayerAvatar(dt, magnitude > 1.0e-5f || queueWalked);
+    updatePlayerAvatar(dt, driving || queueWalked);
     }
 
     // Retail has no footstep timer: a step sounds only from the snd_Footstep event of the playing clip
@@ -3346,7 +3371,9 @@ SceneCamera GameSession::camera() const
         camera.eye = eye;
         camera.forward = {std::cos(elevation) * back.x, std::cos(elevation) * back.y,
                           std::sin(elevation)};
-        camera.up = {0.0f, 0.0f, 1.0f};
+        // The camera's up is the world up made perpendicular to its forward (retail logs 0, 0.121, 0.993 for a 7 degree pitch).
+        camera.up = kotor::normalize(kotor::Vec3{-std::sin(elevation) * camera.forward.x, -std::sin(elevation) * camera.forward.y,
+                                                  1.0f - std::sin(elevation) * camera.forward.z});
         camera.fovYDegrees = viewAngle;
         return camera;
     }
@@ -5679,9 +5706,9 @@ void GameSession::updateCombat(float dt)
         }
         combatTarget_ = static_cast<std::uint32_t>(index);
     }
-    if (!dialogueView_.active) {
-        tickCombat(api, dt);
-    }
+    // Retail keeps combat rounds running through a conversation: the Endar duel ends and starts its rounds every
+    // 3 s while the Trask dialogue plays (state trace rnd rows).
+    tickCombat(api, dt);
 }
 
 bool GameSession::pointInTrigger(const kotor::TriggerVolume& trigger, float x, float y) const
@@ -6260,10 +6287,10 @@ bool GameSession::useForcePower(std::int32_t powerId, std::uint32_t target)
     return true;
 }
 
-void GameSession::traceRound(std::int32_t number, std::uint32_t owner)
+void GameSession::traceRound(std::int32_t number, std::uint32_t owner, bool ended)
 {
     if (stateTrace_ != nullptr) {
-        stateTrace_->onRound(*this, number, owner);
+        stateTrace_->onRound(*this, number, owner, ended);
     }
 }
 
@@ -6633,7 +6660,7 @@ std::optional<std::vector<script::Value>> GameSession::action(
     }
     case 300: { // PlayAnimation
         const std::int32_t animationId = static_cast<std::int32_t>(intArg(0));
-        const std::string name = rules_.animationName(animationId);
+        const std::string name = rules_.scriptAnimationName(animationId);
         if (!name.empty()) {
             const std::uint32_t self = runtime_ != nullptr
                 ? runtime_->contextObject("self") : world.pc;
@@ -6645,7 +6672,7 @@ std::optional<std::vector<script::Value>> GameSession::action(
                     if (placeable != nullptr) {
                         playAnimation(i, placeable, placeableLoop);
                     } else {
-                        playAnimation(i, name, rules_.animationLooping(animationId));
+                        playAnimation(i, name, rules_.scriptAnimationLooping(animationId));
                     }
                     break;
                 }

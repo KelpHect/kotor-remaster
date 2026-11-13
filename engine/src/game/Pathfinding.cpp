@@ -1523,7 +1523,9 @@ nav::NavMesh* GameSession::navMesh()
 
 void GameSession::loadMovementTables()
 {
-    navMesh();
+    if (!nav_) {
+        nav_ = std::make_unique<nav::Runtime>();
+    }
     if (nav_->tablesLoaded) {
         return;
     }
@@ -1544,8 +1546,21 @@ void GameSession::loadMovementTables()
         const int rate = columnNoCase(table, "moverate");
         const int personal = columnNoCase(table, "perspace");
         const int creature = columnNoCase(table, "creperspace");
+        const int height = columnNoCase(table, "height");
+        const int driveAccel = columnNoCase(table, "driveaccl");
+        const int driveMax = columnNoCase(table, "drivemaxspeed");
+        const int driveWalk = columnNoCase(table, "driveanimwalk");
+        const int driveRun = columnNoCase(table, "driveanimrun");
         for (std::size_t row = 0; row < table.rowCount(); ++row) {
             const auto id = static_cast<std::uint32_t>(row);
+            if (driveAccel >= 0 && driveMax >= 0 && driveWalk >= 0 && driveRun >= 0) {
+                nav::Runtime::DriveRow drive;
+                drive.accel = parseCell(table.cell(row, static_cast<std::size_t>(driveAccel)), drive.accel);
+                drive.maxSpeed = parseCell(table.cell(row, static_cast<std::size_t>(driveMax)), drive.maxSpeed);
+                drive.walk = parseCell(table.cell(row, static_cast<std::size_t>(driveWalk)), drive.walk);
+                drive.run = parseCell(table.cell(row, static_cast<std::size_t>(driveRun)), drive.run);
+                nav_->drive[id] = drive;
+            }
             if (rate >= 0) {
                 const std::string name = table.cell(row, static_cast<std::size_t>(rate));
                 for (std::size_t r = 0; r < nav_->rateNames.size(); ++r) {
@@ -1559,12 +1574,169 @@ void GameSession::loadMovementTables()
                 nav_->personalSpace[id] = parseCell(table.cell(row, static_cast<std::size_t>(personal)),
                                                     kDefaultPersonalSpace);
             }
+            if (height >= 0) {
+                nav_->bodyHeight[id] = parseCell(table.cell(row, static_cast<std::size_t>(height)), 1.8f);
+            }
             if (creature >= 0) {
                 nav_->creatureSpace[id] = parseCell(table.cell(row, static_cast<std::size_t>(creature)),
                                                     kDefaultPersonalSpace);
             }
         }
     }
+}
+
+// CSWSArea::ComputeSafeLocation 004be860 and TestSafeLocationPoint 004be5e0. A spot is safe when it lies on the walkmesh,
+// no non-walkable face of the room mesh comes within the creature's personal space of it over its height (the clipped
+// 0.02 m segment through the point, z - 0.1 up to z + height, is tested by NoNonWalkPolys with the creature's radius) and
+// no other living creature overlaps it (NoCreaturesOnLine, creature spaces added). The search takes the point itself, then
+// square rings of half-width r = 1 m growing by the personal space up to `reach`: first each ring's top and bottom rows,
+// then its side columns, with the step also the personal space. With `lineTest` (module load passes 1) a candidate must also
+// see the original point (TestDirectLine). Placeable walls are not part of the room mesh test.
+bool GameSession::computeSafeLocation(kotor::Vec3 point, float reach, std::uint32_t appearance, bool lineTest,
+                                      std::size_t before, kotor::Vec3& out)
+{
+    loadMovementTables();
+    out = point;
+    // The walkmesh is only built when the search has to leave the point (most creatures stand on a safe spot).
+    nav::NavMesh* mesh = nullptr;
+    const auto space = [&](const std::map<std::uint32_t, float>& table, std::uint32_t id, float fallback) {
+        const auto found = table.find(id);
+        return found != table.end() ? found->second : fallback;
+    };
+    const float step = std::max(space(nav_->personalSpace, appearance, kDefaultPersonalSpace), 0.05f);
+    const float radius = step;
+    const float bodyReach = space(nav_->creatureSpace, appearance, kDefaultPersonalSpace);
+    const float height = space(nav_->bodyHeight, appearance, 1.8f);
+    // Non-walkable faces that can matter: the search never leaves a box of `reach` around the point.
+    struct Wall {
+        kotor::Vec3 v[3];
+        float lowX = 0.0f, highX = 0.0f, lowY = 0.0f, highY = 0.0f, lowZ = 0.0f, highZ = 0.0f;
+    };
+    std::vector<Wall> walls;
+    const float box = reach + radius + 1.0f;
+    for (const kotor::CollisionFacet& facet : scene_.collision) {
+        if (facet.walkable) {
+            continue;
+        }
+        Wall wall{{scene_.collisionVertices[facet.a], scene_.collisionVertices[facet.b], scene_.collisionVertices[facet.c]}};
+        const float lowX = std::min({wall.v[0].x, wall.v[1].x, wall.v[2].x});
+        const float highX = std::max({wall.v[0].x, wall.v[1].x, wall.v[2].x});
+        const float lowY = std::min({wall.v[0].y, wall.v[1].y, wall.v[2].y});
+        const float highY = std::max({wall.v[0].y, wall.v[1].y, wall.v[2].y});
+        if (highX < point.x - box || lowX > point.x + box || highY < point.y - box || lowY > point.y + box) {
+            continue;
+        }
+        wall.lowX = lowX;
+        wall.highX = highX;
+        wall.lowY = lowY;
+        wall.highY = highY;
+        wall.lowZ = std::min({wall.v[0].z, wall.v[1].z, wall.v[2].z});
+        wall.highZ = std::max({wall.v[0].z, wall.v[1].z, wall.v[2].z});
+        walls.push_back(wall);
+    }
+    // The 2D distance from (x, y) to a triangle's plan-view shadow.
+    const auto distanceToTriangle = [](const Wall& wall, float x, float y) {
+        const auto side = [&](const kotor::Vec3& a, const kotor::Vec3& b) {
+            return (b.x - a.x) * (y - a.y) - (b.y - a.y) * (x - a.x);
+        };
+        const float s0 = side(wall.v[0], wall.v[1]);
+        const float s1 = side(wall.v[1], wall.v[2]);
+        const float s2 = side(wall.v[2], wall.v[0]);
+        if ((s0 >= 0.0f && s1 >= 0.0f && s2 >= 0.0f) || (s0 <= 0.0f && s1 <= 0.0f && s2 <= 0.0f)) {
+            return 0.0f;
+        }
+        float best = 1.0e9f;
+        for (int i = 0; i < 3; ++i) {
+            const kotor::Vec3& a = wall.v[i];
+            const kotor::Vec3& b = wall.v[(i + 1) % 3];
+            const float dx = b.x - a.x;
+            const float dy = b.y - a.y;
+            const float len2 = dx * dx + dy * dy;
+            float t = len2 > 0.0f ? ((x - a.x) * dx + (y - a.y) * dy) / len2 : 0.0f;
+            t = std::clamp(t, 0.0f, 1.0f);
+            best = std::min(best, std::hypot(x - (a.x + t * dx), y - (a.y + t * dy)));
+        }
+        return best;
+    };
+    const auto pointSafe = [&](kotor::Vec3& p) {
+        if (mesh == nullptr) {
+            float floorZ = 0.0f;
+            if (!floorBelow(p.x, p.y, point.z + 2.0f, floorZ)) {
+                return false;
+            }
+            p.z = floorZ;
+        } else {
+            const int tri = mesh->locate({p.x, p.y, point.z});
+            if (tri < 0) {
+                return false;
+            }
+            p.z = mesh->height(tri, p.x, p.y);
+        }
+        for (const Wall& wall : walls) {
+            if (wall.highZ < p.z - 0.1f || wall.lowZ > p.z + height || p.x < wall.lowX - radius || p.x > wall.highX + radius
+                || p.y < wall.lowY - radius || p.y > wall.highY + radius) {
+                continue;
+            }
+            if (distanceToTriangle(wall, p.x, p.y) < radius) {
+                return false;
+            }
+        }
+        for (std::size_t i = 0; i < scene_.entities.size() && i < before; ++i) {
+            const kotor::Entity& other = scene_.entities[i];
+            if (other.kind != kotor::EntityKind::Creature || other.dead) {
+                continue;
+            }
+            const float reachOther = space(nav_->creatureSpace, other.appearance, kDefaultPersonalSpace);
+            if (std::hypot(other.position.x - p.x, other.position.y - p.y) <= reachOther + bodyReach + 0.01f) {
+                return false;
+            }
+        }
+        return true;
+    };
+    const auto sees = [&](kotor::Vec3 from) {
+        if (!lineTest) {
+            return true;
+        }
+        const int tri = mesh->locate(from);
+        if (tri < 0) {
+            return false;
+        }
+        return mesh->ray(from, tri, point, nav_->closed).clear;
+    };
+    kotor::Vec3 candidate = point;
+    if (pointSafe(candidate)) {
+        out = candidate;
+        return true;
+    }
+    mesh = navMesh();
+    if (mesh == nullptr || mesh->empty()) {
+        return false;
+    }
+    for (float r = 1.0f; r < reach; r += step) {
+        const float x0 = point.x - r;
+        const float x1 = point.x + r;
+        const float y0 = point.y - r;
+        const float y1 = point.y + r;
+        for (float x = x0; x <= x1; x += step) {
+            for (const float y : {y0, y1}) {
+                candidate = {x, y, point.z};
+                if (pointSafe(candidate) && sees(candidate)) {
+                    out = candidate;
+                    return true;
+                }
+            }
+        }
+        for (const float x : {x0, x1}) {
+            for (float y = y0 + step; y <= y1 - step; y += step) {
+                candidate = {x, y, point.z};
+                if (pointSafe(candidate) && sees(candidate)) {
+                    out = candidate;
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }
 
 // Retail 005a5680: UTC WalkRate picks the creaturespeed.2da row; row 7 means "from
@@ -1604,6 +1776,96 @@ float GameSession::creatureMoveRate(std::uint32_t object, bool run)
         rate *= 1.5f; // The clamp at retail 004f1b20 tops out at 1.5.
     }
     return rate;
+}
+
+// Retail CSWPlayerControlCamRelative::Control (vtable 00679940, helper 00679870): the controlled creature's drive
+// velocity obeys  dv/dt = A * u - (A / R) * v  with A = appearance DRIVEACCL (client record +0x58) and R = the top
+// speed (record +0x5c, DRIVEMAXSPEED), u the input direction (0.5 of it while Shift holds the walk mode, 00679b7b).
+// A creature slower than 1.8 accelerates 0.5556 R / 1 as fast (00752d64/68). In stealth (creature flag +0x9fc / client
+// +0x2d4 bit 0) the top speed is the walk speed (record +0x60) and A is 15 (GetDriveAcceleration 00610590,
+// GetMovementRate 00679510). The solution of that equation over one frame is exact below.
+kotor::Vec3 GameSession::driveStep(std::uint32_t object, float dirX, float dirY, float scale, float dt)
+{
+    loadMovementTables();
+    std::size_t index = static_cast<std::size_t>(-1);
+    if (object == scriptWorld_.pc) {
+        index = playerEntity_;
+    } else {
+        index = ScriptApi{*this}.entityFor(object);
+    }
+    nav::Runtime::DriveRow row;
+    if (index < scene_.entities.size()) {
+        if (const auto found = nav_->drive.find(scene_.entities[index].appearance); found != nav_->drive.end()) {
+            row = found->second;
+        }
+    }
+    float top = row.maxSpeed;
+    float accel = row.accel;
+    if (stealthActive_ && object == controlledObject()) {
+        top = row.walk;
+        accel = 15.0f;
+    }
+    if (object == scriptWorld_.pc && hasEffect("SPEED")) {
+        top *= 1.5f; // The movement-rate clamp at retail 004ec3b0 tops out at 1.5.
+    }
+    if (top <= 0.0f || accel <= 0.0f) {
+        return {0.0f, 0.0f, 0.0f};
+    }
+    if (top <= 1.8f) {
+        accel *= top * 0.5555556f;
+    }
+    std::array<float, 2>& velocity = nav_->driveVelocity[object];
+    const float tau = top / accel;
+    const float targetX = dirX * top * scale;
+    const float targetY = dirY * top * scale;
+    const float decay = std::exp(-dt / tau);
+    const float gain = tau * (1.0f - decay);
+    const kotor::Vec3 move{targetX * dt + (velocity[0] - targetX) * gain,
+                           targetY * dt + (velocity[1] - targetY) * gain, 0.0f};
+    velocity[0] = targetX + (velocity[0] - targetX) * decay;
+    velocity[1] = targetY + (velocity[1] - targetY) * decay;
+    return move;
+}
+
+void GameSession::locomotionOf(std::uint32_t object, std::uint32_t appearance, float speed, bool& running, float& stride)
+{
+    loadMovementTables();
+    nav::Runtime::DriveRow drive;
+    if (const auto row = nav_->drive.find(appearance); row != nav_->drive.end()) {
+        drive = row->second;
+    }
+    if (object == controlledObject() && thirdPerson_) {
+        // Retail 00615960: the keyboard-driven body plays its run clip while its forward speed is over 0.6 of the top
+        // speed (007a22f4), its walk clip below.
+        running = speed > 0.6f * drive.maxSpeed;
+    } else {
+        // A walker's clip is the walk or run of its action; the ramp of 00512f10 starts it slow, so the speed is read at
+        // the table speed it would make at full factor.
+        float nominal = speed;
+        if (const auto walking = nav_->walkFactor.find(object);
+            walking != nav_->walkFactor.end() && elapsed_ - walking->second.lastStep < 0.25f
+            && walking->second.scale > 0.05f) {
+            nominal = speed / walking->second.scale;
+        }
+        const float walkRate = creatureMoveRate(object, false);
+        const float runRate = creatureMoveRate(object, true);
+        running = nominal >= (runRate > walkRate ? (walkRate + runRate) * 0.5f : 2.6f);
+    }
+    stride = running ? drive.run : drive.walk;
+}
+
+void GameSession::driveStop(std::uint32_t object)
+{
+    if (nav_) {
+        nav_->driveVelocity.erase(object);
+    }
+}
+
+void GameSession::driveSetVelocity(std::uint32_t object, float vx, float vy)
+{
+    std::array<float, 2>& velocity = nav_->driveVelocity[object];
+    velocity[0] = vx;
+    velocity[1] = vy;
 }
 
 float GameSession::creatureRadius(std::uint32_t object)
@@ -1652,7 +1914,7 @@ float GameSession::creatureApproachRange(std::uint32_t self, std::uint32_t targe
 }
 
 ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target, float speed,
-                                       float dt, float stopDistance)
+                                       float dt, float stopDistance, bool ramp)
 {
     ScriptApi api{*this};
     const Vec3 from = api.position(object);
@@ -1665,6 +1927,7 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
                 walking->second.bumps = 0;
                 walking->second.hasLastBump = false;
             }
+            nav_->walkFactor.erase(object);
         }
         // The outcome of the player's click walk belongs to the steered creature.
         if (object == controlledObject()) {
@@ -1765,10 +2028,24 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
     const std::size_t blockingEntity = path.status == nav::PathStatus::DoorBlocked
         ? mesh->doors()[static_cast<std::size_t>(path.blockingDoor)].entity
         : kNoDoor;
-    // The margin absorbs float error left by the last stride, which is sized to end
-    // exactly at the stop distance.
-    if (reachable && remaining <= std::max(stopDistance, 0.02f) + 0.005f) {
+    // Retail stops a walk at its range before the step, not with a stride sized to end on it: 00516630 (the stop test of
+    // the walk step, for a move that carries the range flag) ends the walk when the squared 2D distance to the path's last
+    // point is <= range squared and the line to it is clear and walkable, so a walker ends up to one stride inside the
+    // range (a script's GetDistanceToObject2D <= range then holds). A walk without a range follows the path to its end.
+    if (reachable && remaining <= 0.02f) {
         return finish(ActorStep::Arrived, MoveOutcome::Arrived, kNoDoor);
+    }
+    if (reachable && stopDistance > 0.0f) {
+        const Vec3 last = points.back();
+        const float gapX = last.x - from.x;
+        const float gapY = last.y - from.y;
+        if (gapX * gapX + gapY * gapY <= stopDistance * stopDistance) {
+            // The line to the point is clear and walkable (the walkmesh ray, closed doors stop it), not a sight test.
+            const int fromTri = mesh->locate(from);
+            if (fromTri >= 0 && mesh->ray(from, fromTri, last, nav_->closed).clear) {
+                return finish(ActorStep::Arrived, MoveOutcome::Arrived, kNoDoor);
+            }
+        }
     }
     // Within range but not routed: what is wanted may stand behind the closed door
     // or on an island, and the actor has come as far as it can.
@@ -1797,9 +2074,32 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
             : finish(ActorStep::Blocked, MoveOutcome::Unreachable, kNoDoor);
     }
 
-    // Where this frame's stride along the route ends.
-    const float stride = std::min(speed * dt,
-                                  reachable ? remaining - std::max(stopDistance, 0.0f) : remaining);
+    // Where this frame's stride along the route ends. Retail 0051d9c0 (WalkUpdateLocation_QuickWalk) and 0051bb10 take
+    // the distance as dt * (factor + last factor) / 2 * rate, the speed factor ramping up by 1.0 per second from 0.1 and
+    // down toward the end of the path (ComputeSpeedFactor 00512f10); 00516630 clamps the stride to the path's end.
+    float stepSpeed = speed;
+    if (ramp) {
+        nav::Runtime::WalkFactor& walk = nav_->walkFactor[object];
+        if (elapsed_ - walk.lastStep > 0.25f) {
+            walk.factor = 0.0f;
+        }
+        walk.lastStep = elapsed_;
+        const float previous = walk.factor;
+        const float slowZone = speed * 0.5f; // 'rate * 1000 * 1000 * 5e-7': half a second of travel.
+        float factor = 1.0f;
+        if (slowZone > 0.0f && remaining <= slowZone) {
+            const float ratio = remaining / slowZone;
+            factor = (ratio < 0.01f ? 0.1f : std::sqrt(ratio)) - dt;
+        }
+        if (previous <= 1.0f && previous + dt <= factor) {
+            factor = previous + dt;
+        }
+        factor = std::max(factor, 0.1f);
+        walk.factor = factor;
+        walk.scale = (factor + previous) * 0.5f;
+        stepSpeed = speed * walk.scale;
+    }
+    const float stride = std::min(stepSpeed * dt, remaining);
     Vec3 desired = from;
     std::size_t nextIndex = route.next;
     float left = stride;
@@ -1853,7 +2153,14 @@ ActorStep GameSession::stepActorToward(std::uint32_t object, kotor::Vec3 target,
                 return false; // Walking up to something standing on the target.
             }
             const float there = length2D(point, other);
-            return there < combined && there < length2D(from, other) - 1.0e-4f;
+            const float here = length2D(from, other);
+            // A walker that already stands inside the other's space (a companion that took the controls on top of the
+            // PC) is let out: with the speed ramp its first strides are a few millimetres and would only ever
+            // look like a step toward the other body.
+            if (here < combined) {
+                return false;
+            }
+            return there < combined && there < here - 1.0e-4f;
         };
         if (object != scriptWorld_.pc && against(position_, kPlayerPersonalSpace)) {
             found.hit = true;
@@ -2129,7 +2436,7 @@ void GameSession::followLeader(std::uint32_t self, kotor::Vec3 anchor, kotor::Ve
     const float squared = apart * apart;
     const float scale = squared < 1.0f ? 0.9f : (squared < 225.0f ? 1.2f : 1.5f);
     const bool run = apart > 3.0f;
-    stepActorToward(self, slot, creatureMoveRate(self, run) * scale, dt, kFormationArrive);
+    stepActorToward(self, slot, creatureMoveRate(self, run) * scale, dt, kFormationArrive, false);
 }
 
 void GameSession::placePartyAtEntry()

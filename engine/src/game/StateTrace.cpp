@@ -3,6 +3,7 @@
 #include "game/GameSession.h"
 #include "game/GuiSystem.h"
 #include "game/ScriptHost.h"
+#include "kotor/Formats.h"
 #include "kotor/Gui.h"
 
 #include <SDL3/SDL.h>
@@ -369,13 +370,13 @@ void StateTrace::onAction(std::uint16_t actionId)
 
 // A combat round started (TRACE_SPEC 4.11). The engine runs rounds only for creatures that attack; retail starts one for
 // every creature about every 3 s, so this class differs by design. Only the first 8 rounds get an anchor (section 5).
-void StateTrace::onRound(GameSession& game, std::int32_t number, std::uint32_t owner)
+void StateTrace::onRound(GameSession& game, std::int32_t number, std::uint32_t owner, bool ended)
 {
     if (!open_ || backdrop_) {
         return;
     }
-    write("rnd", {"start", std::to_string(number), keyOfObject(game, owner)});
-    if (number <= 8) {
+    write("rnd", {ended ? "end" : "start", std::to_string(number), keyOfObject(game, owner)});
+    if (!ended && number <= 8) {
         schedule(kRoundFrames, "round:" + std::to_string(number));
     }
 }
@@ -514,8 +515,21 @@ void StateTrace::trackGui(const StateTraceFrame& frame)
     if (frame.game != nullptr && frame.game->sim_->fade.active() && inPlay_) {
         Panel fade;
         fade.name = "fade";
+        fade.mode = 4; // retail rows: `open fade 4 0 0 1024`
         fade.w = frame.windowWidth;
         fade.h = frame.windowHeight;
+        // Retail's fade is a GUI panel (fade.gui: the message label LBL_MSG, id 0); the engine's fade is a screen effect, so
+        // its one control row is read from the shipped file for the trace.
+        if (!fadeScreenTried_ && frame.game != nullptr) {
+            fadeScreenTried_ = true;
+            if (auto data = frame.game->install().find("fade", kotor::resType(kotor::ResType::Gui))) {
+                try {
+                    fadeScreen_ = std::make_unique<kotor::GuiScreen>(kotor::parseGui(std::move(*data), "fade.gui"));
+                } catch (const kotor::FormatError&) {
+                }
+            }
+        }
+        fade.screen = fadeScreen_.get();
         now.push_back(fade);
     }
     if (frame.menuGui != nullptr && frame.menuGui->active()) {
@@ -526,10 +540,16 @@ void StateTrace::trackGui(const StateTraceFrame& frame)
             Panel panel;
             panel.name = panelName(screen->name);
             panel.mode = mode;
-            panel.x = screen->extent.left;
-            panel.y = screen->extent.top;
-            panel.w = screen->extent.width;
-            panel.h = screen->extent.height;
+            // AddPanel logs the extent before the panel's OnPanelAdded fits it (statussummary: retail row 159 74 322 332,
+            // mode 1 = modal push).
+            const kotor::GuiExtent& logged = screen->hasOpenExtent ? screen->openExtent : screen->extent;
+            if (screen->hasOpenExtent) {
+                panel.mode = 1;
+            }
+            panel.x = logged.left;
+            panel.y = logged.top;
+            panel.w = logged.width;
+            panel.h = logged.height;
             panel.screen = screen;
             now.push_back(panel);
         };
@@ -762,6 +782,19 @@ void StateTrace::sampleState(const StateTraceFrame& frame)
         const float oy = creature ? std::sin(b) : std::cos(b);
         const std::int32_t hp = i == g.playerEntity_ ? g.playerHp_ : entity.hitPoints;
         const kotor::EntityMesh* mesh = bodyMesh[i];
+        // The minigame hides every entity mesh only for drawing; the retail object keeps its own hidden byte, so the
+        // column keeps the value the object had before the minigame took over the scene.
+        std::string visibleText = mesh == nullptr ? "-" : (mesh->visible ? "1" : "0");
+        if (g.miniGameActive()) {
+            const auto before = objectVisible_.find(idText);
+            if (before != objectVisible_.end()) {
+                visibleText = before->second;
+            } else if (mesh != nullptr) {
+                visibleText = "1"; // first seen inside the minigame: the object was never hidden, only its mesh
+            }
+        } else {
+            objectVisible_[idText] = visibleText;
+        }
         std::string clip = "-";
         if (mesh != nullptr && !mesh->animation.empty()) {
             clip = mesh->animation + "@" + f3(mesh->animationTime);
@@ -771,7 +804,7 @@ void StateTrace::sampleState(const StateTraceFrame& frame)
         state("obj", idText,
               {key, idText, creature ? "creature" : (placeable ? "placeable" : "door"), templateName,
                f3(entity.position.x), f3(entity.position.y), f3(entity.position.z), f3(ox), f3(oy),
-               std::to_string(hp), mesh == nullptr ? "-" : (mesh->visible ? "1" : "0"),
+               std::to_string(hp), visibleText,
                creature ? std::to_string(entity.appearance) : "-", "-", clip});
         // Ground truth next to the mirror: the raw bearing in radians, once per object.
         state("chk", idText, {"bearing", key, f3(b)});

@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -73,7 +74,7 @@ public:
     // (CSWSDialog::SendDialogEntryNode 005a13d0 -> CGuiInGame::HandleDialogEntry 00631d80), so it is a row too.
     void onDialogueControlEntry(GameSession& game, std::uint32_t entry, std::int32_t cameraAngle);
     void onAction(std::uint16_t actionId);
-    void onRound(GameSession& game, std::int32_t number, std::uint32_t owner);
+    void onRound(GameSession& game, std::int32_t number, std::uint32_t owner, bool ended = false);
     // The loading screen the module hook presents: reported as a panel that opens now and closes at `mod ready`.
     void onLoadScreen(const std::string& name, int x, int y, int w, int h);
 
@@ -87,6 +88,9 @@ private:
         int h = 0;
         const kotor::GuiScreen* screen = nullptr;
     };
+    // fade.gui, parsed once for the fade panel's control row.
+    std::unique_ptr<kotor::GuiScreen> fadeScreen_;
+    bool fadeScreenTried_ = false;
     struct Pending {
         std::uint64_t due = 0;
         bool control = false; // true: write `lines`; false: a shot named `name`
@@ -132,6 +136,7 @@ private:
     std::unordered_map<std::uint32_t, std::string> keyById_;
     std::unordered_map<std::string, int> seen_;          // tag|template -> objects met
     std::vector<std::string> entityKey_;                 // entity index -> key, this sample
+    std::unordered_map<std::string, std::string> objectVisible_; // object id -> the visible column outside a minigame
     std::unordered_map<std::string, std::string> objects_; // id text -> key, to write obj_del
     std::vector<Panel> panels_;
     std::string reported_;                               // the module `mod ready` last named
