@@ -187,6 +187,11 @@ struct SavedNpc {
     std::int32_t cha = 10;
     std::int32_t alignment = 50;
     std::int32_t joiningXp = 0;
+    // Where the stored creature stands (XPosition and XOrientation of AVAILNPC<n>): retail SpawnNPC 00565130 puts a
+    // party member back at its own loaded position and orientation (CreateParty 00565760 passes no position).
+    bool hasPlacement = false;
+    Vec3 position{};
+    float yaw = 0.0f;
     std::vector<std::int32_t> feats;
     std::vector<std::int32_t> powers;
     std::vector<std::int32_t> skills;
