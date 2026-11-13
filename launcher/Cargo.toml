@@ -1,0 +1,42 @@
+[package]
+name = "kotor-launcher"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.100"
+description = "Launcher for the engine: finds a user-owned game install, validates its data set, edits the engine settings and starts the engine."
+publish = false
+build = "build.rs"
+
+[[bin]]
+name = "kotor_launcher"
+path = "src/main.rs"
+
+[dependencies]
+# Exact pins; Cargo.lock is committed.
+gpui = { version = "=0.2.2", default-features = false, features = ["windows-manifest"] }
+sha2 = "=0.11.1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_Registry",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
+debug = false
+incremental = false
+
+[profile.release.build-override]
+opt-level = 0
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

@@ -1,0 +1,9 @@
+# Static CRT: the launcher is one exe with no vcruntime DLL beside it.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[build]
+# The machine-wide cargo config sets kache as rustc-wrapper. cc-rs 1.11 then also runs C compiles
+# through kache, which rejects cl.exe invocations (ring, pulled in by gpui), so this crate builds
+# without the wrapper.
+rustc-wrapper = ""

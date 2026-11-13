@@ -1,0 +1,3 @@
+# The settings fixtures are byte-exact output of the C++ ke::UserSettings (CRLF line ends); never convert them.
+tests/fixtures/*.ini -text
+assets/fonts/*.ttf binary

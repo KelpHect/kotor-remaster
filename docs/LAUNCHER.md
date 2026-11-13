@@ -2,6 +2,42 @@
 
 Status: **implemented**; cache build with progress and cancel is **not done** (see below).
 
+## Rust launcher (`launcher/`, GPUI) - replaces the ImGui window once accepted
+
+`launcher/` is a standalone Cargo crate (not part of the CMake build) that ports the ImGui launcher below to
+Rust with a GPUI window: custom title bar, game rail with cards, banner, details and info panel (engine
+version from `engine/CMakeLists.txt`, resolution and graphics API from the settings), Play with its ready
+state, Verify Files (runs the validation and shows the report), Game Settings, install location with Change,
+and a Settings view with every engine option plus the Launch and Remaster sections. Behaviour is the same
+code path as the C++ files: detection (`src/install.rs`), validation without opening the executable,
+`launcher.ini` and `settings.ini` in the exact byte format of `UserSettings` (CRLF, `%g` floats, atomic
+rename; `tests/fixtures/*_cpp.ini` are written by the C++ class through `tests/fixtures/gen_settings.cpp`),
+and the same engine command line (`src/config.rs`).
+
+- Build: `cargo build --release` in `launcher/` (`CARGO_TARGET_DIR` outside the repo). Static CRT, GUI
+  subsystem, fat LTO, `panic=abort`, stripped. `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`
+  and `cargo test` must pass. `launcher/.cargo/config.toml` turns off the machine-wide `rustc-wrapper`
+  (kache) for this crate because cc-rs then routes C compiles through it and kache rejects `cl.exe`.
+- Art: nothing is shipped. When the player's own Steam client has cached a game's images
+  (`Steam/appcache/librarycache/<appid>/library_hero.jpg`, `header.jpg`), they are shown read-only;
+  otherwise an abstract backdrop is drawn in code. Game names are plain text.
+- Font: Barlow (SIL OFL 1.1, `launcher/assets/fonts/OFL.txt`), embedded. Icons are the launcher's own SVGs.
+- Product name: the docs name none (ADR 0003 open question 4); `PRODUCT_NAME` in `launcher/src/theme.rs` is
+  a neutral placeholder.
+- News: `launcher/src/news.rs` has a `NewsSource` trait with a placeholder source ("No news yet"); a web
+  API source replaces it later. No network access.
+- Command line: the C++ flags (`--list`, `--check`, `--print-command`, `--config-file`, `--settings-file`,
+  `--saves-dir`, `--engine`, `--install`) plus `--view home|settings`, `--no-system-scan`, `--steam-root`,
+  `--probe-file`, `--probe-exit`.
+
+To remove once the Rust launcher is accepted: `engine/src/launcher/` (`main.cpp`, `InstallDetect.*`,
+`LauncherConfig.*`), the `kotor_launcher_core`, `kotor_launcher` and `kotor_launcher_tests` targets and the
+`kotor_launcher` / `kotor_launcher_cli` CTest entries in `engine/CMakeLists.txt` (and `kotor_imgui` if nothing
+else links it), `engine/tests/test_launcher.cpp` (its checks are ported to `launcher/src/*` tests). Keep
+`engine/src/game/UserSettings.*`: the engine itself reads the settings file.
+
+## ImGui launcher (`engine/src/launcher/`)
+
 `kotor_launcher` is a small ImGui window (SDL3 + OpenGL 3.3) beside the engine. It follows ADR 0003: it
 points at a user-owned install, validates the data set, keeps the options and starts the engine. It never
 writes to the install, never runs or reads the original executable, and ships no game artwork, text or font.
