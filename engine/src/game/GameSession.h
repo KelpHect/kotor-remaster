@@ -1239,6 +1239,13 @@ private:
     bool thirdPerson_ = false;
     mutable bool playerVisible_ = true;
     bool cameraNoClip_ = false;
+    // The chase camera's rest eye for the last (head, back, distance, height) asked; camera() runs several times a
+    // frame and the world it casts against only changes between ticks, so updatePlayerAvatar clears it.
+    mutable bool chaseEyeValid_ = false;
+    mutable std::array<float, 7> chaseEyeKey_{};
+    mutable kotor::Vec3 chaseEye_{};
+    mutable float chaseDistance_ = -1.0f; // the camera's last flat distance from the head (retail keeps its position)
+    kotor::Vec3 chaseCameraEye(kotor::Vec3 head, kotor::Vec3 back, float desired, float height) const;
     float verticalVelocity_ = 0.0f;
     bool grounded_ = false;
     float elapsed_ = 0.0f;

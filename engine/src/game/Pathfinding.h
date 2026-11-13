@@ -193,6 +193,7 @@ struct Runtime {
     std::map<std::uint32_t, int> appearanceRateRow;
     std::map<std::uint32_t, float> personalSpace; // appearance.2da PERSPACE.
     std::map<std::uint32_t, float> creatureSpace; // appearance.2da CREPERSPACE.
+    std::map<std::uint32_t, float> cameraSpace;   // appearance.2da CAMERASPACE, CREPERSPACE when empty (004ed6e0, +0x340 +0x10).
     std::map<std::uint32_t, float> bodyHeight;    // appearance.2da HEIGHT.
     // appearance.2da DRIVEACCL / DRIVEMAXSPEED / DRIVEANIMWALK / DRIVEANIMRUN: the keyboard-driven body's acceleration and
     // top speed, and the walk/run speeds its clips are cut for (client appearance record +0x58/+0x5c/+0x60/+0x64).
