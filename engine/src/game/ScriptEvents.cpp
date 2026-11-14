@@ -139,6 +139,18 @@ Cells getLastAttacker(ActionCall& call)
     return ActionCall::retObject(it != last.end() ? it->second : script::kObjectInvalid);
 }
 
+// ACT_556 GetLastHostileActor (handler 0053af40): the victim's stored hostile actor (field +0x158),
+// cleared and answered invalid when that actor is dead. Leaving combat (004f2610 state 0) clears the field.
+Cells getLastHostileActor(ActionCall& call)
+{
+    ActorCombat& combat = call.api().actor(call.objectArg(0)).combat;
+    const std::uint32_t actor = combat.lastHostileActor;
+    if (actor != script::kObjectInvalid && !call.api().isAlive(actor)) {
+        combat.lastHostileActor = script::kObjectInvalid;
+    }
+    return ActionCall::retObject(combat.lastHostileActor);
+}
+
 Cells itemActivatedLocation(ActionCall& call)
 {
     const ScriptContext& context = call.api().context();
@@ -252,7 +264,7 @@ void registerEventActions(HandlerTable& table)
     table.add(424, eventActivateItem);
     table.add(441, itemActivatedLocation);
     table.add(542, [](ActionCall& call) -> Cells { return contextObjectGetter(call, "pcLevellingUp"); });
-    table.add(556, getLastAttacker);
+    table.add(556, getLastHostileActor);
     table.add(565, getRunScriptVar);
 }
 

@@ -1384,6 +1384,9 @@ void Rules::deriveCreatureCombat(kotor::Entity& entity) const
             case 28: // Keen
                 weapon.keen = true;
                 break;
+            case 31: // DamageNone: retail 005a9050 zeroes the base dice roll when the weapon has property 0x1f
+                weapon.noDamage = true;
+                break;
             case 51: { // Monster_damage: creature weapon dice. retail 005a9050
                 const kotor::TwoDa* table = costValue(property);
                 if (table != nullptr) {
@@ -1447,7 +1450,9 @@ void Rules::deriveCreatureCombat(kotor::Entity& entity) const
     const auto finishWeapon = [&](kotor::CreatureStats::Weapon& weapon, bool offhand) {
         // Unarmed: 005a4d90 rolls a die of 1 or 2 by a size value at creature +0x4f8
         // whose source is not resolved; 1d2 is used here.
-        if (weapon.dice <= 0 || weapon.die <= 0) {
+        if (weapon.noDamage) {
+            weapon.dice = 0;
+        } else if (weapon.dice <= 0 || weapon.die <= 0) {
             weapon.dice = 1;
             weapon.die = 2;
         }

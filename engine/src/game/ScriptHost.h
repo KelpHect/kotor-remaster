@@ -475,7 +475,7 @@ struct ScriptApi {
     // How close `self` must get to `target`: retail 004ee440 floors fRange by
     // personal space and, for creatures, both bodies.
     float approachRange(std::uint32_t self, std::uint32_t target, float range) const;
-    bool hasLineOfSight(std::uint32_t a, std::uint32_t b) const;
+    bool hasLineOfSight(std::uint32_t a, std::uint32_t b, bool doors = false) const;
 
     // Events: raiseHook defers to the next event pass and dispatches with the
     // right OBJECT_SELF and context. Logical names are resolved per object kind

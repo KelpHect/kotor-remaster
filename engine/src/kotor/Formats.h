@@ -1243,6 +1243,7 @@ struct CreatureStats {
         std::int32_t maxDamage = 2;
         bool ranged = false;
         bool keen = false;
+        bool noDamage = false; // item property 31 (DamageNone): the base dice do not roll (retail 005a9050)
     };
     Weapon mainHand;
     Weapon offHand;
