@@ -783,6 +783,15 @@ ParseResult parseArguments(int argc, char** argv)
             result.options.newGame = true;
             continue;
         }
+        if (arg == "--new-game-slot") {
+            const char* value = requireValue();
+            int slot = 0;
+            if (value == nullptr || !parseInteger(value, 0, slot) || slot > 5) {
+                return fail(std::move(result), "--new-game-slot requires 0..5");
+            }
+            result.options.newGameSlot = slot;
+            continue;
+        }
         if (arg == "--walk-godmode") {
             result.options.walkGodmode = true;
             continue;
@@ -992,6 +1001,7 @@ void printUsage()
         << "  --input-script <f>    Play a timed walk of mouse, key and shot steps (app/InputScript.h)\n"
         << "  --input-script-out <d>  Folder for the walk's frames\n"
         << "  --new-game            Start a new game (default character, end_m01aa) instead of a bare module\n"
+        << "  --new-game-slot <n>   With --new-game: the class screen's button 0..5 (default 2, male Soldier; 0 male Scoundrel)\n"
         << "  --walk-godmode        Walk steps only: keep the party from dying (route discovery)\n"
         << "  --walk-continue       Walk steps only: keep going after a failed step\n"
         << "  --start-wp <tag>      Per-module probing: stand the leader on this waypoint after the load\n"

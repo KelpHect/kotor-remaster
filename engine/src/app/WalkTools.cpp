@@ -828,7 +828,9 @@ int WalkDriver::beginUse(GameSession& game, bool talk)
         const bool kindOk = talk ? entity.kind == kotor::EntityKind::Creature
                                  : (entity.kind == kotor::EntityKind::Door || entity.kind == kotor::EntityKind::Placeable
                                     || entity.kind == kotor::EntityKind::Store);
-        const float distance = dist2D(from, entity.position);
+        // The mouse selects only what can be used: a static prop that shares a tag with a container is not a target.
+        const bool selectable = talk || entity.kind == kotor::EntityKind::Door || entity.useable;
+        const float distance = dist2D(from, entity.position) + (selectable ? 0.0f : 1.0e6f);
         if (kindOk && distance < bestDistance) {
             bestDistance = distance;
             useIndex_ = i;
@@ -1211,10 +1213,10 @@ int WalkDriver::finish(GameSession* game, bool scriptFinished, const std::string
 
 // ---------------------------------------------------------------------------------------------- start state
 
-bool walkStartNewGame(GameSession& game)
+bool walkStartNewGame(GameSession& game, int classSlot)
 {
     Chargen chargen(game.rules());
-    chargen.selectSlot(2); // male Soldier, the default of the class screen
+    chargen.selectSlot(classSlot); // 2: male Soldier, the default of the class screen
     chargen.applyRecommended(Chargen::Step::Abilities);
     chargen.applyRecommended(Chargen::Step::Skills);
     chargen.applyRecommended(Chargen::Step::Feats);

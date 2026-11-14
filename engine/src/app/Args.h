@@ -147,6 +147,7 @@ struct Options {
     // Game entry; --walk-godmode / --walk-continue: see the usage text; --start-wp / --seed-file: start-state
     // helpers for per-module probing only.
     bool newGame = false;
+    int newGameSlot = 2;            // --new-game-slot: classsel button 0..5 (0 male Scoundrel, 1 Scout, 2 Soldier, 3..5 female)
     bool walkGodmode = false;
     bool walkContinue = false;
     std::string startWp;
