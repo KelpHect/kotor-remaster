@@ -205,7 +205,7 @@
       "start_module": "ebo_m46ab"
     },
     "end_m01aa": {
-      "expect_choices": 51,
+      "expect_choices": 54,
       "expect_transitions": 1,
       "start_module": "end_m01aa"
     },

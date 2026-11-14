@@ -2202,7 +2202,9 @@ void FrontEndGate::build()
         ops_.push_back(wait(12));
         // The attacked creature may already be dead by now (how soon depends on the frame rate), so the checks
         // are relative to the selection when E is pressed: E moves it to another creature, Q returns to it
-        // (or, if it had gone, to the one before E's pick, which is not E's pick).
+        // (or, if it had gone, to the one before E's pick, which is not E's pick). The attack that was in flight
+        // when F cancelled it can still land during the waits and kill the creature between the two presses; the
+        // list then no longer holds it, so Q is judged by the same rule as for a creature that was gone before E.
         auto selectedBefore = std::make_shared<std::uint32_t>(UINT32_MAX);
         auto selectedByE = std::make_shared<std::uint32_t>(UINT32_MAX);
         ops_.push_back(expect("key_e_fixture_selection", [selectedBefore](Context& context) {
@@ -2221,7 +2223,9 @@ void FrontEndGate::build()
         ops_.push_back(expect("key_q_picks_the_one_before", [selectedBefore, selectedByE](Context& context) {
             const std::uint32_t now = context.game->hudTarget();
             logInfo(concat("front_end: key q selection ", *selectedByE, " -> ", now));
-            return *selectedBefore != UINT32_MAX ? now == *selectedBefore : now != UINT32_MAX && now != *selectedByE;
+            const bool stillThere = *selectedBefore < context.game->scene().entities.size()
+                && !context.game->scene().entities[*selectedBefore].dead;
+            return stillThere ? now == *selectedBefore : now != UINT32_MAX && now != *selectedByE;
         }));
         ops_.push_back(key(SDL_SCANCODE_G, SDLK_G));
         ops_.push_back(wait(6));

@@ -1649,56 +1649,102 @@ struct CombatOps {
         return type == 2 && skillOf(object, id) > 0;
     }
 
+    // retail 005a5d70 CheckForCategoryMatch: the requested category matches a talent's when every nibble of it
+    // is 0xf (any) or equals the talent's nibble.
+    static bool categoryMatches(std::int32_t talentCategory, std::int32_t requested)
+    {
+        const std::uint32_t have = static_cast<std::uint32_t>(talentCategory);
+        const std::uint32_t want = static_cast<std::uint32_t>(requested);
+        for (const std::uint32_t mask : {0xf000u, 0xf00u, 0xf0u, 0xfu}) {
+            if ((want & mask) != mask && (want & mask) != (have & mask)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    struct TalentPick {
+        std::int32_t type = -1;
+        std::int32_t id = -1;
+        std::uint32_t item = 0; // the item that carries the power, 0 for a known talent
+    };
+
     // Best: closest maxcr to the limit without going over. Random: any. Retail
     // 005b23a0 flips a coin between the two talent groups, and falls back to the
-    // other when one finds nothing; items are not offered as talents here.
-    std::pair<std::int32_t, std::int32_t> pickTalent(std::uint32_t object, std::int32_t category,
-                                                     std::int32_t crMax, bool random,
-                                                     std::int32_t excludeType,
-                                                     std::int32_t excludeId) const
+    // other when one finds nothing. The power group is the known powers, then the powers
+    // of items (005abd00: the carried items of the creature's repository, which is the
+    // party's for a party member). NOT YET: special abilities (005ab9e0) and the
+    // equipped-item pass of 005abd00.
+    TalentPick pickTalent(std::uint32_t object, std::int32_t category, std::int32_t crMax, bool random,
+                          std::int32_t excludeType, std::int32_t excludeId) const
     {
-        const auto search = [&](bool power) -> std::int32_t {
+        const auto search = [&](bool power) -> TalentPick {
             const std::int32_t type = power ? 0 : 1;
             if (excludeType == type && excludeId == -1) {
-                return -1;
+                return {};
             }
-            std::vector<std::int32_t> options;
-            std::int32_t best = -1;
+            std::vector<TalentPick> options;
+            TalentPick best;
             std::int32_t bestCr = -1;
             for (const std::int32_t id : talents(object, power)) {
                 if ((excludeType == type && excludeId == id) || !hasTalent(object, type, id)) {
                     continue;
                 }
-                if (s.rules_.talentInt(power, id, "category", -1) != category) {
+                if (!categoryMatches(s.rules_.talentInt(power, id, "category", -1), category)) {
                     continue;
                 }
                 const std::int32_t cr = s.rules_.talentInt(power, id, "maxcr", 0);
                 if (!random && crMax >= 0 && cr > crMax) {
                     continue;
                 }
-                options.push_back(id);
+                options.push_back({type, id, 0});
                 if (cr > bestCr) {
                     bestCr = cr;
-                    best = id;
+                    best = {type, id, 0};
                 }
             }
             if (random && !options.empty()) {
                 return options[s.random() % options.size()];
             }
-            return best;
+            if (best.id >= 0 || !power) {
+                return best;
+            }
+            // 005abd00: among the item powers whose spell matches the category, the highest maxcr
+            // (Best) or any (Random); equal maxcr values are drawn from at random.
+            std::vector<TalentPick> items;
+            std::int32_t itemCr = -1;
+            for (const GameSession::ItemPower& offer : s.itemPowers(object)) {
+                if (!categoryMatches(s.rules_.talentInt(true, offer.spell, "category", -1), category)) {
+                    continue;
+                }
+                const std::int32_t cr = s.rules_.talentInt(true, offer.spell, "maxcr", 0);
+                if (!random) {
+                    if (cr < itemCr) {
+                        continue;
+                    }
+                    if (cr > itemCr) {
+                        items.clear();
+                        itemCr = cr;
+                    }
+                }
+                items.push_back({0, offer.spell, offer.item});
+            }
+            return items.empty() ? TalentPick{} : items[s.random() % items.size()];
         };
         const bool powerFirst = (s.random() & 1u) == 0;
-        std::int32_t id = search(powerFirst);
-        if (id >= 0) {
-            return {powerFirst ? 0 : 1, id};
+        TalentPick pick = search(powerFirst);
+        if (pick.id < 0) {
+            pick = search(!powerFirst);
         }
-        id = search(!powerFirst);
-        return id >= 0 ? std::pair{powerFirst ? 1 : 0, id} : std::pair{-1, -1};
+        return pick;
     }
 
-    std::int64_t talentRecord(std::int32_t type, std::int32_t id) const
+    std::int64_t talentRecord(std::int32_t type, std::int32_t id, std::uint32_t item = 0) const
     {
         WorldSim& sim = api().sim();
+        if (item != 0) {
+            return sim.engine.add(TalentData{type, id, item});
+        }
         const auto key = std::pair{type, id};
         const auto it = sim.talents.find(key);
         if (it != sim.talents.end() && sim.engine.get<TalentData>(it->second) != nullptr) {
@@ -2377,11 +2423,11 @@ Cells getCreatureTalent(ActionCall& call)
     const std::uint32_t object = call.objectArg(best ? 2 : 1);
     const std::int32_t excludeType = best ? static_cast<std::int32_t>(call.intArg(4, -1)) : -1;
     const std::int32_t excludeId = best ? static_cast<std::int32_t>(call.intArg(5, -1)) : -1;
-    const auto [type, id] = ops.pickTalent(object, category, crMax, !best, excludeType, excludeId);
-    if (id < 0) {
+    const CombatOps::TalentPick pick = ops.pickTalent(object, category, crMax, !best, excludeType, excludeId);
+    if (pick.id < 0) {
         return ActionCall::retEngine(0);
     }
-    return ActionCall::retEngine(ops.talentRecord(type, id));
+    return ActionCall::retEngine(ops.talentRecord(pick.type, pick.id, pick.item));
 }
 
 void queueCast(ActionCall& call, std::int32_t spell, std::uint32_t target, std::int64_t location,
@@ -2434,6 +2480,12 @@ Cells actionUseTalent(ActionCall& call)
     const std::int32_t id = talent->id;
     const std::uint32_t target = call.id == 309 ? call.objectArgOrInvalid(1) : kInvalid;
     const std::int64_t location = call.id == 310 ? call.engineArg(1) : 0;
+    if (talent->item != 0) {
+        // A power carried by an item (a medpac, a grenade): the item is used, which casts its spell through
+        // the spell's impact script and spends a charge. Retail queues the cast; it runs when issued here.
+        call.session.useItem(talent->item, call.self(), target, id);
+        return ActionCall::none();
+    }
     if (call.self() == call.api().pc() && type == 1) {
         call.session.useFeat(id, target);
         return ActionCall::none();
