@@ -3055,10 +3055,10 @@ void GameSession::runPendingModule()
     }
 }
 
-bool GameSession::lineOfSight(kotor::Vec3 from, kotor::Vec3 to, bool doors)
+bool GameSession::lineOfSight(kotor::Vec3 from, kotor::Vec3 to, bool doors, float fromLift, float toLift)
 {
-    from.z += 1.2f;
-    to.z += 1.2f;
+    from.z += fromLift;
+    to.z += toLift;
     if (wallBlocked(scene_, from, to, 0.15f)) {
         return false;
     }

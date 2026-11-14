@@ -297,9 +297,9 @@ float ScriptApi::approachRange(std::uint32_t self, std::uint32_t target, float r
     return session.creatureApproachRange(self, target, range);
 }
 
-bool ScriptApi::hasLineOfSight(std::uint32_t a, std::uint32_t b, bool doors) const
+bool ScriptApi::hasLineOfSight(std::uint32_t a, std::uint32_t b, bool doors, float fromLift, float toLift) const
 {
-    return session.lineOfSight(position(a), position(b), doors);
+    return session.lineOfSight(position(a), position(b), doors, fromLift, toLift);
 }
 
 void ScriptApi::raiseHook(std::uint32_t target, std::string hook, ScriptContext context) const

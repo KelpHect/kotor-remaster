@@ -1590,6 +1590,39 @@ std::int32_t cellValue(const kotor::TwoDa& table, const std::string& row, const 
 // unique items. Charges, then the stack, are spent. The spell's effects only
 // land once the effects family applies them; this call is the only entry the
 // quest bot and the UI need.
+// 0057d9d0 AIActionUnlockObject with a kit (the 4th argument of ActionUseSkill, 0052d9b0): the first entry of the
+// kit's active-property list (GetActiveProperty 00553960, index 0) adds its cost value (+6) to the Security rank
+// when its upgrade type is 0xff (always on) or an installed upgrade (4eada0 tests item +0x294; installed upgrades
+// are not modelled here, so only 0xff counts). The kit is spent after the attempt, hit or miss: a stack of two or
+// more loses one, a single one is removed.
+std::int32_t GameSession::securityKitBonus(std::uint32_t item)
+{
+    ItemOps ops(*this);
+    if (!ops.isItem(item)) {
+        return 0;
+    }
+    const kotor::ItemTemplate* templ = ops.templateFor(attrStr(*ops.object(item), "item_resref"));
+    if (templ == nullptr || templ->properties.empty()) {
+        return 0;
+    }
+    const kotor::ItemTemplate::Property& first = templ->properties.front();
+    return first.upgradeType == 255 ? first.costValue & 0xFFFF : 0;
+}
+
+void GameSession::spendSecurityKit(std::uint32_t item)
+{
+    ItemOps ops(*this);
+    if (!ops.isItem(item)) {
+        return;
+    }
+    const std::int32_t stack = static_cast<std::int32_t>(attrInt(*ops.object(item), "item_stack", 1));
+    if (stack > 1) {
+        ops.setStack(item, stack - 1);
+    } else {
+        ops.destroy(item);
+    }
+}
+
 bool GameSession::useItem(std::uint32_t item, std::uint32_t user, std::uint32_t target)
 {
     ItemOps ops(*this);

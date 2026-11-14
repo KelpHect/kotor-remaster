@@ -65,7 +65,8 @@ fight range=22 timeout=180
 dialogue first timeout=60 optional
 fight range=22 timeout=180
 # end_door08 is locked and keyed (its lock cannot be picked); the soldiers behind it cannot be shot through the closed
-# door (retail 005bbbf0 casts 0050c330, which hits closed doors). Each try runs its OnFailToOpen script, which unlocks
+# door (retail 005bbbf0 casts 0050c330, which hits closed doors). Each try runs its OnFailToOpen script (k_pend_door20:
+# the bridge-seal sequence, which ends in SetLocked(door, FALSE) + ActionOpenDoor), which unlocks
 # the door after a delay (retail recording: tries, then it opens).
 goto end_door08 stop=1.5 timeout=90
 opendoor end_door08
