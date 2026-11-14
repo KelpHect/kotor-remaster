@@ -492,7 +492,7 @@ public:
     // actor 0 is the player. A locked door opens only with its key; otherwise OnFailToOpen runs.
     UseOutcome openDoor(std::size_t entityIndex, std::uint32_t actor = 0);
     bool closeDoor(std::size_t entityIndex);
-    bool unlockDoor(std::size_t entityIndex, std::uint32_t actor = 0); // key first, then Security (d20 + rank)
+    bool unlockDoor(std::size_t entityIndex, std::uint32_t actor = 0); // key first, then Security (0057d9d0: flat 20 out of combat, else d20, + rank)
     bool lockDoor(std::size_t entityIndex);
     bool bashDoor(std::size_t entityIndex);        // melee damage less Hardness; not Plot
     bool detectTrap(std::size_t entityIndex);      // Awareness check
@@ -1128,7 +1128,7 @@ private:
     void springTrap(std::size_t entityIndex, std::uint32_t victim);
     bool keyUnlock(std::size_t entityIndex); // key in inventory unlocks; AutoRemoveKey consumes it
     std::int32_t skillRank(const char* skill) const;
-    bool skillCheck(const char* skill, std::int32_t dc, const char* what);
+    bool skillCheck(const char* skill, std::int32_t dc, const char* what, std::int32_t fixedRoll = -1);
     std::uint32_t spawnScriptCreature(const std::string& resref, kotor::Vec3 position, float facing);
     void updateEncounters(float dt);
     void updateParty(float dt);

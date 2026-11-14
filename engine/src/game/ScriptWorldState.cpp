@@ -141,10 +141,14 @@ std::int32_t GameSession::skillRank(const char* skill) const
     return rank;
 }
 
-// d20 + rank against the DC. An untrained skill (rank 0) cannot be used: skills.2da
-// marks Security and Demolitions untrained=0. The roll-and-add form is the d20 rule
-// the rest of the engine uses; no retail pseudocode for the lock check was found.
-bool GameSession::skillCheck(const char* skill, std::int32_t dc, const char* what)
+// Roll plus rank against the DC. An untrained skill (rank 0) cannot be used: skills.2da
+// marks Security and Demolitions untrained=0 (CSWSCreature::UseSkill 004fbe40 gates on
+// CSWSCreatureStats::GetCanUseSkill). The lock check is CSWSObject::AIActionUnlockObject
+// 0057d9d0: the roll is a flat 20 while the unlocker's combat state (creature +0x4e0, set
+// by CSWSCreature::SetCombatState 004f2610) is 0, else rand() % 20 + 1; the lock opens when
+// max(DC, 1) <= Security rank (GetSkillRank 005aa570, skill 6) + roll. `fixedRoll` >= 0
+// replaces the random roll.
+bool GameSession::skillCheck(const char* skill, std::int32_t dc, const char* what, std::int32_t fixedRoll)
 {
     const std::int32_t rank = skillRank(skill);
     if (rank <= 0) {
@@ -169,8 +173,8 @@ bool GameSession::skillCheck(const char* skill, std::int32_t dc, const char* wha
             return false;
         }
     }
-    const std::int32_t roll = 1 + static_cast<std::int32_t>(random() % 20u);
-    const bool ok = roll + rank >= dc;
+    const std::int32_t roll = fixedRoll >= 0 ? fixedRoll : 1 + static_cast<std::int32_t>(random() % 20u);
+    const bool ok = roll + rank >= std::max(dc, 1);
     logEvent(std::string(what) + ": " + skill + " d20=" + std::to_string(roll) + "+"
              + std::to_string(rank) + (ok ? " >= " : " < ") + std::to_string(dc));
     return ok;
@@ -225,7 +229,11 @@ bool GameSession::unlockDoor(std::size_t index, std::uint32_t actor)
         logEvent("unlock " + scene_.entities[index].tag + ": needs its key");
         return false;
     }
-    if (!skillCheck("security", scene_.entities[index].openLockDC, "unlock")) {
+    // AIActionUnlockObject 0057d9d0: a flat 20 out of combat, d20 in combat.
+    const std::uint32_t unlocker = actor == 0 ? controlledObject() : actor;
+    const auto unlockerState = sim_->actors.find(unlocker);
+    const bool unlockerInCombat = unlockerState != sim_->actors.end() && unlockerState->second.combat.inCombat;
+    if (!skillCheck("security", scene_.entities[index].openLockDC, "unlock", unlockerInCombat ? -1 : 20)) {
         return false;
     }
     scene_.entities[index].locked = false;

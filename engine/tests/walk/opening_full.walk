@@ -4,8 +4,10 @@
 # Character: the retail recording's player is the male Scoundrel (appearance 148 is portraits.2da appearance_s, the
 # class-2 column), so the run starts on the class screen's first button (--new-game-slot 0). The quick build gives it
 # Security ranks, which the locked doors the route meets need.
-# Status: reaches end_m01ab through end_door10 (transition) and stops where the retail recording meets the corridor
-# fight and end_m01ab's own door (end_door01, Security); steps past that are not written yet.
+# Status: reaches end_m01ab through end_door10 (transition), plays Carth's arrival conversation, kills the corridor
+# soldiers on the way and opens end_door01. Stops there. Open blockers past it: end_door05 (OpenLockDC 28, not
+# pickable at the starting Security rank; the script k_pend_droid10 opens it from the damaged droid's conversation)
+# and the droid itself (tag end_assaultdroid): talking to it starts no conversation yet.
 # Run:  kotor_engine --new-game --new-game-slot 0 --null --headless --fixed-dt 0.0166667 --walk-godmode --walk-continue
 #         --input-script opening_full.walk
 autodialogue first
@@ -77,4 +79,8 @@ fight range=22 timeout=180
 goto end_door10 stop=1.5 timeout=90
 use end_door10
 module end_m01ab timeout=60
+dialogue first timeout=60 optional
+idle 3
+goto end_door01 stop=1.5 timeout=90
+use end_door01
 end
