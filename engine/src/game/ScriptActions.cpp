@@ -404,7 +404,7 @@ bool runFrontAction(ScriptApi api, std::uint32_t self, float dt)
         }
         const ActorAction taken = pop();
         if (taken.spell == 6) {
-            api.session.unlockDoor(index, self);
+            api.session.unlockDoor(index, self, taken.kit);
         } else if (taken.spell == 1) {
             api.session.disarmTrap(index);
         } else {
@@ -792,6 +792,10 @@ Cells actionUseSkill(ActionCall& call)
     action.spell = static_cast<std::int32_t>(call.intArg(0));
     action.object = call.objectArgOrInvalid(1);
     action.amount = static_cast<std::int32_t>(call.intArg(2));
+    action.kit = call.objectArgOrInvalid(3);
+    if (action.kit == script::kObjectInvalid) {
+        action.kit = 0;
+    }
     call.api().enqueue(call.self(), std::move(action));
     return ActionCall::none();
 }

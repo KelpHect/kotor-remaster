@@ -148,7 +148,8 @@ std::int32_t GameSession::skillRank(const char* skill) const
 // by CSWSCreature::SetCombatState 004f2610) is 0, else rand() % 20 + 1; the lock opens when
 // max(DC, 1) <= Security rank (GetSkillRank 005aa570, skill 6) + roll. `fixedRoll` >= 0
 // replaces the random roll.
-bool GameSession::skillCheck(const char* skill, std::int32_t dc, const char* what, std::int32_t fixedRoll)
+bool GameSession::skillCheck(const char* skill, std::int32_t dc, const char* what, std::int32_t fixedRoll,
+                             std::int32_t bonus)
 {
     const std::int32_t rank = skillRank(skill);
     if (rank <= 0) {
@@ -174,9 +175,9 @@ bool GameSession::skillCheck(const char* skill, std::int32_t dc, const char* wha
         }
     }
     const std::int32_t roll = fixedRoll >= 0 ? fixedRoll : 1 + static_cast<std::int32_t>(random() % 20u);
-    const bool ok = roll + rank >= std::max(dc, 1);
+    const bool ok = roll + rank + bonus >= std::max(dc, 1);
     logEvent(std::string(what) + ": " + skill + " d20=" + std::to_string(roll) + "+"
-             + std::to_string(rank) + (ok ? " >= " : " < ") + std::to_string(dc));
+             + std::to_string(rank) + (bonus != 0 ? "+kit" + std::to_string(bonus) : std::string()) + (ok ? " >= " : " < ") + std::to_string(dc));
     return ok;
 }
 
@@ -209,7 +210,7 @@ bool GameSession::keyUnlock(std::size_t index)
     return true;
 }
 
-bool GameSession::unlockDoor(std::size_t index, std::uint32_t actor)
+bool GameSession::unlockDoor(std::size_t index, std::uint32_t actor, std::uint32_t kit)
 {
     if (index >= scene_.entities.size()) {
         return false;
@@ -233,7 +234,14 @@ bool GameSession::unlockDoor(std::size_t index, std::uint32_t actor)
     const std::uint32_t unlocker = actor == 0 ? controlledObject() : actor;
     const auto unlockerState = sim_->actors.find(unlocker);
     const bool unlockerInCombat = unlockerState != sim_->actors.end() && unlockerState->second.combat.inCombat;
-    if (!skillCheck("security", scene_.entities[index].openLockDC, "unlock", unlockerInCombat ? -1 : 20)) {
+    // 0057d9d0: the kit (if any) adds its first property's cost value to the rank, and is spent hit or miss.
+    const std::int32_t kitBonus = kit != 0 ? securityKitBonus(kit) : 0;
+    const bool picked = skillCheck("security", scene_.entities[index].openLockDC, "unlock", unlockerInCombat ? -1 : 20,
+                                   kitBonus);
+    if (kit != 0) {
+        spendSecurityKit(kit);
+    }
+    if (!picked) {
         return false;
     }
     scene_.entities[index].locked = false;

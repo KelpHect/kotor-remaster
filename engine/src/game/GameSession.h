@@ -492,7 +492,7 @@ public:
     // actor 0 is the player. A locked door opens only with its key; otherwise OnFailToOpen runs.
     UseOutcome openDoor(std::size_t entityIndex, std::uint32_t actor = 0);
     bool closeDoor(std::size_t entityIndex);
-    bool unlockDoor(std::size_t entityIndex, std::uint32_t actor = 0); // key first, then Security (0057d9d0: flat 20 out of combat, else d20, + rank)
+    bool unlockDoor(std::size_t entityIndex, std::uint32_t actor = 0, std::uint32_t kit = 0); // key first, then Security (0057d9d0: flat 20 out of combat, else d20, + rank)
     bool lockDoor(std::size_t entityIndex);
     bool bashDoor(std::size_t entityIndex);        // melee damage less Hardness; not Plot
     bool detectTrap(std::size_t entityIndex);      // Awareness check
@@ -831,6 +831,8 @@ public:
                   std::uint32_t from = script::kObjectInvalid);
     // Removes the item from its holder and invalidates it.
     bool destroyItem(std::uint32_t item);
+    std::int32_t securityKitBonus(std::uint32_t item); // 0057d9d0 kit bonus (ScriptItems.cpp)
+    void spendSecurityKit(std::uint32_t item);
     // The tagged item in the holder's inventory or worn slots (GetItemPossessedBy).
     std::uint32_t itemPossessedBy(std::uint32_t holder, const std::string& tag);
     // The creature, placeable or store holding the item (the PC for the party).
@@ -1078,7 +1080,7 @@ private:
     std::int32_t plotXpByLabel(const std::string& label, double fraction);
     ActorStep stepActorToward(std::uint32_t object, kotor::Vec3 target, float speed, float dt,
                               float stopDistance, bool ramp = true);
-    bool lineOfSight(kotor::Vec3 from, kotor::Vec3 to, bool doors = false);
+    bool lineOfSight(kotor::Vec3 from, kotor::Vec3 to, bool doors = false, float fromLift = 1.2f, float toLift = 1.2f);
     // Retail GetObstructionFactor 0050ccf0 for a sound: 0.4 for every surface of the area the line from the
     // sound to the listener crosses (surfacemat lineofsight), the line restarted a tenth of a metre past each
     // hit, 1.0 once the sum passes 1. A closed door on the line adds 0.55 and a placeable 0.4 (once per object).
@@ -1108,6 +1110,8 @@ private:
     void setDialogueCameraClip(std::int32_t animation);
     void updateCombat(float dt);
     void updateTriggers();
+    void updateDoorWalkThrough();
+    std::map<std::size_t, int> doorApproachSide_; // updateDoorWalkThrough: which side of an open linked door the PC came from
     void updateScripts(float dt);
     void updateTimers(float dt);
     bool runFunctor(const script::Functor& functor, std::uint32_t target);
@@ -1128,7 +1132,8 @@ private:
     void springTrap(std::size_t entityIndex, std::uint32_t victim);
     bool keyUnlock(std::size_t entityIndex); // key in inventory unlocks; AutoRemoveKey consumes it
     std::int32_t skillRank(const char* skill) const;
-    bool skillCheck(const char* skill, std::int32_t dc, const char* what, std::int32_t fixedRoll = -1);
+    bool skillCheck(const char* skill, std::int32_t dc, const char* what, std::int32_t fixedRoll = -1,
+                    std::int32_t bonus = 0);
     std::uint32_t spawnScriptCreature(const std::string& resref, kotor::Vec3 position, float facing);
     void updateEncounters(float dt);
     void updateParty(float dt);

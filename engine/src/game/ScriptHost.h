@@ -171,6 +171,7 @@ struct ActorAction {
     std::int64_t location = 0; // CastSpell at a location: the LocationData record.
     std::int32_t result = 0;   // CutsceneAttack: ATTACK_RESULT_*. EquipMostDamaging: 1 ranged.
     std::int32_t amount = 0;   // CutsceneAttack: damage. UseSkill: sub-skill.
+    std::uint32_t kit = 0;     // UseSkill: oItemUsed (the Security kit, 0057d9d0).
 };
 
 // One effect on a creature, as ApplyEffectToObject left it. `effect` keeps the
@@ -478,7 +479,8 @@ struct ScriptApi {
     // How close `self` must get to `target`: retail 004ee440 floors fRange by
     // personal space and, for creatures, both bodies.
     float approachRange(std::uint32_t self, std::uint32_t target, float range) const;
-    bool hasLineOfSight(std::uint32_t a, std::uint32_t b, bool doors = false) const;
+    bool hasLineOfSight(std::uint32_t a, std::uint32_t b, bool doors = false, float fromLift = 1.2f,
+                        float toLift = 1.2f) const;
 
     // Events: raiseHook defers to the next event pass and dispatches with the
     // right OBJECT_SELF and context. Logical names are resolved per object kind
