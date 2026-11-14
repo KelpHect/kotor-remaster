@@ -848,10 +848,19 @@ public:
     // Uses an item as `user`: applies its CastSpell item properties through the spell's
     // impact script, raises the module activation event and spends a charge or one of
     // the stack. The quest bot and the UI both call this.
+    // powerSpell >= 0 uses the property whose subtype is that spells.2da row (an AI item talent).
     bool useItem(std::uint32_t item, std::uint32_t user,
-                 std::uint32_t target = script::kObjectInvalid);
+                 std::uint32_t target = script::kObjectInvalid, std::int32_t powerSpell = -1);
     // True when the item carries an ActivateItem property the player can use.
     bool itemUsable(std::uint32_t item);
+    // The spells a creature can cast from items as AI talents (retail 005abd00 second pass): every carried item
+    // that cannot be equipped and has a usable ActivateItem property, from the creature's own inventory or, for a
+    // party member, the party's (004ef770 GetItemRepository). One entry per property.
+    struct ItemPower {
+        std::uint32_t item = 0;
+        std::int32_t spell = -1;
+    };
+    std::vector<ItemPower> itemPowers(std::uint32_t creature);
     // Gold held by a creature (the party's for the PC and party members).
     std::int32_t creatureGold(std::uint32_t creature) const;
     void addCreatureGold(std::uint32_t creature, std::int32_t amount);

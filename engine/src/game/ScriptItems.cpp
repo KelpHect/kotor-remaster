@@ -1623,7 +1623,7 @@ void GameSession::spendSecurityKit(std::uint32_t item)
     }
 }
 
-bool GameSession::useItem(std::uint32_t item, std::uint32_t user, std::uint32_t target)
+bool GameSession::useItem(std::uint32_t item, std::uint32_t user, std::uint32_t target, std::int32_t powerSpell)
 {
     ItemOps ops(*this);
     if (user == 0 || user == script::kObjectInvalid) {
@@ -1656,8 +1656,13 @@ bool GameSession::useItem(std::uint32_t item, std::uint32_t user, std::uint32_t 
         if (spellRefs == nullptr || spells == nullptr) {
             continue;
         }
-        const std::int32_t spell = cellValue(*spellRefs, std::to_string(property.subtype),
-                                             "spellindex", -1);
+        // An AI talent names its spell as the property's subtype (itemPowers); the player's use goes through
+        // iprp_spells.
+        if (powerSpell >= 0 && property.subtype != powerSpell) {
+            continue;
+        }
+        const std::int32_t spell = powerSpell >= 0 ? powerSpell
+            : cellValue(*spellRefs, std::to_string(property.subtype), "spellindex", -1);
         if (spell < 0) {
             continue;
         }
@@ -1680,6 +1685,10 @@ bool GameSession::useItem(std::uint32_t item, std::uint32_t user, std::uint32_t 
         context["lastSpellCaster"] = user;
         context["spellTarget"] = target;
         context["attemptedTarget"] = target;
+        if (powerSpell >= 0) {
+            context["spellId"] = static_cast<std::uint32_t>(powerSpell);
+            context["lastSpell"] = static_cast<std::uint32_t>(powerSpell);
+        }
         context["spellCastItem"] = item;
         context["itemActivated"] = item;
         context["itemActivator"] = user;
@@ -1723,6 +1732,38 @@ bool GameSession::itemUsable(std::uint32_t item)
         }
     }
     return false;
+}
+
+std::vector<GameSession::ItemPower> GameSession::itemPowers(std::uint32_t creature)
+{
+    std::vector<ItemPower> out;
+    ItemOps ops(*this);
+    if (!ops.canHold(creature)) {
+        return out;
+    }
+    for (const std::uint32_t item : ops.carried(creature)) {
+        if (!ops.isItem(item)) {
+            continue;
+        }
+        const script::GameObject& gear = *ops.object(item);
+        const kotor::ItemTemplate* templ = ops.templateFor(attrStr(gear, "item_resref"));
+        // 005abd00 takes the repository items whose base item entry (+4) is 0; the field is not traced to the
+        // 2DA loader, equipableslots 0 (an item that cannot be worn) is the reading used.
+        if (templ == nullptr || rules_.equipMask(templ->baseItem) != 0) {
+            continue;
+        }
+        const bool charged = attrInt(gear, "item_charges") > 0;
+        for (const kotor::ItemTemplate::Property& property : templ->properties) {
+            if (property.name != kItemPropertyActivateItem || !(property.useable || charged)
+                || property.upgradeType != 255) {
+                continue;
+            }
+            // 005abd00 hands the property's subtype (+2) straight to CSWSpellArray::GetSpell: the subtype is the
+            // spells.2da row (the medpacs' 64-66 are ITEM_ABILITY_MED_PACK and its kin), not an iprp_spells row.
+            out.push_back({item, property.subtype});
+        }
+    }
+    return out;
 }
 
 // ---- handlers ------------------------------------------------------------------

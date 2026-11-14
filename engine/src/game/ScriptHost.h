@@ -92,6 +92,9 @@ struct EventData {
 struct TalentData {
     std::int32_t type = 0;
     std::int32_t id = 0;
+    // The item whose ActivateItem property offers the power (retail 005abd00 stores the spell, the item id and
+    // the property index); 0 for a known power or feat.
+    std::uint32_t item = 0;
 };
 
 using EngineRecord = std::variant<LocationData, EffectData, EventData, TalentData>;
