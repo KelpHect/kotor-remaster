@@ -22,7 +22,7 @@ std::string pad(std::size_t value, int width)
 bool isWalkVerb(const std::string& op)
 {
     static const char* const verbs[] = {"goto", "use", "talk", "dialogue", "autodialogue", "fight", "module",
-                                        "expect", "idle", "partyselect", "note", "list", "loot", "equip", "leader", "unlock"};
+                                        "expect", "idle", "partyselect", "note", "list", "loot", "equip", "leader", "unlock", "opendoor"};
     for (const char* verb : verbs) {
         if (op == verb) {
             return true;

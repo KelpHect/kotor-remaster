@@ -578,6 +578,22 @@ int WalkDriver::begin(GameSession& game, const std::string& line)
         const bool ok = game.selectLeaderNpc(npc);
         return done(game, ok, ok ? "" : concat("reason=refused npc=", npc, " control_locked=", game.controlLocked() ? 1 : 0));
     }
+    if (verb_ == "opendoor") {
+        // ActionOpenDoor as a script queues it on the controlled creature (what the retail recording issued): a
+        // locked door runs its OnFailToOpen hook, an unlocked one opens. For doors the mouse cannot target.
+        const std::vector<std::string> args = positional();
+        const std::size_t index = args.empty() ? kNone : game.findEntity(args[0]);
+        if (index == kNone) {
+            return done(game, false, "reason=unknown-target");
+        }
+        if (!game.inReach(index, 3.0f)) {
+            return done(game, false, "reason=out-of-reach tag=" + args[0]);
+        }
+        const UseOutcome outcome = game.openDoor(index);
+        const bool must = args.size() > 1 && args[1] == "must"; // `must`: only an opened door counts
+        return done(game, outcome == UseOutcome::Opened || (outcome == UseOutcome::Locked && !must),
+                    concat("tag=", args[0], " outcome=", outcome == UseOutcome::Opened ? "opened" : "locked-hook"));
+    }
     if (verb_ == "unlock") {
         // The Security skill on a locked door in reach, as the HUD's unlock action does.
         const std::vector<std::string> args = positional();
@@ -588,8 +604,14 @@ int WalkDriver::begin(GameSession& game, const std::string& line)
         if (!game.inReach(index, 3.0f)) {
             return done(game, false, "reason=out-of-reach tag=" + args[0]);
         }
-        const bool ok = game.unlockDoor(index);
-        return done(game, ok, concat("tag=", args[0], " locked=", game.scene().entities[index].locked ? 1 : 0));
+        // A failed Security roll is tried again, as a player clicks again (up to 25 tries; the key is tried first).
+        bool ok = false;
+        int tries = 0;
+        while (!ok && tries < 25) {
+            ok = game.unlockDoor(index);
+            ++tries;
+        }
+        return done(game, ok, concat("tag=", args[0], " tries=", tries, " locked=", game.scene().entities[index].locked ? 1 : 0));
     }
     return done(game, false, "reason=unknown verb");
 }
@@ -913,6 +935,9 @@ int WalkDriver::pollDialogue(GameSession& game)
         }
     } else if (sawDialogue_) {
         return done(game, true, concat("nodes=", dialogueNodes_, " policy=", stepPolicy_.text));
+    }
+    if (sim_ - stepStart_ > timeout_ && !sawDialogue_ && std::find(words_.begin(), words_.end(), "optional") != words_.end()) {
+        return done(game, true, "nodes=0 none-started (optional)");
     }
     if (sim_ - stepStart_ > timeout_) {
         return done(game, false, concat("reason=timeout ", sawDialogue_ ? "dialogue-never-ended" : "no-dialogue-started", " nodes=",
