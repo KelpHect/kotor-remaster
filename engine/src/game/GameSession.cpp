@@ -5953,11 +5953,57 @@ bool GameSession::pointInTrigger(const kotor::TriggerVolume& trigger, float x, f
     return false;
 }
 
+// A linked door (CSWSDoor::GetIsLinked 005890d0: LinkedToFlags 1 or 2) that stands open is crossed by walking
+// through it. Retail recording (user save tar-UpperCantina, tar02_cantdoor opened by its OnFailToOpen script
+// k_ptar_sithalert, PC then ActionMoveToLocation 3 m past the door): the module changed with the PC 1.2 m past the
+// door's centre line and not yet with the PC on it (0.01 m short). The retail path (a creature moving through the
+// door's action area, 004bf470 -> 005897d0 InDoorArea?, 0051bb10 sending the door event 0x1f) was not traced, so
+// this takes the observed side and distance: the far side of the door from where the PC approached, 1.0 m or more
+// past the centre line, within 2.0 m of the door's axis.
+void GameSession::updateDoorWalkThrough()
+{
+    if (!pendingModule_.empty() || controlLocked()) {
+        return;
+    }
+    const kotor::Vec3 at = controlledPosition();
+    for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+        const kotor::Entity& door = scene_.entities[i];
+        if (door.kind != kotor::EntityKind::Door || door.linkedModule.empty()
+            || (door.linkedFlags != 1 && door.linkedFlags != 2)) {
+            continue;
+        }
+        const float nx = -std::sin(door.bearing);
+        const float ny = std::cos(door.bearing);
+        const float dx = at.x - door.position.x;
+        const float dy = at.y - door.position.y;
+        const float along = dx * nx + dy * ny;
+        const float lateral = std::fabs(dx * ny - dy * nx);
+        int& side = doorApproachSide_[i];
+        if (lateral > 2.0f || std::fabs(along) > 6.0f) {
+            side = 0;
+            continue;
+        }
+        if (!door.open || side == 0) {
+            if (std::fabs(along) > 0.3f && !door.open) {
+                side = along > 0.0f ? 1 : -1;
+            }
+            continue;
+        }
+        if (along * static_cast<float>(side) <= -1.0f) {
+            logEvent("door " + door.tag + ": walked through, leaving for " + door.linkedModule);
+            pendingModule_ = door.linkedModule;
+            sim_->pendingLinkedTo = door.linkedTo;
+            return;
+        }
+    }
+}
+
 void GameSession::updateTriggers()
 {
     if (triggerInside_.size() != scene_.triggers.size()) {
         triggerInside_.assign(scene_.triggers.size(), false);
     }
+    updateDoorWalkThrough();
     for (std::size_t i = 0; i < scene_.triggers.size(); ++i) {
         const kotor::TriggerVolume& trigger = scene_.triggers[i];
         if (trigger.entity >= scene_.entities.size()) {

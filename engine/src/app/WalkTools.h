@@ -116,6 +116,7 @@ private:
     float stop_ = 0.5f;
     std::string targetText_;
     int doorClicks_ = 0;
+    std::string gotoModule_; // goto ... through: the module the walk started in
     float lastProgressX_ = 0.0f;
     float lastProgressY_ = 0.0f;
     double lastProgressAt_ = 0.0;

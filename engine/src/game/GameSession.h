@@ -1110,6 +1110,8 @@ private:
     void setDialogueCameraClip(std::int32_t animation);
     void updateCombat(float dt);
     void updateTriggers();
+    void updateDoorWalkThrough();
+    std::map<std::size_t, int> doorApproachSide_; // updateDoorWalkThrough: which side of an open linked door the PC came from
     void updateScripts(float dt);
     void updateTimers(float dt);
     bool runFunctor(const script::Functor& functor, std::uint32_t target);

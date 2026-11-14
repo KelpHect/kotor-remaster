@@ -717,11 +717,16 @@ int WalkDriver::beginGoto(GameSession& game)
     }
     stop_ = static_cast<float>(option("stop", defaultStop));
     doorClicks_ = 0;
+    gotoModule_ = game.module();
     return 0;
 }
 
 int WalkDriver::pollGoto(GameSession& game)
 {
+    // `through`: the walk goes through a linked door, and the step is done when the module changes under it.
+    if (flag("through") && game.module() != gotoModule_) {
+        return done(game, true, concat("left=", gotoModule_, " target=", targetText_));
+    }
     if (sim_ - stepStart_ > timeout_) {
         const kotor::Vec3 at = game.controlledPosition();
         return done(game, false, concat("reason=timeout phase=", phase_ == 0 ? "waiting-for-control" : "moving", " block=",

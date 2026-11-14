@@ -1,0 +1,31 @@
+# Taris start: apartment (tar_m02af) to the Sith commander in the North Apartments (tar_m02ad).
+# Start state: a Taris save in tar_m02af, loaded with
+#   kotor_engine --module end_m01aa --state-trace-load <save dir> --input-script this file ...
+# (the retail "BEGIN" save of the user's set; no new-game route reaches here without opening_full.walk).
+# Blockers on the way, none a route trick: the cantina door of tar_m02ab is crossed by walking through the open linked
+# door (goto ... through, retail 005890d0 linked doors); in tar_m02ad the planner ends short near the Power Conductor
+# placeable, so the route detours via 88,106.
+autodialogue first
+idle 12
+goto tar02_aptdoor stop=1.5 timeout=60
+use tar02_aptdoor
+module tar_m02aa timeout=60
+dialogue first timeout=120 optional
+idle 20
+fight range=25 timeout=120
+idle 10
+goto ptar_stnddr stop=1.5 timeout=120
+use ptar_stnddr
+module tar_m02ac timeout=60
+goto UpperNorth stop=1.5 timeout=240
+use UpperNorth timeout=60
+module tar_m02ab timeout=60
+goto tar02_door02ad stop=1.5 timeout=240
+use tar02_door02ad timeout=60
+module tar_m02ad timeout=60
+idle 5
+goto 88,106,0 timeout=60
+goto 88,125,0 timeout=60
+goto tar02_sithcommander stop=2.5 timeout=240
+expect module tar_m02ad
+list range=30
