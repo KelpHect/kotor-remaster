@@ -187,7 +187,8 @@ Vec3 flareWorldPosition(const Scene& scene, const FlareLight& flare)
 
 // 004ab750, one-sided: `from` must be on the face's front (plane distance >= 0) and `to` on its back
 // (<= 0), the crossing inside every edge within 1e-5 (007440f8).
-bool faceHitOneSided(Vec3 from, Vec3 to, const Vec3& a, const Vec3& b, const Vec3& c)
+// `along` is where on the segment the face is crossed (0 at `from`, 1 at `to`).
+bool faceHitOneSidedAt(Vec3 from, Vec3 to, const Vec3& a, const Vec3& b, const Vec3& c, float& along)
 {
     const Vec3 normal = normalize(cross(b - a, c - a));
     if (dot(normal, normal) < 0.5f) {
@@ -198,7 +199,8 @@ bool faceHitOneSided(Vec3 from, Vec3 to, const Vec3& a, const Vec3& b, const Vec
     if (!(fromSide >= 0.0f && toSide <= 0.0f && fromSide != toSide)) {
         return false;
     }
-    const Vec3 at = from + (to - from) * (fromSide / (fromSide - toSide));
+    along = fromSide / (fromSide - toSide);
+    const Vec3 at = from + (to - from) * along;
     const Vec3 corners[3] = {a, b, c};
     for (int k = 0; k < 3; ++k) {
         const Vec3& p0 = corners[k];
@@ -208,6 +210,12 @@ bool faceHitOneSided(Vec3 from, Vec3 to, const Vec3& a, const Vec3& b, const Vec
         }
     }
     return true;
+}
+
+bool faceHitOneSided(Vec3 from, Vec3 to, const Vec3& a, const Vec3& b, const Vec3& c)
+{
+    float along = 0.0f;
+    return faceHitOneSidedAt(from, to, a, b, c, along);
 }
 
 // Whether the segment meets the box (BoxIntersect 004aa610 culls each room part by its bounds).
@@ -1047,6 +1055,155 @@ constexpr std::uint32_t kFlagP2P = 0x1u;
 constexpr std::uint32_t kFlagP2PBezier = 0x2u;
 
 } // namespace
+
+SceneHitFaces gatherSceneHitFaces(const Scene& scene, Vec3 boxMin, Vec3 boxMax)
+{
+    SceneHitFaces area;
+    const auto inside = [&](const Vec3& a, const Vec3& b, const Vec3& c) {
+        return !(std::max({a.x, b.x, c.x}) < boxMin.x || std::min({a.x, b.x, c.x}) > boxMax.x
+                 || std::max({a.y, b.y, c.y}) < boxMin.y || std::min({a.y, b.y, c.y}) > boxMax.y
+                 || std::max({a.z, b.z, c.z}) < boxMin.z || std::min({a.z, b.z, c.z}) > boxMax.z);
+    };
+    for (const Scene::RoomHitFaces& room : scene.roomHitFaces) {
+        if (room.boxMax.x < boxMin.x || room.boxMin.x > boxMax.x || room.boxMax.y < boxMin.y || room.boxMin.y > boxMax.y
+            || room.boxMax.z < boxMin.z || room.boxMin.z > boxMax.z) {
+            continue;
+        }
+        for (const std::array<Vec3, 3>& face : room.faces) {
+            if (inside(face[0], face[1], face[2])) {
+                area.faces.push_back(face);
+            }
+        }
+    }
+    constexpr std::uint32_t kHitMask = 0xbfffffffu;
+    for (const CollisionFacet& facet : scene.collision) {
+        if (((1u << (facet.surface & 0x1fu)) & kHitMask) == 0u) {
+            continue;
+        }
+        const Vec3& a = scene.collisionVertices[facet.a];
+        const Vec3& b = scene.collisionVertices[facet.b];
+        const Vec3& c = scene.collisionVertices[facet.c];
+        if (inside(a, b, c)) {
+            area.faces.push_back({a, b, c});
+        }
+    }
+    return area;
+}
+
+int sceneHitCheck(const Scene& scene, Vec3 from, Vec3 to, std::uint32_t ignoreEntity, Vec3& hit,
+                  const SceneHitFaces* area)
+{
+    // Every hit moves the segment's end to the crossing (00456b60 passes its `to` as the out point of each
+    // room and object test), so later faces are tested against the shortened segment and the result is the
+    // nearest crossing.
+    int kind = 0;
+    Vec3 end = to;
+    // A face wholly to one side of the segment's bounds is not crossed: rejected before the exact test.
+    const auto outside = [](const Vec3& p, const Vec3& q, const Vec3& a, const Vec3& b, const Vec3& c) {
+        return std::max({a.x, b.x, c.x}) < std::min(p.x, q.x) || std::min({a.x, b.x, c.x}) > std::max(p.x, q.x)
+            || std::max({a.y, b.y, c.y}) < std::min(p.y, q.y) || std::min({a.y, b.y, c.y}) > std::max(p.y, q.y)
+            || std::max({a.z, b.z, c.z}) < std::min(p.z, q.z) || std::min({a.z, b.z, c.z}) > std::max(p.z, q.z);
+    };
+    const auto clip = [&](const Vec3& a, const Vec3& b, const Vec3& c, int what) {
+        if (outside(from, end, a, b, c)) {
+            return;
+        }
+        float along = 0.0f;
+        if (faceHitOneSidedAt(from, end, a, b, c, along)) {
+            end = from + (end - from) * along;
+            kind = what;
+        }
+    };
+    // Rooms (0046b4c0 on each room whose bounds the segment meets; the AABB part keeps faces in the mask).
+    if (area != nullptr) {
+        for (const std::array<Vec3, 3>& face : area->faces) {
+            clip(face[0], face[1], face[2], 1);
+        }
+    } else {
+        for (const Scene::RoomHitFaces& room : scene.roomHitFaces) {
+            if (!segmentMeetsBox(from, end, room.boxMin, room.boxMax)) {
+                continue;
+            }
+            for (const std::array<Vec3, 3>& face : room.faces) {
+                clip(face[0], face[1], face[2], 1);
+            }
+        }
+        constexpr std::uint32_t kHitMask = 0xbfffffffu;
+        for (const CollisionFacet& facet : scene.collision) {
+            if (((1u << (facet.surface & 0x1fu)) & kHitMask) == 0u) {
+                continue;
+            }
+            clip(scene.collisionVertices[facet.a], scene.collisionVertices[facet.b], scene.collisionVertices[facet.c], 1);
+        }
+    }
+    // Objects: Scene::ObjectHitCheck 0044fe00 over the scene's gobs, for a CHitInfo with +0x5c set (the camera's,
+    // 0063b050 at 0063b12c). A gob is skipped when hidden (+0x17c), when its model's classification (word at
+    // model +0x50) has bit 0 (effect), 1 (tile) or 7, bit 2 (character) or 4 (lightsaber), or 0x20 (placeable)
+    // without 0x400 (subclassification bit 2), or when it is on the ignore list (the followed creature).
+    // Gob::HitCheck 0043eb80 tests its parts' faces with 004ab750 (faceHitOneSided) at their current pose.
+    for (const EntityMesh& mesh : scene.entityMeshes) {
+        if (!mesh.visible || mesh.fx || mesh.roomAnimated || mesh.attachModel) {
+            continue;
+        }
+        if (mesh.model) {
+            const std::uint32_t word = mesh.model->classification() | (std::uint32_t{mesh.model->subclassification()} << 8);
+            if ((word & 0x97u) != 0u || ((word & 0x20u) != 0u && (word & 0x400u) == 0u)) {
+                continue;
+            }
+        }
+        if (mesh.entity == UINT32_MAX) {
+            // A world-placed model: its vertices are in world space already.
+            for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+                clip(mesh.vertices[mesh.indices[i]].position, mesh.vertices[mesh.indices[i + 1]].position,
+                     mesh.vertices[mesh.indices[i + 2]].position, 2);
+            }
+            for (const std::array<Vec3, 3>& face : mesh.hiddenFaces) {
+                clip(face[0], face[1], face[2], 2);
+            }
+            continue;
+        }
+        if (mesh.entity == ignoreEntity || mesh.entity >= scene.entities.size()) {
+            continue;
+        }
+        const Entity& entity = scene.entities[mesh.entity];
+        if (entity.dead && !entity.corpse()) {
+            continue; // not drawn, so no gob in the scene
+        }
+        // The mesh is in its model space (placed at the entity's position and drawn bearing): the segment is taken
+        // there instead, which crosses the same faces at the same fractions.
+        const float c = std::cos(entity.drawBearing());
+        const float s = std::sin(entity.drawBearing());
+        const auto toLocal = [&](const Vec3& p) {
+            const Vec3 d = p - entity.position;
+            return Vec3{c * d.x + s * d.y, -s * d.x + c * d.y, d.z};
+        };
+        const Vec3 localFrom = toLocal(from);
+        Vec3 localEnd = toLocal(end);
+        bool met = false;
+        for (std::size_t i = 0; i + 2 < mesh.indices.size(); i += 3) {
+            const Vec3& a = mesh.vertices[mesh.indices[i]].position;
+            const Vec3& b = mesh.vertices[mesh.indices[i + 1]].position;
+            const Vec3& d = mesh.vertices[mesh.indices[i + 2]].position;
+            if (outside(localFrom, localEnd, a, b, d)) {
+                continue;
+            }
+            float along = 0.0f;
+            if (faceHitOneSidedAt(localFrom, localEnd, a, b, d, along)) {
+                localEnd = localFrom + (localEnd - localFrom) * along;
+                met = true;
+            }
+        }
+        if (met) {
+            end = {entity.position.x + c * localEnd.x - s * localEnd.y, entity.position.y + s * localEnd.x + c * localEnd.y,
+                   entity.position.z + localEnd.z};
+            kind = 2;
+        }
+    }
+    if (kind != 0) {
+        hit = end;
+    }
+    return kind;
+}
 
 float emitterCurve(float start, float mid, float end, float percentStart, float percentMid, float percentEnd, float t)
 {

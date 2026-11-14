@@ -1239,6 +1239,13 @@ private:
     bool thirdPerson_ = false;
     mutable bool playerVisible_ = true;
     bool cameraNoClip_ = false;
+    // The chase camera's rest eye for the last (head, back, distance, height) asked; camera() runs several times a
+    // frame and the world it casts against only changes between ticks, so updatePlayerAvatar clears it.
+    mutable bool chaseEyeValid_ = false;
+    mutable std::array<float, 7> chaseEyeKey_{};
+    mutable kotor::Vec3 chaseEye_{};
+    mutable float chaseDistance_ = -1.0f; // the camera's last flat distance from the head (retail keeps its position)
+    kotor::Vec3 chaseCameraEye(kotor::Vec3 head, kotor::Vec3 back, float desired, float height) const;
     float verticalVelocity_ = 0.0f;
     bool grounded_ = false;
     float elapsed_ = 0.0f;
@@ -1343,6 +1350,11 @@ private:
     std::int32_t forceJumpBonus_ = 0;
     std::vector<bool> triggerInside_;
     bool saveModuleStartPending_ = false;
+    // After a game is loaded the followers keep their saved places until the leader moves (retail traces of 11 saves
+    // show no follower move in two seconds of game time with an idle leader; PositionParty 00565b00 resets the
+    // follow data, so there is no trail to follow yet).
+    bool followHold_ = false;
+    kotor::Vec3 followHoldAnchor_{};
     std::vector<std::string> combatLog_;
     bool playerDead_ = false;
     int autoPauseRequest_ = 0;

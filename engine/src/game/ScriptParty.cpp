@@ -1736,7 +1736,14 @@ void GameSession::readPartyFromOriginalSave(const kotor::OriginalSave& save)
         companion.tag = slot.tag;
         companion.sheet = slot.sheet;
         companions_.push_back(std::move(companion));
-        ensureNpcEntity(npc, nullptr, yaw_);
+        // Retail CreateParty 00565760 -> SpawnNPC 00565130: a member stands at the position and orientation its
+        // AVAILNPC<n> creature was saved with (safe-location search only when it is off the walkmesh).
+        const kotor::SavedNpc& stored = save.npcs[static_cast<std::size_t>(npc)];
+        if (stored.hasCreature && stored.hasPlacement) {
+            ensureNpcEntity(npc, &stored.position, stored.yaw);
+        } else {
+            ensureNpcEntity(npc, nullptr, yaw_);
+        }
     }
     syncPartyViews();
 }

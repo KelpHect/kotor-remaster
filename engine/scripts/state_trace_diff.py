@@ -91,10 +91,14 @@ def angle(a, b):
 class Seg:
     def __init__(self, module, index, recs, ready, carry):
         self.module, self.index, self.recs, self.ready = module, index, recs, ready
+        gm = GT_MODULE.match(ready.gt)
+        base = int(gm.group(1)) if gm else None
         self.carry = carry        # last state row of each class before this segment (pause, party, ... carry over a load)
         for r in recs:
             m = GT_MODULE.match(r.gt)
-            r.mt = int(m.group(1)) if m else max(0, r.t - ready.t)
+            # the engine's game clock starts at 0:0 when the module becomes ready; a retail save keeps its own clock
+            # (day 0 and a time of day in the hundreds of thousands), so only a ready row that shows 0:<ms> makes gt a module clock
+            r.mt = int(m.group(1)) - base if (m and base is not None) else max(0, r.t - ready.t)
         # the HUD anchor: the shot 12 swaps after mipc210x7 opened
         self.end = max((r.mt for r in recs), default=0)
         self.limit = None         # module time (ms) up to which event classes are compared (the shorter run)

@@ -305,6 +305,7 @@ Mdl Mdl::parse(std::vector<std::uint8_t> mdl, std::vector<std::uint8_t> mdx, std
     // model while the area has fog on (the mesh draw at 0x4739a7).
     model.affectedByFog_ = b.size() > 12u + 83u ? b[12u + 83u] != 0u : true;
     model.classification_ = b.size() > 12u + 80u ? b[12u + 80u] : 0u;
+    model.subclassification_ = b.size() > 12u + 81u ? b[12u + 81u] : 0u;
     model.supermodel_ = readCString(b.data(), b.size(), 12 + 136, 32, "MDL supermodel", model.name_);    const std::uint32_t root = readU32(b.data(), b.size(), 12 + 40, "MDL root");
     // The animation root node: retail 004a1030 relocates this word as a node pointer and 00483d80
     // applies clips only from that node down. Shipped data: the root node on every model except

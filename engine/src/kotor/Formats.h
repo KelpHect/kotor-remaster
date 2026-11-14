@@ -693,6 +693,8 @@ public:
     // Model header +0x50 (classification; retail reads it as a word at model +0x50): 0x04 character,
     // 0x20 placeable. Scene::DoGobShadowsForThisLight 00450550 takes gobs with either bit.
     std::uint8_t classification() const { return classification_; }
+    // The next header byte (+0x51, the word's high byte): Scene::ObjectHitCheck 0044fe00 tests its 0x04 bit.
+    std::uint8_t subclassification() const { return subclassification_; }
 
 private:
     struct ControllerKey {
@@ -801,6 +803,7 @@ private:
     bool k2_ = false;
     bool affectedByFog_ = true;
     std::uint8_t classification_ = 0;
+    std::uint8_t subclassification_ = 0;
     std::vector<std::uint8_t> mdl_;
     std::vector<std::uint8_t> mdx_;
     std::vector<Node> nodes_;
@@ -2177,6 +2180,17 @@ Vec3 grassPointWind(const GrassField& field, Vec3 point);
 // 15 m): moves the blade tops in Scene::vertices. Returns the [first, end) vertex range it changed.
 std::pair<std::size_t, std::size_t> stepGrassWind(Scene& scene, float frameSeconds, Vec3 eye);
 bool captureCameraPose(const Scene& scene, const std::string& spec, Vec3& eye, Vec3& target, float& fov);
+// The scene cast 00456b60 (Scene vtable +0x38) with the chase camera's CHitInfo(0, 0xbfffffff, 0), +0x5c set
+// and the entity `ignoreEntity` on its ignore list (0063b050): rooms, then objects. Returns 0 for no hit, 1
+// when the nearest crossing is a room face, 2 when it is an object's; `hit` is that nearest crossing.
+// `area`, when given, holds the room faces (gatherSceneHitFaces) of a box every tested segment lies in: a face outside
+// it cannot be crossed, so the answer is the same and the room pass is shorter.
+struct SceneHitFaces {
+    std::vector<std::array<Vec3, 3>> faces;
+};
+SceneHitFaces gatherSceneHitFaces(const Scene& scene, Vec3 boxMin, Vec3 boxMax);
+int sceneHitCheck(const Scene& scene, Vec3 from, Vec3 to, std::uint32_t ignoreEntity, Vec3& hit,
+                  const SceneHitFaces* area = nullptr);
 
 // `savedGit`: the GIT of a retail save's module, used in place of the area's own GIT (retail 0050dd80 reads
 // the saved GIT when a game is loaded; a save writes every object whole, with no UseTemplates).
