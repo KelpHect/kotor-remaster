@@ -29,6 +29,7 @@ void Chargen::reset()
     portraitIndex_ = 0;
     name_ = "Player";
     refreshPortraits();
+    shuffleSlotPortraits(0, {});
     refreshDerived(true);
 }
 
@@ -57,6 +58,47 @@ std::int32_t Chargen::slotGender(int slot)
     return slot >= 3 ? 1 : 0;
 }
 
+std::int32_t Chargen::slotPortraitRow(int slot) const
+{
+    return slot >= 0 && slot < kSlotCount ? slotPortrait_[static_cast<std::size_t>(slot)] : -1;
+}
+
+void Chargen::shuffleSlotPortraits(std::uint32_t seed, const std::vector<std::int32_t>& forced)
+{
+    // Retail 006dc3c0: the rows are listed per Sex (forpc != 0), then each slot takes list[rand() % left] and
+    // removes it from the list. The default (seed 0 with nothing forced) is the first row of the gender.
+    std::array<std::vector<std::int32_t>, 2> lists{rules_.pcPortraitRows(0), rules_.pcPortraitRows(1)};
+    std::uint32_t state = seed;
+    const bool random = seed != 0;
+    for (int slot = 0; slot < kSlotCount; ++slot) {
+        std::vector<std::int32_t>& list = lists[static_cast<std::size_t>(slotGender(slot))];
+        std::int32_t row = -1;
+        if (forced.size() == static_cast<std::size_t>(kSlotCount)) {
+            row = forced[static_cast<std::size_t>(slot)];
+        } else if (!list.empty()) {
+            std::size_t pick = 0;
+            if (random) {
+                state = state * 214013u + 2531011u; // the CRT rand (as Material.cpp's CrtRand)
+                pick = ((state >> 16) & 0x7FFFu) % list.size();
+            }
+            row = list[pick];
+            if (random) {
+                list.erase(list.begin() + static_cast<std::ptrdiff_t>(pick));
+            }
+        }
+        slotPortrait_[static_cast<std::size_t>(slot)] = row;
+    }
+    if (slot_ >= 0 && slot_ < kSlotCount) {
+        portraitIndex_ = portraitIndexOfRow(slotPortrait_[static_cast<std::size_t>(slot_)]);
+    }
+}
+
+std::int32_t Chargen::portraitIndexOfRow(std::int32_t row) const
+{
+    const auto it = std::find(portraitRows_.begin(), portraitRows_.end(), row);
+    return it == portraitRows_.end() ? 0 : static_cast<std::int32_t>(it - portraitRows_.begin());
+}
+
 bool Chargen::selectSlot(int slot)
 {
     if (slot < 0 || slot >= kSlotCount) {
@@ -66,6 +108,8 @@ bool Chargen::selectSlot(int slot)
     if (!setGender(slotGender(slot))) {
         return false;
     }
+    // portcust opens on the portrait the slot's creature carries (006f90f0).
+    portraitIndex_ = portraitIndexOfRow(slotPortrait_[static_cast<std::size_t>(slot)]);
     return selectClass(slotClass(slot));
 }
 

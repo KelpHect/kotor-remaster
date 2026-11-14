@@ -173,14 +173,14 @@ void ChargenPreview::startIdle()
     }
 }
 
-void ChargenPreview::showClassSelection(const Rules& rules)
+void ChargenPreview::showClassSelection(const Rules& rules, const Chargen& chargen)
 {
     std::array<std::int32_t, 6> wanted{};
     for (int slot = 0; slot < Chargen::kSlotCount; ++slot) {
-        const std::vector<std::int32_t> rows = rules.pcPortraitRows(Chargen::slotGender(slot));
-        wanted[static_cast<std::size_t>(slot)] = rows.empty()
+        const std::int32_t row = chargen.slotPortraitRow(slot);
+        wanted[static_cast<std::size_t>(slot)] = row < 0
             ? -1
-            : rules.portraitAppearance(rows.front(), Chargen::slotClass(slot));
+            : rules.portraitAppearance(row, Chargen::slotClass(slot));
     }
     if (headEntity_ < 0 && wanted == slotAppearance_) {
         return;

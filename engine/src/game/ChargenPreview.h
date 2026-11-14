@@ -32,6 +32,8 @@ struct PreviewRect {
     int height = 0;
 };
 
+class Chargen;
+
 class ChargenPreview {
 public:
     ChargenPreview(kotor::Install& install, const Rules& rules);
@@ -41,8 +43,8 @@ public:
     const std::string& error() const { return error_; }
 
     // classsel: slot s (BTN_SEL(s+1)) shows its class and gender's body, taken from
-    // the first portrait row of that gender (retail picks a random row; see Chargen).
-    void showClassSelection(const Rules& rules);
+    // the portrait row Chargen::slotPortraitRow gives it (retail 006dc3c0 draws it at random).
+    void showClassSelection(const Rules& rules, const Chargen& chargen);
     // portcust: one creature, positioned so the head fills the view.
     void showHead(std::int32_t appearance, std::int32_t gender);
     // An in-game 3D frame (party selection LBL_3D, character sheet LBL_3DCHAR): one body in the
