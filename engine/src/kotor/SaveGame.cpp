@@ -672,6 +672,78 @@ SavedVarTable readVarTable(const Gff& gff, std::uint32_t structure)
     return vars;
 }
 
+// A saved script situation (CVirtualMachine::LoadScriptSituation): Name, InstructionPtr and the stack frame.
+SavedScriptEvent readScriptSituation(const Gff& gff, std::uint32_t body)
+{
+    const auto dword = [&](std::uint32_t structure, const char* label) {
+        const GffField* value = field(gff, structure, label);
+        return value != nullptr ? value->data : 0u;
+    };
+    SavedScriptEvent event;
+    event.script = text(gff, body, "Name");
+    event.instruction = static_cast<std::int32_t>(dword(body, "InstructionPtr"));
+    const GffField* stack = field(gff, body, "Stack");
+    if (stack != nullptr && stack->type == GffType::Struct) {
+        const std::uint32_t frame = gff.structIndex(*stack);
+        event.basePointer = static_cast<std::int32_t>(dword(frame, "BasePointer"));
+        for (const std::uint32_t cell : list(gff, frame, "Stack")) {
+            SavedStackCell out;
+            out.type = static_cast<std::uint8_t>(dword(cell, "Type"));
+            if (const GffField* value = field(gff, cell, "Value"); value != nullptr) {
+                switch (out.type) {
+                case 4: out.real = gff.number(*value); break;
+                case 5: out.text = gff.text(*value); break;
+                default:
+                    if (value->type != GffType::Struct) {
+                        out.integer = static_cast<std::int32_t>(value->data);
+                    }
+                    break;
+                }
+            }
+            event.stack.push_back(std::move(out));
+        }
+    }
+    return event;
+}
+
+// The creature's ActionList (CSWSObject::LoadActionQueue 004cecb0).
+std::vector<SavedAction> readActionList(const Gff& gff, std::uint32_t structure)
+{
+    std::vector<SavedAction> out;
+    for (const std::uint32_t entry : list(gff, structure, "ActionList")) {
+        SavedAction action;
+        action.id = static_cast<std::uint32_t>(numberInt(gff, entry, "ActionId", 0));
+        action.group = static_cast<std::uint32_t>(numberInt(gff, entry, "GroupActionId", 0));
+        for (const std::uint32_t param : list(gff, entry, "Paramaters")) {
+            SavedActionParam value;
+            value.type = static_cast<std::uint32_t>(numberInt(gff, param, "Type", 0));
+            const GffField* raw = field(gff, param, "Value");
+            switch (value.type) {
+            case 1:
+            case 3:
+                value.integer = raw != nullptr ? static_cast<std::int32_t>(raw->data) : 0;
+                break;
+            case 2:
+                value.real = numberFloat(gff, param, "Value", 0.0f);
+                break;
+            case 4:
+                value.text = text(gff, param, "Value");
+                break;
+            case 5:
+                if (raw != nullptr && raw->type == GffType::Struct) {
+                    value.situation = readScriptSituation(gff, gff.structIndex(*raw));
+                }
+                break;
+            default:
+                break;
+            }
+            action.params.push_back(std::move(value));
+        }
+        out.push_back(std::move(action));
+    }
+    return out;
+}
+
 void readObjects(const Gff& gff, OriginalSave& save)
 {
     save.areaVars = readVarTable(gff, gff.rootIndex());
@@ -727,6 +799,9 @@ void readObjects(const Gff& gff, OriginalSave& save)
                 }
             }
             object.effects = readSavedEffects(gff, structure);
+            if (spec.kind == SavedObjectState::Kind::Creature) {
+                object.actions = readActionList(gff, structure);
+            }
             {
                 const SavedVarTable table = readVarTable(gff, structure);
                 object.localTable = table.present;
@@ -774,6 +849,7 @@ void readEventQueue(const Gff& ifo, OriginalSave& save)
     }
     for (const std::uint32_t player : list(ifo, root, "Mod_PlayerList")) {
         save.playerObjectId = dword(player, "ObjectId");
+        save.playerSpawnScript = text(ifo, player, "ScriptSpawn");
         break;
     }
     for (const std::uint32_t entry : list(ifo, root, "EventQueue")) {
@@ -782,34 +858,11 @@ void readEventQueue(const Gff& ifo, OriginalSave& save)
             continue;
         }
         const std::uint32_t body = ifo.structIndex(*data);
-        SavedScriptEvent event;
+        SavedScriptEvent event = readScriptSituation(ifo, body);
         event.day = dword(entry, "Day");
         event.time = dword(entry, "Time");
         event.objectId = dword(entry, "ObjectId");
         event.callerId = dword(entry, "CallerId");
-        event.script = text(ifo, body, "Name");
-        event.instruction = static_cast<std::int32_t>(dword(body, "InstructionPtr"));
-        const GffField* stack = field(ifo, body, "Stack");
-        if (stack != nullptr && stack->type == GffType::Struct) {
-            const std::uint32_t frame = ifo.structIndex(*stack);
-            event.basePointer = static_cast<std::int32_t>(dword(frame, "BasePointer"));
-            for (const std::uint32_t cell : list(ifo, frame, "Stack")) {
-                SavedStackCell out;
-                out.type = static_cast<std::uint8_t>(dword(cell, "Type"));
-                if (const GffField* value = field(ifo, cell, "Value"); value != nullptr) {
-                    switch (out.type) {
-                    case 4: out.real = ifo.number(*value); break;
-                    case 5: out.text = ifo.text(*value); break;
-                    default:
-                        if (value->type != GffType::Struct) {
-                            out.integer = static_cast<std::int32_t>(value->data);
-                        }
-                        break;
-                    }
-                }
-                event.stack.push_back(std::move(out));
-            }
-        }
         if (!event.script.empty()) {
             save.events.push_back(std::move(event));
         }

@@ -744,7 +744,10 @@ void StateTrace::sampleState(const StateTraceFrame& frame)
     // A conversation waits the world in the engine but retail writes no pause row for it (TRACE: none across 4 Taris
     // cutscene lines), so only the script pause counts here.
     const bool scriptPause = g.scriptPauseActive();
-    const std::uint32_t bits = (frame.userPause ? 1u : 0u) | ((scriptPause || frame.uiPause) ? 2u : 0u);
+    // An automatic pause (enemy sighted, party killed, mine) shows as bit 1 in all 13 retail recordings that paused
+    // themselves (0x2 at the sighting); the pause key is bit 0.
+    const bool autoPause = frame.userPause && (frame.pauseReason == 1 || frame.pauseReason == 9 || frame.pauseReason == 11);
+    const std::uint32_t bits = (frame.userPause && !autoPause ? 1u : 0u) | ((scriptPause || frame.uiPause || autoPause) ? 2u : 0u);
     state("pause", "", {bits != 0 ? "1" : "0", hex(bits)});
 
     // ---- objects ----

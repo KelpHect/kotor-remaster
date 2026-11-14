@@ -7574,7 +7574,11 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
     // Party members come from AVAILNPC<n> and are put into the area by CSWPartyTable::SpawnNPC 00565130 (no
     // GIT spawn flag is applied), so the first update of each runs its OnSpawn (004eb6e0, flag +0x34c still 0).
     // Measured on retail: 2 spawn runs at load in a Taris save with Carth, 3 in a Kashyyyk save with two members.
-    // The PC's own spawn run is not reproduced (its script is not known here).
+    // The PC is built from IFO Mod_PlayerList the same way and runs its own ScriptSpawn too (k_hen_spawn01 in the
+    // three saves read; the retail trace shows one more spawn run than there are companions).
+    if (!saved.playerSpawnScript.empty() && spawnRan_.insert(scriptWorld_.pc).second) {
+        runScript(saved.playerSpawnScript, scriptWorld_.pc, scriptWorld_.pc, scriptWorld_.pc, scriptWorld_.pc);
+    }
     for (const CompanionState& companion : companions_) {
         const std::size_t index = ensureCompanionEntity(companion);
         if (index >= scene_.entities.size()) {
@@ -7738,7 +7742,9 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
     // the save's clock, and the engine would otherwise never start it. Object ids in the queue are the save's;
     // they map onto the objects this load matched.
     logInfo(concat("original save: ", saved.events.size(), " pending scripts in the event queue"));
-    if (!saved.events.empty()) {
+    const bool anySavedActions = std::any_of(matchedObjects.begin(), matchedObjects.end(),
+                                             [](const auto& matched) { return !matched.second->actions.empty(); });
+    if (!saved.events.empty() || anySavedActions) {
         std::map<std::uint32_t, std::uint32_t> idMap;
         if (saved.areaObjectId != 0 && sim_->areaObject != script::kObjectInvalid) {
             idMap[saved.areaObjectId] = sim_->areaObject;
@@ -7800,6 +7806,111 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
             timer.target = owner;
             timer.source = "save";
             scriptWorld_.timers.push_back(std::move(timer));
+        }
+        // Each creature's saved ActionList (CSWSObject::LoadActionQueue 004cecb0 -> AddAction) goes back on its queue:
+        // the ambient droids' MoveToObject legs, PlayAnimation pauses and the ActionDoCommand of the user-defined
+        // chains retail keeps running after a load. Ids as retail's AddAction takes them (checked against the saves:
+        // 1 MoveToPoint, 6 PlayAnimation, 17 MoveToObject, 30 Wait, 37 DoCommand, 45 JumpToLocation); a MoveToPoint
+        // followed by a MoveToObject of its group is the path step of that move and is not queued twice.
+        ScriptApi api{*this};
+        for (const auto& [index, state] : matchedObjects) {
+            const std::uint32_t self = objectForEntity(index);
+            if (state->actions.empty() || self == script::kObjectInvalid || self == 0) {
+                continue;
+            }
+            for (std::size_t n = 0; n < state->actions.size(); ++n) {
+                const kotor::SavedAction& saved_action = state->actions[n];
+                const auto& p = saved_action.params;
+                ActorAction action;
+                switch (saved_action.id) {
+                case 1: {
+                    if (n + 1 < state->actions.size() && state->actions[n + 1].id == 17
+                        && state->actions[n + 1].group == saved_action.group) {
+                        continue;
+                    }
+                    if (p.size() < 7) {
+                        continue;
+                    }
+                    action.kind = ActorActionKind::MoveToPoint;
+                    action.point = {p[0].real, p[1].real, p[2].real};
+                    action.run = p[5].integer != 0;
+                    action.range = p[6].real;
+                    break;
+                }
+                case 6:
+                    if (p.size() < 3) {
+                        continue;
+                    }
+                    action.kind = ActorActionKind::PlayAnimation;
+                    action.animation = p[0].integer;
+                    action.speed = p[1].real;
+                    action.remaining = p[2].real;
+                    break;
+                case 17:
+                    if (p.size() < 3) {
+                        continue;
+                    }
+                    action.kind = ActorActionKind::MoveToObject;
+                    action.object = mapObject(static_cast<std::uint32_t>(p[0].integer));
+                    if (action.object == script::kObjectInvalid) {
+                        continue;
+                    }
+                    action.run = p[1].integer != 0;
+                    action.range = p[2].real;
+                    break;
+                case 30:
+                    if (p.empty()) {
+                        continue;
+                    }
+                    action.kind = ActorActionKind::Wait;
+                    action.remaining = p[0].real;
+                    break;
+                case 45:
+                    if (p.size() < 3) {
+                        continue;
+                    }
+                    action.kind = ActorActionKind::JumpToPoint;
+                    action.point = {p[0].real, p[1].real, p[2].real};
+                    break;
+                case 37: {
+                    if (p.empty() || p[0].type != 5) {
+                        continue;
+                    }
+                    const kotor::SavedScriptEvent& situation = p[0].situation;
+                    const script::ProgramPtr program = decodedScript(situation.script);
+                    if (program == nullptr) {
+                        continue;
+                    }
+                    constexpr std::uint32_t kNcsHeaderBytes = 13;
+                    const auto entry = program->byOffset.find(static_cast<std::uint32_t>(situation.instruction) + kNcsHeaderBytes);
+                    if (entry == program->byOffset.end()) {
+                        continue;
+                    }
+                    script::Functor functor;
+                    functor.program = program;
+                    functor.ip = entry->second;
+                    functor.bp = situation.basePointer;
+                    functor.script = situation.script;
+                    functor.source = "ActionDoCommand";
+                    functor.context["self"] = self;
+                    for (const kotor::SavedStackCell& cell : situation.stack) {
+                        switch (cell.type) {
+                        case 3: functor.stack.push_back(script::Value::makeInt(cell.integer)); break;
+                        case 4: functor.stack.push_back(script::Value::makeFloat(cell.real)); break;
+                        case 5: functor.stack.push_back(script::Value::makeString(cell.text)); break;
+                        case 6: functor.stack.push_back(script::Value::makeObject(mapObject(static_cast<std::uint32_t>(cell.integer)))); break;
+                        default: functor.stack.push_back(script::Value::makeEngine(0)); break;
+                        }
+                    }
+                    action.kind = ActorActionKind::DoCommand;
+                    action.functor = scriptWorld_.addFunctor(std::move(functor));
+                    break;
+                }
+                default:
+                    continue;
+                }
+                api.enqueue(self, std::move(action));
+            }
         }
     }
     // Loading a game is not walking in. Measured on retail: the Taris save loads with the player inside
