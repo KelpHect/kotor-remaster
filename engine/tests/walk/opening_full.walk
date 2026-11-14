@@ -4,13 +4,12 @@
 # Character: the retail recording's player is the male Scoundrel (appearance 148 is portraits.2da appearance_s, the
 # class-2 column), so the run starts on the class screen's first button (--new-game-slot 0). The quick build gives it
 # Security ranks, which the locked doors the route meets need.
-# Status: reaches end_m01ab through end_door10 (transition), plays Carth's arrival conversation, kills the corridor
-# soldiers on the way, opens end_door01, kills the two soldiers behind it and talks to the damaged droid
-# (end_assaultdroid, conversation end_damagedroid). Stops there. Open blockers past it: end_door05 (OpenLockDC 28, not
-# pickable at the starting Security rank). The scripts open it from the droid (k_pend_droid10, needs K_REPAIR_PART:
-# none exists in the module data before this point) or from the computer end_comp02 (k_pend_door11, needs 5 computer
-# spikes at Computer Use rank 0: the module holds one, g_i_progspike01), so this character build cannot pass it;
-# the retail recording's build (skills) is needed to continue to end_door04 and the escape pod.
+# Status: new game -> end_m01aa -> end_m01ab (corridor soldiers, end_door01), loots the footlocker next to the damaged
+# droid (footlker003: 7 repair parts, 5 computer spikes), reactivates the droid
+# and sets patrol mode (3 repair parts; its dialogue entry runs k_pend_droid10, which unlocks end_door05), the droid
+# opens end_door05 and kills the five Sith behind it, then end_door04, Carth, the escape pod and StartNewModule STUNT_00.
+# Retail evidence (user save Espire-SithGroup played to the pod): door05 stays closed and locked for the player; the
+# Sith behind it never open it; the droid in patrol mode does.
 # Run:  kotor_engine --new-game --new-game-slot 0 --null --headless --fixed-dt 0.0166667 --walk-godmode --walk-continue
 #         --input-script opening_full.walk
 autodialogue first
@@ -65,11 +64,16 @@ dialogue first timeout=60 optional
 fight range=22 timeout=180
 dialogue first timeout=60 optional
 fight range=22 timeout=180
+# end_door08 is locked and keyed (its lock cannot be picked); the soldiers behind it cannot be shot through the closed
+# door (retail 005bbbf0 casts 0050c330, which hits closed doors). Each try runs its OnFailToOpen script, which unlocks
+# the door after a delay (retail recording: tries, then it opens).
 goto end_door08 stop=1.5 timeout=90
 opendoor end_door08
 dialogue first timeout=90 optional
-fight range=25 timeout=180
+idle 20
+opendoor end_door08
 dialogue first timeout=90 optional
+idle 20
 opendoor end_door08
 dialogue first timeout=90 optional
 fight range=25 timeout=180
@@ -89,7 +93,16 @@ use end_door01
 fight range=14 timeout=90
 idle 2
 autodialogue off
+use footlker
+loot
 talk end_assaultdroid timeout=60
 dialogue index 1 1 1 timeout=90
 autodialogue first
+idle 30
+goto end_door04 stop=1.5 timeout=120
+use end_door04
+dialogue first timeout=60 optional
+use end_pod
+dialogue first timeout=120
+module STUNT_00 timeout=60
 end

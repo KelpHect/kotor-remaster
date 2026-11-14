@@ -1882,7 +1882,9 @@ bool runAttackAction(ScriptApi api, std::uint32_t self, float dt)
     const float distance = std::hypot(from.x - to.x, from.y - to.y);
     const float reach = ops.reach(self, target);
     const bool ranged = ops.rangedAttacker(self);
-    if (distance > reach || (ranged && !api.hasLineOfSight(self, target))) {
+    // 005bbbf0 AIActionPhysicalAttacks casts 0050c330 (the perception sight cast, 00506650 included) from the
+    // attacker to the target before it attacks: a closed door on the line stops the attack like a wall.
+    if (distance > reach || (ranged && !api.hasLineOfSight(self, target, true))) {
         // 005bbbf0 AIActionPhysicalAttacks: a party member that has to move more than 0.25 m
         // to its target sets the combat message 42477 (CSWPartyMemberData::SetCombatMessage).
         // The HUD shows the controlled creature's message; started marks it raised.
