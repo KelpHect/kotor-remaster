@@ -38,6 +38,7 @@ struct StateTraceFrame {
     const GuiSystem* pauseGui = nullptr;    // pause.gui while the pause panel is shown (retail lists it as `pause`)
     std::string hudLayout;                  // the HUD layout drawn this frame; empty when no HUD was drawn
     bool userPause = false;
+    int pauseReason = 4; // CGuiInGame::SetPaused reason of the pause (1 enemy sighted, 9 party killed, 11 mine)
     bool uiPause = false;                   // pause menu or a game screen over the world
     int windowWidth = 0;
     int windowHeight = 0;

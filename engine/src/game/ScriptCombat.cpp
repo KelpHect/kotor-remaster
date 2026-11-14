@@ -1533,13 +1533,14 @@ struct CombatOps {
             schedule.perceptionDue = isPc(observer)
                 ? static_cast<float>(300u + s.random() % 400u) / 1000.0f
                 : 4.0f;
+            const bool partyOnly = std::exchange(schedule.firstPassPartyOnly, false);
             const auto [sight, hearing] = sees(observer);
             const kotor::Vec3 from = a.position(observer);
             std::map<std::uint32_t, std::uint8_t> old = std::move(a.actor(observer).perceived);
             std::map<std::uint32_t, std::uint8_t> now;
             const bool isParty = inParty(observer);
             for (const std::uint32_t target : creatures) {
-                if (target == observer) {
+                if (target == observer || (partyOnly && !inParty(target))) {
                     continue;
                 }
                 std::uint8_t bits = 0;

@@ -11641,7 +11641,9 @@ int runApplication(const Options& options)
                         || (reason == 1 && userSettings->get("autopause.enemysighted") != 0.0f
                             // ENGINE CHOICE: scripted runs (gate, soak, fixed frames) would stop at every
                             // enemy; they pause for it only when a check asks for it.
-                            && (!offlineRun || game->enemySightedPauseForTest()));
+                            // A state-trace load compares against a retail recording made with the option on (retail
+                            // paused itself at the first enemy sighted), so it keeps the pause.
+                            && (!offlineRun || game->enemySightedPauseForTest() || !options.stateTraceLoad.empty()));
                     if (wanted && !userPause) {
                         userPause = true;
                         pauseReason = reason;
@@ -12947,6 +12949,7 @@ int runApplication(const Options& options)
             traceFrame.hudGui = hudGui.get();
             traceFrame.hudLayout = traceHudLayout;
             traceFrame.userPause = userPause;
+            traceFrame.pauseReason = pauseReason;
             traceFrame.pauseGui = userPause && pauseGui && pauseGui->screen() != nullptr ? pauseGui.get() : nullptr;
             traceFrame.uiPause = pauseMenuOpen || (gameScreens && gameScreens->open());
             if (state.window != nullptr) {

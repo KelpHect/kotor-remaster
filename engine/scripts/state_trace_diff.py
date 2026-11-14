@@ -30,6 +30,7 @@ from collections import Counter, defaultdict
 
 TOL = {"pos": 0.05, "pair": 2.0, "face_deg": 3.0, "fov_deg": 0.5, "cam_deg": 1.0, "snd_pos": 0.10, "time_s": 3.0}
 GT_MODULE = re.compile(r"^0:(\d+)$")
+GT_ANY = re.compile(r"^(\d+):(\d+)$")
 NOTES = []
 
 
@@ -94,11 +95,25 @@ class Seg:
         gm = GT_MODULE.match(ready.gt)
         base = int(gm.group(1)) if gm else None
         self.carry = carry        # last state row of each class before this segment (pause, party, ... carry over a load)
+        # One clock for both sides: the game clock in ms since the module clock started. The engine's clock reads 0:0 at
+        # the ready row; a retail save keeps its own clock (any day, a time of day in the hundreds of thousands), and
+        # the clock stands still while the game is paused or fading in. The ready row of a retail load shows the clock
+        # of the previous state (day 450381), so when it is not `0:<ms>` the first later row with a clock is the base,
+        # and a row without a readable clock keeps the last value (wall time would count paused seconds as game time).
+        def clock(gt):
+            m = GT_ANY.match(gt)
+            return int(m.group(1)) * 86400000 + int(m.group(2)) if m else None
+        if base is None:
+            first = next((clock(r.gt) for r in recs if r.gt != ready.gt and clock(r.gt) is not None), None)
+            base = first
+        else:
+            base = clock(ready.gt)
+        last = 0
         for r in recs:
-            m = GT_MODULE.match(r.gt)
-            # the engine's game clock starts at 0:0 when the module becomes ready; a retail save keeps its own clock
-            # (day 0 and a time of day in the hundreds of thousands), so only a ready row that shows 0:<ms> makes gt a module clock
-            r.mt = int(m.group(1)) - base if (m and base is not None) else max(0, r.t - ready.t)
+            c = clock(r.gt)
+            if c is not None and base is not None and (r.gt != ready.gt or gm):
+                last = max(last, c - base)
+            r.mt = last if base is not None else max(0, r.t - ready.t)
         # the HUD anchor: the shot 12 swaps after mipc210x7 opened
         self.end = max((r.mt for r in recs), default=0)
         self.limit = None         # module time (ms) up to which event classes are compared (the shorter run)

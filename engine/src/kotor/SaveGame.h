@@ -130,6 +130,21 @@ std::int32_t savedEffectScriptType(std::int32_t internalType);
 // The EffectList of the GIT struct `structure` (LoadGameEffect field layout).
 std::vector<SavedEffect> readSavedEffects(const Gff& gff, std::uint32_t structure);
 
+// One entry of a creature's ActionList (CSWSObject::LoadActionQueue 004cecb0): ActionId, GroupActionId and the
+// typed Paramaters (1 int, 2 float, 3 dword, 4 string, 5 script situation).
+struct SavedActionParam {
+    std::uint32_t type = 0;
+    std::int32_t integer = 0;
+    float real = 0.0f;
+    std::string text;
+    SavedScriptEvent situation; // type 5: Name, InstructionPtr and the stack frame
+};
+struct SavedAction {
+    std::uint32_t id = 0;
+    std::uint32_t group = 0;
+    std::vector<SavedActionParam> params;
+};
+
 struct SavedObjectState {
     enum class Kind { Creature, Door, Placeable, Trigger, Store, Encounter, Waypoint, Sound, Other };
     Kind kind = Kind::Other;
@@ -159,6 +174,7 @@ struct SavedObjectState {
     bool localTable = false; // the SWVarTable struct was present in the GIT (an engine save without it leaves the table alone)
     std::vector<SavedEffect> effects; // EffectList (LoadEffectList 004d1be0)
     std::uint32_t objectId = 0; // the GIT "ObjectId" the saved event queue refers to
+    std::vector<SavedAction> actions; // ActionList, in queue order
 };
 
 // One available NPC: a PARTYTABLE slot (PT_AVAIL_NPCS entry) plus the stored
@@ -264,6 +280,7 @@ struct OriginalSave {
     std::uint32_t pauseTime = 0;
     std::uint32_t areaObjectId = 0;
     std::uint32_t playerObjectId = 0;
+    std::string playerSpawnScript; // IFO Mod_PlayerList ScriptSpawn (k_hen_spawn01 in every save checked)
     std::vector<SavedScriptEvent> events;
     std::vector<std::uint8_t> gitBytes; // the module GIT as the save holds it (every object whole)
     SavedAreaMap areaMap;
