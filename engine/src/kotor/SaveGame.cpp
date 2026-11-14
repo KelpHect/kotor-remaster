@@ -564,6 +564,11 @@ SavedNpc readNpcNode(const Gff& gff)
         npc.maxHp = std::max(1, hp.max);
         npc.baseHp = numberInt(gff, root, "HitPoints", -1);
     }
+    if (has(gff, root, "XPosition")) {
+        npc.hasPlacement = true;
+        npc.position = objectPosition(gff, root);
+        npc.yaw = std::atan2(numberFloat(gff, root, "YOrientation", 1.0f), numberFloat(gff, root, "XOrientation", 0.0f));
+    }
     npc.xp = numberInt(gff, root, "Experience", 0);
     npc.joiningXp = numberInt(gff, root, "JoiningXP", 0);
     npc.alignment = std::clamp(numberInt(gff, root, "GoodEvil", 50), 0, 100);
@@ -1192,6 +1197,13 @@ GffNodePtr buildNpcNode(const SavedNpc& npc)
     patchString(*node, "Tag", npc.tag);
     patchResRef(*node, "TemplateResRef", npc.templateResref);
     patchInt(*node, "JoiningXP", npc.joiningXp);
+    if (npc.hasPlacement) {
+        patchFloat(*node, "XPosition", npc.position.x);
+        patchFloat(*node, "YPosition", npc.position.y);
+        patchFloat(*node, "ZPosition", npc.position.z);
+        patchFloat(*node, "XOrientation", std::cos(npc.yaw));
+        patchFloat(*node, "YOrientation", std::sin(npc.yaw));
+    }
     // Worn items carry their slot mask as the struct type, as a UTC does.
     std::vector<GffNodePtr> equipped;
     for (const SavedInventoryItem& item : npc.inventory) {

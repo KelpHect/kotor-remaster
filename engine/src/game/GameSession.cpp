@@ -291,43 +291,6 @@ bool segmentIntersects(const kotor::Vec3& a, const kotor::Vec3& b,
     return t >= 0.0f && t <= 1.0f && u >= 0.0f && u <= 1.0f;
 }
 
-// Does a closed door's panel lie across this flat segment? The panel is the model's width along
-// its local x, at the door's position and bearing.
-bool closedDoorBetween(const kotor::Scene& scene, kotor::Vec3 from, kotor::Vec3 to, float radius)
-{
-    for (const kotor::EntityMesh& mesh : scene.entityMeshes) {
-        if (mesh.fx || mesh.entity >= scene.entities.size()) {
-            continue;
-        }
-        const kotor::Entity& door = scene.entities[mesh.entity];
-        if (door.kind != kotor::EntityKind::Door || door.open) {
-            continue;
-        }
-        const float c = std::cos(door.bearing);
-        const float s = std::sin(door.bearing);
-        const auto local = [&](kotor::Vec3 p) {
-            const float x = p.x - door.position.x;
-            const float y = p.y - door.position.y;
-            return std::pair<float, float>{c * x + s * y, -s * x + c * y};
-        };
-        const auto [ax, ay] = local(from);
-        const auto [bx, by] = local(to);
-        if ((ay > radius && by > radius) || (ay < -radius && by < -radius)) {
-            continue;
-        }
-        float halfWidth = 0.0f;
-        for (const kotor::SceneVertex& v : mesh.vertices) {
-            halfWidth = std::max(halfWidth, std::fabs(v.position.x));
-        }
-        const float span = by - ay;
-        const float t = std::fabs(span) > 1.0e-6f ? std::clamp(-ay / span, 0.0f, 1.0f) : 0.0f;
-        if (std::fabs(ax + (bx - ax) * t) <= halfWidth + radius) {
-            return true;
-        }
-    }
-    return false;
-}
-
 bool wallBlocked(const kotor::Scene& scene, kotor::Vec3 from, kotor::Vec3 to, float radius)
 {
     // A small square around the path approximates the player's radius. It is
@@ -1560,9 +1523,9 @@ void GameSession::updateAudioListener()
     kotor::Vec3 target = controlledPosition();
     if (thirdPerson_ && playerVisible_ && !dialogueView_.active) {
         // CSWCameraOnAStick::GetTargetHeadPosition 005f5180 (called at 005f5478): the followed
-        // creature's position plus the camera's height (+0x6c), the same point the chase camera
-        // frames in camera().
-        target.z += cameraHookHeight(scene_, controlledEntity()) + scene_.cameraStyle.height;
+        // creature's position raised by +0x6c, its camera hook height (SetCameraFollow 0063f9d0); the
+        // camerastyle HEIGHT is the eye's own lift (+0x120) and is not part of it.
+        target.z += cameraHookHeight(scene_, controlledEntity());
     }
     constexpr float kFollowed = 0.75f;
     const kotor::Vec3 at{eye.eye.x + (target.x - eye.eye.x) * kFollowed,
@@ -1582,24 +1545,16 @@ void GameSession::updatePlayerAvatar(float dt, bool moving)
     kotor::Entity& entity = scene_.entities[playerEntity_];
     entity.position = position_;
     entity.bearing = playerBearing_;
-    // The camera orbits the controlled creature, so the hide-when-too-close test
-    // applies to that creature's body (the PC's avatar, or the companion's).
-    const kotor::Vec3 focus = controlledPosition();
+    // The camera orbits the controlled creature (the PC's avatar, or the companion's).
     const std::size_t body = controlledEntity();
-    const kotor::Vec3 target{focus.x, focus.y, focus.z + 1.3f};
-    const kotor::Vec3 back{std::cos(yaw_), std::sin(yaw_), 0.0f};
-    float distance = 3.2f;
-    kotor::Vec3 eye{target.x - back.x * distance, target.y - back.y * distance,
-                    focus.z + 1.55f};
-    const bool noClip = cameraNoClip_;
-    while (!noClip && distance > 0.65f
-           && (wallBlocked(scene_, {target.x, target.y, eye.z}, eye, 0.22f)
-               || closedDoorBetween(scene_, target, eye, 0.22f))) {
-        distance -= 0.2f;
-        eye.x = target.x - back.x * distance;
-        eye.y = target.y - back.y * distance;
-    }
-    const bool visible = noClip || distance >= 1.6f;
+    // The chase camera's casts read the creatures' appearance spaces, and the world moves each tick.
+    loadMovementTables();
+    chaseEyeValid_ = false;
+    // Retail never hides the followed creature for a close camera: CSWCameraOnAStick::Control 0063bcb0 places the
+    // camera (0063b050 hit check, then the owner's SetPosition/SetOrientation at 0063bf48/0063bf80) and hides
+    // nothing, and 0063b050 only moves the eye. 45 recorded loads and runs keep the followed Gob visible with the eye
+    // as near as 0.72 m (Endar).
+    const bool visible = true;
     if (visible != playerVisible_) {
         playerVisible_ = visible;
         for (kotor::EntityMesh& mesh : scene_.entityMeshes) {
@@ -2103,6 +2058,12 @@ void GameSession::updateParty(float dt)
     // follow code: the members, and the PC when a companion is steered.
     const std::uint32_t leader = controlledObject();
     const kotor::Vec3 anchor = controlledPosition();
+    if (followHold_) {
+        if (std::fabs(anchor.x - followHoldAnchor_.x) + std::fabs(anchor.y - followHoldAnchor_.y) < 0.01f) {
+            return;
+        }
+        followHold_ = false;
+    }
     const float anchorYaw = yaw_;
     ScriptApi api{*this};
     int slot = 0;
@@ -3236,6 +3197,233 @@ static float cameraHookHeight(const kotor::Scene& scene, std::size_t entity)
     return 1.634f;
 }
 
+namespace {
+
+struct CameraCreature {
+    kotor::Vec3 position;
+    float personalSpace = 0.6f; // appearance PERSPACE (+0x340 +4)
+    float cameraSpace = 0.6f;   // appearance CAMERASPACE (+0x340 +0x10)
+};
+
+// The segment-circle crossings of 004aab50 (2D here: both ends and the centre have z 0 at the caller): `nearOrOnly`
+// gets the far root when both roots lie in [0, 1) and `nearer` then the near one; with one root in range it is
+// that root. Returns how many roots lie in [0, 1).
+int segmentCircle(kotor::Vec3 center, float radius, kotor::Vec3 from, kotor::Vec3 to, kotor::Vec3& nearOrOnly,
+                  kotor::Vec3& nearer)
+{
+    const kotor::Vec3 d{to.x - from.x, to.y - from.y, to.z - from.z};
+    const kotor::Vec3 f{from.x - center.x, from.y - center.y, from.z - center.z};
+    const float a = d.x * d.x + d.y * d.y + d.z * d.z;
+    const float b = 2.0f * (f.x * d.x + f.y * d.y + f.z * d.z);
+    const float disc = b * b - ((f.x * f.x + f.y * f.y + f.z * f.z) - radius * radius) * a * 4.0f;
+    const auto at = [&](float t) { return kotor::Vec3{d.x * t + from.x, d.y * t + from.y, d.z * t + from.z}; };
+    if (disc == 0.0f) {
+        const float t = -(b / (a + a));
+        if (t >= 0.0f && t < 1.0f) {
+            nearOrOnly = at(t);
+            return 1;
+        }
+        return 0;
+    }
+    if (disc <= 0.0f) {
+        return 0;
+    }
+    int count = 2;
+    const float farRoot = (std::sqrt(disc) - b) / (a + a);
+    if (farRoot < 0.0f || !(farRoot < 1.0f)) {
+        count = 1;
+    } else {
+        nearOrOnly = at(farRoot);
+    }
+    const float nearRoot = (-b - std::sqrt(disc)) / (a + a);
+    if (nearRoot >= 0.0f && nearRoot < 1.0f) {
+        if (count == 2) {
+            nearer = at(nearRoot);
+            return 2;
+        }
+        nearOrOnly = at(nearRoot);
+        return count;
+    }
+    return count - 1;
+}
+
+// CServerExoApp::ShrinkLineByCreatures 004aebb0 -> CSWSArea 004bf650: the creatures of the area (its x-sorted list,
+// +0x190) within 3 m (00740c84) of the segment's x and y span, and whose PERSPACE circle does not hold `start`, are
+// tested in turns: while `end` lies inside one's CAMERASPACE circle (x and y only), `end` moves to where the segment
+// from `start` enters it, 0.001 (0073d708) back towards `start`, and its z becomes
+// min z + (max z - min z) x (new 2D length / old 2D length) squared - 0.01 (0073dfec), over the original ends. The turns
+// repeat until one moves nothing. Returns whether `end` moved.
+bool shrinkLineByCreatures(const std::vector<CameraCreature>& creatures, kotor::Vec3 start, kotor::Vec3 endIn,
+                           kotor::Vec3& end)
+{
+    end = endIn;
+    const float xLow = std::min(start.x, endIn.x) - 3.0f;
+    const float xHigh = std::max(start.x, endIn.x) + 3.0f;
+    const float yLow = std::min(start.y, endIn.y) - 3.0f;
+    const float yHigh = std::max(start.y, endIn.y) + 3.0f;
+    std::vector<const CameraCreature*> nearby;
+    for (const CameraCreature& creature : creatures) {
+        const kotor::Vec3& at = creature.position;
+        const float dx = at.x - start.x;
+        const float dy = at.y - start.y;
+        if (at.x >= xLow && at.x <= xHigh && yLow <= at.y && at.y < yHigh
+            && creature.personalSpace * creature.personalSpace < dy * dy + dx * dx) {
+            nearby.push_back(&creature);
+        }
+    }
+    const float zLow = std::min(start.z, endIn.z);
+    const float zHigh = std::max(start.z, endIn.z);
+    bool shrunk = false;
+    bool moved = !nearby.empty();
+    for (int pass = 0; moved && pass < 64; ++pass) {
+        moved = false;
+        for (const CameraCreature* creature : nearby) {
+            const float radius = creature->cameraSpace;
+            const float ex = creature->position.x - end.x;
+            const float ey = creature->position.y - end.y;
+            if (!(ey * ey + ex * ex < radius * radius)) {
+                continue;
+            }
+            const kotor::Vec3 from2{start.x, start.y, 0.0f};
+            const kotor::Vec3 to2{end.x, end.y, 0.0f};
+            const kotor::Vec3 dir = kotor::normalize(kotor::Vec3{to2.x - from2.x, to2.y - from2.y, 0.0f});
+            const kotor::Vec3 back{dir.x * 0.001f, dir.y * 0.001f, dir.z * 0.001f};
+            kotor::Vec3 first{};
+            kotor::Vec3 second{};
+            const int crossings = segmentCircle({creature->position.x, creature->position.y, 0.0f}, radius, from2, to2,
+                                                first, second);
+            bool changed = false;
+            if (crossings == 2) {
+                const auto dist2 = [&](const kotor::Vec3& p) {
+                    return (start.z - p.z) * (start.z - p.z) + (start.y - p.y) * (start.y - p.y)
+                        + (start.x - p.x) * (start.x - p.x);
+                };
+                const kotor::Vec3 pick = dist2(second) <= dist2(first) ? second : first;
+                end = {pick.x - back.x, pick.y - back.y, pick.z - back.z};
+                changed = true;
+            } else if (crossings == 1 && (end.x != first.x || end.y != first.y)) {
+                end = {first.x - back.x, first.y - back.y, first.z - back.z};
+                changed = true;
+            }
+            if (!changed) {
+                continue;
+            }
+            shrunk = true;
+            moved = true;
+            const float oldLength2 = (from2.x - to2.x) * (from2.x - to2.x) + (from2.y - to2.y) * (from2.y - to2.y);
+            if (oldLength2 != 0.0f) {
+                const float newLength2 = (0.0f - end.z) * (0.0f - end.z) + (from2.y - end.y) * (from2.y - end.y)
+                    + (from2.x - end.x) * (from2.x - end.x);
+                end.z = (zHigh - zLow) * (newLength2 / oldLength2) - 0.01f + zLow;
+            }
+        }
+    }
+    return shrunk;
+}
+
+} // namespace
+
+// CSWCameraOnAStick::Control 0063bcb0 for a camera at rest. Each frame 006398f0 asks for the eye at
+// D + 0.5 (007a243c) x (the camera's current flat distance from the head - D), D the style distance (+0x110), at the
+// head's z plus HEIGHT, and Control_HitCheckCamera 0063b050 moves it; repeating that settles where the hit-checked
+// distance gives itself back, which is the eye returned here (retail's eye is unchanged at 1 mm two samples after a
+// load's HUD opens).
+// 0063b050, one pass: ShrinkLineByCreatures may pull the end in. Then four casts (00456b60, ignoring the followed
+// creature) run from the head to the end moved 0.35 (CameraPersonalSpace, 007a241c) either way along
+// up x (head - end) and 0.35 up and down. With none hitting, the eye is the end. Otherwise d is the largest
+// distance from a cast's hit point to that cast's own end, and the eye is the end moved d back along the line towards
+// the head and raised along the followed object's local up by d / |end - head| x (0.35 + 0.15, 0074a604).
+kotor::Vec3 GameSession::chaseCameraEye(kotor::Vec3 head, kotor::Vec3 back, float desired, float height) const
+{
+    const std::array<float, 7> key{head.x, head.y, head.z, back.x, back.y, desired, height};
+    if (chaseEyeValid_ && key == chaseEyeKey_) {
+        return chaseEye_;
+    }
+    const std::size_t followed = controlledEntity();
+    std::vector<CameraCreature> creatures;
+    for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
+        const kotor::Entity& entity = scene_.entities[i];
+        if (entity.kind != kotor::EntityKind::Creature) {
+            continue;
+        }
+        CameraCreature creature;
+        creature.position = entity.position;
+        if (nav_) {
+            if (const auto found = nav_->personalSpace.find(entity.appearance); found != nav_->personalSpace.end()) {
+                creature.personalSpace = found->second;
+            }
+            if (const auto found = nav_->cameraSpace.find(entity.appearance); found != nav_->cameraSpace.end()) {
+                creature.cameraSpace = found->second;
+            }
+        }
+        creatures.push_back(creature);
+    }
+    std::sort(creatures.begin(), creatures.end(),
+              [](const CameraCreature& a, const CameraCreature& b) { return a.position.x < b.position.x; });
+    const std::uint32_t ignore = followed < scene_.entities.size() ? static_cast<std::uint32_t>(followed) : UINT32_MAX;
+    constexpr float kPersonalSpace = 0.35f;
+    // Every cast below runs from the head to a point at most `desired` away flat, within 0.35 of HEIGHT above or
+    // below (plus the creature shrink's 0.01): the room faces of that box are gathered once.
+    const float reach = desired + kPersonalSpace + 0.1f;
+    const kotor::SceneHitFaces area = kotor::gatherSceneHitFaces(
+        scene_, {head.x - reach, head.y - reach, std::min(head.z, head.z + height) - kPersonalSpace - 0.1f},
+        {head.x + reach, head.y + reach, std::max(head.z, head.z + height) + kPersonalSpace + 0.1f});
+    const auto hitCheck = [&](kotor::Vec3 wanted) {
+        kotor::Vec3 end = wanted;
+        kotor::Vec3 eye = wanted;
+        kotor::Vec3 shrunk{};
+        if (shrinkLineByCreatures(creatures, head, end, shrunk)) {
+            end = shrunk;
+            eye = shrunk;
+        }
+        const kotor::Vec3 side = kotor::normalize(kotor::Vec3{-(head.y - end.y), head.x - end.x, 0.0f});
+        const kotor::Vec3 probes[4] = {
+            {end.x + side.x * kPersonalSpace, end.y + side.y * kPersonalSpace, end.z + side.z * kPersonalSpace},
+            {end.x - side.x * kPersonalSpace, end.y - side.y * kPersonalSpace, end.z - side.z * kPersonalSpace},
+            {end.x, end.y, end.z + kPersonalSpace},
+            {end.x, end.y, end.z - kPersonalSpace}};
+        bool any = false;
+        float pushed = 0.0f;
+        for (const kotor::Vec3& probe : probes) {
+            kotor::Vec3 at{};
+            if (kotor::sceneHitCheck(scene_, head, probe, ignore, at, &area) != 0) {
+                const float beyond = kotor::length(at - probe);
+                if (!any || beyond >= pushed) {
+                    pushed = beyond;
+                }
+                any = true;
+            }
+        }
+        if (!any) {
+            return eye;
+        }
+        const kotor::Vec3 away = end - head;
+        const float span = kotor::length(away);
+        const kotor::Vec3 line = kotor::normalize(away);
+        const float lift = span > 0.0f ? pushed / span * (kPersonalSpace + 0.15f) : 0.0f;
+        return kotor::Vec3{eye.x - pushed * line.x, eye.y - pushed * line.y, eye.z - pushed * line.z + lift};
+    };
+    kotor::Vec3 eye{};
+    // Start from where the camera was (006398f0 reads the owner's current position); the first time, the full distance.
+    float current = chaseDistance_ > 0.0f ? chaseDistance_ : desired;
+    for (int frame = 0; frame < 64; ++frame) {
+        const float distance = desired + (current - desired) * 0.5f;
+        eye = hitCheck({head.x - back.x * distance, head.y - back.y * distance, head.z + height});
+        const float next = std::hypot(eye.x - head.x, eye.y - head.y);
+        // Faceted walls can leave the rest point flickering by a few 1e-5 m from frame to frame (as retail's own
+        // camera would); 0.1 mm is far inside the trace's 1 mm.
+        if (std::fabs(next - current) < 1.0e-4f) {
+            break;
+        }
+        current = next;
+    }
+    chaseDistance_ = std::hypot(eye.x - head.x, eye.y - head.y);
+    chaseEyeKey_ = key;
+    chaseEye_ = eye;
+    chaseEyeValid_ = true;
+    return eye;
+}
+
 SceneCamera GameSession::camera() const
 {
     if (sim_->miniGame && !dialogueView_.active) {
@@ -3336,7 +3524,12 @@ SceneCamera GameSession::camera() const
         // Inferred: free look tilts the view about the eye, within the style's fl_ limits.
         const float elevation = std::clamp(pitch_, -style.lookDown * kPi / 180.0f,
                                            style.lookUp * kPi / 180.0f) - belowLevel;
-        const kotor::Vec3 target{focus.x, focus.y, focus.z + hookHeight + style.height};
+        // GetTargetHeadPosition 005f5180: the followed object's position raised by +0x6c, which SetCameraFollow
+        // 0063f9d0 sets to the creature's camera hook height (vfunc +0xd8) plus its appearance.2da CameraHeightOffset
+        // (00697580, column 0x7a20c8). The eye sits camerastyle HEIGHT (+0x120, read at 006381c3) above that point
+        // (006398f0 adds it to the head's z). CameraHeightOffset is not read here yet.
+        const kotor::Vec3 head{focus.x, focus.y, focus.z + hookHeight};
+        const kotor::Vec3 target{focus.x, focus.y, head.z + style.height};
         const kotor::Vec3 back{std::cos(yaw_), std::sin(yaw_), 0.0f};
         // ProgFX 1500 (Effects.cpp) drives the view angle; with its dolly on, CSWCameraOnAStick::Control
         // 0063bcb0 sets the distance to tan(style angle / 2) x style distance / tan(angle / 2).
@@ -3345,28 +3538,9 @@ SceneCamera GameSession::camera() const
         const float desired = zoom && zoom->dolly
             ? std::tan(style.viewAngle * kPi / 360.0f) * style.distance / std::tan(viewAngle * kPi / 360.0f)
             : style.distance;
-        float distance = desired;
-        kotor::Vec3 eye{target.x - back.x * distance, target.y - back.y * distance, target.z};
-        const bool noClip = cameraNoClip_;
-        // A closed door stops it too: at tar_m02aa's entry, with a door behind the player, retail's
-        // eye is 1.78 back instead of 3.2 (measured). Doors have no facets in scene.collision.
-        while (!noClip && distance > 0.65f
-               && (wallBlocked(scene_, {target.x, target.y, eye.z}, eye, 0.22f)
-                   || closedDoorBetween(scene_, target, eye, 0.22f))) {
-            distance -= 0.2f;
-            eye.x = target.x - back.x * distance;
-            eye.y = target.y - back.y * distance;
-        }
-        if (distance < std::min(1.5f, desired)) { // Pushed in by a wall; a short style is not.
-            eye.x = target.x - back.x * 0.8f;
-            eye.y = target.y - back.y * 0.8f;
-            eye.z = focus.z + 2.25f;
-        }
-        float floor = eye.z;
-        if (floorHeight(scene_, eye.x, eye.y, eye.z + 1.0f, floor)
-            && eye.z < floor + 0.25f) {
-            eye.z = floor + 0.25f;
-        }
+        const kotor::Vec3 eye = cameraNoClip_
+            ? kotor::Vec3{target.x - back.x * desired, target.y - back.y * desired, target.z}
+            : chaseCameraEye(head, back, desired, style.height);
         SceneCamera camera;
         camera.eye = eye;
         camera.forward = {std::cos(elevation) * back.x, std::cos(elevation) * back.y,
@@ -5354,6 +5528,14 @@ bool GameSession::targetVisible(std::size_t index)
 // NOT YET: the mine case (reason 11, bit 0x2000, message 0x15) and the trap-hostile test of vtable +0x138.
 void GameSession::tickEnemySighted(float dt)
 {
+    // The caller (00602eb0 at 00603b61) runs the scan only while the in-game fade panel (client GUI +0x6c) is idle:
+    // 0062ac60 (a fade still inside its duration, 006244b0) and 0062ded0 (the panel's +0x4c above 0.001) both skip it,
+    // and a skipped scan leaves the selection and the sighted flag as they were. This is why retail shows no selected
+    // object for the first moments after a load.
+    // The frame that completes a load is skipped as well: the client's loading flag (+0x288) is still set (00602eb0).
+    if (arrivalPending_ || sim_->fade.active() || sim_->fade.opacity > 0.001f) {
+        return;
+    }
     std::vector<TargetCandidate> angular;
     std::vector<std::size_t> forward;
     bool seen = false;
@@ -7622,6 +7804,8 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
             }
         }
     }
+    followHold_ = true;
+    followHoldAnchor_ = controlledPosition();
     logEvent("original save loaded: " + saved.module + " gold=" + std::to_string(gold_)
              + " inventory=" + std::to_string(character_.inventory.size())
              + " journal=" + std::to_string(journal_.size())
