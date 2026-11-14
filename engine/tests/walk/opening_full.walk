@@ -1,9 +1,12 @@
 # The whole opening, played as a player would: new game -> Endar Spire (end_m01aa, end_m01ab) -> escape pod ->
 # Taris apartment. Not a registered test until it passes end to end; opening.walk is the part that passes today.
 # Doors and stops follow the retail recording of the same route (tags only).
-# STOP 1 (blocker): at end_door02 the second try as the player does not start a conversation and the door stays locked;
-# the Security unlock is refused for the quick-built character (untrained). Steps after it need that fixed.
-# Run:  kotor_engine --new-game --null --headless --fixed-dt 0.0166667 --walk-godmode --walk-continue \
+# Character: the retail recording's player is the male Scoundrel (appearance 148 is portraits.2da appearance_s, the
+# class-2 column), so the run starts on the class screen's first button (--new-game-slot 0). The quick build gives it
+# Security ranks, which the locked doors the route meets need.
+# Status: reaches end_m01ab through end_door10 (transition) and stops where the retail recording meets the corridor
+# fight and end_m01ab's own door (end_door01, Security); steps past that are not written yet.
+# Run:  kotor_engine --new-game --new-game-slot 0 --null --headless --fixed-dt 0.0166667 --walk-godmode --walk-continue
 #         --input-script opening_full.walk
 autodialogue first
 expect module end_m01aa
@@ -31,8 +34,47 @@ dialogue first timeout=60
 idle 6
 leader player
 goto end_door02 stop=1.5 timeout=30
-opendoor end_door02
+unlock end_door02
+opendoor end_door02 must
 dialogue first timeout=60
 idle 6
-opendoor end_door02 must
+fight range=25 timeout=120
+goto 46.5,47.8,-1.275 stop=0.8 timeout=60
+use end_door05
+fight range=25 timeout=120
+goto 47.5,58,-1.275 stop=0.8 timeout=60
+use footlker
+loot
+use metalbox
+loot
+goto 44.2,65,-1.275 stop=0.6 timeout=60
+use end_door10_cut2
+dialogue first timeout=60 optional
+fight range=25 timeout=120
+goto end_door06 stop=1.5 timeout=60
+fight range=25 timeout=120
+goto end_door16 stop=1.5 timeout=60
+unlock end_door16
+use end_door16
+dialogue first timeout=60 optional
+fight range=22 timeout=180
+dialogue first timeout=60 optional
+fight range=22 timeout=180
+goto end_door08 stop=1.5 timeout=90
+opendoor end_door08
+dialogue first timeout=90 optional
+fight range=25 timeout=180
+dialogue first timeout=90 optional
+opendoor end_door08
+dialogue first timeout=90 optional
+fight range=25 timeout=180
+dialogue first timeout=90 optional
+opendoor end_door08 must
+goto end_door15 stop=1.5 timeout=90
+opendoor end_door15
+dialogue first timeout=60 optional
+fight range=22 timeout=180
+goto end_door10 stop=1.5 timeout=90
+use end_door10
+module end_m01ab timeout=60
 end

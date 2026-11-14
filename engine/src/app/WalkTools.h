@@ -155,7 +155,7 @@ private:
 
 // Start-state helpers for per-module probing (separate flags; never part of the continuous run).
 // New game: the quick-built default character, then the same entry the front end's New Game makes.
-bool walkStartNewGame(GameSession& game);
+bool walkStartNewGame(GameSession& game, int classSlot = 2);
 // --start-wp: the leader and party stand on this waypoint.
 bool walkStartAtWaypoint(GameSession& game, const std::string& tag);
 // --seed-file: `global NAME = N`, `journal TAG = N`, `party NAME[,NAME]`, `gold N`, `xp N`, one per line.

@@ -10165,7 +10165,7 @@ int runApplication(const Options& options)
                 game->setCameraNoClip(options.cameraNoClip);
             }
             if (options.newGame) {
-                walkStartNewGame(*game);
+                walkStartNewGame(*game, options.newGameSlot);
             }
             if (!options.seedFile.empty()) {
                 walkApplySeedFile(*game, options.seedFile);
