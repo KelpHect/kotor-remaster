@@ -2254,6 +2254,9 @@ void GameSession::runSpawnAndEnterScripts()
     }
     for (std::size_t i = 0; i < scene_.entities.size(); ++i) {
         const kotor::Entity& entity = scene_.entities[i];
+        if (sim_->restoringSave && entity.kind == kotor::EntityKind::Creature && entity.spawnFired) {
+            continue; // 00500350 / 004eb6e0: the saved spawned flag is set, OnSpawn does not run again
+        }
         const auto spawn = entity.scripts.find("ScriptSpawn");
         if (spawn != entity.scripts.end() && !spawn->second.empty()) {
             if (spawnRan_.insert(objectForEntity(i)).second) {
@@ -7568,6 +7571,21 @@ bool GameSession::loadOriginalSave(const std::filesystem::path& folder, bool asP
 
     selectedCompanion_ = -1;
     readPartyFromOriginalSave(saved);
+    // Party members come from AVAILNPC<n> and are put into the area by CSWPartyTable::SpawnNPC 00565130 (no
+    // GIT spawn flag is applied), so the first update of each runs its OnSpawn (004eb6e0, flag +0x34c still 0).
+    // Measured on retail: 2 spawn runs at load in a Taris save with Carth, 3 in a Kashyyyk save with two members.
+    // The PC's own spawn run is not reproduced (its script is not known here).
+    for (const CompanionState& companion : companions_) {
+        const std::size_t index = ensureCompanionEntity(companion);
+        if (index >= scene_.entities.size()) {
+            continue;
+        }
+        const auto spawn = scene_.entities[index].scripts.find("ScriptSpawn");
+        if (spawn != scene_.entities[index].scripts.end() && !spawn->second.empty()
+            && spawnRan_.insert(objectForEntity(index)).second) {
+            runScript(spawn->second, objectForEntity(index), scriptWorld_.pc, scriptWorld_.pc, scriptWorld_.pc);
+        }
+    }
 
     std::vector<std::pair<std::size_t, const decltype(kotor::SavedObjectState::loot)*>> savedLoot;
     std::vector<bool> objectUsed(scene_.entities.size(), false);

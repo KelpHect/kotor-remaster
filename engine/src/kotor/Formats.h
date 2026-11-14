@@ -1332,6 +1332,10 @@ struct Entity {
     // on from that (same-camera retail frames, tar_m02aa). Doors and placeables turn by Bearing itself.
     float drawBearing() const { return kind == EntityKind::Creature ? bearing - 1.5707963f : bearing; }
     bool partyAvatar = false;
+    // GIT creature field CreatnScrptFird (BYTE, default 0): the creature's OnSpawn already ran. Retail 00500350
+    // (CSWSCreature::LoadCreature) stores it as the spawned flag at +0x34c, and 004eb6e0 runs OnSpawn on the first
+    // update only while it is 0, so a creature read from a save with the field set never runs OnSpawn again.
+    bool spawnFired = false;
     bool useable = false;
     bool open = false;
     // UTD OpenState (0 closed, 1 and 2 the two open sides, 3 destroyed) and UTP AnimationState.
