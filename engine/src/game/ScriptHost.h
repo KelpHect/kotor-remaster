@@ -235,6 +235,9 @@ struct ActorState {
     // reaches 0; the first update runs one at once.
     float perceptionDue = 0.0f;
     bool perceptionStarted = false;
+    // A creature read from a save: its first pass looks at the party only (UpdateVisibleList mode 1, 0051b050), the full
+    // pass (mode 2) follows one interval later. 004eb6e0 block 2 runs the party pass at once because its stamp is 0.
+    bool firstPassPartyOnly = false;
     // retail 004fa390 UpdateMineCheck cadence (100 ms still, 3000 ms moving).
     kotor::Vec3 mineCheckPosition;
     bool mineCheckPositionKnown = false;

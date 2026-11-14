@@ -194,8 +194,11 @@ std::uint32_t creatureHeartbeatMs(std::uint32_t object, std::int64_t nowMs)
 }
 
 // Creatures read from a save are already spawned (004eb6e0 skips the spawn-and-heartbeat first update), so their
-// clocks start at the load: the first heartbeat is one interval away and the first perception pass of a creature
-// that is not the player's comes after 4000 ms (the retail sample shows the first AI burst at 4.0-4.3 s).
+// heartbeat clock starts at the load: the first heartbeat is one interval away. Their perception stamps are 0 (the
+// constructor 004f7a10 writes them and LoadCreature does not touch them), so the first update runs the party-only
+// visible-list pass (UpdateVisibleList 0051b050 mode 1) at once, which is the burst of notice scripts retail shows
+// 0.2 s after a load; the full pass (mode 2, stamp +0xe2) comes one interval (4000 ms) later, after 0x95 updates have
+// counted. Retail sample: notices at 0.23 s and 0.97 s, the next at about 5 s.
 void primeLoadedCreatureClocks(ScriptApi api)
 {
     WorldSim& sim = api.sim();
@@ -209,8 +212,9 @@ void primeLoadedCreatureClocks(ScriptApi api)
         sim.heartbeatDue.push_back(creature ? now + creatureHeartbeatMs(object, nowMs) / 1000.0 : now + kHeartbeatSeconds);
         if (creature && !entity.partyAvatar) {
             ActorState& actor = api.actor(object);
-            actor.perceptionStarted = true;
-            actor.perceptionDue = 4.0f;
+            actor.perceptionStarted = false;
+            actor.perceptionDue = 0.0f;
+            actor.firstPassPartyOnly = true;
         }
     }
 }
