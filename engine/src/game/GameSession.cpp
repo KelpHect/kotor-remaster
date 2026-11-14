@@ -3052,11 +3052,50 @@ void GameSession::runPendingModule()
     }
 }
 
-bool GameSession::lineOfSight(kotor::Vec3 from, kotor::Vec3 to) const
+bool GameSession::lineOfSight(kotor::Vec3 from, kotor::Vec3 to, bool doors)
 {
     from.z += 1.2f;
     to.z += 1.2f;
-    return !wallBlocked(scene_, from, to, 0.15f);
+    if (wallBlocked(scene_, from, to, 0.15f)) {
+        return false;
+    }
+    if (!doors) {
+        return true;
+    }
+    // Perception sight (00502ac0 -> 0050c330 -> 00506650) ray-tests the area including closed doors, whose
+    // closed walkmesh (<model>0.dwk) blocks it; an open door has none. Placeables are not tested here.
+    const kotor::Vec3 d{to.x - from.x, to.y - from.y, to.z - from.z};
+    for (const SoundFacet& facet : soundObjectFacets()) {
+        if (!facet.door) {
+            continue;
+        }
+        const kotor::Entity& owner = scene_.entities[facet.entity];
+        if (owner.dead || owner.open) {
+            continue;
+        }
+        const kotor::Vec3 e1{facet.b.x - facet.a.x, facet.b.y - facet.a.y, facet.b.z - facet.a.z};
+        const kotor::Vec3 e2{facet.c.x - facet.a.x, facet.c.y - facet.a.y, facet.c.z - facet.a.z};
+        const kotor::Vec3 p{d.y * e2.z - d.z * e2.y, d.z * e2.x - d.x * e2.z, d.x * e2.y - d.y * e2.x};
+        const float det = e1.x * p.x + e1.y * p.y + e1.z * p.z;
+        if (std::fabs(det) < 1.0e-9f) {
+            continue;
+        }
+        const kotor::Vec3 sv{from.x - facet.a.x, from.y - facet.a.y, from.z - facet.a.z};
+        const float u = (sv.x * p.x + sv.y * p.y + sv.z * p.z) / det;
+        if (u < 0.0f || u > 1.0f) {
+            continue;
+        }
+        const kotor::Vec3 q{sv.y * e1.z - sv.z * e1.y, sv.z * e1.x - sv.x * e1.z, sv.x * e1.y - sv.y * e1.x};
+        const float v = (d.x * q.x + d.y * q.y + d.z * q.z) / det;
+        if (v < 0.0f || u + v > 1.0f) {
+            continue;
+        }
+        const float t = (e2.x * q.x + e2.y * q.y + e2.z * q.z) / det;
+        if (t > 1.0e-6f && t <= 1.0f) {
+            return false;
+        }
+    }
+    return true;
 }
 
 float GameSession::soundObstruction(kotor::Vec3 from, kotor::Vec3 to)

@@ -193,7 +193,9 @@ void WalkDriver::tick(GameSession& game)
 void WalkDriver::godmode(GameSession& game)
 {
     // Only keeps the party from dying (route discovery): a member at 60 percent of its hit points or less is
-    // healed to full through the same heal path a medpac uses. Damage and kills are the game's own.
+    // healed to full through the same heal path a medpac uses, and each member carries the SetMinOneHP flag so a
+    // single hit larger than its whole hit point pool (a critical at level 1 does 14 against 12) leaves it at 1
+    // instead of dead. Damage and kills are the game's own.
     ScriptApi api{game};
     for (const std::uint32_t object : game.partyObjects()) {
         std::int32_t hp = 0;
@@ -208,6 +210,11 @@ void WalkDriver::godmode(GameSession& game)
             }
             hp = game.scene().entities[index].hitPoints;
             maxHp = game.scene().entities[index].maxHitPoints;
+        }
+        if (object == api.pc()) {
+            api.actor(object).combat.min1Hp = true;
+        } else if (const std::size_t body = game.bodyOfObject(object); body != kNone && body < game.scene().entities.size()) {
+            game.scene().entities[body].min1Hp = true;
         }
         if (maxHp > 0 && hp > 0 && hp * 10 <= maxHp * 6) {
             healCreature(api, object, maxHp - hp);
@@ -631,10 +638,14 @@ int WalkDriver::poll(GameSession& game)
     if (verb_ == "loot") {
         if (game.activePanel() == UiPanel::Loot || !game.loot().empty()) {
             const std::size_t items = game.loot().size();
+            std::string listed;
+            for (const InventoryItem& item : game.loot()) {
+                listed += concat(listed.empty() ? "" : ",", item.resref, "x", item.stack);
+            }
             game.takeAllLoot(); // the container screen's Take All, then its Close
             game.closeLoot();
             game.setUiPanel(UiPanel::None);
-            return done(game, true, concat("items=", items));
+            return done(game, true, concat("items=", items, " [", listed, "]"));
         }
         return sim_ - stepStart_ > timeout_ ? done(game, false, "reason=no-container-open") : 0;
     }
@@ -905,6 +916,17 @@ int WalkDriver::pollUse(GameSession& game)
     if (sim_ - settledSince_ < 2.0) {
         return 0;
     }
+    if (talk_) {
+        // What the creature's OnDialogue hook did: the session's last script lines.
+        const std::vector<std::string>& lines = game.scriptLog();
+        for (std::size_t i = lines.size() > 40 ? lines.size() - 40 : 0; i < lines.size(); ++i) {
+            logInfo(concat("WALK script-log ", lines[i]));
+        }
+        const std::vector<std::string>& combatLog = game.combatLog();
+        for (std::size_t i = combatLog.size() > 16 ? combatLog.size() - 16 : 0; i < combatLog.size(); ++i) {
+            logInfo(concat("WALK combat-log ", combatLog[i]));
+        }
+    }
     std::string blocker;
     if (game.moveOutcome() == GameSession::MoveOutcome::DoorBlocked && game.moveBlockingDoor() < game.scene().entities.size()) {
         blocker = " blocker=door:" + game.scene().entities[game.moveBlockingDoor()].tag;
@@ -953,6 +975,11 @@ int WalkDriver::pollDialogue(GameSession& game)
 int WalkDriver::pollFight(GameSession& game)
 {
     if (game.partyAllDown() || game.gameOverMessage()) {
+        // The last combat log lines say what landed (player hp lines carry the hit sizes).
+        const std::vector<std::string>& combatLog = game.combatLog();
+        for (std::size_t i = combatLog.size() > 14 ? combatLog.size() - 14 : 0; i < combatLog.size(); ++i) {
+            logInfo(concat("WALK combat-log ", combatLog[i]));
+        }
         return done(game, false, concat("reason=party-wiped hp=", game.controlledHp(), "/", game.controlledMaxHp(), " player_dead=",
                                         game.playerDead() ? 1 : 0, " godmode=", godmode_ ? 1 : 0));
     }
@@ -1127,7 +1154,7 @@ int WalkDriver::doList(GameSession& game)
         if (entity.kind == kotor::EntityKind::Creature) {
             extra += concat(" hostile=", entity.hostile ? 1 : 0, " dead=", entity.dead ? 1 : 0, " hp=", entity.hitPoints);
         }
-        logInfo(concat("WALK entity #", i, " tag=", entity.tag, " kind=", kindName(entity.kind), " pos=", fixed(entity.position.x), ",",
+        logInfo(concat("WALK entity #", i, " obj=", game.objectForEntityIndex(i), " tag=", entity.tag, " kind=", kindName(entity.kind), " pos=", fixed(entity.position.x), ",",
                        fixed(entity.position.y), ",", fixed(entity.position.z), " dist=", fixed(distance, 1), extra));
     }
     return done(game, true, concat("entities=", printed));

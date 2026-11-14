@@ -1078,7 +1078,7 @@ private:
     std::int32_t plotXpByLabel(const std::string& label, double fraction);
     ActorStep stepActorToward(std::uint32_t object, kotor::Vec3 target, float speed, float dt,
                               float stopDistance, bool ramp = true);
-    bool lineOfSight(kotor::Vec3 from, kotor::Vec3 to) const;
+    bool lineOfSight(kotor::Vec3 from, kotor::Vec3 to, bool doors = false);
     // Retail GetObstructionFactor 0050ccf0 for a sound: 0.4 for every surface of the area the line from the
     // sound to the listener crosses (surfacemat lineofsight), the line restarted a tenth of a metre past each
     // hit, 1.0 once the sum passes 1. A closed door on the line adds 0.55 and a placeable 0.4 (once per object).

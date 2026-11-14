@@ -58,6 +58,7 @@ struct CombatOps {
         std::int32_t sneakDice = 0;
         std::int32_t critBase = 1; // baseitems critthreat; 1 unarmed (005a5130)
         bool ranged = false;
+        bool noDamage = false; // item property 31: no base dice (retail 005a9050)
     };
 
     GameSession& s;
@@ -382,6 +383,7 @@ struct CombatOps {
             result.attack = offhand && weapon.present ? weapon.attackBonus : found->attackBonus;
             if (found->stats.combatDerived) {
                 result.dice = weapon.dice;
+                result.noDamage = weapon.noDamage;
                 result.die = weapon.die;
                 result.flat = weapon.flatDamage;
                 // 005a5130: threat range from baseitems critthreat, doubled by Keen.
@@ -502,6 +504,7 @@ struct CombatOps {
         combat.pendingAction = -1;
         combat.lastAttackAction = -1;
         combat.lastHostileTarget = kInvalid;
+        combat.lastHostileActor = kInvalid; // 004f2610 state 0 calls 004cc0c0(invalid), the field GetLastHostileActor reads
         combat.attemptedTarget = kInvalid;
         combat.attackTarget = kInvalid;
         combat.attemptedSpell = kInvalid;
@@ -584,7 +587,7 @@ struct CombatOps {
             return;
         }
         std::int32_t damage = weapon.flat;
-        for (std::int32_t i = 0; i < std::max(1, weapon.dice); ++i) {
+        for (std::int32_t i = 0; i < (weapon.noDamage ? 0 : std::max(1, weapon.dice)); ++i) {
             damage += roll(weapon.die);
         }
         // An entity's damage range bounds the roll: it spans exactly the derived
@@ -1553,7 +1556,7 @@ struct CombatOps {
                         || (!hasEffectOfType(a, target, 56) && spotsStealth(observer, target))
                         || hasEffectOfType(a, observer, 64) || hasEffectOfType(a, observer, 65);
                     if (spotted && distance <= sight * sight
-                        && a.hasLineOfSight(observer, target)) {
+                        && a.hasLineOfSight(observer, target, true)) {
                         bits |= 1;
                     }
                     if (spotted && distance <= hearing * hearing) {
