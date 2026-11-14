@@ -115,6 +115,9 @@ void addEntities(const Gff& git, std::uint32_t root, const char* listLabel, Enti
         }
         entity.bearing = bearing;
         entity.model = entity.templateResref;
+        if (kind == EntityKind::Creature) {
+            entity.spawnFired = number(git, structure, "CreatnScrptFird", 0.0f) != 0.0f;
+        }
         if (kind == EntityKind::Waypoint) {
             entity.hasMapNote = number(git, structure, "HasMapNote", 0.0f) != 0.0f;
             entity.mapNoteEnabled = number(git, structure, "MapNoteEnabled", 0.0f) != 0.0f;
