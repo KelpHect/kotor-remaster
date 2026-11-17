@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/brand/icon.png" width="128" height="128" alt="Clean-room engine emblem: a floating cyan kyber crystal inside a shaded bronze mechanical housing">
+  <img src="docs/brand/icon.png" width="128" height="128" alt="Pixel-art Revan mask framed by a dark hood with red rim lighting">
 </p>
 
 <h1 align="center">Clean-room Interoperability Engine</h1>
