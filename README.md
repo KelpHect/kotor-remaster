@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/brand/icon.png" width="96" alt="Project icon: a glowing teal pixel-art cube on a dark badge">
+  <img src="docs/brand/icon.png" width="128" height="128" alt="Clean-room engine emblem: a floating cyan kyber crystal inside a shaded bronze mechanical housing">
 </p>
 
-<h1 align="center">KotOR Interoperability Runtime</h1>
+<h1 align="center">Clean-room Interoperability Engine</h1>
 
 <p align="center"><b>An unofficial, clean-room engine that runs your own copy of Knights of the Old Republic.</b><br>
 Reads a legally acquired install in place, no game assets shipped, no original executable required.</p>
@@ -11,7 +11,7 @@ Reads a legally acquired install in place, no game assets shipped, no original e
 Lucasfilm, or Disney. The names and the game belong to their owners.</sub></p>
 
 <p align="center">
-  <img src="docs/brand/banner.png" width="100%" alt="Pixel-art night skyline with two planets, a lone cloaked figure holding a teal lightsaber, and a starship flyby">
+  <img src="docs/brand/banner.png" width="100%" alt="Unofficial Clean-room Engine: bold gold lettering over an original pixel-art Taris skyline, with Revan's hooded mask and a glowing red lightsaber">
 </p>
 
 <p align="center">
@@ -110,8 +110,9 @@ artifacts/   local only (gitignored): Ghidra projects, exports, caches, captured
 This is an unofficial, non-commercial interoperability and research project. It is not
 affiliated with or endorsed by BioWare, Electronic Arts, Lucasfilm, Disney, or any
 platform holder. No game assets, extracted data, save files, or decompiled program text
-are committed here — the header art is original pixel art made for this project, not a
-derived logo.
+are committed here. The header illustrations are original pixel art drawn for this
+project with Agent Art, not extracted game assets or official branding. The depicted
+characters and setting belong to their respective owners.
 
 You must supply your own legally acquired game installation. The project does not
 implement DRM, license checks, or ownership verification. External GPL/LGPL tools are
