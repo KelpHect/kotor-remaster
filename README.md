@@ -24,14 +24,12 @@ Lucasfilm, or Disney. The names and the game belong to their owners.</sub></p>
 
 ## What it is
 
-A from-scratch, clean-room reimplementation of the KotOR 1 engine. You point it at an
-install you already own and it loads the real game data — modules, scripts, dialogue,
-audio, GUI, movies — and runs them on a modern C++23 runtime with Vulkan or OpenGL.
+This is not a graphics mod or a wrapper around the original game: the engine replaces
+the original executable with independently written code while leaving the game data
+untouched. It implements the game's file formats, scripting, dialogue and gameplay
+systems so the original content runs on a new runtime.
 
-It does not ship, download, extract, or redistribute any game assets, and it does not
-require or execute the original game executable. Think of it as an interoperability
-and research runtime, in the same spirit as other source-port / engine-reimplementation
-projects.
+The goal is faithful KotOR gameplay, with an optional modern presentation path.
 
 ## Status
 
