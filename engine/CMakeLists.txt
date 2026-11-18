@@ -686,7 +686,7 @@ if(KOTOR_ENGINE_BUILD_TESTS)
                              --settings-file "${CMAKE_BINARY_DIR}/front_end/${backend}/settings.ini"
                              --front-end-out "${CMAKE_BINARY_DIR}/front_end/${backend}/frames")
             set_tests_properties(kotor_front_end_${backend}
-                                 PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 300)
+                                 PROPERTIES ENVIRONMENT "KOTOR_INSTALL=${KOTOR_TEST_INSTALL}" TIMEOUT 600)
             # The shipped store screen (merchants on tar_m02ac) and the loading screen of a module change.
             add_test(NAME kotor_front_end_store_${backend}
                      COMMAND kotor_engine --module tar_m02ac --front-end-test --front-end-scenario store --${backend}

@@ -1705,10 +1705,17 @@ void FrontEndGate::build()
     // first reply list first: entry 54 holds the talk while Trask crosses the room (ActionPauseConversation,
     // ActionMoveToObject, ActionResumeConversation), so ending it at a fixed frame cut it before any line was said
     // on a slow backend and left the Messages list empty and the later conversation at its first entry.
-    ops_.push_back(waitUntil("opening_conversation_reaches_the_replies", [](Context& context) {
+    // The module starts with a blank cutscene entry (m01aa_c01), and end_trask01 begins only after it ends, so
+    // an inactive conversation is the end only once a line with text has been said; otherwise the later talk
+    // began after this wait and was ended before any line was logged.
+    auto saidALine = std::make_shared<bool>(false);
+    ops_.push_back(waitUntil("opening_conversation_reaches_the_replies", [saidALine](Context& context) {
         const DialogueView& view = context.game->dialogue();
+        if (view.active && view.text.find_first_not_of(' ') != std::string::npos) {
+            *saidALine = true;
+        }
         if (!view.active) {
-            return true;
+            return *saidALine;
         }
         bool sayable = false;
         for (const DialogueOption& option : view.options) {
@@ -4285,10 +4292,12 @@ void FrontEndGate::build()
     }));
     ops_.push_back(wait(4));
     ops_.push_back(expect("subtitles_off_hides_a_voiced_line", [](Context& context) {
-        const DialogueView& view = context.game->dialogue();
-        const bool hidden = view.options.size() > 1
-            ? !context.dialogueGui->state("LB_REPLIES").items.empty() && !context.game->dialogueLineShown()
-            : context.dialogueGui->state("LBL_MESSAGE").text.empty();
+        // Which of the two is up depends on the moment (the replies come once the line has been spoken): with
+        // the replies up they must be listed and the line not shown; while the line is up its label must be empty.
+        const bool repliesUp = context.dialogueGui->state("LB_REPLIES").visible;
+        const bool hidden = !context.game->dialogueLineShown()
+            && (repliesUp ? !context.dialogueGui->state("LB_REPLIES").items.empty()
+                          : context.dialogueGui->state("LBL_MESSAGE").text.empty());
         context.settings->set("feedback.subtitles", 1.0f);
         context.game->setDialogueVoicedForTest(false);
         return hidden;
