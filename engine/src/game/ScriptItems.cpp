@@ -1583,7 +1583,7 @@ std::int32_t cellValue(const kotor::TwoDa& table, const std::string& row, const 
 
 } // namespace
 
-// An item's ACTIVATE_ITEM property names a spell (iprp_spells.2da -> spells.2da),
+// An item's ACTIVATE_ITEM property names a spell (its subtype is the spells.2da row, 004f8c70),
 // and using the item runs that spell's impact script with the user as caster, the
 // target and the item in context, as a cast does. The module's activation event
 // is raised too (EventActivateItem, ACT_424), which is how shipped scripts see
@@ -1644,31 +1644,35 @@ bool GameSession::useItem(std::uint32_t item, std::uint32_t user, std::uint32_t 
     if (target == 0 || target == script::kObjectInvalid) {
         target = user;
     }
-    const kotor::TwoDa* spellRefs = tableFor(install_, "iprp_spells");
     const kotor::TwoDa* spells = tableFor(install_, "spells");
     bool usable = false;
     std::vector<std::string> scripts;
+    std::vector<std::int32_t> spellIds;
     for (const kotor::ItemTemplate::Property& property : templ->properties) {
         if (property.name != kItemPropertyActivateItem || !property.useable) {
             continue;
         }
         usable = true;
-        if (spellRefs == nullptr || spells == nullptr) {
+        if (spells == nullptr) {
             continue;
         }
-        // An AI talent names its spell as the property's subtype (itemPowers); the player's use goes through
-        // iprp_spells.
+        // 004f8c70 (AddItemCastSpellActions) takes the spell id from the ActivateItem property's subtype (+2, via
+        // GetActiveProperty 00553960) and hands it to CSWSpellArray::GetSpell (0059b6d0): the subtype is the
+        // spells.2da row for the player's use and the AI's alike; retail never reads iprp_spells. powerSpell only
+        // picks which property an AI talent means.
         if (powerSpell >= 0 && property.subtype != powerSpell) {
             continue;
         }
-        const std::int32_t spell = powerSpell >= 0 ? powerSpell
-            : cellValue(*spellRefs, std::to_string(property.subtype), "spellindex", -1);
+        const std::int32_t spell = property.subtype;
         if (spell < 0) {
             continue;
         }
+        spellIds.push_back(spell);
         const std::string script = spells->cell(std::to_string(spell), "impactscript");
         if (!script.empty() && script != "****") {
             scripts.push_back(script);
+        } else {
+            spellIds.pop_back();
         }
     }
     if (!usable) {
@@ -1680,15 +1684,14 @@ bool GameSession::useItem(std::uint32_t item, std::uint32_t user, std::uint32_t 
                    {"itemActivator", user},
                    {"itemTarget", target},
                    {"caller", scriptWorld_.pc}});
-    for (const std::string& script : scripts) {
+    for (std::size_t i = 0; i < scripts.size(); ++i) {
+        const std::string& script = scripts[i];
         ScriptContext context;
         context["lastSpellCaster"] = user;
         context["spellTarget"] = target;
         context["attemptedTarget"] = target;
-        if (powerSpell >= 0) {
-            context["spellId"] = static_cast<std::uint32_t>(powerSpell);
-            context["lastSpell"] = static_cast<std::uint32_t>(powerSpell);
-        }
+        context["spellId"] = static_cast<std::uint32_t>(spellIds[i]);
+        context["lastSpell"] = static_cast<std::uint32_t>(spellIds[i]);
         context["spellCastItem"] = item;
         context["itemActivated"] = item;
         context["itemActivator"] = user;
@@ -2546,6 +2549,34 @@ int runItemsFamilyTest(GameSession& game)
                       && game.itemsOf(game.objectForEntityIndex(again)).size() == lootBefore - 1,
                   "container_loot_stays_gone");
         }
+    }
+
+    // ---- using a medpac casts the spell its ActivateItem subtype names (spells.2da row, 004f8c70) and heals.
+    {
+        CharacterSheet hurt = game.character();
+        hurt.maxHp = std::max<std::int32_t>(hurt.maxHp, 40);
+        hurt.hp = 5;
+        game.setCharacterForTest(hurt);
+        const std::uint32_t pcNow = game.scriptWorld().pc;
+        const std::uint32_t medpac = game.giveItem("g_i_medeqpmnt01", pcNow, 1, script::kObjectInvalid);
+        check(medpac != script::kObjectInvalid && medpac != 0, "medpac_given");
+        const kotor::ItemTemplate* templ = ItemOps(game).templateFor("g_i_medeqpmnt01");
+        const kotor::TwoDa* spellTable = tableFor(game.install(), "spells");
+        std::string impact;
+        if (templ != nullptr && spellTable != nullptr) {
+            for (const kotor::ItemTemplate::Property& property : templ->properties) {
+                if (property.name == kItemPropertyActivateItem) {
+                    impact = spellTable->cell(std::to_string(property.subtype), "impactscript");
+                    logInfo(concat("items family: medpac subtype ", property.subtype, " impact ", impact));
+                }
+            }
+        }
+        check(!impact.empty() && impact != "****", "medpac_spell_has_impact_script");
+        const std::int32_t before = game.playerHp();
+        check(game.useItem(medpac, pcNow, pcNow), "medpac_use_ok");
+        game.flushScriptEvents();
+        logInfo(concat("items family: medpac hp ", before, " -> ", game.playerHp()));
+        check(game.playerHp() > before, "medpac_heals");
     }
 
     logInfo(ok ? "items family: PASS" : "items family: FAIL");
