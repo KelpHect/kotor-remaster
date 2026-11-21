@@ -2,7 +2,8 @@
 
 Attribution for code this project builds with, patches, or used as a reference. This file does
 not license the project's own code; see `docs/LICENSE_PROPOSAL.md`. Pins and hashes are in
-`docs/versions.md`. Confirm each license text against the pinned revision before a release.
+`docs/versions.md`. The licenses of the components built into the engine were checked against the pinned revisions
+on 2026-11-21; re-check when a pin changes.
 
 ## Built into the engine
 
@@ -35,7 +36,7 @@ Not copied into this repository and not linked into the engine.
 | bioware-kaitai-formats | https://github.com/OpenKOTOR/bioware-kaitai-formats | MIT | Format reference |
 | PyKotor | https://github.com/OpenKOTOR/PyKotor | LGPL-3.0-or-later | External test oracle |
 | xoreos, xoreos-tools | https://github.com/xoreos | GPL-3.0 | External process oracle; type tables consulted |
-| KotOR.js | see `tools/inventory/kotor_types.py` | see upstream | Type tables consulted |
+| KotOR.js | https://github.com/KobaltBlu/KotOR.js | GPL-3.0 | Type tables consulted |
 | kotorblender | https://github.com/seedhartha/kotorblender | GPL-3.0 | External authoring tool |
 | DeNCS / NCSDecomp | see `tools/README.md` | BSL 1.1 | Offline oracle |
 | Ghidra | https://github.com/NationalSecurityAgency/ghidra | Apache-2.0 | Analysis tool; `tools/ghidra/*.java` are project-written scripts against its API |
