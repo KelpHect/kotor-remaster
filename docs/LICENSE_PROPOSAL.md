@@ -15,8 +15,9 @@ the game's data, names or marks.
 | Explicit patent grant | No | Yes, ends for a party that sues over patents | Yes | Yes | n/a |
 | Duties for redistributors | Keep copyright and license text | Keep license and `NOTICE`, state changes | Keep license, publish source of changed files | Publish full corresponding source | n/a |
 | Fits current dependencies (zlib, MIT, Apache-2.0 OR MIT, public domain) | Yes | Yes | Yes | Yes | n/a |
-| Binary shipped with the GPL FFmpeg build (review finding F3) | Possible; that binary falls under GPL terms | Possible with GPLv3; that binary falls under GPL terms | Possible; that binary falls under GPL terms | Native fit | Not distributable |
-| Binary shipped with an LGPL FFmpeg build, or none | No extra effect | No extra effect | No extra effect | No extra effect | Not distributable |
+| Binary shipped with the GPL FFmpeg build (review finding F3) | Possible; that binary falls under GPL terms | Possible with GPLv3; that binary falls under GPL terms | Possible; that binary falls under GPL terms | Native fit | Owner may ship it under GPL terms, which licenses that binary's source |
+| Binary shipped with an LGPL FFmpeg build | LGPL notice and relink duties for the FFmpeg DLLs only | Same | Same | Same | Owner may ship it; same LGPL duties; recipients get no rights in the engine |
+| Binary shipped with no FFmpeg | No extra effect | No extra effect | No extra effect | No extra effect | Owner may ship it; recipients get no rights to copy or modify |
 | Outside contributions | Simple with DCO sign-off | Simple; section 5 covers contributions | Simple | Simple; later relicensing needs every contributor | Cannot be accepted safely |
 | Later relicensing by the owner | Easy | Easy | Needs contributor consent | Needs contributor consent | Free while single-author |
 | Used by comparable engine reimplementations | Some | Some | Few | Most (xoreos, reone, OpenMW, ScummVM) | n/a |

@@ -30,7 +30,8 @@ owner; nothing is selected) and [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOT
 - The original `swkotor.exe` is an analysis oracle and is not required by the rebuilt runtime.
   The windowed-patch tool (`tools/mod/kotor_windowed_1280.py`, a developer analysis tool, not
   part of the runtime) modifies only a user's own copy of that executable, keeps a backup beside
-  it, and ships no original bytes.
+  it, and ships no copy of the executable. It does embed a few short original byte sequences
+  (5-byte patch-site checks and the two relocated instructions re-emitted in its trampoline).
 - No DRM, license-check, entitlement, or ownership-verification logic is implemented or bypassed.
 
 ## Clean-room separation
@@ -58,8 +59,8 @@ was observed; none is a conclusion that content infringes.
 | # | Finding | Evidence | Release effect |
 |---|---|---|---|
 | F1 | Save folders are committed. | `docs/evidence/s9/saves/000009 - ENGINE/`, `.../000010 - ENGINE/`, `docs/evidence/s11/000012 - ENGINE/` (15 files: `SAVEGAME.sav`, `GLOBALVARS.res`, `PARTYTABLE.res`, `savenfo.res`, `Screen.tga`). They are written by this engine, but each `SAVEGAME.sav` embeds a module-state archive (`end_m01aa`, `tar_m02af`) built from the user's game data, and `Screen.tga` is a rendered frame. | Contradicts the README and the earlier text of this review. Blocker R1. |
-| F2 | Rendered game imagery and dialogue text are committed. | 44 PNG files under `docs/evidence/s5`..`s14` showing game art rendered by the engine, including Bink movie frames (`s13/movie-*.png`, `s13/bik-oracle.png`); 7 evidence logs quote game dialogue lines. `docs/evidence` is 63 MB. | Screenshots and short quotes are common in fan projects but are game-derived content; the "no assets" wording must match what is shipped. Blocker R1. |
-| F3 | The optional Bink path links FFmpeg, and the documented build is a GPL one. | `docs/versions.md` pins BtbN `win64 gpl-shared`; `engine/CMakeLists.txt` links it into `kotor_data` and copies the DLLs beside `kotor_engine`. Configure without an FFmpeg root builds without it. | A binary distributed with those DLLs must be offered under GPL terms. Interacts with the license choice; blocker R3. |
+| F2 | Rendered game imagery and dialogue text are committed. | 42 PNG files under `docs/evidence/s5`..`s14` showing game art, rendered by the engine except `s13/bik-oracle.png`, which is an FFmpeg decode of a frame of the game's `01a.bik`; `s13/movie-*.png` are engine captures of that movie; 7 evidence logs quote game dialogue lines. `docs/evidence` is 63 MB. | Screenshots and short quotes are common in fan projects but are game-derived content; the "no assets" wording must match what is shipped. Blocker R1. |
+| F3 | The optional Bink path links FFmpeg, and the documented build is a GPL one. | `docs/versions.md` pins BtbN `win64 gpl-shared`; `engine/CMakeLists.txt` links it into `kotor_data` and copies the DLLs beside `kotor_engine`. Configure builds without it when no FFmpeg is found at `KOTOR_FFMPEG_ROOT`. | A binary distributed with those DLLs must be offered under GPL terms. Interacts with the license choice; blocker R3. |
 | F4 | The windowed-patch tool writes inside the install. | `kotor_windowed_1280.py` writes `swkotor.exe.orig-1.0.3.0` beside the executable and replaces `swkotor.exe`; it checks the SHA-256 first and supports `--revert`. | Earlier text said backups go outside the install; corrected above. Keep the tool out of release packages (R6). |
 | F5 | Single-author history; the spec and implementation lanes cannot be told apart from git alone. | All commits are by one author; 7 engine sources cite original-binary addresses (`FUN_00...`, data addresses) in comments; Ghidra scripts live in `tools/ghidra/`. No taint log file is committed. | The repo documents a spec/implementation split, but a strict two-team clean room cannot be shown from the public record. Counsel should see this (R4, R5). |
 | F6 | No `LICENSE`, `NOTICE`, or contribution-terms file. | Repository root. README states no license is granted. | Expected until the owner decides; R2. |
@@ -87,8 +88,8 @@ A public source release needs R1, R2, R4 and R5. A binary release needs all of t
 - **R5 Counsel.** Jurisdiction-specific review of the reverse-engineering basis, F1/F2/F5, the
   trademark use in the project name and README, and the EULA of each store version.
 - **R6 Package contents.** A release package holds the engine, its shaders, the notices file and
-  dependency license texts only: no `docs/evidence`, `tools/mod`, `tools/ghidra` or harness
-  hooks.
+  dependency license texts, plus the FFmpeg DLLs and their license text when R3 keeps FFmpeg:
+  no `docs/evidence`, `tools/mod`, `tools/ghidra` or harness hooks.
 - **R7 Notices in binaries.** Ship `THIRD_PARTY_NOTICES.md` and the license texts of SDL3,
   Vulkan-Headers, volk, Dear ImGui and dr_mp3 (and FFmpeg if included) with every binary.
 
@@ -113,6 +114,8 @@ These need the KotOR 1.0.3.0 install and a GPU and were not run.
   file from the install and no file from `docs/evidence`.
 - **W7 FFmpeg variants.** Build and play a movie with no FFmpeg, with the GPL build, and with an
   LGPL shared build; record which DLLs are copied and whether Bink decodes in the LGPL build.
+  Use a fresh build directory for each variant: `KOTOR_FFMPEG_ROOT` and the found library paths
+  are cached by CMake, so changing the environment variable alone keeps the previous build.
 - **W8 Evidence provenance.** For F1/F2, confirm from the local `artifacts/` store that every
   committed save and image was produced by this engine and not by the original executable, and
   that no committed image is a desktop capture.
@@ -138,7 +141,8 @@ These need the KotOR 1.0.3.0 install and a GPU and were not run.
 - `git ls-files` contains no `swkotor.exe`, `dialog.tlk`, BIF/RIM/KEY payloads, or extracted
   MDL/MDX/TPC/WAV/BIK data (re-checked 2026-11-21). It does contain three engine-written save
   folders and engine-rendered screenshots (F1, F2).
-- The windowed-patch tool contains only our trampoline bytes and verification hashes; it refuses
+- The windowed-patch tool contains our trampoline bytes, verification hashes and the short
+  original byte sequences noted above; it refuses
   unexpected executables and writes its backup beside the executable (F4).
 - No `.ksy` specification, generated Kaitai parser, or GPL/LGPL source file is committed; the
   default CMake configure fetches only SDL3, Vulkan-Headers, volk and Dear ImGui by pinned hash.
