@@ -91,6 +91,7 @@ Full build, test and flag reference: [`engine/docs/BUILD.md`](engine/docs/BUILD.
 - [`docs/K1_PLAYABILITY.md`](docs/K1_PLAYABILITY.md) — current playable surface and remaining gaps
 - [`docs/EVIDENCE.md`](docs/EVIDENCE.md) — the full verified-progress log and sprint reports
 - [`engine/docs/BUILD.md`](engine/docs/BUILD.md) — build, run and test
+- [`docs/MODDING_API.md`](docs/MODDING_API.md) — mod package layout, load order and loader API
 - [`tools/README.md`](tools/README.md) — the reverse-engineering tooling
 - [`docs/adr/`](docs/adr/) — architecture decisions (runtime, coordinates, distribution)
 

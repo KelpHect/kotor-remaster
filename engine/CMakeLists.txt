@@ -104,6 +104,7 @@ add_library(kotor_data STATIC
     src/kotor/ResourceMisses.cpp
     src/kotor/Localization.cpp
     src/kotor/Media.cpp
+    src/kotor/Mods.cpp
     src/kotor/Profile.cpp
     src/kotor/SaveGame.cpp
     src/kotor/Scene.cpp
@@ -278,6 +279,10 @@ if(KOTOR_ENGINE_BUILD_TESTS)
     add_executable(kotor_tests tests/test_kotor.cpp)
     target_link_libraries(kotor_tests PRIVATE kotor_engine_options kotor_data kotor_script)
     add_test(NAME kotor_formats COMMAND kotor_tests)
+    # Modding API v1: manifests, load order and mod resolution against a synthetic install.
+    add_executable(kotor_mods_tests tests/test_mods.cpp)
+    target_link_libraries(kotor_mods_tests PRIVATE kotor_engine_options kotor_data)
+    add_test(NAME kotor_mods COMMAND kotor_mods_tests)
     add_executable(kotor_vm_conformance tests/vm_conformance.cpp)
     target_link_libraries(kotor_vm_conformance PRIVATE kotor_engine_options kotor_script)
     add_test(NAME kotor_vm_conformance COMMAND kotor_vm_conformance)

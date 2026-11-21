@@ -1,4 +1,5 @@
 #include "kotor/Formats.h"
+#include "kotor/Mods.h"
 #include "kotor/ResourceMisses.h"
 
 #include <algorithm>
@@ -32,6 +33,24 @@ std::uint32_t typeForExtension(const std::string& extension)
     };
     const auto it = types.find(lower(extension));
     return it == types.end() ? 0u : it->second;
+}
+
+std::vector<std::uint8_t> readWholeFile(const std::filesystem::path& path)
+{
+    std::ifstream stream(path, std::ios::binary | std::ios::ate);
+    if (!stream) {
+        return {};
+    }
+    const std::streamoff size = stream.tellg();
+    if (size <= 0) {
+        return {};
+    }
+    stream.seekg(0, std::ios::beg);
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
+    if (!stream.read(reinterpret_cast<char*>(bytes.data()), size)) {
+        return {};
+    }
+    return bytes;
 }
 
 } // namespace
@@ -115,10 +134,21 @@ std::shared_ptr<const TwoDa> Install::table(const std::string& name)
         return it->second;
     }
     std::shared_ptr<const TwoDa> table;
-    if (auto data = find(name, resType(ResType::TwoDa)); data.has_value()) {
+    if (auto data = findUnpatched(name, resType(ResType::TwoDa), nullptr); data.has_value()) {
         try {
             table = std::make_shared<const TwoDa>(TwoDa::parse(std::move(*data), name));
         } catch (const FormatError&) {
+        }
+    }
+    // Mod table patches, in load order. A patch for a table nothing else provides is the table.
+    if (const auto patches = modTablePatches_.find(lower(name)); patches != modTablePatches_.end()) {
+        for (const std::filesystem::path& path : patches->second) {
+            try {
+                TwoDa patch = TwoDa::parse(readWholeFile(path), name);
+                table = std::make_shared<const TwoDa>(
+                    table ? TwoDa::merge(*table, patch, name) : std::move(patch));
+            } catch (const FormatError&) {
+            }
         }
     }
     tables_.emplace(name, table);
@@ -177,7 +207,7 @@ void Install::sortLayers()
     });
 }
 
-void Install::indexLooseDirectory(const std::filesystem::path& directory)
+void Install::indexLooseDirectory(const std::filesystem::path& directory, const std::string& origin)
 {
     std::error_code error;
     if (!std::filesystem::is_directory(directory, error)) {
@@ -197,7 +227,7 @@ void Install::indexLooseDirectory(const std::filesystem::path& directory)
             continue;
         }
         const std::string resref = lower(entry.path().stem().string());
-        loose_[resref].push_back({type, entry.path()});
+        loose_[resref].push_back({type, entry.path(), origin});
     }
 }
 
@@ -214,6 +244,26 @@ void Install::rebuildLooseIndex()
     indexLooseDirectory(overlayRoot_ / "streamwaves");
     indexLooseDirectory(root_ / "streammusic");
     indexLooseDirectory(overlayRoot_ / "streammusic");
+    // Mods are indexed last, so they are searched first; a later mod before an earlier one.
+    for (const ModMount& mount : modMounts_) {
+        indexLooseDirectory(mount.overrideDirectory, "mod:" + mount.id);
+    }
+}
+
+void Install::mountMods(const ModSet& mods)
+{
+    modMounts_.clear();
+    modTablePatches_.clear();
+    for (const Mod& mod : mods.mods()) {
+        if (!mod.overrideDirectory.empty()) {
+            modMounts_.push_back({mod.manifest.id, mod.overrideDirectory});
+        }
+        for (const auto& [table, path] : mod.tablePatches) {
+            modTablePatches_[table].push_back(path);
+        }
+    }
+    rebuildLooseIndex();
+    dropResolvedCaches();
 }
 
 void Install::setOverlayRoot(std::filesystem::path root)
@@ -332,6 +382,25 @@ std::vector<std::string> Install::resourceNames(std::uint32_t type) const
 std::optional<std::vector<std::uint8_t>> Install::find(const std::string& resref, std::uint32_t type,
                                                        std::string* source)
 {
+    // A table that mods patch is returned patched, so callers that parse the bytes
+    // themselves see the same table as Install::table.
+    if (type == resType(ResType::TwoDa) && !modTablePatches_.empty()) {
+        const std::string wanted = normalizeResref(resref);
+        if (modTablePatches_.count(wanted) != 0) {
+            if (const auto patched = table(wanted)) {
+                if (source != nullptr) {
+                    *source = "mod:2da/" + wanted + ".2da (patched)";
+                }
+                return patched->serialize();
+            }
+        }
+    }
+    return findUnpatched(resref, type, source);
+}
+
+std::optional<std::vector<std::uint8_t>> Install::findUnpatched(const std::string& resref, std::uint32_t type,
+                                                                std::string* source)
+{
     const std::string wanted = normalizeResref(resref);
     // Walk tooling: a lookup that finds nothing is counted (only while recording is on).
     struct MissGuard {
@@ -366,7 +435,9 @@ std::optional<std::vector<std::uint8_t>> Install::find(const std::string& resref
                 continue;
             }
             if (source != nullptr) {
-                *source = file->path.string() + " (loose)";
+                *source = file->origin.empty()
+                    ? file->path.string() + " (loose)"
+                    : file->origin + "/override/" + file->path.filename().string();
             }
             missGuard.hit = true;
             return bytes;
