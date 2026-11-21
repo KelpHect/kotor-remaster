@@ -134,7 +134,7 @@ std::shared_ptr<const TwoDa> Install::table(const std::string& name)
         return it->second;
     }
     std::shared_ptr<const TwoDa> table;
-    if (auto data = find(name, resType(ResType::TwoDa)); data.has_value()) {
+    if (auto data = findUnpatched(name, resType(ResType::TwoDa), nullptr); data.has_value()) {
         try {
             table = std::make_shared<const TwoDa>(TwoDa::parse(std::move(*data), name));
         } catch (const FormatError&) {
@@ -381,6 +381,25 @@ std::vector<std::string> Install::resourceNames(std::uint32_t type) const
 
 std::optional<std::vector<std::uint8_t>> Install::find(const std::string& resref, std::uint32_t type,
                                                        std::string* source)
+{
+    // A table that mods patch is returned patched, so callers that parse the bytes
+    // themselves see the same table as Install::table.
+    if (type == resType(ResType::TwoDa) && !modTablePatches_.empty()) {
+        const std::string wanted = normalizeResref(resref);
+        if (modTablePatches_.count(wanted) != 0) {
+            if (const auto patched = table(wanted)) {
+                if (source != nullptr) {
+                    *source = "mod:2da/" + wanted + ".2da (patched)";
+                }
+                return patched->serialize();
+            }
+        }
+    }
+    return findUnpatched(resref, type, source);
+}
+
+std::optional<std::vector<std::uint8_t>> Install::findUnpatched(const std::string& resref, std::uint32_t type,
+                                                                std::string* source)
 {
     const std::string wanted = normalizeResref(resref);
     // Walk tooling: a lookup that finds nothing is counted (only while recording is on).

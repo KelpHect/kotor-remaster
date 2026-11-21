@@ -840,6 +840,9 @@ public:
     // are appended and new rows are appended after the base rows.
     static TwoDa merge(const TwoDa& base, const TwoDa& patch, std::string name);
 
+    // The table as ASCII `2DA V2.0` text that `parse` reads back unchanged.
+    std::vector<std::uint8_t> serialize() const;
+
 private:
     struct Row {
         std::string label;
@@ -1655,6 +1658,8 @@ private:
     int nextSequence_ = 0;
     std::vector<ModMount> modMounts_;
     std::unordered_map<std::string, std::vector<std::filesystem::path>> modTablePatches_;
+    std::optional<std::vector<std::uint8_t>> findUnpatched(const std::string& resref, std::uint32_t type,
+                                                           std::string* source);
     void dropResolvedCaches();
 
     std::shared_ptr<const Tlk> dialogTlk_;

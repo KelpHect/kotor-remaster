@@ -40,24 +40,39 @@ std::vector<std::string> splitWhitespace(const std::string& line)
     std::vector<std::string> out;
     std::string current;
     bool quoted = false;
+    bool started = false; // "" is a cell too: an empty one
     for (const char ch : line) {
         if (ch == '"') {
             quoted = !quoted;
+            started = true;
             continue;
         }
         if (!quoted && std::isspace(static_cast<unsigned char>(ch)) != 0) {
-            if (!current.empty()) {
+            if (started) {
                 out.push_back(std::move(current));
                 current.clear();
+                started = false;
             }
             continue;
         }
         current.push_back(ch);
+        started = true;
     }
-    if (!current.empty()) {
+    if (started) {
         out.push_back(std::move(current));
     }
     return out;
+}
+
+bool isDefaultLine(const std::string& line)
+{
+    static const char prefix[] = "default:";
+    for (std::size_t i = 0; i + 1 < sizeof(prefix); ++i) {
+        if (i >= line.size() || std::tolower(static_cast<unsigned char>(line[i])) != prefix[i]) {
+            return false;
+        }
+    }
+    return true;
 }
 
 } // namespace
@@ -104,6 +119,31 @@ std::string TwoDa::cell(const std::string& row, const std::string& column) const
         return {};
     }
     return cell(static_cast<std::size_t>(r), static_cast<std::size_t>(c));
+}
+
+std::vector<std::uint8_t> TwoDa::serialize() const
+{
+    std::string text = "2DA V2.0\n\n";
+    const auto put = [&](const std::string& token) {
+        const bool quote = token.empty() || std::any_of(token.begin(), token.end(), [](char ch) {
+            return std::isspace(static_cast<unsigned char>(ch)) != 0;
+        });
+        text += quote ? '"' + token + '"' : token;
+    };
+    for (const std::string& column : columns_) {
+        text += ' ';
+        put(column);
+    }
+    text += '\n';
+    for (const Row& row : rows_) {
+        put(row.label);
+        for (std::size_t column = 0; column < columns_.size(); ++column) {
+            text += ' ';
+            put(column < row.cells.size() ? row.cells[column] : std::string());
+        }
+        text += '\n';
+    }
+    return {text.begin(), text.end()};
 }
 
 TwoDa TwoDa::merge(const TwoDa& base, const TwoDa& patch, std::string name)
@@ -186,7 +226,8 @@ TwoDa TwoDa::parseTable(std::vector<std::uint8_t> bytes, std::string name)
             throw FormatError(table.name_ + ": ASCII 2DA has no V2.0 header");
         }
         ++index;
-        while (index < lines.size() && lines[index].empty()) {
+        // An optional `DEFAULT: <value>` line may come before the column names.
+        while (index < lines.size() && (lines[index].empty() || isDefaultLine(lines[index]))) {
             ++index;
         }
         if (index >= lines.size()) {
@@ -197,8 +238,7 @@ TwoDa TwoDa::parseTable(std::vector<std::uint8_t> bytes, std::string name)
             throw FormatError(table.name_ + ": ASCII 2DA has no columns");
         }
         while (index < lines.size()) {
-            if (lines[index].empty()
-                || lines[index].rfind("DEFAULT:", 0) == 0) {
+            if (lines[index].empty() || isDefaultLine(lines[index])) {
                 ++index;
                 continue;
             }

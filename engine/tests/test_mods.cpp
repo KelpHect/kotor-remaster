@@ -8,7 +8,9 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <cstdlib>
 #include <iostream>
+#include <random>
 #include <set>
 #include <string>
 #include <vector>
@@ -36,9 +38,28 @@ void write(const fs::path& path, const std::string& text)
     std::ofstream(path, std::ios::binary) << text;
 }
 
+// A directory this run creates itself, under a name nobody can prepare in advance.
+const fs::path& scratchRoot()
+{
+    static const fs::path root = [] {
+        std::random_device random;
+        for (int attempt = 0; attempt < 16; ++attempt) {
+            const fs::path candidate = fs::temp_directory_path()
+                / ("kotor_mods_test_" + std::to_string(random()) + std::to_string(random()));
+            std::error_code error;
+            if (fs::create_directory(candidate, error) && !error) {
+                return candidate;
+            }
+        }
+        std::cerr << "cannot create a scratch directory\n";
+        std::exit(2);
+    }();
+    return root;
+}
+
 fs::path scratch(const std::string& name)
 {
-    const fs::path root = fs::temp_directory_path() / "kotor_mods_test" / name;
+    const fs::path root = scratchRoot() / name;
     fs::remove_all(root);
     fs::create_directories(root);
     return root;
@@ -187,6 +208,25 @@ void testDiscovery()
         expect(hasError(set, "loop-a", "cycle") && hasError(set, "loop-b", "cycle"), "cycle is rejected");
         expect(ModSet::discover(mods, GameKind::KotOR2).find("sequel") != nullptr, "kotor2 mod loads for kotor2");
     }
+    {
+        const fs::path mods = scratch("cycles");
+        write(mods / "a" / "mod.ini", manifest("a", "after = b\n"));
+        write(mods / "b" / "mod.ini", manifest("b", "after = a\n"));
+        write(mods / "follows" / "mod.ini", manifest("follows", "after = a\n"));
+        write(mods / "needs" / "mod.ini", manifest("needs", "requires = b\n"));
+        write(mods / "needs-more" / "mod.ini", manifest("needs-more", "requires = needs\nafter = follows\n"));
+        write(mods / "self-after" / "mod.ini", manifest("self-after", "after = self-after\n"));
+        write(mods / "self-requires" / "mod.ini", manifest("self-requires", "requires = self-requires\n"));
+        write(mods / "zz" / "mod.ini", manifest("zz", "after = follows\n"));
+        const ModSet set = ModSet::discover(mods, GameKind::KotOR1);
+        expect(order(set) == "follows,zz", "a mod only `after` a cycle still loads: " + order(set));
+        expect(hasError(set, "a", "cycle") && hasError(set, "b", "cycle") && !hasError(set, "follows", ""),
+               "only the cycle's own mods get the cycle error");
+        expect(hasError(set, "needs", "requires `b`") && hasError(set, "needs-more", "requires `needs`"),
+               "mods that require a cycle member are rejected, transitively");
+        expect(hasError(set, "self-after", "cycle") && hasError(set, "self-requires", "cycle"),
+               "a mod that lists itself is rejected");
+    }
 }
 
 // A stand-in install: an empty KEY and a placeholder executable, written by the test.
@@ -256,8 +296,39 @@ void testMountedMods()
            "second mod patches on top of first; **** leaves the cell alone");
     const auto brandNew = install.table("brandnew");
     expect(brandNew && brandNew->cell("0", "name") == "made", "a patch for a table nothing provides is the table");
-    expect(text(install.find("stats", twoDa)).find("base 20") != std::string::npos,
-           "find() returns the unpatched table bytes");
+    {
+        // Code that parses find()'s bytes itself must see the same table as table().
+        const auto bytes = install.find("STATS", twoDa, &source);
+        const TwoDa parsed = TwoDa::parse(bytes.value_or(std::vector<std::uint8_t>{}), "stats");
+        expect(parsed.rowCount() == 3 && parsed.cell("0", "name") == "base" && parsed.cell("1", "value") == "21"
+                   && parsed.cell("2", "name") == "first" && parsed.cell("2", "value") == "31",
+               "find() returns the patched table: " + source);
+        expect(source == "mod:2da/stats.2da (patched)", "find() names a patched table: " + source);
+        const auto fresh = install.find("brandnew", twoDa);
+        expect(fresh.has_value() && TwoDa::parse(*fresh, "brandnew").cell("0", "name") == "made",
+               "find() returns a table that only a patch provides");
+    }
+    {
+        const fs::path extra = scratch("patch-syntax")
+;
+        write(extra / "quoted" / "mod.ini", manifest("quoted"));
+        write(extra / "quoted" / "2da" / "stats.2da", table("0 \"\" 50\n1 \"two words\" \"\"\n"));
+        write(extra / "defaulted" / "mod.ini", manifest("defaulted", "after = quoted\n"));
+        write(extra / "defaulted" / "2da" / "stats.2da", "2DA V2.0\nDefault: 0\n name value\n0 hero ****\n");
+        const ModSet syntax = ModSet::discover(extra, GameKind::KotOR1);
+        expect(syntax.ok() && order(syntax) == "quoted,defaulted", "patch syntax mods load: " + order(syntax));
+        install.mountMods(syntax);
+        const auto patched = install.table("stats");
+        expect(patched && patched->columnCount() == 2 && patched->rowCount() == 2,
+               "a `Default:` line is not read as the column names");
+        expect(patched && patched->cell("0", "name") == "hero" && patched->cell("0", "value") == "50",
+               "a quoted empty cell keeps its column and leaves the cell alone");
+        expect(patched && patched->cell("1", "name") == "two words" && patched->cell("1", "value") == "20",
+               "a quoted cell with a space is one cell");
+        const TwoDa reread = TwoDa::parse(install.find("stats", twoDa).value(), "stats");
+        expect(reread.cell("1", "name") == "two words" && reread.cell("1", "value") == "20",
+               "a cell with a space survives find()");
+    }
 
     install.mountMods(ModSet{});
     expect(text(install.find("shared", txi)) == "from install override", "unmounting restores the install Override");
@@ -274,7 +345,7 @@ int main()
     testDiscovery();
     testMountedMods();
     std::error_code error;
-    fs::remove_all(fs::temp_directory_path() / "kotor_mods_test", error);
+    fs::remove_all(scratchRoot(), error);
     if (failures != 0) {
         std::cerr << failures << " failure(s)\n";
         return 1;

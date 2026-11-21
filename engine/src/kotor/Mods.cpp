@@ -383,17 +383,67 @@ ModSet ModSet::discover(const std::filesystem::path& modsDirectory, GameKind gam
         const auto ready = std::find_if(waiting.begin(), waiting.end(), [&](const std::string& id) {
             const ModManifest& manifest = found.at(id).manifest;
             const auto pending = [&](const std::string& other) {
-                return other != id && std::find(waiting.begin(), waiting.end(), other) != waiting.end();
+                return std::find(waiting.begin(), waiting.end(), other) != waiting.end();
             };
             return std::none_of(manifest.requires_.begin(), manifest.requires_.end(),
                                 [&](const ModDependency& dependency) { return pending(dependency.id); })
                 && std::none_of(manifest.after.begin(), manifest.after.end(), pending);
         });
         if (ready == waiting.end()) {
+            // Reject the mods that are on a cycle, then the mods that require a rejected mod.
+            // A mod that only lists a rejected mod in `after` stays.
+            const auto isWaiting = [&](const std::string& id) {
+                return std::find(waiting.begin(), waiting.end(), id) != waiting.end();
+            };
+            const auto reachesItself = [&](const std::string& start) {
+                std::set<std::string> seen;
+                std::vector<std::string> stack{start};
+                while (!stack.empty()) {
+                    const ModManifest& manifest = found.at(stack.back()).manifest;
+                    stack.pop_back();
+                    std::vector<std::string> next = manifest.after;
+                    for (const ModDependency& dependency : manifest.requires_) {
+                        next.push_back(dependency.id);
+                    }
+                    for (const std::string& id : next) {
+                        if (id == start) {
+                            return true;
+                        }
+                        if (isWaiting(id) && seen.insert(id).second) {
+                            stack.push_back(id);
+                        }
+                    }
+                }
+                return false;
+            };
+            std::set<std::string> rejected;
             for (const std::string& id : waiting) {
-                set.errors_.push_back({id, "is in or behind a `requires`/`after` cycle"});
+                if (reachesItself(id)) {
+                    rejected.insert(id);
+                    set.errors_.push_back({id, "is in a `requires`/`after` cycle"});
+                }
             }
-            break;
+            for (bool changed = true; changed;) {
+                changed = false;
+                for (const std::string& id : waiting) {
+                    if (rejected.count(id) != 0) {
+                        continue;
+                    }
+                    for (const ModDependency& dependency : found.at(id).manifest.requires_) {
+                        if (rejected.count(dependency.id) != 0) {
+                            set.errors_.push_back({id, "requires `" + dependency.id + "`, which was rejected"});
+                            rejected.insert(id);
+                            changed = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (rejected.empty()) {
+                break;
+            }
+            std::erase_if(waiting, [&](const std::string& id) { return rejected.count(id) != 0; });
+            continue;
         }
         sorted.push_back(*ready);
         waiting.erase(ready);

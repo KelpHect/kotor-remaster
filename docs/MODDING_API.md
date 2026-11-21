@@ -64,8 +64,9 @@ after = widescreen
 A mod is rejected, with an error naming it, when: its manifest does not parse (the error gives file
 and line); its directory is not named after its id; its `api` is not 1; its `game` is the other
 game; a table patch in `2da/` does not parse; a `requires` is not enabled or is too old; a
-`conflicts` is enabled; or it is in a `requires`/`after` cycle. A rejected mod is not mounted, and
-neither is any mod that requires it. The other mods still load. `ModSet::ok()` is false when there
+`conflicts` is enabled; or it is in a `requires`/`after` cycle (a mod that lists itself is a cycle).
+A rejected mod is not mounted, and neither is any mod that requires it. The other mods still load,
+including a mod that only lists a rejected mod in `after`. `ModSet::ok()` is false when there
 is any error; the caller decides whether to start anyway.
 
 ## override/
@@ -97,8 +98,12 @@ otherwise load (which may itself be a whole-file replacement from `override/`):
 - Patches from several mods apply in load order, each on top of the last.
 - If nothing else provides the table, the first patch is the table.
 
-Patches apply in `Install::table`, which is what gameplay code reads. `Install::find` returns the
-unpatched bytes. Use a patch rather than a whole file in `override/` whenever two mods might touch
+A patch file is ASCII `2DA V2.0`. Write `""` or `****` for a cell to leave alone, and quote a value
+that contains a space. An optional `DEFAULT:` line before the column names is accepted and ignored.
+
+Both ways of reading a table see the patches: `Install::table` returns the patched table, and
+`Install::find` for a patched table returns it as ASCII `2DA V2.0` bytes (source
+`mod:2da/<table>.2da (patched)`), so code that parses the bytes itself gets the same result. Use a patch rather than a whole file in `override/` whenever two mods might touch
 the same table: patches compose, whole files do not.
 
 ## Overlaps
