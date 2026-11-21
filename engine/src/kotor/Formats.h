@@ -1575,6 +1575,8 @@ struct TriggerVolume {
 
 // Read-only view of one KotOR install. Build identity is checked before any
 // resource is used, and the install is never opened for writing.
+class ModSet;
+
 class Install {
 public:
     explicit Install(std::filesystem::path gameDir, bool verifyBuild = true);
@@ -1592,6 +1594,10 @@ public:
     void addRim(const std::string& stem);
     void setOverlayRoot(std::filesystem::path root);
     const std::filesystem::path& overlayRoot() const { return overlayRoot_; }
+    // Mounts the enabled mods (kotor/Mods.h): their override files win over every other source,
+    // a later mod over an earlier one, and their 2DA patches are merged in table(). The install
+    // is not written to. An empty set unmounts.
+    void mountMods(const ModSet& mods);
     std::optional<std::vector<std::uint8_t>> find(const std::string& resref, std::uint32_t type,
                                                   std::string* source = nullptr);
     std::optional<std::vector<std::uint8_t>> findTexture(const std::string& resref, std::uint32_t* type,
@@ -1622,6 +1628,11 @@ private:
     struct LooseFile {
         std::uint32_t type = 0;
         std::filesystem::path path;
+        std::string origin; // "mod:<id>" for a mod's file
+    };
+    struct ModMount {
+        std::string id;
+        std::filesystem::path overrideDirectory;
     };
 
     const BifFile& bif(std::uint32_t index);
@@ -1630,7 +1641,7 @@ private:
     void addLayer(int pass, int order, const std::filesystem::path& path,
                   const std::string& name);
     void sortLayers();
-    void indexLooseDirectory(const std::filesystem::path& directory);
+    void indexLooseDirectory(const std::filesystem::path& directory, const std::string& origin = {});
     void rebuildLooseIndex();
 
     std::filesystem::path root_;
@@ -1642,6 +1653,8 @@ private:
     std::vector<Layer> layers_;
     std::unordered_map<std::string, std::vector<LooseFile>> loose_;
     int nextSequence_ = 0;
+    std::vector<ModMount> modMounts_;
+    std::unordered_map<std::string, std::vector<std::filesystem::path>> modTablePatches_;
     void dropResolvedCaches();
 
     std::shared_ptr<const Tlk> dialogTlk_;
