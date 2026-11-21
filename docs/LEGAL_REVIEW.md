@@ -52,7 +52,7 @@ owner; nothing is selected) and [`../THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOT
 
 ## Audit findings (2026-11-21)
 
-Static audit of `main` from a machine with no game install and no GPU. Each finding names what
+Static audit of `master` from a machine with no game install and no GPU. Each finding names what
 was observed; none is a conclusion that content infringes.
 
 | # | Finding | Evidence | Release effect |
