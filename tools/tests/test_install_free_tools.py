@@ -284,6 +284,7 @@ class Windowed1280PatchTests(TempDirCase):
                 self.assertEqual(jump[:1], b"\xe9")
                 self.assertEqual(site + 5 + struct.unpack("<i", jump[1:])[0], cave)
             # only the section header, the three sites and the caves changed
+            self.assertEqual(len(patched), len(self.original))
             changed = [i for i, (a, b) in enumerate(zip(self.original, patched)) if a != b]
             lo = pe.rva_to_off(patch1280.VALIDATOR_CAVE_RVA)
             hi = pe.rva_to_off(patch1280.CAVE_AREA_END)
@@ -459,6 +460,14 @@ class ViewerAreaTests(TempDirCase):
         game = vkotor.Game(str(self.game_dir))
         game.use_module("tmod")
         self.assertEqual(game.find("t01aa", vkotor.T_ARE)[1], "modules/tmod.rim")
+        base = game.find("t01aa", vkotor.T_LYT)
+        self.assertTrue(base[1].endswith("(KEY)"), base[1])
+        # a module resource shadows the base archive's copy of the same name
+        vkotor.ka.write_rim(str(self.game_dir / "modules" / "over.rim"),
+                            [("t01aa", vkotor.T_LYT, b"module copy")])
+        game.use_module("over")
+        self.assertEqual(game.find("t01aa", vkotor.T_LYT), (b"module copy", "modules/over.rim"))
+        self.assertNotEqual(base[0], b"module copy")
         self.assertIsNone(game.find("nosuch", vkotor.T_ARE))
         self.assertIsNone(game.find_texture("nosuch"))
 
